@@ -1,5 +1,5 @@
 # Git hooks. Managed by lefthook (evilmartians/lefthook).
-# Install once per clone: `pnpm lefthook install` (runs via prepare script).
+# Installed on every clone by the pnpm prepare script (lefthook install).
 # Bypassing hooks (--no-verify) is forbidden; CI re-runs every check anyway.
 
 pre-commit:
@@ -12,10 +12,19 @@ pre-commit:
         echo "$branch" | grep -Eq '^(feat|fix|docs|refactor|test|chore|perf|build|ci|revert)/[a-z0-9._-]+$' || { echo "Branch name '$branch' violates branch naming policy"; exit 1; }
     ts-lint:
       glob: "*.{ts,tsx}"
-      run: pnpm eslint --max-warnings 0 {staged_files}
-    ts-format:
-      glob: "*.{ts,tsx,json,md,yml,yaml,css}"
+      run: pnpm oxlint --deny-warnings {staged_files} && pnpm eslint --max-warnings 0 {staged_files}
+    format:
+      glob: "*.{ts,tsx,mjs,json,md,yml,yaml,css}"
       run: pnpm prettier --check {staged_files}
+    headers:
+      glob: "{apps,packages,crates}/**/*.{ts,tsx,css,rs}"
+      run: |
+        failed=0
+        for file in {staged_files}; do
+          header=$(head -n 5 "$file")
+          printf '%s' "$header" | grep -q 'Copyright (C)' && printf '%s' "$header" | grep -qF 'SPDX-License-Identifier: AGPL-3.0-only' && printf '%s' "$header" | grep -q 'NOTICE' || { echo "$file: missing license header"; failed=1; }
+        done
+        exit "$failed"
     rust-fmt:
       glob: "*.rs"
       run: cargo fmt --check
@@ -24,11 +33,21 @@ pre-commit:
 
 pre-push:
   commands:
+    build:
+      priority: 1
+      run: pnpm build
+    ts-lint:
+      priority: 2
+      run: pnpm lint
     ts-typecheck:
+      priority: 2
       run: pnpm typecheck
     dead-code:
+      priority: 2
       run: pnpm knip
     rust-clippy:
+      priority: 2
       run: cargo clippy --workspace --all-targets -- -D warnings
     tests:
+      priority: 3
       run: pnpm test && cargo test --workspace
