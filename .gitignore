@@ -1,0 +1,13 @@
+node_modules/
+dist/
+target/
+.turbo/
+coverage/
+playwright-report/
+test-results/
+.env*
+lefthook-local.yml
+.DS_Store
+.vscode/
+.idea/
+.nova/
