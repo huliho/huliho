@@ -1,0 +1,360 @@
+# Every quality gate runs here on pull requests and main. Actions are
+# pinned to commit SHAs and every job runs with a least-privilege token.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * *"
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FILE_LINE_CEILING: "400"
+  # A version bump needs its checksum updated in the same change.
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
+jobs:
+  js:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format
+      - run: pnpm build
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm --filter @huliho/web exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - run: pnpm knip
+      - run: pnpm size
+      - name: jscpd per package
+        run: |
+          for dir in apps/* packages/* crates/*; do
+            pnpm exec jscpd "$dir"
+          done
+      - name: production dependency licenses
+        run: |
+          cat > "$RUNNER_TEMP/licenses.mjs" <<'CHECK'
+          import { readFileSync } from "node:fs";
+          const allowed = new Set([
+            "MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib",
+            "0BSD", "Unlicense", "CC0-1.0", "BSL-1.0", "Unicode-3.0",
+            "Unicode-DFS-2016", "MPL-2.0",
+          ]);
+          const groups = JSON.parse(readFileSync(process.argv[process.argv.length - 1], "utf8"));
+          const licenses = Object.keys(groups);
+          if (licenses.length === 0) {
+            console.error("the production license listing came back empty");
+            process.exit(1);
+          }
+          let rejected = 0;
+          for (const license of licenses) {
+            if (allowed.has(license)) continue;
+            for (const pkg of groups[license]) {
+              console.error(`${pkg.name} ${pkg.versions.join(",")}: ${license} is not on the allowlist`);
+            }
+            rejected += 1;
+          }
+          process.exit(rejected === 0 ? 0 : 1);
+          CHECK
+          printf '{"GPL-3.0-only":[{"name":"probe","versions":["1.0.0"]}]}' > "$RUNNER_TEMP/rejected.json"
+          if node "$RUNNER_TEMP/licenses.mjs" "$RUNNER_TEMP/rejected.json" > /dev/null 2>&1; then
+            echo "the license check accepted GPL-3.0-only"
+            exit 1
+          fi
+          pnpm licenses list --prod --json > "$RUNNER_TEMP/licenses.json"
+          node "$RUNNER_TEMP/licenses.mjs" "$RUNNER_TEMP/licenses.json"
+      - name: parser peer range guard
+        run: |
+          range=$(node -p 'require("@typescript-eslint/parser/package.json").peerDependencies.typescript')
+          native=$(node -p 'require("@typescript/native/package.json").version')
+          aliased=$(node -p 'require("typescript/package.json").version')
+          # The aliased version must match, so an empty result below is a real
+          # answer rather than a range the tool could not read.
+          if [ -z "$(pnpm exec semver -r "$range" "$aliased" || true)" ]; then
+            echo "the parser peer range '$range' does not admit the aliased TypeScript $aliased"
+            exit 1
+          fi
+          if [ -n "$(pnpm exec semver -r "$range" "$native" || true)" ]; then
+            echo "the parser peer range $range admits TypeScript $native; the alias setup is ready to retire"
+            exit 1
+          fi
+
+  build-macos:
+    if: github.event_name != 'schedule'
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: cargo build --workspace
+
+  rust:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: install the pinned toolchain
+        run: rustup show
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+      - name: install cargo-machete
+        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
+        with:
+          tool: cargo-machete
+      - run: cargo machete
+
+  hygiene:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: branch name
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          echo "$HEAD_REF" | grep -Eq '^(feat|fix|docs|refactor|test|chore|perf|build|ci|revert)/[a-z0-9._-]+$' || {
+            echo "the branch name '$HEAD_REF' does not follow the naming policy"
+            exit 1
+          }
+      - name: license headers
+        run: |
+          check_headers() {
+            failed=0
+            while IFS= read -r file; do
+              header=$(head -n 5 "$file")
+              if ! printf '%s' "$header" | grep -q 'Copyright (C)' || ! printf '%s' "$header" | grep -qF 'SPDX-License-Identifier: AGPL-3.0-only' || ! printf '%s' "$header" | grep -q 'NOTICE'; then
+                echo "$file: missing license header"
+                failed=1
+              fi
+            done
+            return "$failed"
+          }
+          printf 'export const bare = 1;\n' > "$RUNNER_TEMP/bare.ts"
+          if printf '%s\n' "$RUNNER_TEMP/bare.ts" | check_headers > /dev/null; then
+            echo "the header check accepted a file without a header"
+            exit 1
+          fi
+          git ls-files 'apps/**' 'packages/**' 'crates/**' | { grep -E '\.(ts|tsx|css|rs|html)$' || true; } > "$RUNNER_TEMP/sources.txt"
+          [ -s "$RUNNER_TEMP/sources.txt" ] || { echo "the source glob matched nothing"; exit 1; }
+          check_headers < "$RUNNER_TEMP/sources.txt"
+      - name: source file ceiling
+        run: |
+          check_ceiling() {
+            failed=0
+            while IFS= read -r file; do
+              lines=$(grep -cvE '^[[:space:]]*$' "$file") || true
+              if [ "$lines" -gt "$FILE_LINE_CEILING" ]; then
+                echo "$file: $lines lines exceeds the $FILE_LINE_CEILING line ceiling"
+                failed=1
+              fi
+            done
+            return "$failed"
+          }
+          seq 1 "$((FILE_LINE_CEILING + 5))" | sed 's/^/pub const FILLER/; s/$/: u32 = 0;/' > "$RUNNER_TEMP/oversized.rs"
+          if printf '%s\n' "$RUNNER_TEMP/oversized.rs" | check_ceiling > /dev/null; then
+            echo "the ceiling check accepted an oversized file"
+            exit 1
+          fi
+          git ls-files 'crates/**/*.rs' 'apps/**/*.css' 'apps/**/*.html' 'packages/**/*.css' > "$RUNNER_TEMP/measured.txt"
+          [ -s "$RUNNER_TEMP/measured.txt" ] || { echo "the ceiling glob matched nothing"; exit 1; }
+          check_ceiling < "$RUNNER_TEMP/measured.txt"
+      - name: gitleaks
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          curl -sSfL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "$GITLEAKS_SHA256  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          if [ -n "$BASE_SHA" ]; then
+            ./gitleaks git --no-banner --redact --log-opts="$BASE_SHA..HEAD"
+          else
+            ./gitleaks git --no-banner --redact
+          fi
+
+  osv:
+    if: github.event_name != 'schedule'
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+    with:
+      # A fork pull request holds a read-only token, which cannot upload.
+      upload-sarif: ${{ github.event.pull_request.head.repo.fork != true }}
+
+  negative:
+    name: gates fire on violations
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: oxlint complexity budgets
+        run: |
+          mkdir -p negative-samples
+          node -e '
+            const lines = ["export function tangled(a: number, b: number, c: number, d: number, e: number): number {"];
+            lines.push("  let total = a + b + c + d + e;");
+            for (let i = 0; i < 12; i += 1) lines.push("  if (total > " + String(i) + ") total += " + String(i) + ";");
+            lines.push("  if (a > 0) {", "    if (b > 0) {", "      if (c > 0) {", "        if (d > 0) {", "          total += 1;", "        }", "      }", "    }", "  }");
+            for (let i = 0; i < 40; i += 1) lines.push("  total += " + String(i) + ";");
+            lines.push("  return total;", "}");
+            require("fs").writeFileSync("negative-samples/tangled.ts", lines.join("\n") + "\n");
+            const long = [];
+            for (let i = 0; i < 401; i += 1) long.push("export const filler" + String(i) + " = " + String(i) + ";");
+            require("fs").writeFileSync("negative-samples/long.ts", long.join("\n") + "\n");
+          '
+          if out=$(pnpm exec oxlint negative-samples 2>&1); then echo "oxlint accepted the samples"; exit 1; fi
+          for rule in complexity max-depth max-lines-per-function max-params max-lines; do
+            echo "$out" | grep -q "($rule)" || { echo "$rule did not fire"; exit 1; }
+          done
+          rm -rf negative-samples
+      - name: eslint security and sonarjs
+        run: |
+          mkdir -p negative-samples
+          node -e '
+            const lines = ["export function risky(code: string, flags: number[]): unknown {", "  let verdict = 0;"];
+            for (let i = 0; i < 13; i += 1) {
+              lines.push("  for (const flag of flags) {", "    if (flag > " + String(i) + ") verdict += flag;", "  }");
+            }
+            lines.push("  if (verdict > 0) return eval(code);", "  return null;", "}");
+            require("fs").writeFileSync("negative-samples/risky.ts", lines.join("\n") + "\n");
+          '
+          if out=$(pnpm exec eslint --max-warnings 0 negative-samples 2>&1); then echo "eslint accepted the sample"; exit 1; fi
+          echo "$out" | grep -q "security/detect-eval-with-expression" || { echo "the security rule did not fire"; exit 1; }
+          echo "$out" | grep -q "sonarjs/cognitive-complexity" || { echo "the sonarjs rule did not fire"; exit 1; }
+          rm -rf negative-samples
+      - name: knip dead code
+        run: |
+          printf 'export const orphan = 1;\n' > packages/core/src/orphan.ts
+          if out=$(pnpm knip 2>&1); then echo "knip accepted the orphan"; exit 1; fi
+          echo "$out" | grep -q "Unused files" || { echo "knip failed for another reason"; exit 1; }
+          echo "$out" | grep -q "orphan.ts" || { echo "knip did not name the orphan"; exit 1; }
+          rm packages/core/src/orphan.ts
+      - name: jscpd duplication
+        run: |
+          mkdir -p negative-samples
+          node -e '
+            const block = [];
+            for (let i = 0; i < 20; i += 1) block.push("export const clone" + String(i) + " = " + String(i) + " + " + String(i) + ";");
+            const text = block.join("\n") + "\n";
+            require("fs").writeFileSync("negative-samples/one.ts", text);
+            require("fs").writeFileSync("negative-samples/two.ts", text);
+          '
+          if out=$(pnpm exec jscpd negative-samples 2>&1); then echo "jscpd accepted the clones"; exit 1; fi
+          echo "$out" | grep -q "found too many duplicates" || { echo "jscpd failed for another reason"; exit 1; }
+          rm -rf negative-samples
+      - name: size-limit budget
+        run: |
+          node -e '
+            const bytes = require("crypto").randomBytes(300 * 1024).toString("base64");
+            require("fs").writeFileSync("apps/web/dist/assets/oversized.js", "export const noise = \"" + bytes + "\";\n");
+          '
+          if out=$(pnpm size 2>&1); then echo "size-limit accepted the oversized bundle"; exit 1; fi
+          echo "$out" | grep -q "size limit has exceeded" || { echo "size-limit failed for another reason"; exit 1; }
+          rm apps/web/dist/assets/oversized.js
+      - name: clippy budgets
+        run: |
+          rustup show > /dev/null
+          dir="$RUNNER_TEMP/clippy-negative"
+          mkdir -p "$dir/crates/probe/src"
+          cp Cargo.toml clippy.toml rust-toolchain.toml "$dir/"
+          printf '[package]\nname = "probe"\nversion = "0.0.0"\nedition.workspace = true\nlicense.workspace = true\nrepository.workspace = true\npublish = false\n\n[lints]\nworkspace = true\n' > "$dir/crates/probe/Cargo.toml"
+          {
+            printf 'pub fn wide(a: u32, b: u32, c: u32, d: u32, e: u32) -> u32 {\n    a + b + c + d + e\n}\n\n'
+            printf 'pub fn endless() -> u32 {\n    let mut total = 0;\n'
+            for i in $(seq 1 105); do printf '    total += %s;\n' "$i"; done
+            printf '    total\n}\n\n'
+            printf 'pub fn maze(x: u32) -> u32 {\n    let mut y = x;\n'
+            for i in $(seq 1 26); do printf '    if y > %s {\n' "$i"; done
+            printf '        y += 1;\n'
+            for _ in $(seq 1 26); do printf '    }\n'; done
+            printf '    y\n}\n'
+          } > "$dir/crates/probe/src/lib.rs"
+          if out=$(cd "$dir" && cargo clippy --workspace 2>&1); then echo "clippy accepted the samples"; exit 1; fi
+          echo "$out" | grep -q "too many arguments" || { echo "too_many_arguments did not fire"; exit 1; }
+          echo "$out" | grep -q "too many lines" || { echo "too_many_lines did not fire"; exit 1; }
+          echo "$out" | grep -q "cognitive complexity" || { echo "cognitive_complexity did not fire"; exit 1; }
+          echo "$out" | grep -q "must_use" || { echo "the pedantic set did not fire"; exit 1; }
+      - name: install cargo-machete
+        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
+        with:
+          tool: cargo-machete
+      - name: cargo-machete unused dependency
+        run: |
+          dir="$RUNNER_TEMP/machete-negative"
+          mkdir -p "$dir/src"
+          printf '[package]\nname = "probe"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserde = "1"\n' > "$dir/Cargo.toml"
+          printf 'pub fn nothing() {}\n' > "$dir/src/lib.rs"
+          if out=$(cargo machete "$dir" 2>&1); then echo "cargo-machete accepted the unused dependency"; exit 1; fi
+          echo "$out" | grep -q "found the following unused dependencies" || { echo "cargo-machete failed for another reason"; exit 1; }
+
+  audit:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
+        with:
+          tool: cargo-audit
+      - run: cargo audit

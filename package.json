@@ -28,17 +28,27 @@
     "eslint": "^10.9.1",
     "eslint-plugin-security": "^4.0.1",
     "eslint-plugin-sonarjs": "^4.2.0",
+    "jscpd": "^5.0.16",
     "knip": "^6.33.0",
     "lefthook": "^2.1.12",
     "oxlint": "^1.80.0",
     "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.9.6",
+    "semver": "^7.8.5",
     "size-limit": "^13.0.3",
     "turbo": "^2.10.12",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "prettier": {
     "printWidth": 100
+  },
+  "jscpd": {
+    "threshold": 2,
+    "minLines": 15,
+    "gitignore": true,
+    "reporters": [
+      "console"
+    ]
   },
   "size-limit": [
     {

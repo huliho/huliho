@@ -1,0 +1,38 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended", "helpers:pinGitHubActionDigests"],
+  lockFileMaintenance: {
+    enabled: true,
+    schedule: ["before 6am on monday"],
+  },
+  customManagers: [
+    {
+      customType: "regex",
+      description: "The secret scanner is a pinned download, not an action.",
+      managerFilePatterns: ["/^\\.github/workflows/ci\\.yml$/"],
+      matchStrings: ['GITLEAKS_VERSION: "(?<currentValue>[^"]+)"'],
+      depNameTemplate: "gitleaks/gitleaks",
+      datasourceTemplate: "github-releases",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+  ],
+  packageRules: [
+    {
+      description: "Patch and minor updates merge on green CI, grouped per manager.",
+      matchUpdateTypes: ["minor", "patch"],
+      groupName: "{{manager}} minor and patch",
+      automerge: true,
+    },
+    {
+      description: "Each release opens its own pull request; the release notes decide.",
+      matchPackageNames: ["oxlint", "oxlint-tsgolint"],
+      groupName: null,
+      automerge: false,
+    },
+    {
+      description: "The download carries a checksum that only a person can refresh.",
+      matchPackageNames: ["gitleaks/gitleaks"],
+      automerge: false,
+    },
+  ],
+}
