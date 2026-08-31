@@ -1,6 +1,12 @@
 packages:
   - apps/*
   - packages/*
+# Known advisories in transitive development tooling; the affected parents are
+# forced to the fixed lines, scoped so nothing else gets clamped.
+overrides:
+  "@lhci/cli>tmp": ^0.2.6
+  "@lhci/cli>uuid": ^11.1.1
+  "external-editor>tmp": ^0.2.6
 allowBuilds:
   # The platform binary arrives as an optional dependency; the install script only re-downloads it.
   esbuild: false

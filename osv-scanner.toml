@@ -1,0 +1,5 @@
+# Accepted advisories, each with its reason.
+
+[[IgnoredVulns]]
+id = "GHSA-jmr9-qjv8-65gv"
+reason = "extract-zip sits under lighthouse's browser fetcher, runs as development tooling on archives from Google's own CDN and has no fixed release"
