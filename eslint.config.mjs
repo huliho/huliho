@@ -11,7 +11,15 @@ import sonarjs from "eslint-plugin-sonarjs";
 const COGNITIVE_COMPLEXITY_MAX = 12;
 
 export default [
-  { ignores: ["**/dist/**", "**/target/**", "**/.turbo/**", "**/coverage/**"] },
+  {
+    ignores: [
+      "**/dist/**",
+      "**/target/**",
+      "**/.turbo/**",
+      "**/coverage/**",
+      "**/storybook-static/**",
+    ],
+  },
   {
     files: ["**/*.{ts,tsx}"],
     languageOptions: { parser },

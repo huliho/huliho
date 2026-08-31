@@ -1,0 +1,36 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--hh-bg);
+  color: var(--hh-text);
+  font-family: var(--hhx-font-ui);
+  font-size: var(--hhx-type-2);
+  line-height: var(--hhx-leading);
+}
+
+img,
+svg,
+video {
+  max-inline-size: 100%;
+  block-size: auto;
+}
+
+:focus-visible {
+  outline: var(--hhx-focus-ring-width) solid var(--hh-accent);
+  outline-offset: var(--hhx-focus-ring-offset);
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: var(--hhx-focus-ring-width) solid currentColor;
+  }
+}

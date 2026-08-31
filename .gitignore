@@ -1,5 +1,8 @@
 node_modules/
 dist/
+storybook-static/
+.lighthouseci/
+.pnpm-store/
 target/
 *.tsbuildinfo
 .turbo/

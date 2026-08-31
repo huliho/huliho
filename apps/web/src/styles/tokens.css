@@ -1,0 +1,121 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* Stable tier: --hh-* names are the versioned instance-override surface.
+   Internal tier: --hhx-* names may change freely and never appear in overrides. */
+
+:root {
+  color-scheme: light dark;
+
+  --hh-bg: light-dark(#f2f5f6, #0d1315);
+  --hh-surface: light-dark(#ffffff, #161d20);
+  --hh-hover: light-dark(#eef2f3, #1c2427);
+  --hh-border: light-dark(#dfe6e8, #263034);
+  --hh-border-strong: light-dark(#c8d3d6, #33414a);
+  --hh-border-control: light-dark(#868d8f, #5e6970);
+  --hh-text: light-dark(#232b2f, #e4eaec);
+  --hh-text-muted: light-dark(#676d6f, #969c9e);
+  --hh-accent: light-dark(#1e7688, #56b8c9);
+  --hh-accent-strong: light-dark(#16606f, #8fd4e0);
+  --hh-accent-tint: light-dark(#e3f0f2, #123036);
+  --hh-danger: light-dark(#b3452c, #e08a70);
+  --hh-warn: light-dark(#9a5e18, #d99a4e);
+  --hh-success: light-dark(#2d7a4d, #6fbf8f);
+
+  /* A toast renders in the other theme, so its colors swap sides. */
+  --hhx-toast-surface: light-dark(#161d20, #ffffff);
+  --hhx-toast-text: light-dark(#e4eaec, #232b2f);
+  --hhx-toast-accent: light-dark(#56b8c9, #1e7688);
+
+  --hhx-font-ui: "Hanken Grotesk", system-ui, sans-serif;
+  --hhx-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --hhx-type-1: 0.75rem;
+  --hhx-type-2: 0.8125rem;
+  --hhx-type-3: 0.9375rem;
+  --hhx-type-4: 1.125rem;
+  --hhx-type-5: 1.5rem;
+
+  --hhx-space-1: 4px;
+  --hhx-space-2: 8px;
+  --hhx-space-3: 12px;
+  --hhx-space-4: 16px;
+  --hhx-space-5: 24px;
+  --hhx-space-6: 32px;
+
+  --hhx-radius-control: 4px;
+  --hhx-radius-field: 8px;
+  --hhx-radius-overlay: 12px;
+
+  --hhx-border-width: 1px;
+  --hhx-border-width-selected: 1.5px;
+  --hhx-focus-ring-width: 2px;
+  --hhx-focus-ring-offset: 2px;
+  --hhx-halo-width: 4px;
+
+  --hhx-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --hhx-duration-flip: 120ms;
+  --hhx-duration-reveal: 160ms;
+  --hhx-duration-overlay: 200ms;
+  --hhx-reveal-distance: 8px;
+
+  --hhx-icon-inline: 16px;
+  --hhx-icon-header: 20px;
+  --hhx-icon-stroke: 1.75;
+
+  --hhx-row-height: 52px;
+  --hhx-type-row: 0.8125rem;
+  --hhx-leading: 1.45;
+  --hhx-hit-target: 28px;
+  --hhx-pane-padding: 16px;
+  --hhx-toolbar-height: 44px;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+[data-density="compact"] {
+  --hhx-row-height: 40px;
+  --hhx-type-row: 0.75rem;
+  --hhx-leading: 1.35;
+  --hhx-hit-target: 24px;
+  --hhx-pane-padding: 12px;
+  --hhx-toolbar-height: 36px;
+}
+
+[data-density="touch"] {
+  --hhx-type-2: 0.875rem;
+  --hhx-row-height: 56px;
+  --hhx-type-row: 0.875rem;
+  --hhx-leading: 1.5;
+  --hhx-hit-target: 44px;
+  --hhx-pane-padding: 16px;
+  --hhx-toolbar-height: 56px;
+}
+
+/* A touchscreen gets touch density at every width; a mouse-only device keeps its density. */
+@media (any-pointer: coarse) {
+  :root,
+  [data-density="comfortable"],
+  [data-density="compact"] {
+    --hhx-type-2: 0.875rem;
+    --hhx-row-height: 56px;
+    --hhx-type-row: 0.875rem;
+    --hhx-leading: 1.5;
+    --hhx-hit-target: 44px;
+    --hhx-pane-padding: 16px;
+    --hhx-toolbar-height: 56px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --hhx-reveal-distance: 0px;
+  }
+}

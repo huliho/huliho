@@ -10,4 +10,5 @@ import { App } from "./app";
 test("mounts the application shell", () => {
   render(<App />);
   expect(screen.getByRole("main")).toBeDefined();
+  expect(screen.getByRole("heading", { level: 1, name: "Huliho" })).toBeDefined();
 });

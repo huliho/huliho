@@ -2,4 +2,6 @@ packages:
   - apps/*
   - packages/*
 allowBuilds:
+  # The platform binary arrives as an optional dependency; the install script only re-downloads it.
+  esbuild: false
   lefthook: false

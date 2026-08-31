@@ -5,6 +5,10 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "build:storybook": {
+      "dependsOn": ["^build"],
+      "outputs": ["storybook-static/**"]
+    },
     "typecheck": {
       "dependsOn": ["^build"]
     },
@@ -12,7 +16,7 @@
       "dependsOn": ["^build"]
     },
     "test:e2e": {
-      "dependsOn": ["build"]
+      "dependsOn": ["build", "build:storybook"]
     }
   }
 }
