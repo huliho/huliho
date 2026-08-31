@@ -38,6 +38,31 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: turbo task wiring
+        # turbo exits green when a workspace glob or script rename leaves
+        # zero tasks, so the tasks that must exist are pinned here.
+        run: |
+          cat > "$RUNNER_TEMP/wiring.mjs" <<'CHECK'
+          import { readFileSync } from "node:fs";
+          const expected = [
+            "@huliho/web#build",
+            "@huliho/web#test",
+            "@huliho/web#test:e2e",
+            "@huliho/web#typecheck",
+          ];
+          const tasks = JSON.parse(readFileSync(process.argv[process.argv.length - 1], "utf8")).tasks;
+          const wired = new Set(tasks.filter((t) => t.command !== "<NONEXISTENT>").map((t) => t.taskId));
+          const missing = expected.filter((id) => !wired.has(id));
+          for (const id of missing) console.error(`${id} has no script behind it`);
+          process.exit(missing.length === 0 ? 0 : 1);
+          CHECK
+          printf '{"tasks":[{"taskId":"@huliho/web#test","command":"<NONEXISTENT>"}]}' > "$RUNNER_TEMP/unwired.json"
+          if node "$RUNNER_TEMP/wiring.mjs" "$RUNNER_TEMP/unwired.json" > /dev/null 2>&1; then
+            echo "the wiring check accepted a task without a script"
+            exit 1
+          fi
+          pnpm exec turbo run build test test:e2e typecheck --dry=json > "$RUNNER_TEMP/tasks.json"
+          node "$RUNNER_TEMP/wiring.mjs" "$RUNNER_TEMP/tasks.json"
       - run: pnpm format
       - run: pnpm build
       - run: pnpm lint
@@ -130,7 +155,7 @@ jobs:
           persist-credentials: false
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: install the pinned toolchain
-        run: rustup show
+        run: rustup toolchain install
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
@@ -180,7 +205,7 @@ jobs:
             echo "the header check accepted a file without a header"
             exit 1
           fi
-          git ls-files 'apps/**' 'packages/**' 'crates/**' | { grep -E '\.(ts|tsx|css|rs|html)$' || true; } > "$RUNNER_TEMP/sources.txt"
+          git ls-files 'apps/**' 'packages/**' 'crates/**' '*.mjs' | { grep -E '\.(ts|tsx|css|rs|html|mjs)$' || true; } > "$RUNNER_TEMP/sources.txt"
           [ -s "$RUNNER_TEMP/sources.txt" ] || { echo "the source glob matched nothing"; exit 1; }
           check_headers < "$RUNNER_TEMP/sources.txt"
       - name: source file ceiling
@@ -309,9 +334,35 @@ jobs:
           if out=$(pnpm size 2>&1); then echo "size-limit accepted the oversized bundle"; exit 1; fi
           echo "$out" | grep -q "size limit has exceeded" || { echo "size-limit failed for another reason"; exit 1; }
           rm apps/web/dist/assets/oversized.js
+      - name: oxlint type-aware rules
+        run: |
+          printf 'export function probe(): void {\n  Promise.resolve(1).then(() => undefined);\n}\n' > packages/core/src/probe.ts
+          if out=$(pnpm exec oxlint --type-aware packages/core/src/probe.ts 2>&1); then echo "the type-aware pass accepted the sample"; exit 1; fi
+          echo "$out" | grep -q "(no-floating-promises)" || { echo "no-floating-promises did not fire"; exit 1; }
+          rm packages/core/src/probe.ts
+      - name: tsc type error
+        run: |
+          printf 'export const probe: number = "sample";\n' > packages/core/src/probe.ts
+          if out=$(pnpm exec tsc -b 2>&1); then echo "the typecheck accepted the sample"; exit 1; fi
+          echo "$out" | grep -q "error TS" || { echo "the type error did not fire"; exit 1; }
+          rm packages/core/src/probe.ts
+          pnpm exec tsc -b
+      - name: vitest failing test
+        run: |
+          printf 'import { expect, test } from "vitest";\n\ntest("probe", () => {\n  expect(1).toBe(2);\n});\n' > apps/web/src/probe.test.ts
+          if out=$(pnpm test 2>&1); then echo "the test gate accepted the failing test"; exit 1; fi
+          echo "$out" | grep -q "1 failed" || { echo "the failing test did not fire"; exit 1; }
+          rm apps/web/src/probe.test.ts
+      - name: prettier formatting
+        run: |
+          mkdir -p negative-samples
+          printf 'const  ugly=1\n' > negative-samples/ugly.ts
+          if out=$(pnpm exec prettier --check negative-samples/ugly.ts 2>&1); then echo "prettier accepted the sample"; exit 1; fi
+          echo "$out" | grep -q "Code style issues" || { echo "prettier failed for another reason"; exit 1; }
+          rm -rf negative-samples
       - name: clippy budgets
         run: |
-          rustup show > /dev/null
+          rustup toolchain install > /dev/null
           dir="$RUNNER_TEMP/clippy-negative"
           mkdir -p "$dir/crates/probe/src"
           cp Cargo.toml clippy.toml rust-toolchain.toml "$dir/"
@@ -332,10 +383,10 @@ jobs:
           echo "$out" | grep -q "too many lines" || { echo "too_many_lines did not fire"; exit 1; }
           echo "$out" | grep -q "cognitive complexity" || { echo "cognitive_complexity did not fire"; exit 1; }
           echo "$out" | grep -q "must_use" || { echo "the pedantic set did not fire"; exit 1; }
-      - name: install cargo-machete
+      - name: install cargo-machete and cargo-deny
         uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
         with:
-          tool: cargo-machete
+          tool: cargo-machete,cargo-deny
       - name: cargo-machete unused dependency
         run: |
           dir="$RUNNER_TEMP/machete-negative"
@@ -344,6 +395,34 @@ jobs:
           printf 'pub fn nothing() {}\n' > "$dir/src/lib.rs"
           if out=$(cargo machete "$dir" 2>&1); then echo "cargo-machete accepted the unused dependency"; exit 1; fi
           echo "$out" | grep -q "found the following unused dependencies" || { echo "cargo-machete failed for another reason"; exit 1; }
+      - name: cargo fmt formatting
+        run: |
+          dir="$RUNNER_TEMP/fmt-negative"
+          mkdir -p "$dir/src"
+          cp rust-toolchain.toml "$dir/"
+          printf '[package]\nname = "probe"\nversion = "0.0.0"\nedition = "2024"\n' > "$dir/Cargo.toml"
+          printf 'pub fn wide( ) ->u32{1}\n' > "$dir/src/lib.rs"
+          if out=$(cd "$dir" && cargo fmt --check 2>&1); then echo "cargo fmt accepted the sample"; exit 1; fi
+          echo "$out" | grep -q "Diff in" || { echo "cargo fmt failed for another reason"; exit 1; }
+      - name: cargo test failing test
+        run: |
+          dir="$RUNNER_TEMP/test-negative"
+          mkdir -p "$dir/src"
+          cp rust-toolchain.toml "$dir/"
+          printf '[package]\nname = "probe"\nversion = "0.0.0"\nedition = "2024"\n' > "$dir/Cargo.toml"
+          printf '#[cfg(test)]\nmod tests {\n    #[test]\n    fn probe() {\n        panic!("sample");\n    }\n}\n' > "$dir/src/lib.rs"
+          if out=$(cd "$dir" && cargo test 2>&1); then echo "cargo test accepted the failing test"; exit 1; fi
+          echo "$out" | grep -q "test result: FAILED" || { echo "the failing test did not fire"; exit 1; }
+      - name: cargo-deny license allowlist
+        run: |
+          dir="$RUNNER_TEMP/deny-negative"
+          mkdir -p "$dir/crates/probe/src"
+          cp rust-toolchain.toml deny.toml "$dir/"
+          printf '[workspace]\nresolver = "3"\nmembers = ["crates/*"]\n' > "$dir/Cargo.toml"
+          printf '[package]\nname = "probe"\nversion = "0.0.0"\nedition = "2024"\nlicense = "GPL-3.0-only"\n' > "$dir/crates/probe/Cargo.toml"
+          printf 'pub fn nothing() {}\n' > "$dir/crates/probe/src/lib.rs"
+          if out=$(cd "$dir" && cargo deny check licenses 2>&1); then echo "cargo deny accepted the sample"; exit 1; fi
+          echo "$out" | grep -q "GPL-3.0-only" || { echo "cargo deny failed for another reason"; exit 1; }
 
   audit:
     if: github.event_name == 'schedule'

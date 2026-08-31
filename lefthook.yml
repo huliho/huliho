@@ -17,7 +17,7 @@ pre-commit:
       glob: "*.{ts,tsx,mjs,json,md,yml,yaml,css,html}"
       run: pnpm prettier --check {staged_files}
     headers:
-      glob: "{apps,packages,crates}/**/*.{ts,tsx,css,rs,html}"
+      glob: "{*.mjs,{apps,packages,crates}/**/*.{ts,tsx,css,rs,html,mjs}}"
       run: |
         failed=0
         for file in {staged_files}; do
