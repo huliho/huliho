@@ -14,10 +14,10 @@ pre-commit:
       glob: "*.{ts,tsx}"
       run: pnpm oxlint --deny-warnings {staged_files} && pnpm eslint --max-warnings 0 {staged_files}
     format:
-      glob: "*.{ts,tsx,mjs,json,md,yml,yaml,css}"
+      glob: "*.{ts,tsx,mjs,json,md,yml,yaml,css,html}"
       run: pnpm prettier --check {staged_files}
     headers:
-      glob: "{apps,packages,crates}/**/*.{ts,tsx,css,rs}"
+      glob: "{apps,packages,crates}/**/*.{ts,tsx,css,rs,html}"
       run: |
         failed=0
         for file in {staged_files}; do

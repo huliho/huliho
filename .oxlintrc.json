@@ -143,5 +143,12 @@
       { "max": 60, "skipBlankLines": true, "skipComments": true }
     ],
     "max-params": ["error", { "max": 4 }]
-  }
+  },
+  "overrides": [
+    {
+      // The workspace packages start as empty modules by design.
+      "files": ["packages/*/src/index.ts"],
+      "rules": { "unicorn/no-empty-file": "off" }
+    }
+  ]
 }

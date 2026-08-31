@@ -11,15 +11,18 @@
   },
   "scripts": {
     "prepare": "lefthook install",
-    "lint": "oxlint --type-aware --deny-warnings --no-error-on-unmatched-pattern && eslint --max-warnings 0 .",
-    "typecheck": "tsc -b",
-    "build": "turbo run build",
+    "lint": "oxlint --type-aware --deny-warnings && eslint --max-warnings 0 .",
+    "typecheck": "tsc -b && turbo run typecheck",
+    "build": "tsc -b && turbo run build",
     "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
     "knip": "knip",
+    "size": "size-limit",
     "format": "prettier --check .",
     "format:write": "prettier --write ."
   },
   "devDependencies": {
+    "@size-limit/file": "^13.0.3",
     "@typescript-eslint/parser": "^8.68.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "eslint": "^10.9.1",
@@ -30,10 +33,19 @@
     "oxlint": "^1.80.0",
     "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.9.6",
+    "size-limit": "^13.0.3",
     "turbo": "^2.10.12",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "prettier": {
     "printWidth": 100
-  }
+  },
+  "size-limit": [
+    {
+      "name": "initial JS",
+      "path": "apps/web/dist/assets/*.js",
+      "limit": "250 kB",
+      "gzip": true
+    }
+  ]
 }

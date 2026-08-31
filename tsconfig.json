@@ -15,5 +15,10 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true
   },
-  "references": []
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/state" },
+    { "path": "packages/i18n" }
+  ]
 }
