@@ -205,7 +205,7 @@ jobs:
             echo "the header check accepted a file without a header"
             exit 1
           fi
-          git ls-files 'apps/**' 'packages/**' 'crates/**' | { grep -E '\.(ts|tsx|css|rs|html)$' || true; } > "$RUNNER_TEMP/sources.txt"
+          git ls-files 'apps/**' 'packages/**' 'crates/**' '*.mjs' | { grep -E '\.(ts|tsx|css|rs|html|mjs)$' || true; } > "$RUNNER_TEMP/sources.txt"
           [ -s "$RUNNER_TEMP/sources.txt" ] || { echo "the source glob matched nothing"; exit 1; }
           check_headers < "$RUNNER_TEMP/sources.txt"
       - name: source file ceiling

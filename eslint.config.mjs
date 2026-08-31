@@ -1,3 +1,7 @@
+// Copyright (C) 2026 Eric Kochen
+// SPDX-License-Identifier: AGPL-3.0-only
+// Additional terms apply, see NOTICE.
+
 // Second lint layer: the two rule sets the primary linter lacks.
 // No core rules here, so nothing runs twice.
 import parser from "@typescript-eslint/parser";
