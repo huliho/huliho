@@ -46,6 +46,7 @@ jobs:
           import { readFileSync } from "node:fs";
           const expected = [
             "@huliho/web#build",
+            "@huliho/web#build:storybook",
             "@huliho/web#test",
             "@huliho/web#test:e2e",
             "@huliho/web#typecheck",
@@ -61,7 +62,7 @@ jobs:
             echo "the wiring check accepted a task without a script"
             exit 1
           fi
-          pnpm exec turbo run build test test:e2e typecheck --dry=json > "$RUNNER_TEMP/tasks.json"
+          pnpm exec turbo run build build:storybook test test:e2e typecheck --dry=json > "$RUNNER_TEMP/tasks.json"
           node "$RUNNER_TEMP/wiring.mjs" "$RUNNER_TEMP/tasks.json"
       - run: pnpm format
       - run: pnpm build
@@ -70,6 +71,7 @@ jobs:
       - run: pnpm test
       - run: pnpm --filter @huliho/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+      - run: pnpm --filter @huliho/web lighthouse
       - run: pnpm knip
       - run: pnpm size
       - name: jscpd per package
@@ -205,7 +207,7 @@ jobs:
             echo "the header check accepted a file without a header"
             exit 1
           fi
-          git ls-files 'apps/**' 'packages/**' 'crates/**' '*.mjs' | { grep -E '\.(ts|tsx|css|rs|html|mjs)$' || true; } > "$RUNNER_TEMP/sources.txt"
+          git ls-files 'apps/**' 'packages/**' 'crates/**' '*.mjs' | { grep -E '\.(ts|tsx|css|rs|html|mjs|cjs)$' || true; } > "$RUNNER_TEMP/sources.txt"
           [ -s "$RUNNER_TEMP/sources.txt" ] || { echo "the source glob matched nothing"; exit 1; }
           check_headers < "$RUNNER_TEMP/sources.txt"
       - name: source file ceiling

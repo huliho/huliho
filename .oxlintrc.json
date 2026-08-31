@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   // Tooling config sits outside the TypeScript program.
-  "ignorePatterns": ["eslint.config.mjs"],
+  "ignorePatterns": ["eslint.config.mjs", "storybook-static"],
   "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y", "import", "promise", "vitest"],
   "categories": {
     "correctness": "error",
@@ -134,6 +134,9 @@
     "react/react-in-jsx-scope": "off",
     "react/hooks": "off",
 
+    // Stylesheets load for their side effect.
+    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
+
     // Size and complexity ceilings. Crossing one means extracting.
     "complexity": ["error", { "max": 10 }],
     "max-depth": ["error", { "max": 3 }],
@@ -149,6 +152,11 @@
       // The workspace packages start as empty modules by design.
       "files": ["packages/*/src/index.ts"],
       "rules": { "unicorn/no-empty-file": "off" }
+    },
+    {
+      // Browser automation steps run in order; parallel awaits would race one page.
+      "files": ["apps/web/e2e/**"],
+      "rules": { "no-await-in-loop": "off" }
     }
   ]
 }

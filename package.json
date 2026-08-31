@@ -42,10 +42,18 @@
   "prettier": {
     "printWidth": 100
   },
+  "knip": {
+    "ignore": [
+      "apps/web/lighthouserc.cjs"
+    ]
+  },
   "jscpd": {
     "threshold": 2,
     "minLines": 15,
     "gitignore": true,
+    "ignore": [
+      "**/OFL-*.txt"
+    ],
     "reporters": [
       "console"
     ]
