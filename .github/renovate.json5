@@ -1,6 +1,8 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: ["config:recommended", "helpers:pinGitHubActionDigests"],
+  // Branch names follow the same policy as any other branch here.
+  branchPrefix: "chore/renovate-",
   lockFileMaintenance: {
     enabled: true,
     schedule: ["before 6am on monday"],
@@ -17,6 +19,11 @@
     },
   ],
   packageRules: [
+    {
+      description: "pnpm refuses to install a release younger than a day, so wait past that.",
+      matchManagers: ["npm"],
+      minimumReleaseAge: "2 days",
+    },
     {
       description: "Patch and minor updates merge on green CI, grouped per manager.",
       matchUpdateTypes: ["minor", "patch"],
