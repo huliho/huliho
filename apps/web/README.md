@@ -7,6 +7,13 @@ Compiler enabled. Design tokens live in `src/styles/tokens.css`; the
 to rebrand; the app validates it against the stable names and the
 contrast floors before applying it.
 
+Strings come from the `@huliho/i18n` catalogs through Paraglide; the
+Vite plugin compiles them into `src/paraglide/`, a generated directory
+that typecheck and unit tests read, so a fresh clone runs `pnpm build`
+once before either. The test script disables Node's own experimental
+localStorage global, which would otherwise shadow the jsdom one that
+the locale strategy reads.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component
@@ -15,7 +22,8 @@ workshop.
 `pnpm lighthouse` audits the built app against the performance and
 accessibility budgets in `lighthouserc.cjs`.
 
-The e2e suite screenshots every story in both themes at phone and
+The e2e suite screenshots every story and the served page in both
+themes at phone and
 desktop width. Baselines are rendered on Linux, so the comparison runs
 in CI and the images are refreshed from the repo root with the
 container whose tag matches the installed `@playwright/test` version:

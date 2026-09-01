@@ -45,6 +45,8 @@ jobs:
           cat > "$RUNNER_TEMP/wiring.mjs" <<'CHECK'
           import { readFileSync } from "node:fs";
           const expected = [
+            "@huliho/i18n#build",
+            "@huliho/i18n#test",
             "@huliho/web#build",
             "@huliho/web#build:storybook",
             "@huliho/web#test",
@@ -307,6 +309,26 @@ jobs:
           echo "$out" | grep -q "security/detect-eval-with-expression" || { echo "the security rule did not fire"; exit 1; }
           echo "$out" | grep -q "sonarjs/cognitive-complexity" || { echo "the sonarjs rule did not fire"; exit 1; }
           rm -rf negative-samples
+      - name: stylelint logical properties
+        run: |
+          mkdir -p negative-samples
+          printf '.probe {\n  margin-left: 4px;\n  text-align: left;\n}\n' > negative-samples/physical.css
+          if out=$(pnpm exec stylelint negative-samples/physical.css 2>&1); then echo "stylelint accepted the sample"; exit 1; fi
+          echo "$out" | grep -q "logical-css/require-logical-properties" || { echo "the logical properties rule did not fire"; exit 1; }
+          echo "$out" | grep -q "logical-css/require-logical-keywords" || { echo "the logical keywords rule did not fire"; exit 1; }
+          rm -rf negative-samples
+      - name: i18n catalog parity
+        run: |
+          node -e '
+            const { readFileSync, writeFileSync } = require("fs");
+            const path = "packages/i18n/messages/en.json";
+            const catalog = JSON.parse(readFileSync(path, "utf8"));
+            catalog.probe_only_en = "This key has no translation.";
+            writeFileSync(path, JSON.stringify(catalog, null, 2) + "\n");
+          '
+          if out=$(pnpm --filter @huliho/i18n build 2>&1); then echo "the catalog gate accepted a missing translation"; exit 1; fi
+          echo "$out" | grep -q "probe_only_en is missing" || { echo "the catalog gate failed for another reason"; exit 1; }
+          git checkout -- packages/i18n/messages/en.json
       - name: knip dead code
         run: |
           printf 'export const orphan = 1;\n' > packages/core/src/orphan.ts

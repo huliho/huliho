@@ -1,7 +1,8 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  // Tooling config sits outside the TypeScript program.
-  "ignorePatterns": ["eslint.config.mjs", "storybook-static"],
+  // Tooling config sits outside the TypeScript program; the paraglide
+  // directory is generated output.
+  "ignorePatterns": ["eslint.config.mjs", "storybook-static", "apps/web/src/paraglide"],
   "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y", "import", "promise", "vitest"],
   "categories": {
     "correctness": "error",

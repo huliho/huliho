@@ -1,0 +1,6 @@
+{
+  "app_tagline": "Your mail, wherever it lives.",
+  "demo_today": "Today is {today}.",
+  "demo_mailbox": "This demo mailbox holds {count, plural, one {{count, number} message} other {{count, number} messages}}.",
+  "locale_label": "Language"
+}

@@ -13,6 +13,9 @@ pre-commit:
     ts-lint:
       glob: "*.{ts,tsx}"
       run: pnpm oxlint --deny-warnings {staged_files} && pnpm eslint --max-warnings 0 {staged_files}
+    css-lint:
+      glob: "*.css"
+      run: pnpm stylelint {staged_files}
     format:
       glob: "*.{ts,tsx,mjs,cjs,json,md,yml,yaml,css,html}"
       run: pnpm prettier --check {staged_files}
