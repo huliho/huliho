@@ -2,4 +2,55 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-fn main() {}
+//! Binary entry: load config, set up tracing, serve until shutdown.
+
+use std::path::Path;
+use std::process::ExitCode;
+
+use tokio::signal::unix::{SignalKind, signal};
+use tracing_subscriber::EnvFilter;
+
+use huliho_server::config::{CONFIG_PATH_VAR, Config, DEFAULT_CONFIG_PATH};
+
+/// Request logs without debug noise; override via `RUST_LOG`.
+const DEFAULT_LOG_FILTER: &str = "info";
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    match run().await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_FILTER)),
+        )
+        .init();
+
+    let config = match std::env::var_os(CONFIG_PATH_VAR) {
+        Some(path) => Config::load(Path::new(&path))?,
+        None => Config::load_or_default(Path::new(DEFAULT_CONFIG_PATH))?,
+    };
+
+    let listener = tokio::net::TcpListener::bind(config.listen).await?;
+    tracing::info!(listen = %config.listen, "listening");
+    axum::serve(listener, huliho_server::app::router(&config.assets))
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+    Ok(())
+}
+
+async fn shutdown_signal() {
+    let mut terminate = signal(SignalKind::terminate()).expect("SIGTERM handler installs");
+    tokio::select! {
+        result = tokio::signal::ctrl_c() => result.expect("ctrl-c handler installs"),
+        _ = terminate.recv() => {}
+    }
+}
