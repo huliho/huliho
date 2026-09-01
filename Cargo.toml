@@ -7,6 +7,13 @@ edition = "2024"
 license = "AGPL-3.0-only"
 repository = "https://github.com/huliho/huliho"
 
+# Password hashing at production cost stays fast in debug test runs.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
 [workspace.lints.rust]
 unsafe_code = "deny"
 

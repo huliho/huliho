@@ -15,7 +15,12 @@
     "lighthouse": "lhci autorun"
   },
   "dependencies": {
+    "@huliho/core": "workspace:*",
     "@huliho/i18n": "workspace:*",
+    "@huliho/state": "workspace:*",
+    "@tanstack/react-query": "^5.102.8",
+    "@tanstack/react-router": "^1.170.32",
+    "lucide-react": "^1.38.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

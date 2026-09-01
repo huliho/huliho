@@ -3,14 +3,51 @@
 // Additional terms apply, see NOTICE.
 
 import { localeEndonym, PSEUDO_LOCALE } from "@huliho/i18n";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
+import { signOut } from "@huliho/core";
 import styles from "./app.module.css";
 import { m } from "./paraglide/messages.js";
 import { getLocale, isLocale, locales, setLocale } from "./paraglide/runtime.js";
 import type { Locale } from "./paraglide/runtime.js";
 
 const DEMO_MESSAGE_COUNT = 24817;
+
+function ShellHeader({ locale }: { locale: Locale }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: signOut,
+    // The local cache empties on sign-out either way; the server session
+    // outlives only a failed revoke and ends at its timeout.
+    onSettled: async () => {
+      queryClient.clear();
+      await navigate({ to: "/sign-in" });
+    },
+  });
+
+  return (
+    <header className={styles.topbar}>
+      <span className={styles.topbarBrand}>Huliho</span>
+      <nav className={styles.topbarNav}>
+        <Link to="/settings/about" className={styles.topbarLink}>
+          {m.settings_title({}, { locale })}
+        </Link>
+        <button
+          type="button"
+          className={styles.topbarButton}
+          onClick={() => {
+            mutation.mutate();
+          }}
+        >
+          {m.signout_action({}, { locale })}
+        </button>
+      </nav>
+    </header>
+  );
+}
 
 // The pseudo locale is a development aid, so only development builds list it.
 function listedLocales(current: Locale): Locale[] {
@@ -32,6 +69,7 @@ export function App() {
 
   return (
     <main className={styles.shell}>
+      <ShellHeader locale={locale} />
       <div className={styles.demo}>
         <h1 className={styles.wordmark}>Huliho</h1>
         <p className={styles.tagline}>{m.app_tagline({}, { locale })}</p>

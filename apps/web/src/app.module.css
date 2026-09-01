@@ -3,17 +3,60 @@
 /* Additional terms apply, see NOTICE. */
 
 .shell {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100svh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hhx-space-3);
+  padding: var(--hhx-space-2) var(--hhx-space-4);
+  border-block-end: var(--hhx-border-width) solid var(--hh-border);
+  background: var(--hh-surface);
+  min-block-size: var(--hhx-toolbar-height);
+}
+
+.topbarBrand {
+  font-weight: 600;
+}
+
+.topbarNav {
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-2);
+}
+
+.topbarLink,
+.topbarButton {
   display: grid;
   place-items: center;
-  min-block-size: 100svh;
-  padding-inline: var(--hhx-space-4);
+  min-block-size: var(--hhx-hit-target);
+  padding-inline: var(--hhx-space-3);
+  border: none;
+  border-radius: var(--hhx-radius-field);
+  background: none;
+  color: var(--hh-text);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.topbarLink:hover,
+.topbarButton:hover {
+  background: var(--hh-hover);
 }
 
 .demo {
   display: grid;
   justify-items: center;
+  align-content: center;
   gap: var(--hhx-space-3);
   text-align: center;
+  flex: 1;
+  padding-inline: var(--hhx-space-4);
 }
 
 .wordmark {

@@ -6,6 +6,8 @@ import { AxeBuilder } from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
+import { mockSignedIn } from "./session-mocks";
+
 const EN_TAGLINE = "Your mail, wherever it lives.";
 const NL_TAGLINE = "Je mail, waar die ook staat.";
 // Screenshots must not age, so the page renders a pinned date.
@@ -19,6 +21,7 @@ const VIEWPORTS = [
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
 async function openPinned(page: Page, locale?: string): Promise<void> {
+  await mockSignedIn(page);
   if (locale !== undefined) {
     await page.addInitScript((value) => {
       window.localStorage.setItem("PARAGLIDE_LOCALE", value);

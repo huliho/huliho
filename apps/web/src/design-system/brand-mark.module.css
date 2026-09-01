@@ -1,0 +1,29 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.mark {
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-3);
+}
+
+.stacked {
+  flex-direction: column;
+  gap: var(--hhx-space-3);
+}
+
+.logo {
+  inline-size: 40px;
+  block-size: 40px;
+  border-radius: var(--hhx-radius-overlay);
+  background: var(--hh-accent);
+  flex: none;
+}
+
+.name {
+  margin: 0;
+  font-size: var(--hhx-type-4);
+  font-weight: 600;
+  color: var(--hh-text);
+}

@@ -15,8 +15,17 @@ const paraglide = paraglideVitePlugin({
   emitTsDeclarations: true,
 });
 
+// The dev server has no API of its own; the running binary answers it.
+const API_PROXY_TARGET = "http://localhost:8080";
+
 export default defineConfig({
   plugins: [react(), babel({ presets: [reactCompilerPreset()] }), paraglide],
+  server: {
+    proxy: {
+      "/api": API_PROXY_TARGET,
+      "/license": API_PROXY_TARGET,
+    },
+  },
   test: {
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}"],

@@ -9,5 +9,9 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
+  },
+  "dependencies": {
+    "@huliho/core": "workspace:*",
+    "@tanstack/react-query": "^5.102.8"
   }
 }
