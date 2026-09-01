@@ -34,6 +34,16 @@ fn a_personal_user_owns_a_fresh_organization() {
 }
 
 #[test]
+fn a_user_carries_a_name_that_starts_as_the_login() {
+    let store = store();
+    let (_, user) = personal(&store, "mira@example.com");
+    assert_eq!(user.name, "mira@example.com");
+    assert_eq!(user.last_active_at, None);
+    let read = identity::user(&store, &scope_of(&store, &user)).unwrap();
+    assert_eq!(read.name, "mira@example.com");
+}
+
+#[test]
 fn a_duplicate_login_is_rejected() {
     let store = store();
     personal(&store, "mira@example.com");

@@ -19,6 +19,7 @@ const DATABASE_FILE: &str = "huliho.db";
 const MIGRATION_SOURCES: &[&str] = &[
     include_str!("migrations/0001_identity.sql"),
     include_str!("migrations/0002_sessions.sql"),
+    include_str!("migrations/0003_sessions_devices.sql"),
 ];
 
 #[derive(Debug, Error)]
@@ -45,6 +46,8 @@ pub enum StoreError {
     LastOwner,
     #[error("the scope carries no account")]
     MissingAccount,
+    #[error("the current session ends by signing out, not by revoking")]
+    CurrentSession,
 }
 
 /// Handle to the embedded database; all access goes through it.
@@ -115,6 +118,8 @@ fn migrations() -> Migrations<'static> {
     Migrations::new(MIGRATION_SOURCES.iter().map(|sql| M::up(sql)).collect())
 }
 
+pub(crate) const MS_PER_SECOND: i64 = 1_000;
+
 /// Current time as unix milliseconds, the timestamp unit of every table.
 pub(crate) fn now_ms() -> i64 {
     let since_epoch = SystemTime::now()
@@ -135,5 +140,80 @@ mod tests {
     #[test]
     fn now_is_after_the_epoch() {
         assert!(now_ms() > 0);
+    }
+
+    /// A row from the 0002 schema, with a made-up token hash and blob.
+    fn insert_pre_0003_session(connection: &Connection) {
+        connection
+            .execute(
+                "INSERT INTO organizations (id, name, created_at) VALUES ('o', 'o', 0)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO users (id, organization_id, login, role, created_at)
+                 VALUES ('u', 'o', 'mira', 'owner', 0)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sessions (token_hash, user_id, sealed, created_at, last_seen_at)
+                 VALUES (X'0102', 'u', X'0304', 7, 9)",
+                [],
+            )
+            .unwrap();
+    }
+
+    struct MigratedSession {
+        token_hash: Vec<u8>,
+        id: String,
+        sealed: Vec<u8>,
+        device: String,
+        address: Option<String>,
+        created_at: i64,
+        last_seen_at: i64,
+    }
+
+    #[test]
+    fn the_device_migration_keeps_sessions_and_names_users() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        migrations().to_version(&mut connection, 2).unwrap();
+        insert_pre_0003_session(&connection);
+        migrations().to_latest(&mut connection).unwrap();
+        let session = connection
+            .query_row(
+                "SELECT token_hash, id, sealed, device, address, created_at, last_seen_at
+                 FROM sessions",
+                [],
+                |row| {
+                    Ok(MigratedSession {
+                        token_hash: row.get(0)?,
+                        id: row.get(1)?,
+                        sealed: row.get(2)?,
+                        device: row.get(3)?,
+                        address: row.get(4)?,
+                        created_at: row.get(5)?,
+                        last_seen_at: row.get(6)?,
+                    })
+                },
+            )
+            .unwrap();
+        assert_eq!(session.token_hash, vec![1, 2]);
+        assert_eq!(session.id.len(), 32);
+        assert_eq!(session.sealed, vec![3, 4]);
+        assert_eq!(session.device, "{}");
+        assert_eq!(session.address, None);
+        assert_eq!((session.created_at, session.last_seen_at), (7, 9));
+        let name: String = connection
+            .query_row("SELECT name FROM users WHERE id = 'u'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(name, "mira");
     }
 }
