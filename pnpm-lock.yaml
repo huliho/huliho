@@ -6,7 +6,7 @@ settings:
 
 overrides:
   '@lhci/cli>tmp': ^0.2.6
-  '@lhci/cli>uuid': ^11.1.1
+  '@lhci/cli>uuid': ^14.0.0
   external-editor>tmp: ^0.2.6
 
 importers:
@@ -4184,10 +4184,6 @@ packages:
     resolution: {integrity: sha512-pMZTvIkT1d+TFGvDOqodOclx0QWkkgi6Tdoa8gC8ffGAAqz9pzPTZWAybbsHHoED/ztMtkv/VoYTYyShUn81hA==}
     engines: {node: '>= 0.4.0'}
 
-  uuid@11.1.1:
-    resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
-    hasBin: true
-
   uuid@14.0.2:
     resolution: {integrity: sha512-xZe/16rV4aa+HGSOCiY2YeLT1OybRLrrkL/Rqaq7p7GMVXjFh+6wN4oMYgjFmnSnhY8t6Xpdl2l9qmnHYuMHwQ==}
     hasBin: true
@@ -4993,7 +4989,7 @@ snapshots:
       open: 7.4.2
       proxy-agent: 6.5.0(supports-color@10.2.2)
       tmp: 0.2.7
-      uuid: 11.1.1
+      uuid: 14.0.2
       yargs: 15.4.1
       yargs-parser: 13.1.2
     transitivePeerDependencies:
@@ -8324,8 +8320,6 @@ snapshots:
   util-deprecate@1.0.2: {}
 
   utils-merge@1.0.1: {}
-
-  uuid@11.1.1: {}
 
   uuid@14.0.2: {}
 
