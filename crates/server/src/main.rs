@@ -6,11 +6,14 @@
 
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use tokio::signal::unix::{SignalKind, signal};
 use tracing_subscriber::EnvFilter;
 
 use huliho_server::config::{CONFIG_PATH_VAR, Config, DEFAULT_CONFIG_PATH};
+use huliho_server::events;
+use huliho_server::store::Store;
 
 /// Request logs without debug noise; override via `RUST_LOG`.
 const DEFAULT_LOG_FILTER: &str = "info";
@@ -38,6 +41,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(path) => Config::load(Path::new(&path))?,
         None => Config::load_or_default(Path::new(DEFAULT_CONFIG_PATH))?,
     };
+
+    let store = Arc::new(Store::open(&config.storage.path)?);
+    tokio::spawn(events::prune_periodically(
+        store,
+        config.events.retention_days,
+    ));
 
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     tracing::info!(listen = %config.listen, "listening");

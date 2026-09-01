@@ -26,11 +26,19 @@ const DEFAULT_LISTEN: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOS
 /// The Vite build output, where a workspace-root start finds the SPA.
 const DEFAULT_ASSETS: &str = "apps/web/dist";
 
+/// The data volume, where all persistent state lives.
+const DEFAULT_STORAGE_PATH: &str = "data";
+
+/// One year of lifecycle facts by default.
+const DEFAULT_EVENT_RETENTION_DAYS: u32 = 365;
+
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields, default)]
 pub struct Config {
     pub listen: SocketAddr,
     pub assets: PathBuf,
+    pub storage: StorageConfig,
+    pub events: EventsConfig,
 }
 
 impl Default for Config {
@@ -38,6 +46,36 @@ impl Default for Config {
         Self {
             listen: DEFAULT_LISTEN,
             assets: PathBuf::from(DEFAULT_ASSETS),
+            storage: StorageConfig::default(),
+            events: EventsConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, default)]
+pub struct StorageConfig {
+    pub path: PathBuf,
+}
+
+impl Default for StorageConfig {
+    fn default() -> Self {
+        Self {
+            path: PathBuf::from(DEFAULT_STORAGE_PATH),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, default)]
+pub struct EventsConfig {
+    pub retention_days: u32,
+}
+
+impl Default for EventsConfig {
+    fn default() -> Self {
+        Self {
+            retention_days: DEFAULT_EVENT_RETENTION_DAYS,
         }
     }
 }
@@ -121,15 +159,22 @@ mod tests {
 
     #[test]
     fn values_override_defaults() {
-        let toml = "listen = \"0.0.0.0:9000\"\nassets = \"web\"";
+        let toml = "listen = \"0.0.0.0:9000\"\nassets = \"web\"\n\n[storage]\npath = \"volume\"\n\n[events]\nretention_days = 30";
         let config = Config::parse(Path::new(ABSENT_PATH), toml).unwrap();
         assert_eq!(config.listen, "0.0.0.0:9000".parse().unwrap());
         assert_eq!(config.assets, PathBuf::from("web"));
+        assert_eq!(config.storage.path, PathBuf::from("volume"));
+        assert_eq!(config.events.retention_days, 30);
     }
 
     #[test]
     fn unknown_field_is_rejected() {
         assert!(Config::parse(Path::new(ABSENT_PATH), "surprise = true").is_err());
+    }
+
+    #[test]
+    fn unknown_nested_field_is_rejected() {
+        assert!(Config::parse(Path::new(ABSENT_PATH), "[storage]\nsurprise = true").is_err());
     }
 
     #[test]

@@ -1,0 +1,13 @@
+error[E0451]: fields `organization_id`, `user_id`, `role` and `account_id` of struct `huliho_server::scope::Scope` are private
+  --> tests/scope_gate/forge.rs:10:9
+   |
+ 9 |     let _scope = Scope {
+   |                  ----- in this type
+10 |         organization_id: "org".to_owned().into(),
+   |         ^^^^^^^^^^^^^^^ private field
+11 |         user_id: "user".to_owned().into(),
+   |         ^^^^^^^ private field
+12 |         role: Role::Member,
+   |         ^^^^ private field
+13 |         account_id: None,
+   |         ^^^^^^^^^^ private field
