@@ -5,11 +5,16 @@
 //! Serves the built web app and the Huliho API from one process.
 
 pub mod accounts;
+pub mod api;
 pub mod app;
+pub mod auth;
 pub mod config;
 pub mod events;
 pub mod identity;
 pub mod ids;
 pub mod prefs;
+pub mod rate;
 pub mod scope;
+pub mod secrets;
+pub mod session;
 pub mod store;

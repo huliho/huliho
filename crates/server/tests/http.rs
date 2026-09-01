@@ -4,7 +4,9 @@
 
 //! Response contract of the HTTP skeleton: liveness, headers and SPA fallback.
 
-use std::path::PathBuf;
+mod common;
+
+use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Body;
@@ -12,9 +14,10 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
+use huliho_server::store::Store;
+
 fn fixture_router() -> Router {
-    let assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/spa");
-    huliho_server::app::router(&assets)
+    common::router_on(Arc::new(Store::in_memory().unwrap()))
 }
 
 async fn get(path: &str) -> axum::http::Response<axum::body::Body> {

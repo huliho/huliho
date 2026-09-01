@@ -32,6 +32,15 @@ const DEFAULT_STORAGE_PATH: &str = "data";
 /// One year of lifecycle facts by default.
 const DEFAULT_EVENT_RETENTION_DAYS: u32 = 365;
 
+/// Minutes per day, for the timeout defaults below.
+const MINUTES_PER_DAY: u32 = 24 * 60;
+
+/// A mail client stays signed in; two quiet weeks end a session.
+const DEFAULT_IDLE_TIMEOUT_MINUTES: u32 = 14 * MINUTES_PER_DAY;
+
+/// Ninety days ends a session outright, active or not.
+const DEFAULT_ABSOLUTE_TIMEOUT_MINUTES: u32 = 90 * MINUTES_PER_DAY;
+
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields, default)]
 pub struct Config {
@@ -39,6 +48,7 @@ pub struct Config {
     pub assets: PathBuf,
     pub storage: StorageConfig,
     pub events: EventsConfig,
+    pub auth: AuthConfig,
 }
 
 impl Default for Config {
@@ -48,6 +58,7 @@ impl Default for Config {
             assets: PathBuf::from(DEFAULT_ASSETS),
             storage: StorageConfig::default(),
             events: EventsConfig::default(),
+            auth: AuthConfig::default(),
         }
     }
 }
@@ -76,6 +87,26 @@ impl Default for EventsConfig {
     fn default() -> Self {
         Self {
             retention_days: DEFAULT_EVENT_RETENTION_DAYS,
+        }
+    }
+}
+
+/// Session settings; the secret itself comes from the environment or the
+/// named file, never from this config file.
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, default)]
+pub struct AuthConfig {
+    pub secret_file: Option<PathBuf>,
+    pub idle_timeout_minutes: u32,
+    pub absolute_timeout_minutes: u32,
+}
+
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            secret_file: None,
+            idle_timeout_minutes: DEFAULT_IDLE_TIMEOUT_MINUTES,
+            absolute_timeout_minutes: DEFAULT_ABSOLUTE_TIMEOUT_MINUTES,
         }
     }
 }
@@ -159,12 +190,15 @@ mod tests {
 
     #[test]
     fn values_override_defaults() {
-        let toml = "listen = \"0.0.0.0:9000\"\nassets = \"web\"\n\n[storage]\npath = \"volume\"\n\n[events]\nretention_days = 30";
+        let toml = "listen = \"0.0.0.0:9000\"\nassets = \"web\"\n\n[storage]\npath = \"volume\"\n\n[events]\nretention_days = 30\n\n[auth]\nsecret_file = \"secret\"\nidle_timeout_minutes = 30\nabsolute_timeout_minutes = 60";
         let config = Config::parse(Path::new(ABSENT_PATH), toml).unwrap();
         assert_eq!(config.listen, "0.0.0.0:9000".parse().unwrap());
         assert_eq!(config.assets, PathBuf::from("web"));
         assert_eq!(config.storage.path, PathBuf::from("volume"));
         assert_eq!(config.events.retention_days, 30);
+        assert_eq!(config.auth.secret_file, Some(PathBuf::from("secret")));
+        assert_eq!(config.auth.idle_timeout_minutes, 30);
+        assert_eq!(config.auth.absolute_timeout_minutes, 60);
     }
 
     #[test]

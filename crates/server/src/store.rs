@@ -16,7 +16,10 @@ use thiserror::Error;
 const DATABASE_FILE: &str = "huliho.db";
 
 /// Forward-only numbered migrations, embedded so the binary carries its schema.
-const MIGRATION_SOURCES: &[&str] = &[include_str!("migrations/0001_identity.sql")];
+const MIGRATION_SOURCES: &[&str] = &[
+    include_str!("migrations/0001_identity.sql"),
+    include_str!("migrations/0002_sessions.sql"),
+];
 
 #[derive(Debug, Error)]
 pub enum StoreError {

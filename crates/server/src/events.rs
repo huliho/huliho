@@ -62,7 +62,9 @@ pub enum DomainEvent {
     },
     SessionCreated {},
     SessionRevoked {},
-    LoginFailed {},
+    LoginFailed {
+        user_id: UserId,
+    },
     LogPruned {
         removed: u64,
         cutoff_ms: i64,
@@ -80,7 +82,7 @@ impl DomainEvent {
             Self::AccountRemoved { .. } => "account.removed",
             Self::SessionCreated {} => "session.created",
             Self::SessionRevoked {} => "session.revoked",
-            Self::LoginFailed {} => "login.failed",
+            Self::LoginFailed { .. } => "login.failed",
             Self::LogPruned { .. } => "log.pruned",
         }
     }

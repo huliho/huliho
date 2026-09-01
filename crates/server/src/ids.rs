@@ -5,13 +5,13 @@
 //! Typed identifiers and the fixed role set.
 
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 macro_rules! id_type {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
         pub struct $name(String);
 
         impl $name {

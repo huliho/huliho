@@ -1,0 +1,123 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100svh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-2);
+  padding: var(--hhx-space-3) var(--hhx-space-4);
+  border-block-end: var(--hhx-border-width) solid var(--hh-border);
+  background: var(--hh-surface);
+}
+
+.back {
+  display: grid;
+  place-items: center;
+  inline-size: var(--hhx-hit-target);
+  block-size: var(--hhx-hit-target);
+  border-radius: var(--hhx-radius-field);
+  color: var(--hh-text);
+}
+
+.back:hover {
+  background: var(--hh-hover);
+}
+
+.backIcon {
+  inline-size: var(--hhx-icon-header);
+  block-size: var(--hhx-icon-header);
+  stroke-width: var(--hhx-icon-stroke);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--hhx-type-3);
+  font-weight: 600;
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  min-block-size: 0;
+}
+
+.sidebar {
+  display: none;
+  inline-size: 260px;
+  flex: none;
+  padding: var(--hhx-space-4) var(--hhx-space-3);
+  border-inline-end: var(--hhx-border-width) solid var(--hh-border);
+  flex-direction: column;
+  gap: var(--hhx-space-1);
+}
+
+.group {
+  padding: var(--hhx-space-1) var(--hhx-space-2);
+  font-size: var(--hhx-type-1);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hh-text-muted);
+}
+
+.entry {
+  padding: var(--hhx-space-2);
+  border-radius: var(--hhx-radius-field);
+  color: var(--hh-text);
+  text-decoration: none;
+}
+
+.entry[aria-current="page"] {
+  background: var(--hh-accent-tint);
+  color: var(--hh-accent);
+  font-weight: 600;
+}
+
+.content {
+  flex: 1;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--hhx-space-4);
+  padding: var(--hhx-space-4);
+  max-inline-size: 760px;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-4);
+  padding: var(--hhx-space-4);
+  background: var(--hh-surface);
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-overlay);
+}
+
+.card:has(.cardTitle) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--hhx-space-3);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: var(--hhx-type-2);
+  font-weight: 600;
+}
+
+@media (min-width: 720px) {
+  .sidebar {
+    display: flex;
+  }
+
+  .content {
+    padding: var(--hhx-space-6);
+    margin-inline: auto;
+  }
+}

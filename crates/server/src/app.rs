@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! The HTTP router: SPA serving, liveness and the response contract.
+//! The HTTP router: SPA serving, liveness, the API and the response contract.
 
 use std::path::Path;
 
@@ -16,8 +16,13 @@ use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::{DefaultOnResponse, TraceLayer};
 use tracing::Level;
 
+use crate::api::{self, ApiState};
+
 /// Liveness body only; version and build info stay out on purpose.
 const HEALTH_BODY: &str = "ok";
+
+/// The AGPL text ships in the binary so the notices link needs no network.
+const LICENSE_TEXT: &str = include_str!("../../../LICENSE");
 
 const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 
@@ -32,10 +37,12 @@ const STRICT_TRANSPORT_SECURITY: &str = "max-age=63072000; includeSubDomains";
 /// A mail client needs none of these browser features.
 const PERMISSIONS_POLICY: &str = "camera=(), geolocation=(), microphone=()";
 
-pub fn router(assets: &Path) -> Router {
+pub fn router(assets: &Path, api: ApiState) -> Router {
     let spa = ServeDir::new(assets).fallback(ServeFile::new(assets.join("index.html")));
     Router::new()
         .route("/healthz", get(healthz))
+        .route("/license", get(license))
+        .nest("/api", api::router(api))
         .fallback_service(spa)
         .layer(response_header(
             header::CONTENT_SECURITY_POLICY,
@@ -62,6 +69,13 @@ pub fn router(assets: &Path) -> Router {
 
 async fn healthz() -> &'static str {
     HEALTH_BODY
+}
+
+async fn license() -> ([(HeaderName, &'static str); 1], &'static str) {
+    (
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        LICENSE_TEXT,
+    )
 }
 
 fn request_span(request: &Request<Body>) -> tracing::Span {

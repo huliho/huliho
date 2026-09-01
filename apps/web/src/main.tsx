@@ -6,10 +6,13 @@ import "./styles/fonts.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
 
+import { QueryClientProvider } from "@tanstack/react-query";
+import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { App } from "./app";
+import { getLocale } from "./paraglide/runtime.js";
+import { queryClient, router } from "./router";
 import { loadInstanceOverride } from "./theme/instance-override";
 
 async function applyInstanceOverride(): Promise<void> {
@@ -20,12 +23,16 @@ async function applyInstanceOverride(): Promise<void> {
 }
 void applyInstanceOverride();
 
+document.documentElement.lang = getLocale();
+
 const container = document.getElementById("root");
 if (container === null) {
   throw new Error("the root element is missing from index.html");
 }
 createRoot(container).render(
   <StrictMode>
-    <App />
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   </StrictMode>,
 );

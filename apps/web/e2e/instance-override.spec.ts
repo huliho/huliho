@@ -5,6 +5,8 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
+import { mockSignedOut } from "./session-mocks";
+
 const OVERRIDE_PATH = "/instance/override.css";
 
 const VALID_OVERRIDE = `:root {
@@ -55,6 +57,7 @@ const VIOLET_LIGHT = "rgb(91, 62, 168)";
 const VIOLET_DARK = "rgb(182, 163, 236)";
 
 test("a valid override rebrands the accent without code changes", async ({ page }) => {
+  await mockSignedOut(page);
   await serveOverride(page, VALID_OVERRIDE);
   await page.goto("/");
   await expect.poll(() => paintedColor(page, "--hh-accent")).toBe(VIOLET_LIGHT);
@@ -73,6 +76,7 @@ test("an override hiding a nested rule is rejected entirely", async ({ page }) =
       consoleErrors.push(message.text());
     }
   });
+  await mockSignedOut(page);
   await serveOverride(page, NESTED_RULE_OVERRIDE);
   await page.goto("/");
   await expect
@@ -89,6 +93,7 @@ test("an override naming an internal token is rejected with a clear message", as
       consoleErrors.push(message.text());
     }
   });
+  await mockSignedOut(page);
   await serveOverride(page, INTERNAL_TOKEN_OVERRIDE);
   await page.goto("/");
   await expect
