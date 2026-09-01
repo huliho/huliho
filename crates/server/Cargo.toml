@@ -8,17 +8,22 @@ publish = false
 
 [dependencies]
 axum = "0.8.9"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+rusqlite_migration = "2.6.0"
 serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
 thiserror = "2.0.20"
-tokio = { version = "1.53.1", features = ["macros", "net", "rt-multi-thread", "signal"] }
+tokio = { version = "1.53.1", features = ["macros", "net", "rt-multi-thread", "signal", "time"] }
 toml = "1.1.4"
 tower-http = { version = "0.7.1", features = ["fs", "request-id", "set-header", "trace"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+uuid = { version = "1.26.0", features = ["v4"] }
 
 [dev-dependencies]
 http-body-util = "0.1.5"
 tower = { version = "0.5.3", features = ["util"] }
+trybuild = "1.0.120"
 
 [lints]
 workspace = true
