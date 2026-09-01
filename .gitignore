@@ -1,5 +1,10 @@
 node_modules/
 dist/
+packages/i18n/messages/en-XA.json
+packages/i18n/project.inlang/.meta.json
+packages/i18n/project.inlang/README.md
+packages/i18n/project.inlang/cache/
+apps/web/src/paraglide/
 storybook-static/
 .lighthouseci/
 .pnpm-store/

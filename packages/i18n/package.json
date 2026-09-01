@@ -4,10 +4,22 @@
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "node ./scripts/build-catalogs.mjs",
+    "test": "vitest run --dir src"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
+  },
+  "dependencies": {
+    "@formatjs/icu-messageformat-parser": "^3.5.17"
+  },
+  "devDependencies": {
+    "@inlang/plugin-icu1": "^1.1.0",
+    "@types/node": "^26.4.0",
+    "vitest": "^4.1.11"
   }
 }

@@ -1,0 +1,6 @@
+{
+  "app_tagline": "Je mail, waar die ook staat.",
+  "demo_today": "Vandaag is het {today}.",
+  "demo_mailbox": "Dit demopostvak bevat {count, plural, one {{count, number} bericht} other {{count, number} berichten}}.",
+  "locale_label": "Taal"
+}

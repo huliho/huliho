@@ -18,6 +18,7 @@ export default [
       "**/.turbo/**",
       "**/coverage/**",
       "**/storybook-static/**",
+      "apps/web/src/paraglide/**",
     ],
   },
   {

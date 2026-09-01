@@ -10,17 +10,19 @@
     "build:storybook": "storybook build",
     "storybook": "storybook dev -p 6006",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "NODE_OPTIONS=--no-experimental-webstorage vitest run",
     "test:e2e": "playwright test",
     "lighthouse": "lhci autorun"
   },
   "dependencies": {
+    "@huliho/i18n": "workspace:*",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
     "@babel/core": "^8.0.0",
+    "@inlang/paraglide-js": "^2.25.0",
     "@lhci/cli": "0.15.1",
     "@playwright/test": "^1.62.1",
     "@rolldown/plugin-babel": "^0.2.3",
