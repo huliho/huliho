@@ -9,7 +9,7 @@ use std::time::Duration;
 use huliho_server::accounts::{self, AccountKind, AuthMethod};
 use huliho_server::events;
 use huliho_server::identity::{self, Organization, User};
-use huliho_server::ids::Role;
+use huliho_server::ids::{Role, UserId};
 use huliho_server::scope::{self, Scope};
 use huliho_server::store::{Store, StoreError};
 
@@ -153,6 +153,36 @@ fn pruning_removes_only_expired_rows_and_records_itself() {
     assert_eq!(records[0].event_type, "log.pruned");
     assert_eq!(records[0].actor, "system");
     assert!(records[0].payload.contains("\"removed\":2"));
+}
+
+#[test]
+fn the_new_lifecycle_types_carry_stable_names() {
+    use huliho_server::events::DomainEvent;
+    let user_id = UserId::from("u".to_owned());
+    let named = [
+        (
+            DomainEvent::SessionRevoked {
+                user_id: user_id.clone(),
+            },
+            "session.revoked",
+        ),
+        (
+            DomainEvent::SessionExpired {
+                user_id: user_id.clone(),
+            },
+            "session.expired",
+        ),
+        (
+            DomainEvent::UserActive {
+                user_id,
+                period: "2026-09".to_owned(),
+            },
+            "user.active",
+        ),
+    ];
+    for (event, name) in named {
+        assert_eq!(event.event_type(), name);
+    }
 }
 
 #[test]

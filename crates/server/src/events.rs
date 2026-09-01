@@ -53,6 +53,10 @@ pub enum DomainEvent {
         from: Role,
         to: Role,
     },
+    UserActive {
+        user_id: UserId,
+        period: String,
+    },
     AccountLinked {
         account_id: AccountId,
         kind: AccountKind,
@@ -61,7 +65,12 @@ pub enum DomainEvent {
         account_id: AccountId,
     },
     SessionCreated {},
-    SessionRevoked {},
+    SessionRevoked {
+        user_id: UserId,
+    },
+    SessionExpired {
+        user_id: UserId,
+    },
     LoginFailed {
         user_id: UserId,
     },
@@ -78,10 +87,12 @@ impl DomainEvent {
             Self::OrganizationCreated {} => "organization.created",
             Self::UserCreated { .. } => "user.created",
             Self::UserRoleChanged { .. } => "user.role_changed",
+            Self::UserActive { .. } => "user.active",
             Self::AccountLinked { .. } => "account.linked",
             Self::AccountRemoved { .. } => "account.removed",
             Self::SessionCreated {} => "session.created",
-            Self::SessionRevoked {} => "session.revoked",
+            Self::SessionRevoked { .. } => "session.revoked",
+            Self::SessionExpired { .. } => "session.expired",
             Self::LoginFailed { .. } => "login.failed",
             Self::LogPruned { .. } => "log.pruned",
         }

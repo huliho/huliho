@@ -4,6 +4,14 @@
 
 //! Server-side sessions: opaque tokens over AEAD-sealed rows.
 
+mod activity;
+pub mod device;
+#[cfg(test)]
+pub(crate) mod fixtures;
+mod list;
+
+use std::net::IpAddr;
+
 use chacha20poly1305::XNonce;
 use chacha20poly1305::aead::{Aead, Generate, Payload};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -11,11 +19,17 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+pub use activity::{TOUCH_INTERVAL_MS, prune_expired, prune_periodically, touch};
+pub use device::Device;
+pub use list::{SessionRow, list, revoke_other, revoke_others};
+
 use crate::config::AuthConfig;
 use crate::events::{Actor, DomainEvent, append};
-use crate::ids::{OrganizationId, UserId};
+use crate::ids::{OrganizationId, SessionId, UserId};
 use crate::secrets::SessionKeys;
 use crate::store::{Store, StoreError, now_ms};
+
+use activity::record_activity;
 
 /// Cookie carrying the opaque session token.
 pub const SESSION_COOKIE: &str = "huliho_session";
@@ -26,10 +40,7 @@ const TOKEN_BYTES: usize = 16;
 /// XChaCha20-Poly1305 prefixes its nonce to the sealed blob.
 const NONCE_BYTES: usize = 24;
 
-/// Expiry is minute-grained at its finest, so a daily sweep suffices.
-const PRUNE_INTERVAL: std::time::Duration = std::time::Duration::from_hours(24);
-
-const MS_PER_MINUTE: i64 = 60_000;
+pub(crate) const MS_PER_MINUTE: i64 = 60_000;
 
 #[derive(Debug, Error)]
 pub enum SessionError {
@@ -66,17 +77,52 @@ struct SealedSession {
     created_at: i64,
 }
 
+/// Digest of the cookie token; the row key and the AEAD associated data.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TokenHash(Vec<u8>);
+
+impl TokenHash {
+    fn of(token: &str) -> Self {
+        Self(Sha256::digest(token.as_bytes()).to_vec())
+    }
+
+    pub(crate) fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+/// Where a session is used from.
+#[derive(Debug, Clone, Default)]
+pub struct Client {
+    pub device: Device,
+    pub address: Option<IpAddr>,
+}
+
+/// The session behind a cookie token, as [`authenticate`] resolved it.
+#[derive(Debug)]
+pub struct Session {
+    pub id: SessionId,
+    pub user_id: UserId,
+    pub last_seen_at: i64,
+    token_hash: TokenHash,
+}
+
 /// Creates a session for the user and returns the cookie token.
 ///
 /// # Errors
 ///
 /// Returns an error when randomness fails, the user is gone or the
 /// database fails.
-pub fn create(store: &Store, keys: &SessionKeys, user_id: &UserId) -> Result<String, SessionError> {
+pub fn create(
+    store: &Store,
+    keys: &SessionKeys,
+    user_id: &UserId,
+    client: &Client,
+) -> Result<String, SessionError> {
     let mut bytes = [0u8; TOKEN_BYTES];
     getrandom::fill(&mut bytes).map_err(|_| SessionError::Random)?;
     let token = base16ct::lower::encode_string(&bytes);
-    let token_hash = Sha256::digest(token.as_bytes());
+    let token_hash = TokenHash::of(&token);
     let created_at = now_ms();
     let sealed = seal(
         keys,
@@ -86,16 +132,20 @@ pub fn create(store: &Store, keys: &SessionKeys, user_id: &UserId) -> Result<Str
             created_at,
         },
     )?;
+    let device = serde_json::to_string(&client.device).map_err(StoreError::from)?;
     store.write(|transaction| {
         let organization_id = organization_of(transaction, user_id)?;
         transaction.execute(
-            "INSERT INTO sessions (token_hash, user_id, sealed, created_at, last_seen_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO sessions
+             (token_hash, id, user_id, sealed, device, address, created_at, last_seen_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
             params![
                 token_hash.as_slice(),
+                SessionId::generate().as_str(),
                 user_id.as_str(),
                 sealed,
-                created_at,
+                device,
+                client.address.map(|address| address.to_string()),
                 created_at
             ],
         )?;
@@ -106,12 +156,12 @@ pub fn create(store: &Store, keys: &SessionKeys, user_id: &UserId) -> Result<Str
             &actor,
             &DomainEvent::SessionCreated {},
         )?;
-        Ok(())
+        record_activity(transaction, &organization_id, user_id, created_at)
     })?;
     Ok(token)
 }
 
-/// Resolves a cookie token to its user, enforcing both timeouts. The
+/// Resolves a cookie token to its session, enforcing both timeouts. The
 /// check is read-only: cookies ride along on GET, so expired rows wait
 /// for the sweep and activity is recorded by mutations only.
 ///
@@ -124,67 +174,36 @@ pub fn authenticate(
     keys: &SessionKeys,
     timeouts: SessionTimeouts,
     token: &str,
-) -> Result<UserId, SessionError> {
-    let token_hash = Sha256::digest(token.as_bytes());
-    let user_id = store.read(|connection| {
-        let row: Option<(Vec<u8>, i64)> = connection
+) -> Result<Session, SessionError> {
+    let token_hash = TokenHash::of(token);
+    let session = store.read(|connection| {
+        let row: Option<(SessionId, Vec<u8>, i64)> = connection
             .query_row(
-                "SELECT sealed, last_seen_at FROM sessions WHERE token_hash = ?1",
+                "SELECT id, sealed, last_seen_at FROM sessions WHERE token_hash = ?1",
                 [token_hash.as_slice()],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()?;
-        let Some((sealed, last_seen_at)) = row else {
+        let Some((id, sealed, last_seen_at)) = row else {
             return Ok(None);
         };
-        let Some(session) = open(keys, &token_hash, &sealed) else {
+        let Some(sealed) = open(keys, &token_hash, &sealed) else {
             return Ok(None);
         };
         let now = now_ms();
         let idled_out = now.saturating_sub(last_seen_at) >= timeouts.idle_ms;
-        let aged_out = now.saturating_sub(session.created_at) >= timeouts.absolute_ms;
+        let aged_out = now.saturating_sub(sealed.created_at) >= timeouts.absolute_ms;
         if idled_out || aged_out {
             return Ok(None);
         }
-        Ok(Some(session.user_id))
+        Ok(Some(Session {
+            id,
+            user_id: sealed.user_id,
+            last_seen_at,
+            token_hash: token_hash.clone(),
+        }))
     })?;
-    user_id.ok_or(SessionError::Unauthenticated)
-}
-
-/// Removes every row past either timeout.
-///
-/// # Errors
-///
-/// Returns an error when the database fails; the transaction then rolls
-/// back and nothing is removed.
-pub fn prune_expired(store: &Store, timeouts: SessionTimeouts) -> Result<u64, StoreError> {
-    store.write(|transaction| {
-        let now = now_ms();
-        let removed = transaction.execute(
-            "DELETE FROM sessions WHERE last_seen_at <= ?1 OR created_at <= ?2",
-            params![
-                now.saturating_sub(timeouts.idle_ms),
-                now.saturating_sub(timeouts.absolute_ms)
-            ],
-        )?;
-        Ok(u64::try_from(removed).unwrap_or_default())
-    })
-}
-
-/// Sweeps expired sessions at startup and then daily; failures are
-/// logged and retried at the next tick.
-pub async fn prune_periodically(store: std::sync::Arc<Store>, timeouts: SessionTimeouts) {
-    let mut interval = tokio::time::interval(PRUNE_INTERVAL);
-    loop {
-        interval.tick().await;
-        let store = std::sync::Arc::clone(&store);
-        match tokio::task::spawn_blocking(move || prune_expired(&store, timeouts)).await {
-            Ok(Ok(0)) => {}
-            Ok(Ok(removed)) => tracing::info!(removed, "pruned expired sessions"),
-            Ok(Err(error)) => tracing::warn!(%error, "session pruning failed"),
-            Err(error) => tracing::warn!(%error, "session pruning task failed"),
-        }
-    }
+    session.ok_or(SessionError::Unauthenticated)
 }
 
 /// Revokes the session behind a cookie token; unknown tokens are a no-op
@@ -194,7 +213,7 @@ pub async fn prune_periodically(store: std::sync::Arc<Store>, timeouts: SessionT
 ///
 /// Returns an error when the database fails.
 pub fn revoke(store: &Store, token: &str) -> Result<(), StoreError> {
-    let token_hash = Sha256::digest(token.as_bytes());
+    let token_hash = TokenHash::of(token);
     store.write(|transaction| {
         let user_id: Option<UserId> = transaction
             .query_row(
@@ -211,20 +230,16 @@ pub fn revoke(store: &Store, token: &str) -> Result<(), StoreError> {
             [token_hash.as_slice()],
         )?;
         let organization_id = organization_of(transaction, &user_id)?;
-        let actor = Actor::User(user_id);
-        append(
-            transaction,
-            &organization_id,
-            &actor,
-            &DomainEvent::SessionRevoked {},
-        )?;
-        Ok(())
+        let event = DomainEvent::SessionRevoked {
+            user_id: user_id.clone(),
+        };
+        append(transaction, &organization_id, &Actor::User(user_id), &event)
     })
 }
 
 fn seal(
     keys: &SessionKeys,
-    token_hash: &[u8],
+    token_hash: &TokenHash,
     session: &SealedSession,
 ) -> Result<Vec<u8>, SessionError> {
     let plaintext = serde_json::to_vec(session).map_err(StoreError::from)?;
@@ -235,7 +250,7 @@ fn seal(
             &nonce,
             Payload {
                 msg: &plaintext,
-                aad: token_hash,
+                aad: token_hash.as_slice(),
             },
         )
         .map_err(|_| SessionError::Sealing)?;
@@ -244,7 +259,7 @@ fn seal(
     Ok(sealed)
 }
 
-fn open(keys: &SessionKeys, token_hash: &[u8], sealed: &[u8]) -> Option<SealedSession> {
+fn open(keys: &SessionKeys, token_hash: &TokenHash, sealed: &[u8]) -> Option<SealedSession> {
     let (nonce, ciphertext) = sealed.split_at_checked(NONCE_BYTES)?;
     let nonce = XNonce::try_from(nonce).ok()?;
     let plaintext = keys
@@ -253,7 +268,7 @@ fn open(keys: &SessionKeys, token_hash: &[u8], sealed: &[u8]) -> Option<SealedSe
             &nonce,
             Payload {
                 msg: ciphertext,
-                aad: token_hash,
+                aad: token_hash.as_slice(),
             },
         )
         .ok()?;
@@ -276,44 +291,18 @@ fn organization_of(
 
 #[cfg(test)]
 mod tests {
+    use super::fixtures::{GENEROUS_TIMEOUTS, age_idle, keys, session_rows, store_with_user};
     use super::*;
-    use crate::identity;
     use crate::secrets::InstanceSecret;
-
-    const GENEROUS_TIMEOUTS: SessionTimeouts = SessionTimeouts {
-        idle_ms: 3_600_000,
-        absolute_ms: 3_600_000,
-    };
-
-    fn keys() -> SessionKeys {
-        SessionKeys::derive(&InstanceSecret::for_tests(
-            b"0123456789abcdef0123456789abcdef",
-        ))
-    }
-
-    fn store_with_user() -> (Store, UserId) {
-        let store = Store::in_memory().unwrap();
-        let (_, user) = identity::create_personal_user(&store, "mira@example.com").unwrap();
-        (store, user.id)
-    }
-
-    fn age_idle(store: &Store, by_ms: i64) {
-        let sql = format!("UPDATE sessions SET last_seen_at = last_seen_at - {by_ms}");
-        store
-            .write(|transaction| {
-                transaction.execute(&sql, []).map_err(StoreError::from)?;
-                Ok(())
-            })
-            .unwrap();
-    }
 
     #[test]
     fn a_created_session_authenticates_to_its_user() {
         let (store, user_id) = store_with_user();
         let keys = keys();
-        let token = create(&store, &keys, &user_id).unwrap();
+        let token = create(&store, &keys, &user_id, &Client::default()).unwrap();
         let resolved = authenticate(&store, &keys, GENEROUS_TIMEOUTS, &token).unwrap();
-        assert_eq!(resolved, user_id);
+        assert_eq!(resolved.user_id, user_id);
+        assert!(!resolved.id.as_str().is_empty());
     }
 
     #[test]
@@ -327,50 +316,29 @@ mod tests {
     fn a_revoked_session_stops_authenticating() {
         let (store, user_id) = store_with_user();
         let keys = keys();
-        let token = create(&store, &keys, &user_id).unwrap();
+        let token = create(&store, &keys, &user_id, &Client::default()).unwrap();
         revoke(&store, &token).unwrap();
         let result = authenticate(&store, &keys, GENEROUS_TIMEOUTS, &token);
         assert!(matches!(result, Err(SessionError::Unauthenticated)));
         revoke(&store, &token).unwrap();
     }
 
-    fn session_rows(store: &Store) -> i64 {
-        store
-            .read(|connection| {
-                connection
-                    .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-                    .map_err(StoreError::from)
-            })
-            .unwrap()
-    }
-
     #[test]
-    fn an_idle_session_expires_and_the_sweep_removes_it() {
+    fn an_idle_session_expires() {
         let (store, user_id) = store_with_user();
         let keys = keys();
-        let token = create(&store, &keys, &user_id).unwrap();
+        let token = create(&store, &keys, &user_id, &Client::default()).unwrap();
         age_idle(&store, GENEROUS_TIMEOUTS.idle_ms);
         let result = authenticate(&store, &keys, GENEROUS_TIMEOUTS, &token);
         assert!(matches!(result, Err(SessionError::Unauthenticated)));
         assert_eq!(session_rows(&store), 1);
-        assert_eq!(prune_expired(&store, GENEROUS_TIMEOUTS).unwrap(), 1);
-        assert_eq!(session_rows(&store), 0);
-    }
-
-    #[test]
-    fn the_sweep_keeps_live_sessions() {
-        let (store, user_id) = store_with_user();
-        let keys = keys();
-        let token = create(&store, &keys, &user_id).unwrap();
-        assert_eq!(prune_expired(&store, GENEROUS_TIMEOUTS).unwrap(), 0);
-        assert!(authenticate(&store, &keys, GENEROUS_TIMEOUTS, &token).is_ok());
     }
 
     #[test]
     fn an_aged_out_session_expires_even_while_active() {
         let (store, user_id) = store_with_user();
         let keys = keys();
-        let token = create(&store, &keys, &user_id).unwrap();
+        let token = create(&store, &keys, &user_id, &Client::default()).unwrap();
         let spent = SessionTimeouts {
             idle_ms: GENEROUS_TIMEOUTS.idle_ms,
             absolute_ms: 0,
@@ -383,7 +351,7 @@ mod tests {
     fn a_tampered_row_is_unauthenticated() {
         let (store, user_id) = store_with_user();
         let keys = keys();
-        let token = create(&store, &keys, &user_id).unwrap();
+        let token = create(&store, &keys, &user_id, &Client::default()).unwrap();
         store
             .write(|transaction| {
                 transaction
@@ -399,7 +367,7 @@ mod tests {
     #[test]
     fn another_instance_secret_opens_nothing() {
         let (store, user_id) = store_with_user();
-        let token = create(&store, &keys(), &user_id).unwrap();
+        let token = create(&store, &keys(), &user_id, &Client::default()).unwrap();
         let other = SessionKeys::derive(&InstanceSecret::for_tests(
             b"fedcba9876543210fedcba9876543210",
         ));
@@ -408,10 +376,31 @@ mod tests {
     }
 
     #[test]
+    fn the_client_record_lands_on_the_row() {
+        let (store, user_id) = store_with_user();
+        let client = Client {
+            device: device::from_user_agent("Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", true),
+            address: Some("203.0.113.7".parse().unwrap()),
+        };
+        create(&store, &keys(), &user_id, &client).unwrap();
+        let (device, address): (Device, Option<String>) = store
+            .read(|connection| {
+                connection
+                    .query_row("SELECT device, address FROM sessions", [], |row| {
+                        Ok((row.get(0)?, row.get(1)?))
+                    })
+                    .map_err(StoreError::from)
+            })
+            .unwrap();
+        assert_eq!(device, client.device);
+        assert_eq!(address.as_deref(), Some("203.0.113.7"));
+    }
+
+    #[test]
     fn session_lifecycle_lands_in_the_event_log() {
         let (store, user_id) = store_with_user();
         let keys = keys();
-        let token = create(&store, &keys, &user_id).unwrap();
+        let token = create(&store, &keys, &user_id, &Client::default()).unwrap();
         revoke(&store, &token).unwrap();
         let scope = crate::scope::resolve(&store, &user_id, None).unwrap();
         let events = crate::events::for_organization(&store, &scope).unwrap();
@@ -421,5 +410,6 @@ mod tests {
             .collect();
         assert!(types.contains(&"session.created"));
         assert!(types.contains(&"session.revoked"));
+        assert!(types.contains(&"user.active"));
     }
 }

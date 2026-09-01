@@ -54,6 +54,11 @@ id_type!(
     AccountId
 );
 
+id_type!(
+    /// Identifies a session toward the API; the cookie token stays secret.
+    SessionId
+);
+
 /// Fixed roles within an organization, ordered lowest authority first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "lowercase")]

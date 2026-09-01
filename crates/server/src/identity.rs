@@ -25,14 +25,16 @@ pub struct User {
     pub id: UserId,
     pub organization_id: OrganizationId,
     pub login: String,
+    pub name: String,
     pub role: Role,
     pub external_issuer: Option<String>,
     pub external_subject: Option<String>,
+    pub last_active_at: Option<i64>,
     pub created_at: i64,
 }
 
-const USER_COLUMNS: &str =
-    "id, organization_id, login, role, external_issuer, external_subject, created_at";
+const USER_COLUMNS: &str = "id, organization_id, login, name, role, external_issuer, \
+                            external_subject, last_active_at, created_at";
 
 /// Creates a user owning a fresh personal organization. This is the only
 /// way a user comes into existence outside an existing organization.
@@ -247,18 +249,21 @@ fn insert_user(
         id: UserId::generate(),
         organization_id: organization_id.clone(),
         login: login.to_owned(),
+        name: login.to_owned(),
         role,
         external_issuer: None,
         external_subject: None,
+        last_active_at: None,
         created_at: now_ms(),
     };
     connection.execute(
-        "INSERT INTO users (id, organization_id, login, role, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO users (id, organization_id, login, name, role, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             user.id.as_str(),
             organization_id.as_str(),
             user.login,
+            user.name,
             role.as_str(),
             user.created_at
         ],
@@ -271,9 +276,11 @@ fn user_from_row(row: &Row<'_>) -> rusqlite::Result<User> {
         id: row.get(0)?,
         organization_id: row.get(1)?,
         login: row.get(2)?,
-        role: row.get(3)?,
-        external_issuer: row.get(4)?,
-        external_subject: row.get(5)?,
-        created_at: row.get(6)?,
+        name: row.get(3)?,
+        role: row.get(4)?,
+        external_issuer: row.get(5)?,
+        external_subject: row.get(6)?,
+        last_active_at: row.get(7)?,
+        created_at: row.get(8)?,
     })
 }

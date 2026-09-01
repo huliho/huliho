@@ -5,79 +5,26 @@
 //! Session endpoints over HTTP: cookie contract, guards and persistence.
 
 mod common;
+mod signin;
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
-use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 use common::router_on;
 use huliho_server::api::MAX_CONCURRENT_VERIFICATIONS;
 use huliho_server::store::Store;
 use huliho_server::{auth, identity};
-
-const LOGIN: &str = "mira@example.com";
-const PASSWORD: &str = "example passphrase";
+use signin::{LOGIN, PASSWORD, body_text, login_request, sign_in, store_with_account, with_cookie};
 
 /// Enough failures to pass the limiter's free run in one test.
 const FAILURES_TO_TRIP: usize = 8;
 
 /// Long enough to prove a held login is waiting, not failing.
 const GATE_WAIT: Duration = Duration::from_millis(200);
-
-fn store_with_account() -> Arc<Store> {
-    let store = Arc::new(Store::in_memory().unwrap());
-    let (_, user) = identity::create_personal_user(&store, LOGIN).unwrap();
-    auth::set_password(&store, &user.id, PASSWORD).unwrap();
-    store
-}
-
-fn login_request(login: &str, password: &str) -> Request<Body> {
-    Request::builder()
-        .method(Method::POST)
-        .uri("/api/session")
-        .header(header::CONTENT_TYPE, "application/json")
-        .header("x-requested-with", "huliho")
-        .body(Body::from(format!(
-            "{{\"login\":\"{login}\",\"password\":\"{password}\"}}"
-        )))
-        .unwrap()
-}
-
-fn with_cookie(method: Method, cookie: &str) -> Request<Body> {
-    Request::builder()
-        .method(method)
-        .uri("/api/session")
-        .header(header::COOKIE, cookie)
-        .header("x-requested-with", "huliho")
-        .body(Body::empty())
-        .unwrap()
-}
-
-async fn sign_in(router: &Router) -> String {
-    let response = router
-        .clone()
-        .oneshot(login_request(LOGIN, PASSWORD))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    let set_cookie = response
-        .headers()
-        .get(header::SET_COOKIE)
-        .unwrap()
-        .to_str()
-        .unwrap();
-    set_cookie.split(';').next().unwrap().to_owned()
-}
-
-async fn body_text(response: axum::http::Response<Body>) -> String {
-    let bytes = response.into_body().collect().await.unwrap().to_bytes();
-    String::from_utf8(bytes.to_vec()).unwrap()
-}
 
 #[tokio::test]
 async fn a_login_sets_a_locked_down_cookie() {
@@ -106,7 +53,7 @@ async fn a_session_resolves_to_its_user_and_organization() {
     let router = router_on(store_with_account());
     let cookie = sign_in(&router).await;
     let response = router
-        .oneshot(with_cookie(Method::GET, &cookie))
+        .oneshot(with_cookie(Method::GET, "/api/session", &cookie))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
@@ -153,7 +100,7 @@ async fn the_first_request_after_a_revocation_is_rejected() {
     let cookie = sign_in(&router).await;
     let response = router
         .clone()
-        .oneshot(with_cookie(Method::DELETE, &cookie))
+        .oneshot(with_cookie(Method::DELETE, "/api/session", &cookie))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
@@ -165,7 +112,7 @@ async fn the_first_request_after_a_revocation_is_rejected() {
         .unwrap();
     assert!(removal.contains("huliho_session="));
     let response = router
-        .oneshot(with_cookie(Method::GET, &cookie))
+        .oneshot(with_cookie(Method::GET, "/api/session", &cookie))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -225,7 +172,7 @@ async fn a_session_survives_a_server_restart() {
     };
     let reopened = Arc::new(Store::open(&data).unwrap());
     let response = router_on(reopened)
-        .oneshot(with_cookie(Method::GET, &cookie))
+        .oneshot(with_cookie(Method::GET, "/api/session", &cookie))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);

@@ -7,11 +7,15 @@ graceful shutdown on SIGTERM.
 
 All persistent state lives in an embedded database inside one data
 directory, created on first start and migrated on every start. The
-schema covers organizations, users with fixed roles, connected
-accounts, an append-only domain event log with configurable retention,
-per-user preferences and per-sender policies. Every read and mutation
-requires a typed scope from the single resolver, so nothing reaches
-storage across an organization or user boundary.
+schema covers organizations, users with fixed roles and a display
+name, connected accounts, server-side sessions with a device record
+and the address of their last use, an append-only domain event log
+with configurable retention, per-user preferences and per-sender
+policies. Every read and mutation requires a typed scope from the
+single resolver, so nothing reaches storage across an organization or
+user boundary. A signed-in user lists their own sessions and ends any
+of them but the current one; every mutation stamps its session at most
+once per five minutes and records the user as active for the month.
 
 Configuration is one TOML file; unknown keys are rejected. Top-level
 keys are the `listen` address and the `assets` directory; `[storage]`
