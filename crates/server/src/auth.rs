@@ -19,7 +19,7 @@ const MEMORY_KIB: u32 = 19 * 1024;
 const PASSES: u32 = 2;
 const LANES: u32 = 1;
 
-/// ASVS floor for a user-chosen password.
+/// Floor for a user-chosen password, ASVS 4.0.3 requirement 2.1.1.
 pub const MIN_PASSWORD_CHARS: usize = 12;
 
 /// Generous passphrase room while bounding the hashing input.

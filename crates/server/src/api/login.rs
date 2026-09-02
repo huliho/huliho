@@ -22,7 +22,7 @@ use crate::secrets::SessionKeys;
 use crate::session::{self, Client, SESSION_COOKIE, SessionTimeouts, device};
 use crate::store::{Store, now_ms};
 
-/// Longest accepted login name; RFC 5321 caps an address at 254.
+/// Longest login name: the 256-octet path of RFC 5321 section 4.5.3.1.3 minus its angle brackets.
 const MAX_LOGIN_BYTES: usize = 254;
 
 #[derive(Deserialize)]
