@@ -4,6 +4,10 @@
 
 import { z } from "zod";
 
+// Zod probes for eval unless told not to; a strict CSP reports that probe.
+// The flag is read when a schema is built, so this precedes every schema.
+z.config({ jitless: true });
+
 // State-changing calls carry this header; the server refuses them without it.
 const CSRF_HEADER = "x-requested-with";
 const CSRF_VALUE = "huliho";

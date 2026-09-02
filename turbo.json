@@ -16,7 +16,8 @@
       "dependsOn": ["^build"]
     },
     "test:e2e": {
-      "dependsOn": ["build", "build:storybook"]
+      "dependsOn": ["build", "build:storybook"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/crates/server/src/csp.txt"]
     }
   }
 }
