@@ -192,6 +192,8 @@ jobs:
             echo "the branch name '$HEAD_REF' does not follow the naming policy"
             exit 1
           }
+      - name: reuse compliance
+        uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
       - name: license headers
         run: |
           check_headers() {
@@ -363,6 +365,20 @@ jobs:
           if out=$(pnpm --filter @huliho/i18n build 2>&1); then echo "the catalog gate accepted a missing translation"; exit 1; fi
           echo "$out" | grep -q "probe_only_en is missing" || { echo "the catalog gate failed for another reason"; exit 1; }
           git checkout -- packages/i18n/messages/en.json
+      - name: reuse sample referencing an absent license
+        run: |
+          mkdir -p negative-samples
+          printf '# SPDX-License-Identifier: MIT\nprobe\n' > negative-samples/probe.txt
+      - name: reuse lint on the sample
+        id: reuse-sample
+        continue-on-error: true
+        uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
+      - name: reuse compliance fires
+        env:
+          OUTCOME: ${{ steps.reuse-sample.outcome }}
+        run: |
+          rm -rf negative-samples
+          [ "$OUTCOME" = "failure" ] || { echo "reuse lint accepted a reference to an absent license"; exit 1; }
       - name: knip dead code
         run: |
           printf 'export const orphan = 1;\n' > packages/core/src/orphan.ts
