@@ -7,6 +7,8 @@ overrides:
   "@lhci/cli>tmp": ^0.2.6
   "@lhci/cli>uuid": ^14.0.0
   "external-editor>tmp": ^0.2.6
+  "express>qs": ^6.16.0
+  "body-parser>qs": ^6.16.0
 allowBuilds:
   # The platform binary arrives as an optional dependency; the install script only re-downloads it.
   esbuild: false
