@@ -10,7 +10,7 @@
 }
 
 .column {
-  inline-size: min(400px, 100%);
+  inline-size: min(var(--hhx-measure-narrow), 100%);
   display: grid;
   gap: var(--hhx-space-3);
 }

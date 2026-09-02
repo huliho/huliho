@@ -70,6 +70,14 @@
   --hhx-hit-target: 28px;
   --hhx-pane-padding: 16px;
   --hhx-toolbar-height: 44px;
+
+  --hhx-tracking-caps: 0.06em;
+  --hhx-logo-size: 40px;
+  --hhx-measure-narrow: 400px;
+  --hhx-measure-wide: 760px;
+  --hhx-sheet-width: 960px;
+  --hhx-swatch-min: 160px;
+  --hhx-settings-sidebar-width: 260px;
 }
 
 :root[data-theme="light"] {

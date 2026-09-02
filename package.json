@@ -66,6 +66,52 @@
       "**/dist/**",
       "**/storybook-static/**",
       "**/node_modules/**"
+    ],
+    "overrides": [
+      {
+        "files": [
+          "**/*.module.css"
+        ],
+        "rules": {
+          "unit-disallowed-list": [
+            [
+              "px",
+              "rem",
+              "em",
+              "ch",
+              "ex",
+              "pt",
+              "pc",
+              "cm",
+              "mm",
+              "in",
+              "q"
+            ],
+            {
+              "ignoreMediaFeatureNames": {
+                "px": [
+                  "min-width"
+                ]
+              }
+            }
+          ],
+          "media-feature-name-value-allowed-list": {
+            "min-width": [
+              "720px"
+            ]
+          },
+          "color-no-hex": true,
+          "color-named": "never",
+          "function-disallowed-list": [
+            "/^rgba?$/i",
+            "/^hsla?$/i",
+            "/^hwb$/i",
+            "/^(ok)?lab$/i",
+            "/^(ok)?lch$/i",
+            "/^color$/i"
+          ]
+        }
+      }
     ]
   },
   "knip": {

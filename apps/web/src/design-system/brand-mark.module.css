@@ -14,8 +14,8 @@
 }
 
 .logo {
-  inline-size: 40px;
-  block-size: 40px;
+  inline-size: var(--hhx-logo-size);
+  block-size: var(--hhx-logo-size);
   border-radius: var(--hhx-radius-overlay);
   background: var(--hh-accent);
   flex: none;

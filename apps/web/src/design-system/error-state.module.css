@@ -21,7 +21,7 @@
 
 .message {
   margin: 0;
-  max-inline-size: 400px;
+  max-inline-size: var(--hhx-measure-narrow);
   color: var(--hh-text);
 }
 

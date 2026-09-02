@@ -5,7 +5,7 @@
 .sheet {
   display: grid;
   gap: var(--hhx-space-5);
-  max-inline-size: 960px;
+  max-inline-size: var(--hhx-sheet-width);
   padding: var(--hhx-space-5);
 }
 
@@ -17,7 +17,7 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--hhx-swatch-min), 1fr));
   gap: var(--hhx-space-3);
 }
 

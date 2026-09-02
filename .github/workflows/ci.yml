@@ -317,6 +317,15 @@ jobs:
           echo "$out" | grep -q "logical-css/require-logical-properties" || { echo "the logical properties rule did not fire"; exit 1; }
           echo "$out" | grep -q "logical-css/require-logical-keywords" || { echo "the logical keywords rule did not fire"; exit 1; }
           rm -rf negative-samples
+      - name: stylelint raw values in component styles
+        run: |
+          mkdir -p negative-samples
+          printf '.probe {\n  inline-size: 300px;\n  color: #123456;\n  background: white;\n  border-color: rgb(1 2 3);\n}\n\n@media (min-width: 500px) {\n  .probe {\n    display: none;\n  }\n}\n' > negative-samples/raw.module.css
+          if out=$(pnpm exec stylelint --no-color negative-samples/raw.module.css 2>&1); then echo "stylelint accepted the sample"; exit 1; fi
+          for rule in unit-disallowed-list color-no-hex color-named function-disallowed-list media-feature-name-value-allowed-list; do
+            echo "$out" | grep -q " $rule\$" || { echo "$rule did not fire"; exit 1; }
+          done
+          rm -rf negative-samples
       - name: i18n catalog parity
         run: |
           node -e '
