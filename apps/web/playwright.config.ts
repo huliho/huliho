@@ -25,6 +25,8 @@ export default defineConfig({
       command: `vite preview --port ${String(PREVIEW_PORT)} --strictPort`,
       port: PREVIEW_PORT,
       reuseExistingServer: false,
+      // The app preview sends the server's Content Security Policy.
+      env: { HULIHO_PREVIEW_CSP: "1" },
     },
     {
       command: `vite preview --outDir storybook-static --port ${String(STORYBOOK_PORT)} --strictPort`,

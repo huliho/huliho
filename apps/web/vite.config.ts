@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { paraglideVitePlugin } from "@inlang/paraglide-js";
 import babel from "@rolldown/plugin-babel";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
@@ -18,6 +21,12 @@ const paraglide = paraglideVitePlugin({
 // The dev server has no API of its own; the running binary answers it.
 const API_PROXY_TARGET = "http://localhost:8080";
 
+// The server's policy, sent by the app preview only; Storybook's preview needs its inline scripts.
+const CONTENT_SECURITY_POLICY = readFileSync(
+  join(import.meta.dirname, "../../crates/server/src/csp.txt"),
+  "utf8",
+).trim();
+
 export default defineConfig({
   plugins: [react(), babel({ presets: [reactCompilerPreset()] }), paraglide],
   server: {
@@ -25,6 +34,12 @@ export default defineConfig({
       "/api": API_PROXY_TARGET,
       "/license": API_PROXY_TARGET,
     },
+  },
+  preview: {
+    headers:
+      process.env.HULIHO_PREVIEW_CSP === undefined
+        ? {}
+        : { "content-security-policy": CONTENT_SECURITY_POLICY },
   },
   test: {
     environment: "jsdom",

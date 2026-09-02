@@ -22,6 +22,12 @@ workshop.
 `pnpm lighthouse` audits the built app against the performance and
 accessibility budgets in `lighthouserc.cjs`.
 
+The app preview sends the same Content Security Policy as the server,
+read from `crates/server/src/csp.txt`, so every e2e test against the
+app runs under it.
+The Storybook preview goes without, since its bootstrap uses inline
+scripts.
+
 The e2e suite screenshots every story and the served page in both
 themes at phone and
 desktop width. Baselines are rendered on Linux, so the comparison runs
