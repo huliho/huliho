@@ -4,29 +4,20 @@
 
 //! The domain event log: recording, isolation and retention.
 
+mod organization;
+
 use std::time::Duration;
 
 use huliho_server::accounts::{self, AccountKind, AuthMethod};
 use huliho_server::events;
-use huliho_server::identity::{self, Organization, User};
+use huliho_server::identity::{self, NewUser};
 use huliho_server::ids::{Role, UserId};
-use huliho_server::scope::{self, Scope};
-use huliho_server::store::{Store, StoreError};
+use huliho_server::scope;
+use huliho_server::store::StoreError;
+use organization::{new_user, personal, scope_of, store};
 
 /// Long enough that earlier rows sit strictly before a fresh cutoff.
 const CLOCK_TICK: Duration = Duration::from_millis(10);
-
-fn store() -> Store {
-    Store::in_memory().expect("in-memory store opens")
-}
-
-fn personal(store: &Store, login: &str) -> (Organization, User) {
-    identity::create_personal_user(store, login).expect("personal user creates")
-}
-
-fn scope_of(store: &Store, user: &User) -> Scope {
-    scope::resolve(store, &user.id, None).expect("scope resolves")
-}
 
 #[test]
 fn lifecycle_facts_land_in_order_with_monotonic_ids() {
@@ -36,8 +27,7 @@ fn lifecycle_facts_land_in_order_with_monotonic_ids() {
     let member = identity::create_organization_user(
         &store,
         &owner_scope,
-        "member@example.com",
-        Role::Member,
+        &new_user("member@example.com", Role::Member),
     )
     .unwrap();
     identity::change_role(&store, &owner_scope, &member.id, Role::Admin).unwrap();
@@ -76,8 +66,12 @@ fn actors_are_the_system_or_the_acting_user() {
     let store = store();
     let (_, owner) = personal(&store, "owner@example.com");
     let owner_scope = scope_of(&store, &owner);
-    identity::create_organization_user(&store, &owner_scope, "member@example.com", Role::Member)
-        .unwrap();
+    identity::create_organization_user(
+        &store,
+        &owner_scope,
+        &new_user("member@example.com", Role::Member),
+    )
+    .unwrap();
 
     let records = events::for_organization(&store, &owner_scope).unwrap();
     assert_eq!(records[0].actor, "system");
@@ -90,14 +84,27 @@ fn payloads_carry_no_login() {
     let store = store();
     let (_, owner) = personal(&store, "owner@example.com");
     let owner_scope = scope_of(&store, &owner);
-    identity::create_organization_user(&store, &owner_scope, "member@example.com", Role::Member)
-        .unwrap();
+    identity::create_organization_user(
+        &store,
+        &owner_scope,
+        &NewUser {
+            login: "member@example.com".to_owned(),
+            name: "Jonas Verhulst".to_owned(),
+            role: Role::Member,
+        },
+    )
+    .unwrap();
 
     let records = events::for_organization(&store, &owner_scope).unwrap();
     assert!(
         records
             .iter()
             .all(|record| !record.payload.contains("example.com"))
+    );
+    assert!(
+        records
+            .iter()
+            .all(|record| !record.payload.contains("Jonas"))
     );
 }
 
@@ -109,8 +116,7 @@ fn a_member_reads_no_event_log() {
     let member = identity::create_organization_user(
         &store,
         &owner_scope,
-        "member@example.com",
-        Role::Member,
+        &new_user("member@example.com", Role::Member),
     )
     .unwrap();
     let result = events::for_organization(&store, &scope_of(&store, &member));
@@ -173,6 +179,18 @@ fn the_new_lifecycle_types_carry_stable_names() {
             "session.expired",
         ),
         (
+            DomainEvent::UserPasswordChanged {
+                user_id: user_id.clone(),
+            },
+            "user.password_changed",
+        ),
+        (
+            DomainEvent::UserPasswordReset {
+                user_id: user_id.clone(),
+            },
+            "user.password_reset",
+        ),
+        (
             DomainEvent::UserActive {
                 user_id,
                 period: "2026-09".to_owned(),
@@ -191,8 +209,12 @@ fn pruning_counts_per_organization() {
     let (_, alpha) = personal(&store, "alpha@example.com");
     let (_, beta) = personal(&store, "beta@example.com");
     let beta_scope = scope_of(&store, &beta);
-    identity::create_organization_user(&store, &beta_scope, "member@example.com", Role::Member)
-        .unwrap();
+    identity::create_organization_user(
+        &store,
+        &beta_scope,
+        &new_user("member@example.com", Role::Member),
+    )
+    .unwrap();
     std::thread::sleep(CLOCK_TICK);
     assert_eq!(events::prune(&store, 0).unwrap(), 5);
 

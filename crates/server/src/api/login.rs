@@ -23,7 +23,7 @@ use crate::session::{self, Client, SESSION_COOKIE, SessionTimeouts, device};
 use crate::store::{Store, now_ms};
 
 /// Longest login name: the 256-octet path of RFC 5321 section 4.5.3.1.3 minus its angle brackets.
-const MAX_LOGIN_BYTES: usize = 254;
+pub(super) const MAX_LOGIN_BYTES: usize = 254;
 
 #[derive(Deserialize)]
 pub(super) struct LoginRequest {
@@ -46,15 +46,7 @@ pub(super) async fn create_session(
     {
         return Err(ApiError::InvalidRequest);
     }
-    let limiter_keys = [
-        format!("login:{}", request.login),
-        format!(
-            "ip:{}",
-            client
-                .address
-                .map_or("unknown".to_owned(), |address| address.to_string())
-        ),
-    ];
+    let limiter_keys = [format!("login:{}", request.login), client.address_key()];
     let keys: Vec<&str> = limiter_keys.iter().map(String::as_str).collect();
     if let Some(retry_after_ms) = state.limiter.blocked_for(&keys, now_ms()) {
         return Err(ApiError::RateLimited { retry_after_ms });
@@ -93,6 +85,13 @@ fn attempt_login(
             let token = session::create(store, keys, &user_id, client)?;
             Ok(Some(token))
         }
+        LoginOutcome::VerifiedOneTime(user_id) => {
+            let token = session::create_for_password_change(store, keys, &user_id, client)?;
+            if token.is_none() {
+                auth::record_login_failure(store, &user_id)?;
+            }
+            Ok(token)
+        }
         LoginOutcome::Rejected(Some(user_id)) => {
             auth::record_login_failure(store, &user_id)?;
             Ok(None)
@@ -116,9 +115,11 @@ struct SessionOrganization {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct SessionInfo {
     user: SessionUser,
     organization: SessionOrganization,
+    password_change_required: bool,
 }
 
 pub(super) async fn current_session(
@@ -141,6 +142,7 @@ pub(super) async fn current_session(
                 id: organization.id,
                 name: organization.name,
             },
+            password_change_required: auth.session.password_change_required,
         })
     })
     .await
@@ -162,7 +164,7 @@ pub(super) async fn delete_session(
     Ok((jar, StatusCode::NO_CONTENT))
 }
 
-fn session_cookie(token: String, timeouts: SessionTimeouts) -> Cookie<'static> {
+pub(super) fn session_cookie(token: String, timeouts: SessionTimeouts) -> Cookie<'static> {
     Cookie::build((SESSION_COOKIE, token))
         .http_only(true)
         .secure(true)

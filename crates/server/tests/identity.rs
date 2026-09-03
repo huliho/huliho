@@ -4,22 +4,13 @@
 
 //! Organizations, users and roles under the scope rules.
 
-use huliho_server::identity::{self, Organization, User};
+mod organization;
+
+use huliho_server::identity::{self, NewUser};
 use huliho_server::ids::{Role, UserId};
-use huliho_server::scope::{self, Scope};
-use huliho_server::store::{Store, StoreError};
-
-fn store() -> Store {
-    Store::in_memory().expect("in-memory store opens")
-}
-
-fn personal(store: &Store, login: &str) -> (Organization, User) {
-    identity::create_personal_user(store, login).expect("personal user creates")
-}
-
-fn scope_of(store: &Store, user: &User) -> Scope {
-    scope::resolve(store, &user.id, None).expect("scope resolves")
-}
+use huliho_server::scope;
+use huliho_server::store::StoreError;
+use organization::{new_user, personal, scope_of, store};
 
 #[test]
 fn a_personal_user_owns_a_fresh_organization() {
@@ -47,7 +38,45 @@ fn a_user_carries_a_name_that_starts_as_the_login() {
 fn a_duplicate_login_is_rejected() {
     let store = store();
     personal(&store, "mira@example.com");
-    assert!(identity::create_personal_user(&store, "mira@example.com").is_err());
+    let result = identity::create_personal_user(&store, "mira@example.com");
+    assert!(matches!(result, Err(StoreError::LoginTaken)));
+}
+
+#[test]
+fn a_taken_login_is_reported_as_such() {
+    let store = store();
+    let (_, owner) = personal(&store, "owner@example.com");
+    let owner_scope = scope_of(&store, &owner);
+    let result = identity::create_organization_user(
+        &store,
+        &owner_scope,
+        &NewUser {
+            login: "owner@example.com".to_owned(),
+            name: "Owner Again".to_owned(),
+            role: Role::Member,
+        },
+    );
+    assert!(matches!(result, Err(StoreError::LoginTaken)));
+}
+
+#[test]
+fn a_created_user_carries_its_name() {
+    let store = store();
+    let (_, owner) = personal(&store, "owner@example.com");
+    let owner_scope = scope_of(&store, &owner);
+    let created = identity::create_organization_user(
+        &store,
+        &owner_scope,
+        &NewUser {
+            login: "jonas".to_owned(),
+            name: "Jonas Verhulst".to_owned(),
+            role: Role::Member,
+        },
+    )
+    .unwrap();
+    assert_eq!(created.name, "Jonas Verhulst");
+    assert_eq!(created.login, "jonas");
+    assert_eq!(created.role, Role::Member);
 }
 
 #[test]
@@ -79,15 +108,17 @@ fn a_member_cannot_manage_users() {
     let member = identity::create_organization_user(
         &store,
         &owner_scope,
-        "member@example.com",
-        Role::Member,
+        &new_user("member@example.com", Role::Member),
     )
     .unwrap();
     let member_scope = scope_of(&store, &member);
     let listed = identity::users(&store, &member_scope);
     assert!(matches!(listed, Err(StoreError::Forbidden)));
-    let created =
-        identity::create_organization_user(&store, &member_scope, "new@example.com", Role::Member);
+    let created = identity::create_organization_user(
+        &store,
+        &member_scope,
+        &new_user("new@example.com", Role::Member),
+    );
     assert!(matches!(created, Err(StoreError::Forbidden)));
     let changed = identity::change_role(&store, &member_scope, &owner.id, Role::Member);
     assert!(matches!(changed, Err(StoreError::Forbidden)));
@@ -107,12 +138,18 @@ fn an_admin_grants_no_role_above_their_own() {
     let store = store();
     let (_, owner) = personal(&store, "owner@example.com");
     let owner_scope = scope_of(&store, &owner);
-    let admin =
-        identity::create_organization_user(&store, &owner_scope, "admin@example.com", Role::Admin)
-            .unwrap();
+    let admin = identity::create_organization_user(
+        &store,
+        &owner_scope,
+        &new_user("admin@example.com", Role::Admin),
+    )
+    .unwrap();
     let admin_scope = scope_of(&store, &admin);
-    let created =
-        identity::create_organization_user(&store, &admin_scope, "new@example.com", Role::Owner);
+    let created = identity::create_organization_user(
+        &store,
+        &admin_scope,
+        &new_user("new@example.com", Role::Owner),
+    );
     assert!(matches!(created, Err(StoreError::Forbidden)));
     let demoted = identity::change_role(&store, &admin_scope, &owner.id, Role::Member);
     assert!(matches!(demoted, Err(StoreError::Forbidden)));
@@ -132,8 +169,12 @@ fn an_owner_demotes_once_another_owner_exists() {
     let store = store();
     let (_, first) = personal(&store, "first@example.com");
     let first_scope = scope_of(&store, &first);
-    identity::create_organization_user(&store, &first_scope, "second@example.com", Role::Owner)
-        .unwrap();
+    identity::create_organization_user(
+        &store,
+        &first_scope,
+        &new_user("second@example.com", Role::Owner),
+    )
+    .unwrap();
     let changed = identity::change_role(&store, &first_scope, &first.id, Role::Member).unwrap();
     assert_eq!(changed.role, Role::Member);
 }

@@ -4,6 +4,8 @@
 
 //! Test fixtures shared by the session modules.
 
+use rusqlite::params;
+
 use super::SessionTimeouts;
 use crate::identity;
 use crate::ids::UserId;
@@ -43,6 +45,37 @@ pub(crate) fn session_rows(store: &Store) -> i64 {
         .read(|connection| {
             connection
                 .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+                .map_err(StoreError::from)
+        })
+        .unwrap()
+}
+
+/// Puts a one-time password on the user's row; the hash itself never
+/// matters to the session, only that one is live until `expires_at`.
+pub(crate) fn hand_out_one_time_password(store: &Store, user_id: &UserId, expires_at: i64) {
+    store
+        .write(|transaction| {
+            transaction
+                .execute(
+                    "UPDATE users SET password_hash = 'one-time', password_reset_expires_at = ?1
+                     WHERE id = ?2",
+                    params![expires_at, user_id.as_str()],
+                )
+                .map_err(StoreError::from)?;
+            Ok(())
+        })
+        .unwrap();
+}
+
+pub(crate) fn password_hash_of(store: &Store, user_id: &UserId) -> Option<String> {
+    store
+        .read(|connection| {
+            connection
+                .query_row(
+                    "SELECT password_hash FROM users WHERE id = ?1",
+                    [user_id.as_str()],
+                    |row| row.get(0),
+                )
                 .map_err(StoreError::from)
         })
         .unwrap()
