@@ -4,15 +4,20 @@
 
 //! Local login: argon2id hashing and non-enumerating verification.
 
+mod one_time;
+
 use std::sync::LazyLock;
 
 use argon2::{Algorithm, Argon2, Params, PasswordHasher, PasswordVerifier, Version};
 use rusqlite::OptionalExtension;
 use thiserror::Error;
 
+pub use one_time::{OneTimePassword, create_user, reset_password};
+
 use crate::events::{Actor, DomainEvent, append};
 use crate::ids::{OrganizationId, UserId};
-use crate::store::{Store, StoreError};
+use crate::scope::Scope;
+use crate::store::{Store, StoreError, now_ms};
 
 /// OWASP password storage baseline: 19 MiB memory, two passes, one lane.
 const MEMORY_KIB: u32 = 19 * 1024;
@@ -33,6 +38,10 @@ static DUMMY_HASH: LazyLock<String> =
 pub enum AuthError {
     #[error("passwords take {MIN_PASSWORD_CHARS} to {MAX_PASSWORD_CHARS} characters")]
     PasswordLength,
+    #[error("an admin resets other users' passwords, not their own")]
+    OwnPassword,
+    #[error("the system randomness source failed")]
+    Random,
     #[error("password hashing failed: {0}")]
     Hash(argon2::password_hash::Error),
     #[error(transparent)]
@@ -44,24 +53,30 @@ pub enum AuthError {
 #[derive(Debug)]
 pub enum LoginOutcome {
     Verified(UserId),
+    /// A live one-time password matched; the session it opens reaches
+    /// only the password change.
+    VerifiedOneTime(UserId),
     Rejected(Option<UserId>),
 }
 
-/// Hashes and stores a new password for the user.
+/// The credential columns of one user row.
+struct StoredPassword {
+    user_id: UserId,
+    hash: Option<String>,
+    one_time_expires_at: Option<i64>,
+}
+
+/// Hashes and stores a chosen password for the user.
 ///
 /// # Errors
 ///
 /// Returns an error when the password falls outside the length window,
 /// hashing fails, the user does not exist or the database fails.
 pub fn set_password(store: &Store, user_id: &UserId, password: &str) -> Result<(), AuthError> {
-    let length = password.chars().count();
-    if !(MIN_PASSWORD_CHARS..=MAX_PASSWORD_CHARS).contains(&length) {
-        return Err(AuthError::PasswordLength);
-    }
-    let encoded = hash(password).map_err(AuthError::Hash)?;
+    let encoded = hash_password(password)?;
     store.write(|transaction| {
         let updated = transaction.execute(
-            "UPDATE users SET password_hash = ?1 WHERE id = ?2",
+            "UPDATE users SET password_hash = ?1, password_reset_expires_at = NULL WHERE id = ?2",
             [encoded.as_str(), user_id.as_str()],
         )?;
         if updated == 0 {
@@ -72,8 +87,34 @@ pub fn set_password(store: &Store, user_id: &UserId, password: &str) -> Result<(
     Ok(())
 }
 
+/// Refuses a password outside the length window.
+///
+/// # Errors
+///
+/// Returns [`AuthError::PasswordLength`] outside the window.
+pub fn check_length(password: &str) -> Result<(), AuthError> {
+    let length = password.chars().count();
+    if (MIN_PASSWORD_CHARS..=MAX_PASSWORD_CHARS).contains(&length) {
+        Ok(())
+    } else {
+        Err(AuthError::PasswordLength)
+    }
+}
+
+/// Hashes a password after checking its length.
+///
+/// # Errors
+///
+/// Returns an error when the password falls outside the length window
+/// or hashing fails.
+pub fn hash_password(password: &str) -> Result<String, AuthError> {
+    check_length(password)?;
+    hash(password).map_err(AuthError::Hash)
+}
+
 /// Verifies a login attempt without revealing whether the name exists:
-/// unknown names and passwordless users burn the same hashing cost.
+/// unknown names, passwordless users and expired one-time passwords burn
+/// the same hashing cost.
 ///
 /// # Errors
 ///
@@ -84,36 +125,78 @@ pub fn verify_login(
     login: &str,
     password: &str,
 ) -> Result<LoginOutcome, StoreError> {
-    let row: Option<(UserId, Option<String>)> = store.read(|connection| {
+    let stored = store.read(|connection| {
         let row = connection
             .query_row(
-                "SELECT id, password_hash FROM users WHERE login = ?1",
+                "SELECT id, password_hash, password_reset_expires_at FROM users WHERE login = ?1",
                 [login],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| {
+                    Ok(StoredPassword {
+                        user_id: row.get(0)?,
+                        hash: row.get(1)?,
+                        one_time_expires_at: row.get(2)?,
+                    })
+                },
             )
             .optional()?;
         Ok(row)
     })?;
-    Ok(match row {
-        Some((user_id, Some(stored))) => {
-            if hasher()
-                .verify_password(password.as_bytes(), stored.as_str())
-                .is_ok()
-            {
-                LoginOutcome::Verified(user_id)
-            } else {
-                LoginOutcome::Rejected(Some(user_id))
-            }
-        }
-        Some((user_id, None)) => {
+    let Some(stored) = stored else {
+        burn_hashing_cost(password);
+        return Ok(LoginOutcome::Rejected(None));
+    };
+    Ok(outcome_of(&stored, password))
+}
+
+fn outcome_of(stored: &StoredPassword, password: &str) -> LoginOutcome {
+    let user_id = stored.user_id.clone();
+    let Some(hash) = stored.hash.as_deref() else {
+        burn_hashing_cost(password);
+        return LoginOutcome::Rejected(Some(user_id));
+    };
+    let live_one_time = stored
+        .one_time_expires_at
+        .map(|expires_at| now_ms() < expires_at);
+    let verified = match live_one_time {
+        None => matches(password, hash),
+        Some(true) => matches(&one_time::typed(password), hash),
+        Some(false) => {
             burn_hashing_cost(password);
-            LoginOutcome::Rejected(Some(user_id))
+            false
         }
-        None => {
-            burn_hashing_cost(password);
-            LoginOutcome::Rejected(None)
-        }
-    })
+    };
+    match (verified, live_one_time) {
+        (true, None) => LoginOutcome::Verified(user_id),
+        (true, Some(_)) => LoginOutcome::VerifiedOneTime(user_id),
+        (false, _) => LoginOutcome::Rejected(Some(user_id)),
+    }
+}
+
+/// Checks the scope user's current password for the self-service
+/// change. A user without a chosen password burns the hashing cost and
+/// gets `false`; a one-time password is no current password.
+///
+/// # Errors
+///
+/// Returns an error when the database fails.
+pub fn verify_password(store: &Store, scope: &Scope, password: &str) -> Result<bool, StoreError> {
+    let hash: Option<String> = store.read(|connection| {
+        let hash = connection
+            .query_row(
+                "SELECT password_hash FROM users
+                 WHERE id = ?1 AND password_reset_expires_at IS NULL",
+                [scope.user_id().as_str()],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        Ok(hash)
+    })?;
+    let Some(hash) = hash else {
+        burn_hashing_cost(password);
+        return Ok(false);
+    };
+    Ok(matches(password, &hash))
 }
 
 /// Records a failed attempt on an existing user in the event log.
@@ -138,6 +221,10 @@ pub fn record_login_failure(store: &Store, user_id: &UserId) -> Result<(), Store
     })
 }
 
+fn matches(password: &str, hash: &str) -> bool {
+    hasher().verify_password(password.as_bytes(), hash).is_ok()
+}
+
 fn burn_hashing_cost(password: &str) {
     let _ = hasher().verify_password(password.as_bytes(), DUMMY_HASH.as_str());
 }
@@ -155,6 +242,7 @@ fn hasher() -> Argon2<'static> {
 mod tests {
     use super::*;
     use crate::identity;
+    use crate::scope;
 
     const PASSWORD: &str = "example passphrase";
 
@@ -196,6 +284,7 @@ mod tests {
         let long = "x".repeat(MAX_PASSWORD_CHARS + 1);
         let too_long = set_password(&store, &user_id, &long);
         assert!(matches!(too_long, Err(AuthError::PasswordLength)));
+        assert!(check_length(&"x".repeat(MIN_PASSWORD_CHARS)).is_ok());
     }
 
     #[test]
@@ -207,5 +296,15 @@ mod tests {
             result,
             Err(AuthError::Store(StoreError::NotFound))
         ));
+    }
+
+    #[test]
+    fn the_current_password_check_answers_only_for_a_chosen_password() {
+        let (store, user_id) = store_with_user();
+        let scope = scope::resolve(&store, &user_id, None).unwrap();
+        assert!(!verify_password(&store, &scope, PASSWORD).unwrap());
+        set_password(&store, &user_id, PASSWORD).unwrap();
+        assert!(verify_password(&store, &scope, PASSWORD).unwrap());
+        assert!(!verify_password(&store, &scope, "wrong password!").unwrap());
     }
 }

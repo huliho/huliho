@@ -18,10 +18,13 @@ use serde::Deserialize;
 use tower::ServiceExt;
 
 use common::router_on;
+use huliho_server::config::AuthConfig;
+use huliho_server::session::SessionTimeouts;
 use huliho_server::store::Store;
 use huliho_server::{auth, identity};
 use signin::{
-    LOGIN, PASSWORD, body_text, login_request, sign_in, sign_in_as, store_with_account, with_cookie,
+    LOGIN, PASSWORD, body_text, cookie_of, login_request, sign_in, sign_in_as, store_with_account,
+    with_cookie,
 };
 
 const FIREFOX: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0";
@@ -120,16 +123,7 @@ async fn another_users_session_id_is_not_found() {
         .oneshot(login_request(OTHER_LOGIN, PASSWORD))
         .await
         .unwrap();
-    let theirs = response
-        .headers()
-        .get(header::SET_COOKIE)
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .split(';')
-        .next()
-        .unwrap()
-        .to_owned();
+    let theirs = cookie_of(&response);
     let their_id = listed(&router, &theirs).await[0].id.clone();
     let status = status_of(
         &router,
@@ -227,18 +221,47 @@ async fn the_address_the_listener_saw_lands_on_the_row() {
         ))));
     let response = router.clone().oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    let cookie = response
-        .headers()
-        .get(header::SET_COOKIE)
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .split(';')
-        .next()
-        .unwrap()
-        .to_owned();
+    let cookie = cookie_of(&response);
     let rows = listed(&router, &cookie).await;
     assert_eq!(rows[0].address.as_deref(), Some("203.0.113.7"));
+}
+
+#[tokio::test]
+async fn an_aged_session_leaves_the_list_and_its_row_can_still_be_revoked() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let store = Arc::new(Store::open(&data).unwrap());
+    let (_, user) = identity::create_personal_user(&store, LOGIN).unwrap();
+    auth::set_password(&store, &user.id, PASSWORD).unwrap();
+    let router = router_on(store);
+    let stale = sign_in(&router).await;
+    let stale_id = listed(&router, &stale).await[0].id.clone();
+    let current = sign_in(&router).await;
+    let idle_ms = SessionTimeouts::from(&AuthConfig::default()).idle_ms;
+    let database = rusqlite::Connection::open(data.join("huliho.db")).unwrap();
+    database
+        .execute(
+            "UPDATE sessions SET last_seen_at = last_seen_at - ?1 WHERE id = ?2",
+            rusqlite::params![idle_ms, stale_id],
+        )
+        .unwrap();
+    let status = status_of(&router, Method::GET, "/api/session", &stale).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let rows = listed(&router, &current).await;
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].current);
+    let status = status_of(
+        &router,
+        Method::DELETE,
+        &format!("/api/sessions/{stale_id}"),
+        &current,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let remaining: i64 = database
+        .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(remaining, 1);
 }
 
 #[tokio::test]

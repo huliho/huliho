@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use super::{Device, Session, SessionTimeouts};
 use crate::events::{Actor, DomainEvent, append};
-use crate::ids::SessionId;
+use crate::ids::{OrganizationId, SessionId, UserId};
 use crate::scope::Scope;
 use crate::store::{Store, StoreError, now_ms};
 
@@ -95,16 +95,43 @@ pub fn revoke_other(
 ///
 /// Returns an error when the database fails.
 pub fn revoke_others(store: &Store, scope: &Scope, current: &Session) -> Result<(), StoreError> {
-    store.write(|transaction| {
-        let removed = transaction.execute(
-            "DELETE FROM sessions WHERE user_id = ?1 AND id <> ?2",
-            [scope.user_id().as_str(), current.id.as_str()],
-        )?;
-        for _ in 0..removed {
-            record_revocation(transaction, scope)?;
-        }
-        Ok(())
-    })
+    store.write(|transaction| end_others(transaction, scope, &current.id))
+}
+
+/// Ends every session of the scope user except `kept`, one revocation
+/// event per row.
+pub(super) fn end_others(
+    connection: &Connection,
+    scope: &Scope,
+    kept: &SessionId,
+) -> Result<(), StoreError> {
+    let removed = connection.execute(
+        "DELETE FROM sessions WHERE user_id = ?1 AND id <> ?2",
+        [scope.user_id().as_str(), kept.as_str()],
+    )?;
+    for _ in 0..removed {
+        record_revocation(connection, scope)?;
+    }
+    Ok(())
+}
+
+/// Ends every session of `target`, one revocation event per row under
+/// `actor`; an admin reset acts on another user's rows.
+pub(crate) fn revoke_all(
+    connection: &Connection,
+    organization_id: &OrganizationId,
+    actor: &Actor,
+    target: &UserId,
+) -> Result<(), StoreError> {
+    let removed =
+        connection.execute("DELETE FROM sessions WHERE user_id = ?1", [target.as_str()])?;
+    for _ in 0..removed {
+        let event = DomainEvent::SessionRevoked {
+            user_id: target.clone(),
+        };
+        append(connection, organization_id, actor, &event)?;
+    }
+    Ok(())
 }
 
 fn record_revocation(connection: &Connection, scope: &Scope) -> Result<(), StoreError> {

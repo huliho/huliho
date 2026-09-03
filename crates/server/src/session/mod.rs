@@ -9,19 +9,24 @@ pub mod device;
 #[cfg(test)]
 pub(crate) mod fixtures;
 mod list;
+mod open;
+mod password;
 
 use std::net::IpAddr;
 
 use chacha20poly1305::XNonce;
 use chacha20poly1305::aead::{Aead, Generate, Payload};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub use activity::{TOUCH_INTERVAL_MS, prune_expired, prune_periodically, touch};
 pub use device::Device;
+pub(crate) use list::revoke_all;
 pub use list::{SessionRow, list, revoke_other, revoke_others};
+pub use open::{create, create_for_password_change};
+pub use password::{PasswordChange, apply_password_change};
 
 use crate::config::AuthConfig;
 use crate::events::{Actor, DomainEvent, append};
@@ -29,13 +34,8 @@ use crate::ids::{OrganizationId, SessionId, UserId};
 use crate::secrets::SessionKeys;
 use crate::store::{Store, StoreError, now_ms};
 
-use activity::record_activity;
-
 /// Cookie carrying the opaque session token.
 pub const SESSION_COOKIE: &str = "huliho_session";
-
-/// 128-bit tokens per the security doctrine.
-const TOKEN_BYTES: usize = 16;
 
 /// XChaCha20-Poly1305 prefixes its nonce to the sealed blob.
 const NONCE_BYTES: usize = 24;
@@ -72,9 +72,12 @@ impl From<&AuthConfig> for SessionTimeouts {
 
 /// What a row seals: the binding the plain columns cannot prove.
 #[derive(Serialize, Deserialize)]
-struct SealedSession {
-    user_id: UserId,
-    created_at: i64,
+pub(super) struct SealedSession {
+    pub(super) user_id: UserId,
+    pub(super) created_at: i64,
+    /// Rows sealed before the flag existed read as an ordinary session.
+    #[serde(default)]
+    pub(super) password_change_required: bool,
 }
 
 /// Digest of the cookie token; the row key and the AEAD associated data.
@@ -82,7 +85,7 @@ struct SealedSession {
 pub(crate) struct TokenHash(Vec<u8>);
 
 impl TokenHash {
-    fn of(token: &str) -> Self {
+    pub(super) fn of(token: &str) -> Self {
         Self(Sha256::digest(token.as_bytes()).to_vec())
     }
 
@@ -104,61 +107,10 @@ pub struct Session {
     pub id: SessionId,
     pub user_id: UserId,
     pub last_seen_at: i64,
+    /// Set on a session a one-time password opened; it reaches only the
+    /// password change until that is done.
+    pub password_change_required: bool,
     token_hash: TokenHash,
-}
-
-/// Creates a session for the user and returns the cookie token.
-///
-/// # Errors
-///
-/// Returns an error when randomness fails, the user is gone or the
-/// database fails.
-pub fn create(
-    store: &Store,
-    keys: &SessionKeys,
-    user_id: &UserId,
-    client: &Client,
-) -> Result<String, SessionError> {
-    let mut bytes = [0u8; TOKEN_BYTES];
-    getrandom::fill(&mut bytes).map_err(|_| SessionError::Random)?;
-    let token = base16ct::lower::encode_string(&bytes);
-    let token_hash = TokenHash::of(&token);
-    let created_at = now_ms();
-    let sealed = seal(
-        keys,
-        &token_hash,
-        &SealedSession {
-            user_id: user_id.clone(),
-            created_at,
-        },
-    )?;
-    let device = serde_json::to_string(&client.device).map_err(StoreError::from)?;
-    store.write(|transaction| {
-        let organization_id = organization_of(transaction, user_id)?;
-        transaction.execute(
-            "INSERT INTO sessions
-             (token_hash, id, user_id, sealed, device, address, created_at, last_seen_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
-            params![
-                token_hash.as_slice(),
-                SessionId::generate().as_str(),
-                user_id.as_str(),
-                sealed,
-                device,
-                client.address.map(|address| address.to_string()),
-                created_at
-            ],
-        )?;
-        let actor = Actor::User(user_id.clone());
-        append(
-            transaction,
-            &organization_id,
-            &actor,
-            &DomainEvent::SessionCreated {},
-        )?;
-        record_activity(transaction, &organization_id, user_id, created_at)
-    })?;
-    Ok(token)
 }
 
 /// Resolves a cookie token to its session, enforcing both timeouts. The
@@ -200,6 +152,7 @@ pub fn authenticate(
             id,
             user_id: sealed.user_id,
             last_seen_at,
+            password_change_required: sealed.password_change_required,
             token_hash: token_hash.clone(),
         }))
     })?;
@@ -237,7 +190,7 @@ pub fn revoke(store: &Store, token: &str) -> Result<(), StoreError> {
     })
 }
 
-fn seal(
+pub(super) fn seal(
     keys: &SessionKeys,
     token_hash: &TokenHash,
     session: &SealedSession,
@@ -275,7 +228,7 @@ fn open(keys: &SessionKeys, token_hash: &TokenHash, sealed: &[u8]) -> Option<Sea
     serde_json::from_slice(&plaintext).ok()
 }
 
-fn organization_of(
+pub(super) fn organization_of(
     connection: &Connection,
     user_id: &UserId,
 ) -> Result<OrganizationId, StoreError> {
@@ -303,6 +256,14 @@ mod tests {
         let resolved = authenticate(&store, &keys, GENEROUS_TIMEOUTS, &token).unwrap();
         assert_eq!(resolved.user_id, user_id);
         assert!(!resolved.id.as_str().is_empty());
+    }
+
+    #[test]
+    fn a_row_sealed_before_the_flag_reads_as_an_ordinary_session() {
+        let sealed: SealedSession =
+            serde_json::from_str(r#"{"user_id":"u","created_at":7}"#).unwrap();
+        assert!(!sealed.password_change_required);
+        assert_eq!(sealed.created_at, 7);
     }
 
     #[test]

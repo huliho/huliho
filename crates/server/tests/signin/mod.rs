@@ -67,6 +67,11 @@ pub async fn sign_in_as(router: &Router, user_agent: &str) -> String {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    cookie_of(&response)
+}
+
+/// The cookie pair a response set.
+pub fn cookie_of(response: &axum::http::Response<Body>) -> String {
     let set_cookie = response
         .headers()
         .get(header::SET_COOKIE)

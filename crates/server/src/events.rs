@@ -57,6 +57,12 @@ pub enum DomainEvent {
         user_id: UserId,
         period: String,
     },
+    UserPasswordChanged {
+        user_id: UserId,
+    },
+    UserPasswordReset {
+        user_id: UserId,
+    },
     AccountLinked {
         account_id: AccountId,
         kind: AccountKind,
@@ -88,6 +94,8 @@ impl DomainEvent {
             Self::UserCreated { .. } => "user.created",
             Self::UserRoleChanged { .. } => "user.role_changed",
             Self::UserActive { .. } => "user.active",
+            Self::UserPasswordChanged { .. } => "user.password_changed",
+            Self::UserPasswordReset { .. } => "user.password_reset",
             Self::AccountLinked { .. } => "account.linked",
             Self::AccountRemoved { .. } => "account.removed",
             Self::SessionCreated {} => "session.created",

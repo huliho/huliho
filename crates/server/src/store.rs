@@ -48,6 +48,8 @@ pub enum StoreError {
     MissingAccount,
     #[error("the current session ends by signing out, not by revoking")]
     CurrentSession,
+    #[error("that sign-in name is taken")]
+    LoginTaken,
 }
 
 /// Handle to the embedded database; all access goes through it.

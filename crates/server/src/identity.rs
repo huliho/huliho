@@ -33,6 +33,14 @@ pub struct User {
     pub created_at: i64,
 }
 
+/// What an admin fills in to create a user.
+#[derive(Debug, Clone)]
+pub struct NewUser {
+    pub login: String,
+    pub name: String,
+    pub role: Role,
+}
+
 const USER_COLUMNS: &str = "id, organization_id, login, name, role, external_issuer, \
                             external_subject, last_active_at, created_at";
 
@@ -41,7 +49,8 @@ const USER_COLUMNS: &str = "id, organization_id, login, name, role, external_iss
 ///
 /// # Errors
 ///
-/// Returns an error on a duplicate login or a database failure.
+/// Returns [`StoreError::LoginTaken`] for a sign-in name already in use;
+/// database failures pass through.
 pub fn create_personal_user(
     store: &Store,
     login: &str,
@@ -60,7 +69,12 @@ pub fn create_personal_user(
                 organization.created_at
             ],
         )?;
-        let user = insert_user(transaction, &organization.id, login, Role::Owner)?;
+        let owner = NewUser {
+            login: login.to_owned(),
+            name: login.to_owned(),
+            role: Role::Owner,
+        };
+        let user = insert_user(transaction, &organization.id, &owner)?;
         append(
             transaction,
             &organization.id,
@@ -82,28 +96,41 @@ pub fn create_personal_user(
 /// # Errors
 ///
 /// Returns [`StoreError::Forbidden`] below the admin role or when the
-/// granted role exceeds the actor's; duplicate logins and database
-/// failures pass through.
+/// granted role exceeds the actor's, [`StoreError::LoginTaken`] for a
+/// sign-in name already in use; database failures pass through.
 pub fn create_organization_user(
     store: &Store,
     scope: &Scope,
-    login: &str,
-    role: Role,
+    new: &NewUser,
 ) -> Result<User, StoreError> {
+    store.write(|transaction| insert_organization_user(transaction, scope, new))
+}
+
+/// Refuses a grant below the admin role or above the actor's own.
+pub(crate) fn ensure_may_grant(scope: &Scope, role: Role) -> Result<(), StoreError> {
     scope.require(Role::Admin)?;
     if role > scope.role() {
         return Err(StoreError::Forbidden);
     }
-    store.write(|transaction| {
-        let user = insert_user(transaction, scope.organization_id(), login, role)?;
-        let created = DomainEvent::UserCreated {
-            user_id: user.id.clone(),
-            role,
-        };
-        let actor = Actor::User(scope.user_id().clone());
-        append(transaction, scope.organization_id(), &actor, &created)?;
-        Ok(user)
-    })
+    Ok(())
+}
+
+/// [`create_organization_user`] inside a transaction the caller owns, so
+/// a credential can land in the same one.
+pub(crate) fn insert_organization_user(
+    connection: &Connection,
+    scope: &Scope,
+    new: &NewUser,
+) -> Result<User, StoreError> {
+    ensure_may_grant(scope, new.role)?;
+    let user = insert_user(connection, scope.organization_id(), new)?;
+    let created = DomainEvent::UserCreated {
+        user_id: user.id.clone(),
+        role: new.role,
+    };
+    let actor = Actor::User(scope.user_id().clone());
+    append(connection, scope.organization_id(), &actor, &created)?;
+    Ok(user)
 }
 
 /// Reads the scope's organization.
@@ -182,10 +209,7 @@ pub fn change_role(
     target: &UserId,
     to: Role,
 ) -> Result<User, StoreError> {
-    scope.require(Role::Admin)?;
-    if to > scope.role() {
-        return Err(StoreError::Forbidden);
-    }
+    ensure_may_grant(scope, to)?;
     store.write(|transaction| {
         let current = transaction
             .query_row(
@@ -239,18 +263,27 @@ fn ensure_another_owner(
     Ok(())
 }
 
+/// The unique index would surface a duplicate as an opaque database
+/// error, so the login is checked first.
 fn insert_user(
     connection: &Connection,
     organization_id: &OrganizationId,
-    login: &str,
-    role: Role,
+    new: &NewUser,
 ) -> Result<User, StoreError> {
+    let taken: bool = connection.query_row(
+        "SELECT EXISTS (SELECT 1 FROM users WHERE login = ?1)",
+        [new.login.as_str()],
+        |row| row.get(0),
+    )?;
+    if taken {
+        return Err(StoreError::LoginTaken);
+    }
     let user = User {
         id: UserId::generate(),
         organization_id: organization_id.clone(),
-        login: login.to_owned(),
-        name: login.to_owned(),
-        role,
+        login: new.login.clone(),
+        name: new.name.clone(),
+        role: new.role,
         external_issuer: None,
         external_subject: None,
         last_active_at: None,
@@ -264,7 +297,7 @@ fn insert_user(
             organization_id.as_str(),
             user.login,
             user.name,
-            role.as_str(),
+            new.role.as_str(),
             user.created_at
         ],
     )?;

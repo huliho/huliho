@@ -16,6 +16,11 @@ single resolver, so nothing reaches storage across an organization or
 user boundary. A signed-in user lists their own sessions and ends any
 of them but the current one; every mutation stamps its session at most
 once per five minutes and records the user as active for the month.
+A user changes their own password against the current one; every
+other session ends and the current one continues on a fresh token.
+An admin creates users and resets passwords through a one-time
+password that is shown once, works for one sign-in within a day and
+opens a session that reaches only the password change.
 
 Configuration is one TOML file; unknown keys are rejected. Top-level
 keys are the `listen` address and the `assets` directory; `[storage]`

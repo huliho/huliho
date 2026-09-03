@@ -5,7 +5,9 @@
 //! The /api router: its guards, extractors and the error shape.
 
 mod login;
+mod password;
 mod sessions;
+mod users;
 
 use std::fmt::Display;
 use std::net::{IpAddr, SocketAddr};
@@ -17,11 +19,12 @@ use axum::http::request::Parts;
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Json, Response};
-use axum::routing::{delete, get};
+use axum::routing::{delete, get, post, put};
 use axum_extra::extract::cookie::CookieJar;
 use serde::Serialize;
 use tokio::sync::Semaphore;
 
+use crate::auth::AuthError;
 use crate::rate::RateLimiter;
 use crate::secrets::SessionKeys;
 use crate::session::{self, SESSION_COOKIE, Session, SessionError, SessionTimeouts};
@@ -61,6 +64,9 @@ pub fn router(state: ApiState) -> Router {
             get(sessions::list_sessions).delete(sessions::revoke_other_sessions),
         )
         .route("/sessions/{id}", delete(sessions::revoke_session))
+        .route("/password", put(password::change_password))
+        .route("/users", get(users::list_users).post(users::create_user))
+        .route("/users/{id}/password-reset", post(users::reset_password))
         .layer(axum::middleware::from_fn(require_csrf_header))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT_BYTES))
         .with_state(state)
@@ -73,7 +79,9 @@ enum ApiError {
     InvalidCredentials,
     Unauthenticated,
     Forbidden,
+    PasswordChangeRequired,
     NotFound,
+    LoginTaken,
     MissingCsrfHeader,
     RateLimited { retry_after_ms: i64 },
     Internal,
@@ -86,7 +94,9 @@ impl ApiError {
             Self::InvalidCredentials => "invalid_credentials",
             Self::Unauthenticated => "unauthenticated",
             Self::Forbidden => "forbidden",
+            Self::PasswordChangeRequired => "password_change_required",
             Self::NotFound => "not_found",
+            Self::LoginTaken => "login_taken",
             Self::MissingCsrfHeader => "missing_csrf_header",
             Self::RateLimited { .. } => "rate_limited",
             Self::Internal => "internal",
@@ -97,8 +107,11 @@ impl ApiError {
         match self {
             Self::InvalidRequest => StatusCode::BAD_REQUEST,
             Self::InvalidCredentials | Self::Unauthenticated => StatusCode::UNAUTHORIZED,
-            Self::Forbidden | Self::MissingCsrfHeader => StatusCode::FORBIDDEN,
+            Self::Forbidden | Self::PasswordChangeRequired | Self::MissingCsrfHeader => {
+                StatusCode::FORBIDDEN
+            }
             Self::NotFound => StatusCode::NOT_FOUND,
+            Self::LoginTaken => StatusCode::CONFLICT,
             Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -134,12 +147,23 @@ impl From<SessionError> for ApiError {
     }
 }
 
+impl From<AuthError> for ApiError {
+    fn from(error: AuthError) -> Self {
+        match error {
+            AuthError::PasswordLength | AuthError::OwnPassword => Self::InvalidRequest,
+            AuthError::Store(inner) => Self::from(inner),
+            AuthError::Random | AuthError::Hash(_) => internal(error),
+        }
+    }
+}
+
 impl From<StoreError> for ApiError {
     fn from(error: StoreError) -> Self {
         match error {
             StoreError::NotFound => Self::NotFound,
             StoreError::Forbidden => Self::Forbidden,
             StoreError::CurrentSession => Self::InvalidRequest,
+            StoreError::LoginTaken => Self::LoginTaken,
             StoreError::DataDirectory { .. }
             | StoreError::Database(_)
             | StoreError::Migration(_)
@@ -160,6 +184,16 @@ fn internal(error: impl Display) -> ApiError {
 struct ClientInfo {
     address: Option<IpAddr>,
     user_agent: String,
+}
+
+impl ClientInfo {
+    /// The limiter key shared by every credential check from this address.
+    fn address_key(&self) -> String {
+        let address = self
+            .address
+            .map_or("unknown".to_owned(), |address| address.to_string());
+        format!("ip:{address}")
+    }
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for ClientInfo {
@@ -187,7 +221,9 @@ impl<S: Send + Sync> FromRequestParts<S> for ClientInfo {
 }
 
 /// The session behind the request cookie, resolved before the handler
-/// runs; a missing, expired or revoked cookie answers 401.
+/// runs; a missing, expired or revoked cookie answers 401. Only the
+/// session endpoint and the password change take this one; sign-out
+/// needs no session and every other handler takes [`Full`].
 struct Authenticated {
     session: Session,
 }
@@ -208,6 +244,24 @@ impl FromRequestParts<ApiState> for Authenticated {
         })
         .await
         .map_err(internal)??;
+        Ok(Self { session })
+    }
+}
+
+/// A session that may do everything; one opened by a one-time password
+/// is refused until the password is changed.
+struct Full {
+    session: Session,
+}
+
+impl FromRequestParts<ApiState> for Full {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &ApiState) -> Result<Self, ApiError> {
+        let Authenticated { session } = Authenticated::from_request_parts(parts, state).await?;
+        if session.password_change_required {
+            return Err(ApiError::PasswordChangeRequired);
+        }
         Ok(Self { session })
     }
 }

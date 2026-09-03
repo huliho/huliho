@@ -10,14 +10,14 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Json;
 
-use super::{ApiError, ApiState, Authenticated, ClientInfo, internal};
+use super::{ApiError, ApiState, ClientInfo, Full, internal};
 use crate::ids::SessionId;
 use crate::scope;
 use crate::session::{self, SessionRow};
 
 pub(super) async fn list_sessions(
     State(state): State<ApiState>,
-    auth: Authenticated,
+    auth: Full,
 ) -> Result<Json<Vec<SessionRow>>, ApiError> {
     let store = Arc::clone(&state.store);
     let timeouts = state.timeouts;
@@ -33,7 +33,7 @@ pub(super) async fn list_sessions(
 pub(super) async fn revoke_session(
     State(state): State<ApiState>,
     client: ClientInfo,
-    auth: Authenticated,
+    auth: Full,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let store = Arc::clone(&state.store);
@@ -51,7 +51,7 @@ pub(super) async fn revoke_session(
 pub(super) async fn revoke_other_sessions(
     State(state): State<ApiState>,
     client: ClientInfo,
-    auth: Authenticated,
+    auth: Full,
 ) -> Result<StatusCode, ApiError> {
     let store = Arc::clone(&state.store);
     tokio::task::spawn_blocking(move || -> Result<(), ApiError> {
