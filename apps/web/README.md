@@ -14,6 +14,13 @@ once before either. The test script disables Node's own experimental
 localStorage global, which would otherwise shadow the jsdom one that
 the locale strategy reads.
 
+Single-key commands (Escape closes settings, `z` undoes) come from one
+registry in `src/commands`; the root layout installs its listener and
+hosts the toast viewport, so a toast outlives the route that opened it.
+A revoke on the sessions page leaves the list at once and reaches the
+server only when its undo toast has run out. If the page closes first,
+the request goes out on page hide with `keepalive`.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component

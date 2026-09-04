@@ -5,13 +5,10 @@
 import { fetchSession } from "@huliho/core";
 import { queryOptions } from "@tanstack/react-query";
 
+import { queryKeys } from "./keys";
+
 // Route guards share one answer instead of refetching per navigation.
 const SESSION_STALE_MS = 30_000;
-
-// The one registry every query key comes from.
-export const queryKeys = {
-  session: ["session"],
-} as const;
 
 export const sessionQueryOptions = queryOptions({
   queryKey: queryKeys.session,

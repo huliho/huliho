@@ -1,0 +1,17 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* A key cap keeps the page colors, so it stays readable inside a toast too. */
+.kbd {
+  display: inline-block;
+  min-inline-size: var(--hhx-space-5);
+  padding-inline: var(--hhx-space-1);
+  border: var(--hhx-border-width) solid var(--hh-border-strong);
+  border-radius: var(--hhx-radius-control);
+  background: var(--hh-surface);
+  color: var(--hh-text);
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-1);
+  text-align: center;
+}

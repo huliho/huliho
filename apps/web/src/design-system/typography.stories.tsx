@@ -5,6 +5,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
+import { Kbd } from "./kbd";
 import styles from "./sheet.module.css";
 
 const SCALE = [
@@ -49,8 +50,7 @@ function MonoSamples(): JSX.Element {
     <div className={styles.card}>
       <span className={styles.mono}>14:32 · 23 unread · jmap.fastmail.example</span>
       <span>
-        Jump to a mailbox with <kbd className={styles.kbd}>g</kbd> then{" "}
-        <kbd className={styles.kbd}>i</kbd>, open search with <kbd className={styles.kbd}>/</kbd>
+        Jump to a mailbox with <Kbd>g</Kbd> then <Kbd>i</Kbd>, open search with <Kbd>/</Kbd>
       </span>
     </div>
   );

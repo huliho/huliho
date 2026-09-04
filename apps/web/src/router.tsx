@@ -4,7 +4,6 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import {
-  Outlet,
   createRootRouteWithContext,
   createRoute,
   createRouter,
@@ -14,6 +13,10 @@ import {
 import { sessionQueryOptions } from "@huliho/state";
 import { App } from "./app";
 import { AboutSettings } from "./settings/about";
+import { SessionsPage } from "./settings/sessions/sessions-page";
+import { SettingsIndex } from "./settings/settings-index";
+import { SettingsPage } from "./settings/settings-page";
+import { RootLayout } from "./shell/root-layout";
 import { RouteError, RoutePending } from "./shell/route-fallbacks";
 import { SignIn } from "./sign-in/sign-in";
 
@@ -24,7 +27,7 @@ interface RouterContext {
 export const queryClient = new QueryClient();
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
-  component: Outlet,
+  component: RootLayout,
 });
 
 async function requireSession(context: RouterContext): Promise<void> {
@@ -54,14 +57,36 @@ const signInRoute = createRoute({
   },
 });
 
-const aboutRoute = createRoute({
+const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/settings/about",
-  component: AboutSettings,
+  path: "/settings",
+  component: SettingsPage,
   beforeLoad: ({ context }) => requireSession(context),
 });
 
-const routeTree = rootRoute.addChildren([shellRoute, signInRoute, aboutRoute]);
+const settingsIndexRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/",
+  component: SettingsIndex,
+});
+
+const sessionsRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/sessions",
+  component: SessionsPage,
+});
+
+const aboutRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/about",
+  component: AboutSettings,
+});
+
+const routeTree = rootRoute.addChildren([
+  shellRoute,
+  signInRoute,
+  settingsRoute.addChildren([settingsIndexRoute, sessionsRoute, aboutRoute]),
+]);
 
 export const router = createRouter({
   routeTree,

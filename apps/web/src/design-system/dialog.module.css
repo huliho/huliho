@@ -1,0 +1,53 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--hh-bg);
+  opacity: var(--hhx-scrim-opacity);
+  transition: opacity var(--hhx-duration-overlay) var(--hhx-ease);
+}
+
+.popup {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  inline-size: min(var(--hhx-measure-narrow), calc(100% - var(--hhx-space-6)));
+  block-size: fit-content;
+  display: grid;
+  gap: var(--hhx-space-3);
+  padding: var(--hhx-space-5);
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-overlay);
+  background: var(--hh-surface);
+  box-shadow: 0 0 0 var(--hhx-halo-width) var(--hh-accent-tint);
+  color: var(--hh-text);
+  transition: opacity var(--hhx-duration-overlay) var(--hhx-ease);
+}
+
+.backdrop[data-starting-style],
+.backdrop[data-ending-style],
+.popup[data-starting-style],
+.popup[data-ending-style] {
+  opacity: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--hhx-type-4);
+  font-weight: 600;
+}
+
+.description {
+  margin: 0;
+  color: var(--hh-text-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--hhx-space-2);
+}

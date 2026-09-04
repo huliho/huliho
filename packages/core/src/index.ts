@@ -4,3 +4,11 @@
 
 export { fetchSession, sessionInfoSchema, SignInError, signIn, signOut } from "./session";
 export type { SessionInfo, SignInFailureCode } from "./session";
+export {
+  deviceSchema,
+  fetchSessions,
+  revokeOtherSessions,
+  revokeSession,
+  sessionRowSchema,
+} from "./sessions";
+export type { Device, RevokeOptions, SessionRow } from "./sessions";

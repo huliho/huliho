@@ -28,6 +28,9 @@
   --hhx-toast-text: light-dark(#e4eaec, #232b2f);
   --hhx-toast-accent: light-dark(#56b8c9, #1e7688);
 
+  /* A dialog backdrop is the page ground, dimmed; it never carries text. */
+  --hhx-scrim-opacity: 0.6;
+
   --hhx-font-ui: "Hanken Grotesk", system-ui, sans-serif;
   --hhx-font-mono: "IBM Plex Mono", ui-monospace, monospace;
 

@@ -1,0 +1,11 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.skeleton {
+  display: block;
+  min-block-size: var(--hhx-space-3);
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-control);
+  background: var(--hh-bg);
+}
