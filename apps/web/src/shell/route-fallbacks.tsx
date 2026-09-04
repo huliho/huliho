@@ -23,12 +23,14 @@ export function RouteError() {
   const locale = getLocale();
   const router = useRouter();
   return (
-    <ErrorState
-      message={m.signin_error_unavailable({}, { locale })}
-      retryLabel={m.retry_action({}, { locale })}
-      onRetry={() => {
-        void router.invalidate();
-      }}
-    />
+    <div className={styles.screen}>
+      <ErrorState
+        message={m.signin_error_unavailable({}, { locale })}
+        retryLabel={m.retry_action({}, { locale })}
+        onRetry={() => {
+          void router.invalidate();
+        }}
+      />
+    </div>
   );
 }

@@ -1,0 +1,57 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--hhx-space-2);
+  min-block-size: var(--hhx-hit-target);
+  padding-block: var(--hhx-space-2);
+  padding-inline: var(--hhx-space-4);
+  border: var(--hhx-border-width) solid transparent;
+  border-radius: var(--hhx-radius-field);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary {
+  background: var(--hh-accent);
+  color: var(--hh-bg);
+}
+
+.primary:hover {
+  background: var(--hh-accent-strong);
+}
+
+.secondary {
+  background: var(--hh-surface);
+  border-color: var(--hh-border-control);
+  color: var(--hh-text);
+}
+
+.danger {
+  background: var(--hh-surface);
+  border-color: var(--hh-danger);
+  color: var(--hh-danger);
+}
+
+.secondary:hover,
+.danger:hover {
+  background: var(--hh-hover);
+}
+
+.button[data-disabled] {
+  background: var(--hh-surface);
+  border-color: var(--hh-border-strong);
+  color: var(--hh-text-muted);
+  cursor: default;
+}
+
+.button[data-pending] {
+  background: var(--hh-accent-tint);
+  border-color: transparent;
+  color: var(--hh-accent);
+}

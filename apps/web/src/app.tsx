@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 
 import { signOut } from "@huliho/core";
 import styles from "./app.module.css";
+import { toastManager } from "./design-system/toast";
 import { m } from "./paraglide/messages.js";
 import { getLocale, isLocale, locales, setLocale } from "./paraglide/runtime.js";
 import type { Locale } from "./paraglide/runtime.js";
@@ -26,13 +27,16 @@ function ShellHeader({ locale }: { locale: Locale }) {
       queryClient.clear();
       await navigate({ to: "/sign-in" });
     },
+    onError: () => {
+      toastManager.add({ description: m.signout_failed({}, { locale }) });
+    },
   });
 
   return (
     <header className={styles.topbar}>
       <span className={styles.topbarBrand}>Huliho</span>
       <nav className={styles.topbarNav}>
-        <Link to="/settings/about" className={styles.topbarLink}>
+        <Link to="/settings" className={styles.topbarLink}>
           {m.settings_title({}, { locale })}
         </Link>
         <button

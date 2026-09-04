@@ -7,6 +7,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { SignInError, signIn } from "@huliho/core";
+import type { SignInFailureCode } from "@huliho/core";
 import { sessionQueryOptions } from "@huliho/state";
 import { BrandMark } from "../design-system/brand-mark";
 import { LegalNotices } from "../legal/legal-notices";
@@ -17,9 +18,7 @@ import styles from "./sign-in.module.css";
 
 const COUNTDOWN_TICK_MS = 1_000;
 
-export type SignInFailure = "invalid_credentials" | "rate_limited" | "unavailable" | null;
-
-function failureOf(error: unknown): SignInFailure {
+function failureOf(error: unknown): SignInFailureCode | null {
   if (error === null) {
     return null;
   }

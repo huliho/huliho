@@ -15,6 +15,7 @@
     "lighthouse": "lhci autorun"
   },
   "dependencies": {
+    "@base-ui/react": "^1.7.0",
     "@huliho/core": "workspace:*",
     "@huliho/i18n": "workspace:*",
     "@huliho/state": "workspace:*",

@@ -2,15 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { z } from "zod";
-
-// Zod probes for eval unless told not to; a strict CSP reports that probe.
-// The flag is read when a schema is built, so this precedes every schema.
-z.config({ jitless: true });
-
-// State-changing calls carry this header; the server refuses them without it.
-const CSRF_HEADER = "x-requested-with";
-const CSRF_VALUE = "huliho";
+import { CSRF_HEADERS } from "./http";
+import { z } from "./schema";
 
 const SESSION_ENDPOINT = "/api/session";
 
@@ -61,10 +54,7 @@ export async function signIn(login: string, password: string): Promise<void> {
   try {
     response = await fetch(SESSION_ENDPOINT, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        [CSRF_HEADER]: CSRF_VALUE,
-      },
+      headers: { "content-type": "application/json", ...CSRF_HEADERS },
       body: JSON.stringify({ login, password }),
     });
   } catch {
@@ -85,7 +75,7 @@ export async function signIn(login: string, password: string): Promise<void> {
 export async function signOut(): Promise<void> {
   const response = await fetch(SESSION_ENDPOINT, {
     method: "DELETE",
-    headers: { [CSRF_HEADER]: CSRF_VALUE },
+    headers: CSRF_HEADERS,
   });
   if (!response.ok) {
     throw new Error(`the sign-out request failed with status ${String(response.status)}`);

@@ -52,6 +52,10 @@ async function auditStory(page: Page, id: string, theme: string, name: string): 
   await page.evaluate(async () => {
     await document.fonts.ready;
   });
+  // Overlays fade in; axe and the screenshot wait for the fade to end.
+  await page.evaluate(async () => {
+    await Promise.all(document.getAnimations().map((animation) => animation.finished));
+  });
   const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
   expect.soft(results.violations, `axe on ${id} in ${theme} at ${name} width`).toEqual([]);
   await expect.soft(page).toHaveScreenshot(`${id}-${theme}-${name}.png`, { fullPage: true });

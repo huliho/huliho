@@ -4,6 +4,7 @@
 
 import { CircleAlert } from "lucide-react";
 
+import { Button } from "./button";
 import styles from "./error-state.module.css";
 
 interface ErrorStateProps {
@@ -14,12 +15,10 @@ interface ErrorStateProps {
 
 export function ErrorState({ message, retryLabel, onRetry }: ErrorStateProps) {
   return (
-    <div className={styles.screen} role="alert">
+    <div className={styles.state} role="alert">
       <CircleAlert className={styles.icon} aria-hidden="true" />
       <p className={styles.message}>{message}</p>
-      <button type="button" className={styles.retry} onClick={onRetry}>
-        {retryLabel}
-      </button>
+      <Button onClick={onRetry}>{retryLabel}</Button>
     </div>
   );
 }

@@ -24,52 +24,6 @@
   border-radius: var(--hhx-radius-overlay);
 }
 
-.field {
-  display: grid;
-  gap: var(--hhx-space-1);
-}
-
-.label {
-  font-size: var(--hhx-type-1);
-  font-weight: 600;
-}
-
-.input {
-  min-block-size: var(--hhx-hit-target);
-  padding: var(--hhx-space-3) var(--hhx-space-4);
-  border: var(--hhx-border-width) solid var(--hh-border-control);
-  border-radius: var(--hhx-radius-field);
-  background: var(--hh-surface);
-  color: var(--hh-text);
-  font: inherit;
-  font-size: var(--hhx-type-3);
-}
-
-.input:read-only {
-  background: var(--hh-bg);
-  color: var(--hh-text-muted);
-}
-
-.inputError {
-  border-color: var(--hh-danger);
-  border-width: var(--hhx-border-width-selected);
-}
-
-.error {
-  display: flex;
-  align-items: center;
-  gap: var(--hhx-space-2);
-  font-size: var(--hhx-type-1);
-  color: var(--hh-danger);
-}
-
-.errorIcon {
-  inline-size: var(--hhx-icon-inline);
-  block-size: var(--hhx-icon-inline);
-  stroke-width: var(--hhx-icon-stroke);
-  flex: none;
-}
-
 .held {
   display: flex;
   gap: var(--hhx-space-2);
@@ -81,33 +35,8 @@
 }
 
 .submit {
-  min-block-size: var(--hhx-hit-target);
-  padding: var(--hhx-space-3);
-  border: none;
-  border-radius: var(--hhx-radius-field);
-  background: var(--hh-accent);
-  color: var(--hh-bg);
-  font: inherit;
+  padding-block: var(--hhx-space-3);
   font-size: var(--hhx-type-3);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.submit:hover {
-  background: var(--hh-accent-strong);
-}
-
-.submit[data-state="pending"] {
-  background: var(--hh-accent-tint);
-  color: var(--hh-accent);
-  cursor: default;
-}
-
-.submit[data-state="held"] {
-  background: var(--hh-surface);
-  color: var(--hh-text-muted);
-  border: var(--hhx-border-width) solid var(--hh-border-strong);
-  cursor: default;
 }
 
 .adminNote {

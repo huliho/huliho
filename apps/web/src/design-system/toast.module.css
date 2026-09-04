@@ -1,0 +1,85 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.viewport {
+  position: fixed;
+  inset-block-end: var(--hhx-space-5);
+  inset-inline: 0;
+  display: grid;
+  justify-items: center;
+  gap: var(--hhx-space-2);
+  padding-inline: var(--hhx-space-4);
+  pointer-events: none;
+}
+
+/* A toast renders in the other theme; the tokens carry the swap. */
+.toast {
+  inline-size: min(var(--hhx-measure-narrow), 100%);
+  padding: var(--hhx-space-3) var(--hhx-space-4);
+  border-radius: var(--hhx-radius-overlay);
+  background: var(--hhx-toast-surface);
+  color: var(--hhx-toast-text);
+  pointer-events: auto;
+  translate: var(--toast-swipe-movement-x) var(--toast-swipe-movement-y);
+  transition:
+    opacity var(--hhx-duration-overlay) var(--hhx-ease),
+    translate var(--hhx-duration-overlay) var(--hhx-ease);
+}
+
+.toast[data-swiping] {
+  transition: none;
+}
+
+/* A released swipe snaps back instead of sliding; only the fade remains. */
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    transition-property: opacity;
+  }
+}
+
+.toast[data-starting-style],
+.toast[data-ending-style] {
+  opacity: 0;
+}
+
+.content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--hhx-space-3);
+}
+
+.text {
+  flex: 1;
+  margin: 0;
+}
+
+.undo {
+  min-block-size: var(--hhx-hit-target);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--hhx-toast-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hhx-space-1);
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-1);
+}
+
+.paused {
+  display: none;
+  font-family: var(--hhx-font-ui);
+}
+
+/* Expanded is Base UI's word for hovered or focused, when its timers pause. */
+.toast[data-expanded] .paused {
+  display: inline;
+}

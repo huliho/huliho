@@ -154,18 +154,6 @@
   box-shadow: 0 0 0 var(--hhx-halo-width) var(--hh-accent-tint);
 }
 
-.kbd {
-  display: inline-block;
-  min-inline-size: var(--hhx-space-5);
-  padding-inline: var(--hhx-space-1);
-  border: var(--hhx-border-width) solid var(--hh-border-strong);
-  border-radius: var(--hhx-radius-control);
-  background: var(--hh-surface);
-  font-family: var(--hhx-font-mono);
-  font-size: var(--hhx-type-1);
-  text-align: center;
-}
-
 .button {
   inline-size: fit-content;
   min-block-size: var(--hhx-hit-target);

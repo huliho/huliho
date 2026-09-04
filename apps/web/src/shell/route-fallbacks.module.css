@@ -2,7 +2,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Additional terms apply, see NOTICE. */
 
-.pending {
+.pending,
+.screen {
   display: grid;
   place-content: center;
   min-block-size: 100svh;

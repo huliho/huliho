@@ -12,3 +12,4 @@ export {
 } from "./catalogs.js";
 export type { Catalog, ProjectSettings } from "./catalogs.js";
 export { localeEndonym } from "./endonym.js";
+export { relativeTime } from "./relative-time.js";

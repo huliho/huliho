@@ -1,0 +1,84 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.list {
+  display: block;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-field);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-3);
+  min-block-size: var(--hhx-row-height);
+  padding: var(--hhx-space-2) var(--hhx-pane-padding);
+  border-block-end: var(--hhx-border-width) solid var(--hh-border);
+}
+
+.row:last-child {
+  border-block-end: none;
+}
+
+.details {
+  flex: 1;
+  min-inline-size: 0;
+  display: grid;
+  gap: var(--hhx-space-1);
+}
+
+.device {
+  font-weight: 600;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hhx-space-2);
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+}
+
+.address {
+  font-family: var(--hhx-font-mono);
+}
+
+.current {
+  padding: var(--hhx-space-1) var(--hhx-space-2);
+  border-radius: var(--hhx-radius-control);
+  background: var(--hh-accent-tint);
+  color: var(--hh-accent);
+  font-size: var(--hhx-type-1);
+  font-weight: 600;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hhx-space-3);
+}
+
+.note {
+  margin: 0;
+  color: var(--hh-text-muted);
+}
+
+.deviceSkeleton {
+  inline-size: min(var(--hhx-swatch-min), 100%);
+}
+
+.metaSkeleton {
+  inline-size: min(calc(var(--hhx-swatch-min) * 1.5), 100%);
+}
+
+.buttonSkeleton {
+  inline-size: calc(var(--hhx-space-6) * 2);
+  min-block-size: var(--hhx-hit-target);
+}
