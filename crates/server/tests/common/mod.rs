@@ -15,6 +15,7 @@ use huliho_server::rate::RateLimiter;
 use huliho_server::secrets::{InstanceSecret, Keys};
 use huliho_server::session::SessionTimeouts;
 use huliho_server::store::Store;
+use huliho_server::upstream::Upstream;
 
 /// The instance secret every test router derives its keys from; a row
 /// sealed under the same bytes elsewhere opens inside the router.
@@ -36,6 +37,8 @@ pub fn api_state(store: Arc<Store>) -> ApiState {
             huliho_server::api::MAX_CONCURRENT_VERIFICATIONS,
         )),
         probe_interval_minutes: UpstreamConfig::default().probe_interval_minutes,
+        public_url: None,
+        upstream: Arc::new(Upstream::new(&UpstreamConfig::default()).unwrap()),
     }
 }
 

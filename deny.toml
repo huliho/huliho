@@ -18,6 +18,11 @@ allow = [
   "Unicode-DFS-2016",
   "MPL-2.0",
 ]
+# Mozilla's root store is data, published under a permissive data license.
+exceptions = [
+  { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
+  { allow = ["CDLA-Permissive-2.0"], crate = "webpki-root-certs" },
+]
 private = { ignore = true }
 unused-allowed-license = "allow"
 

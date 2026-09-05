@@ -5,6 +5,7 @@
 //! The /api router: its guards, extractors and the error shape.
 
 mod accounts;
+mod discover;
 mod login;
 mod password;
 mod sessions;
@@ -25,12 +26,14 @@ use axum::routing::{delete, get, post, put};
 use axum_extra::extract::cookie::CookieJar;
 use serde::Serialize;
 use tokio::sync::Semaphore;
+use url::Url;
 
 use crate::auth::AuthError;
 use crate::rate::RateLimiter;
 use crate::secrets::Keys;
 use crate::session::{self, SESSION_COOKIE, Session, SessionError, SessionTimeouts};
 use crate::store::{MS_PER_SECOND, Store, StoreError};
+use crate::upstream::Upstream;
 
 /// Nothing on /api carries more than a small form.
 const API_BODY_LIMIT_BYTES: usize = 16 * 1024;
@@ -52,6 +55,9 @@ pub struct ApiState {
     pub verify_gate: Arc<Semaphore>,
     /// From the config; the account list tells the page.
     pub probe_interval_minutes: NonZeroU32,
+    /// From the config; without it no sign-in provider is available.
+    pub public_url: Option<Url>,
+    pub upstream: Arc<Upstream>,
 }
 
 /// Builds the /api router on the given state.
@@ -70,6 +76,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/sessions/{id}", delete(sessions::revoke_session))
         .route("/password", put(password::change_password))
         .route("/accounts", get(accounts::list_accounts))
+        .route("/accounts/discover", post(discover::discover))
         .route("/accounts/{id}", delete(accounts::remove_account))
         .route("/users", get(users::list_users).post(users::create_user))
         .route("/users/{id}/password-reset", post(users::reset_password))
