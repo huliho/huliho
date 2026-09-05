@@ -23,13 +23,20 @@ password that is shown once, works for one sign-in within a day and
 opens a session that reaches only the password change.
 
 Configuration is one TOML file; unknown keys are rejected. Top-level
-keys are the `listen` address and the `assets` directory; `[storage]`
+keys are the `listen` address, the `assets` directory and the optional
+`public_url`, the base URL the instance is reached on. `[storage]`
 holds the data directory `path` (default `data`) and `[events]` holds
-the event log `retention_days` (default 365). The file path comes from
-`HULIHO_CONFIG` and that
-file must exist. Without the variable the server reads `huliho.toml`
-from the working directory and falls back to the defaults when it is
-absent.
+the event log `retention_days` (default 365). `[auth]` holds the
+`secret_file` path plus the session `idle_timeout_minutes` and
+`absolute_timeout_minutes`. `[upstream]` holds the rules for reaching
+mail servers. `allow_private_networks` lists the private networks an
+upstream may resolve to, written as CIDRs. It is empty by default.
+`additional_ca_file` names one PEM bundle trusted next to the built-in
+roots. `probe_interval_minutes` says how often a stopped account is
+checked for recovery, fifteen by default. Nothing reads the upstream
+rules yet. The file path comes from `HULIHO_CONFIG` and that file must
+exist. Without the variable the server reads `huliho.toml` from the
+working directory and falls back to the defaults when it is absent.
 
 Build and test from the workspace root: `cargo build` and
 `cargo test --workspace`.

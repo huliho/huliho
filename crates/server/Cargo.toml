@@ -14,6 +14,7 @@ base16ct = { version = "1.0.0", features = ["alloc"] }
 chacha20poly1305 = "0.11.0"
 getrandom = "0.4.3"
 hkdf = "0.13.0"
+ipnet = { version = "2.12.1", features = ["serde"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 rusqlite_migration = "2.6.0"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -26,6 +27,7 @@ toml = "1.1.4"
 tower-http = { version = "0.7.1", features = ["fs", "request-id", "set-header", "trace"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+url = { version = "2.5.8", features = ["serde"] }
 uuid = { version = "1.26.0", features = ["v4"] }
 
 [dev-dependencies]

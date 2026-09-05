@@ -1,0 +1,152 @@
+# Local mail targets: Cyrus IMAP as the JMAP server and Dovecot for the
+# IMAP bridge. The certs service writes one throwaway CA plus a server
+# certificate for each and copies the CA to data/dev-certs/ca.pem.
+#
+#   docker compose -f docker-compose.dev.yml up -d --build
+#
+# Cyrus: JMAP over TLS on 8443, IMAPS on 9993, the user sanne@huliho.test
+# with the password "password". Dovecot: IMAP with STARTTLS on 31143,
+# IMAPS on 31993, submission on 31587, ManageSieve on 34190 and LMTP on
+# 31024, any user with the password "password".
+
+configs:
+  certs-init:
+    content: |
+      set -eu
+      cd /certs
+      # Ten years: the certificates outlive any checkout.
+      days=3650
+      if [ ! -f ca.pem ]; then
+        openssl req -x509 -noenc -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -days "$$days" -subj '/CN=Huliho dev CA' -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign' -keyout ca-key.pem -out ca.pem
+        for name in cyrus dovecot; do
+          openssl req -noenc -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -subj "/CN=$$name.huliho.test" -addext "subjectAltName=DNS:$$name.huliho.test,DNS:localhost,IP:127.0.0.1,IP:::1" -keyout "$$name-key.pem" -out "$$name.csr"
+          openssl x509 -req -in "$$name.csr" -CA ca.pem -CAkey ca-key.pem -CAcreateserial -days "$$days" -copy_extensions copy -out "$$name.pem"
+          rm "$$name.csr"
+        done
+        # Throwaway keys; both servers read them as unprivileged users.
+        chmod 644 cyrus-key.pem dovecot-key.pem
+      fi
+      cp ca.pem /host/ca.pem
+
+  imapd.conf:
+    content: |
+      configdirectory: /var/lib/cyrus
+      partition-default: /var/spool/cyrus/mail
+      servername: cyrus.huliho.test
+      virtdomains: userid
+      admins: cyrus@huliho.test
+      sasl_pwcheck_method: auxprop
+      sasl_auxprop_plugin: sasldb
+      sasl_mech_list: PLAIN LOGIN
+      # Lets cyradm sign in over the loopback listener; every published port is TLS.
+      allowplaintext: 1
+      conversations: 1
+      httpmodules: jmap
+      tls_server_cert: /certs/cyrus.pem
+      tls_server_key: /certs/cyrus-key.pem
+      tls_versions: tls1_2 tls1_3
+
+  cyrus.conf:
+    content: |
+      START {
+        recover cmd="ctl_cyrusdb -r"
+      }
+      SERVICES {
+        # Plain IMAP on the loopback only, for cyradm in the entrypoint.
+        imap cmd="imapd" listen="127.0.0.1:143" prefork=0
+        imaps cmd="imapd -s" listen="993" prefork=0
+        https cmd="httpd -s" listen="443" prefork=0
+      }
+      EVENTS {
+        # Every 30 minutes and nightly at 04:01, the slots the packaged config uses.
+        checkpoint cmd="ctl_cyrusdb -c" period=30
+        tlsprune cmd="tls_prune" at=0401
+      }
+
+  cyrus-entrypoint:
+    content: |
+      set -eu
+      printf '%s' password | saslpasswd2 -p -c -u huliho.test cyrus
+      printf '%s' password | saslpasswd2 -p -c -u huliho.test sanne
+      busybox syslogd -n -O - &
+      /usr/sbin/cyrmaster -D &
+      master=$!
+      trap 'kill -TERM "$$master"' TERM INT
+      admin() { TERM=dumb cyradm --user cyrus@huliho.test --password password --auth PLAIN --notls localhost; }
+      until printf 'listmailbox user/*\n' | admin > /tmp/mailboxes 2> /dev/null; do kill -0 "$$master"; sleep 1; done
+      grep -q 'user/sanne@huliho.test' /tmp/mailboxes || printf 'createmailbox user/sanne@huliho.test\n' | admin > /dev/null
+      /usr/sbin/cyrus ctl_conversationsdb -b -r
+      wait "$$master"
+
+  dovecot-tls.conf:
+    content: |
+      ssl_server {
+        cert_file = /certs/dovecot.pem
+        key_file = /certs/dovecot-key.pem
+      }
+
+services:
+  certs:
+    image: alpine/openssl:3.5.8
+    entrypoint: ["sh", "/certs-init"]
+    configs:
+      - source: certs-init
+        target: /certs-init
+        mode: 0444
+    volumes:
+      - dev-certs:/certs
+      - ./data/dev-certs:/host
+
+  cyrus:
+    build:
+      dockerfile_inline: |
+        FROM debian:trixie-slim
+        RUN echo 'deb http://deb.debian.org/debian trixie-backports main' > /etc/apt/sources.list.d/backports.list \
+         && apt-get update \
+         && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -t trixie-backports cyrus-imapd cyrus-caldav cyrus-admin sasl2-bin busybox \
+         && rm -rf /var/lib/apt/lists/*
+    entrypoint: ["sh", "/cyrus-entrypoint"]
+    configs:
+      - source: imapd.conf
+        target: /etc/imapd.conf
+        mode: 0444
+      - source: cyrus.conf
+        target: /etc/cyrus.conf
+        mode: 0444
+      - source: cyrus-entrypoint
+        target: /cyrus-entrypoint
+        mode: 0444
+    volumes:
+      - dev-certs:/certs:ro
+    ports:
+      - "127.0.0.1:8443:443"
+      - "127.0.0.1:9993:993"
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+
+  dovecot:
+    image: dovecot/dovecot:2.4.5
+    environment:
+      # The image's static passdb: any user, this one password.
+      USER_PASSWORD: "{PLAIN}password"
+    configs:
+      - source: dovecot-tls.conf
+        target: /etc/dovecot/conf.d/tls.conf
+        mode: 0444
+    volumes:
+      - dev-certs:/certs:ro
+      - dovecot-mail:/srv/vmail
+    ports:
+      - "127.0.0.1:31143:31143"
+      - "127.0.0.1:31993:31993"
+      - "127.0.0.1:31587:31587"
+      - "127.0.0.1:34190:34190"
+      - "127.0.0.1:31024:31024"
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+
+volumes:
+  dev-certs:
+  dovecot-mail:
