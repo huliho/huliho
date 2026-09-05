@@ -24,14 +24,19 @@
   border-radius: var(--hhx-radius-overlay);
 }
 
-.held {
-  display: flex;
-  gap: var(--hhx-space-2);
+.cardTitle {
   margin: 0;
-  padding: var(--hhx-space-3);
-  border: var(--hhx-border-width) solid var(--hh-danger);
-  border-radius: var(--hhx-radius-field);
-  font-size: var(--hhx-type-1);
+  font-size: var(--hhx-type-4);
+  font-weight: 600;
+}
+
+.reason {
+  margin: 0;
+  color: var(--hh-text-muted);
+}
+
+.leave {
+  justify-self: center;
 }
 
 .submit {

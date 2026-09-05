@@ -3,13 +3,11 @@
 // Additional terms apply, see NOTICE.
 
 import { localeEndonym, PSEUDO_LOCALE } from "@huliho/i18n";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
-import { signOut } from "@huliho/core";
 import styles from "./app.module.css";
-import { toastManager } from "./design-system/toast";
+import { useSignOut } from "./auth/use-sign-out";
 import { m } from "./paraglide/messages.js";
 import { getLocale, isLocale, locales, setLocale } from "./paraglide/runtime.js";
 import type { Locale } from "./paraglide/runtime.js";
@@ -17,21 +15,7 @@ import type { Locale } from "./paraglide/runtime.js";
 const DEMO_MESSAGE_COUNT = 24817;
 
 function ShellHeader({ locale }: { locale: Locale }) {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: signOut,
-    // The local cache empties on sign-out either way; the server session
-    // outlives only a failed revoke and ends at its timeout.
-    onSettled: async () => {
-      queryClient.clear();
-      await navigate({ to: "/sign-in" });
-    },
-    onError: () => {
-      toastManager.add({ description: m.signout_failed({}, { locale }) });
-    },
-  });
-
+  const signOut = useSignOut(locale);
   return (
     <header className={styles.topbar}>
       <span className={styles.topbarBrand}>Huliho</span>
@@ -39,13 +23,7 @@ function ShellHeader({ locale }: { locale: Locale }) {
         <Link to="/settings" className={styles.topbarLink}>
           {m.settings_title({}, { locale })}
         </Link>
-        <button
-          type="button"
-          className={styles.topbarButton}
-          onClick={() => {
-            mutation.mutate();
-          }}
-        >
+        <button type="button" className={styles.topbarButton} onClick={signOut}>
           {m.signout_action({}, { locale })}
         </button>
       </nav>

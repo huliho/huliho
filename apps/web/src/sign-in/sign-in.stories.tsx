@@ -6,6 +6,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
 import { LegalNotices } from "../legal/legal-notices";
+import { ChoosePasswordCard } from "./choose-password";
 import { SignInForm } from "./sign-in-form";
 import styles from "./sign-in.module.css";
 
@@ -88,6 +89,21 @@ export const ServerUnreachable: StoryObj = {
         failure="unavailable"
         retryRemaining={null}
         onSubmit={noSubmit}
+      />
+    </Framed>
+  ),
+};
+
+export const ChoosePassword: StoryObj = {
+  render: () => (
+    <Framed>
+      <ChoosePasswordCard
+        locale="en"
+        pending={false}
+        failure={null}
+        retryRemaining={null}
+        onSubmit={noSubmit}
+        onSignOut={noSubmit}
       />
     </Framed>
   ),

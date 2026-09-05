@@ -48,5 +48,19 @@
   "undo_action": "Ongedaan maken",
   "toast_paused": "Gepauzeerd",
   "toast_region": "Meldingen",
-  "signout_failed": "Uitloggen op de server is niet gelukt. Deze sessie eindigt als hij verloopt."
+  "signout_failed": "Uitloggen op de server is niet gelukt. Deze sessie eindigt als hij verloopt.",
+  "password_heading": "Wachtwoord",
+  "password_current_label": "Huidig wachtwoord",
+  "password_new_label": "Nieuw wachtwoord",
+  "password_repeat_label": "Herhaal het",
+  "password_save": "Opslaan",
+  "password_saving": "Opslaan…",
+  "password_save_continue": "Opslaan en doorgaan",
+  "password_error_window": "Gebruik {min, number} tot {max, number} tekens.",
+  "password_error_mismatch": "De wachtwoorden komen niet overeen.",
+  "password_error_current": "Opslaan is niet gelukt. Controleer je huidige wachtwoord en probeer het opnieuw.",
+  "password_changed_toast": "Wachtwoord gewijzigd. Andere apparaten zijn afgemeld.",
+  "choose_password_heading": "Kies een nieuw wachtwoord",
+  "choose_password_reason": "Een beheerder heeft je wachtwoord opnieuw ingesteld, dus met het eenmalige wachtwoord kom je niet verder dan hier.",
+  "session_ended": "Je sessie is verlopen. Log opnieuw in."
 }

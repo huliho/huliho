@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
 
-import { SignInError, signIn } from "@huliho/core";
-import type { SignInFailureCode } from "@huliho/core";
+import { signIn } from "@huliho/core";
 import { sessionQueryOptions } from "@huliho/state";
+import { useCredentialMutation } from "../auth/use-credential-mutation";
 import { BrandMark } from "../design-system/brand-mark";
 import { LegalNotices } from "../legal/legal-notices";
 import { m } from "../paraglide/messages.js";
@@ -16,53 +15,20 @@ import { getLocale } from "../paraglide/runtime.js";
 import { SignInForm } from "./sign-in-form";
 import styles from "./sign-in.module.css";
 
-const COUNTDOWN_TICK_MS = 1_000;
-
-function failureOf(error: unknown): SignInFailureCode | null {
-  if (error === null) {
-    return null;
-  }
-  return error instanceof SignInError ? error.code : "unavailable";
-}
-
-function useTick(active: boolean, onTick: () => void): void {
-  useEffect(() => {
-    if (!active) {
-      return undefined;
-    }
-    const timer = setInterval(onTick, COUNTDOWN_TICK_MS);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [active, onTick]);
-}
-
 export function SignIn() {
   const locale = getLocale();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [retryRemaining, setRetryRemaining] = useState<number | null>(null);
-  const mutation = useMutation({
-    mutationFn: (input: { login: string; password: string }) => signIn(input.login, input.password),
-    onSuccess: async () => {
-      queryClient.removeQueries({ queryKey: sessionQueryOptions.queryKey });
-      await navigate({ to: "/" });
+  const mutation = useCredentialMutation(
+    (input: { login: string; password: string }) => signIn(input.login, input.password),
+    {
+      // The guard on "/" reads the fresh session and sends a forced one on to its step.
+      onSuccess: async () => {
+        queryClient.removeQueries({ queryKey: sessionQueryOptions.queryKey });
+        await navigate({ to: "/" });
+      },
     },
-    onError: (error) => {
-      if (error instanceof SignInError && error.code === "rate_limited") {
-        setRetryRemaining(error.retryAfterSeconds);
-      }
-    },
-  });
-
-  useTick(retryRemaining !== null, () => {
-    if (retryRemaining !== null && retryRemaining <= 1) {
-      setRetryRemaining(null);
-      mutation.reset();
-    } else if (retryRemaining !== null) {
-      setRetryRemaining(retryRemaining - 1);
-    }
-  });
+  );
 
   return (
     <main className={styles.screen}>
@@ -70,12 +36,10 @@ export function SignIn() {
         <BrandMark heading />
         <SignInForm
           locale={locale}
-          pending={mutation.isPending}
-          failure={failureOf(mutation.error)}
-          retryRemaining={retryRemaining}
-          onSubmit={(input) => {
-            mutation.mutate(input);
-          }}
+          pending={mutation.pending}
+          failure={mutation.failure}
+          retryRemaining={mutation.retryRemaining}
+          onSubmit={mutation.mutate}
         />
         <p className={styles.adminNote}>{m.signin_admin_note({}, { locale })}</p>
         <LegalNotices locale={locale} />

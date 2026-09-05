@@ -4,11 +4,13 @@
 
 import { afterEach, expect, test, vi } from "vitest";
 
-import { SignInError, fetchSession, signIn, signOut } from "./session";
+import { CredentialError } from "./credentials";
+import { fetchSession, signIn, signOut } from "./session";
 
 const SESSION_BODY = {
-  user: { id: "u1", login: "mira@example.com", role: "owner" },
+  user: { id: "u1", login: "mira@example.com", name: "Mira", role: "owner" },
   organization: { id: "o1", name: "mira@example.com" },
+  passwordChangeRequired: false,
 };
 
 function answer(status: number, body?: unknown, headers: Record<string, string> = {}): void {
@@ -36,6 +38,13 @@ test("a valid session answer parses into user and organization", async () => {
   const session = await fetchSession();
   expect(session?.user.login).toBe("mira@example.com");
   expect(session?.organization.id).toBe("o1");
+});
+
+test("a session opened with a one-time password says so", async () => {
+  answer(200, { ...SESSION_BODY, passwordChangeRequired: true });
+  const session = await fetchSession();
+  expect(session?.passwordChangeRequired).toBe(true);
+  expect(session?.user.name).toBe("Mira");
 });
 
 test("a malformed session answer is rejected at the boundary", async () => {
@@ -73,5 +82,5 @@ test("a successful sign-in resolves without a value", async () => {
 test("a failed sign-out is an error, not a silent pass", async () => {
   answer(500, { error: "internal" });
   await expect(signOut()).rejects.toThrow("sign-out request failed");
-  expect(new SignInError("unavailable").retryAfterSeconds).toBe(0);
+  expect(new CredentialError("unavailable").retryAfterSeconds).toBe(0);
 });

@@ -48,5 +48,19 @@
   "undo_action": "Undo",
   "toast_paused": "Paused",
   "toast_region": "Notifications",
-  "signout_failed": "Couldn’t sign out on the server. This session ends when it expires."
+  "signout_failed": "Couldn’t sign out on the server. This session ends when it expires.",
+  "password_heading": "Password",
+  "password_current_label": "Current password",
+  "password_new_label": "New password",
+  "password_repeat_label": "Repeat it",
+  "password_save": "Save",
+  "password_saving": "Saving…",
+  "password_save_continue": "Save and continue",
+  "password_error_window": "Use {min, number} to {max, number} characters.",
+  "password_error_mismatch": "The passwords don’t match.",
+  "password_error_current": "Couldn’t save. Check your current password, then try again.",
+  "password_changed_toast": "Password changed. Other devices were signed out.",
+  "choose_password_heading": "Choose a new password",
+  "choose_password_reason": "An admin reset your password, so the one-time password only gets you this far.",
+  "session_ended": "Your session has ended. Sign in again."
 }
