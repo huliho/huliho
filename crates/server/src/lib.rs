@@ -15,6 +15,7 @@ pub mod ids;
 pub mod prefs;
 pub mod rate;
 pub mod scope;
+mod sealed;
 pub mod secrets;
 pub mod session;
 pub mod store;

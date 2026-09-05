@@ -10,7 +10,7 @@ use std::time::Duration;
 use rusqlite::{Connection, params};
 use serde::Serialize;
 
-use crate::accounts::AccountKind;
+use crate::accounts::{AccountKind, StopCause};
 use crate::ids::{AccountId, OrganizationId, Role, UserId};
 use crate::scope::Scope;
 use crate::store::{Store, StoreError, now_ms};
@@ -70,6 +70,16 @@ pub enum DomainEvent {
     AccountRemoved {
         account_id: AccountId,
     },
+    AccountStopped {
+        account_id: AccountId,
+        cause: StopCause,
+    },
+    AccountResumed {
+        account_id: AccountId,
+    },
+    AccountCredentialsUpdated {
+        account_id: AccountId,
+    },
     SessionCreated {},
     SessionRevoked {
         user_id: UserId,
@@ -98,6 +108,9 @@ impl DomainEvent {
             Self::UserPasswordReset { .. } => "user.password_reset",
             Self::AccountLinked { .. } => "account.linked",
             Self::AccountRemoved { .. } => "account.removed",
+            Self::AccountStopped { .. } => "account.stopped",
+            Self::AccountResumed { .. } => "account.resumed",
+            Self::AccountCredentialsUpdated { .. } => "account.credentials_updated",
             Self::SessionCreated {} => "session.created",
             Self::SessionRevoked { .. } => "session.revoked",
             Self::SessionExpired { .. } => "session.expired",

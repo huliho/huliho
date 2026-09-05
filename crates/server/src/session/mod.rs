@@ -14,8 +14,6 @@ mod password;
 
 use std::net::IpAddr;
 
-use chacha20poly1305::XNonce;
-use chacha20poly1305::aead::{Aead, Generate, Payload};
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -31,14 +29,12 @@ pub use password::{PasswordChange, apply_password_change};
 use crate::config::AuthConfig;
 use crate::events::{Actor, DomainEvent, append};
 use crate::ids::{OrganizationId, SessionId, UserId};
-use crate::secrets::SessionKeys;
+use crate::sealed;
+use crate::secrets::Keys;
 use crate::store::{Store, StoreError, now_ms};
 
 /// Cookie carrying the opaque session token.
 pub const SESSION_COOKIE: &str = "huliho_session";
-
-/// XChaCha20-Poly1305 prefixes its nonce to the sealed blob.
-const NONCE_BYTES: usize = 24;
 
 pub(crate) const MS_PER_MINUTE: i64 = 60_000;
 
@@ -46,10 +42,6 @@ pub(crate) const MS_PER_MINUTE: i64 = 60_000;
 pub enum SessionError {
     #[error("the session is missing, expired or revoked")]
     Unauthenticated,
-    #[error("the system randomness source failed")]
-    Random,
-    #[error("sealing the session row failed")]
-    Sealing,
     #[error(transparent)]
     Store(#[from] StoreError),
 }
@@ -123,7 +115,7 @@ pub struct Session {
 /// expired tokens; database failures pass through.
 pub fn authenticate(
     store: &Store,
-    keys: &SessionKeys,
+    keys: &Keys,
     timeouts: SessionTimeouts,
     token: &str,
 ) -> Result<Session, SessionError> {
@@ -191,40 +183,16 @@ pub fn revoke(store: &Store, token: &str) -> Result<(), StoreError> {
 }
 
 pub(super) fn seal(
-    keys: &SessionKeys,
+    keys: &Keys,
     token_hash: &TokenHash,
     session: &SealedSession,
-) -> Result<Vec<u8>, SessionError> {
-    let plaintext = serde_json::to_vec(session).map_err(StoreError::from)?;
-    let nonce = XNonce::try_generate().map_err(|_| SessionError::Random)?;
-    let ciphertext = keys
-        .cipher()
-        .encrypt(
-            &nonce,
-            Payload {
-                msg: &plaintext,
-                aad: token_hash.as_slice(),
-            },
-        )
-        .map_err(|_| SessionError::Sealing)?;
-    let mut sealed = nonce.to_vec();
-    sealed.extend_from_slice(&ciphertext);
-    Ok(sealed)
+) -> Result<Vec<u8>, StoreError> {
+    let plaintext = serde_json::to_vec(session)?;
+    sealed::seal(keys.sessions(), token_hash.as_slice(), &plaintext)
 }
 
-fn open(keys: &SessionKeys, token_hash: &TokenHash, sealed: &[u8]) -> Option<SealedSession> {
-    let (nonce, ciphertext) = sealed.split_at_checked(NONCE_BYTES)?;
-    let nonce = XNonce::try_from(nonce).ok()?;
-    let plaintext = keys
-        .cipher()
-        .decrypt(
-            &nonce,
-            Payload {
-                msg: ciphertext,
-                aad: token_hash.as_slice(),
-            },
-        )
-        .ok()?;
+fn open(keys: &Keys, token_hash: &TokenHash, blob: &[u8]) -> Option<SealedSession> {
+    let plaintext = sealed::open(keys.sessions(), token_hash.as_slice(), blob)?;
     serde_json::from_slice(&plaintext).ok()
 }
 
@@ -246,7 +214,7 @@ pub(super) fn organization_of(
 mod tests {
     use super::fixtures::{GENEROUS_TIMEOUTS, age_idle, keys, session_rows, store_with_user};
     use super::*;
-    use crate::secrets::InstanceSecret;
+    use crate::secrets::{InstanceSecret, Keys};
 
     #[test]
     fn a_created_session_authenticates_to_its_user() {
@@ -329,9 +297,9 @@ mod tests {
     fn another_instance_secret_opens_nothing() {
         let (store, user_id) = store_with_user();
         let token = create(&store, &keys(), &user_id, &Client::default()).unwrap();
-        let other = SessionKeys::derive(&InstanceSecret::for_tests(
-            b"fedcba9876543210fedcba9876543210",
-        ));
+        let other = Keys::derive(
+            &InstanceSecret::from_bytes(b"fedcba9876543210fedcba9876543210".to_vec()).unwrap(),
+        );
         let result = authenticate(&store, &other, GENEROUS_TIMEOUTS, &token);
         assert!(matches!(result, Err(SessionError::Unauthenticated)));
     }

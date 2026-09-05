@@ -17,7 +17,7 @@ use super::login::session_cookie;
 use super::{ApiError, ApiState, Authenticated, ClientInfo, internal};
 use crate::auth::{self, MAX_PASSWORD_CHARS};
 use crate::scope;
-use crate::secrets::SessionKeys;
+use crate::secrets::Keys;
 use crate::session::{self, PasswordChange, Session};
 use crate::store::{Store, now_ms};
 
@@ -91,7 +91,7 @@ fn current_password(
 
 fn attempt_change(
     store: &Store,
-    keys: &SessionKeys,
+    keys: &Keys,
     session: &Session,
     change: &Change,
 ) -> Result<Option<String>, ApiError> {

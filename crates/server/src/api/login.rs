@@ -18,7 +18,7 @@ use crate::auth::{self, LoginOutcome, MAX_PASSWORD_CHARS};
 use crate::identity;
 use crate::ids::{OrganizationId, Role, UserId};
 use crate::scope;
-use crate::secrets::SessionKeys;
+use crate::secrets::Keys;
 use crate::session::{self, Client, SESSION_COOKIE, SessionTimeouts, device};
 use crate::store::{Store, now_ms};
 
@@ -76,7 +76,7 @@ pub(super) async fn create_session(
 
 fn attempt_login(
     store: &Store,
-    keys: &SessionKeys,
+    keys: &Keys,
     request: &LoginRequest,
     client: &Client,
 ) -> Result<Option<String>, ApiError> {

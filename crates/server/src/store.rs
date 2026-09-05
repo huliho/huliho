@@ -20,6 +20,7 @@ const MIGRATION_SOURCES: &[&str] = &[
     include_str!("migrations/0001_identity.sql"),
     include_str!("migrations/0002_sessions.sql"),
     include_str!("migrations/0003_sessions_devices.sql"),
+    include_str!("migrations/0004_account_settings.sql"),
 ];
 
 #[derive(Debug, Error)]
@@ -36,6 +37,12 @@ pub enum StoreError {
     Migration(#[from] rusqlite_migration::Error),
     #[error("cannot encode a stored value: {0}")]
     Encoding(#[from] serde_json::Error),
+    #[error("the system randomness source failed")]
+    Random,
+    #[error("cannot seal a stored value")]
+    Sealing,
+    #[error("a sealed value is missing or does not open")]
+    Tampered,
     #[error("the store lock was poisoned by an earlier panic")]
     Poisoned,
     #[error("not found within the current scope")]
@@ -144,8 +151,8 @@ mod tests {
         assert!(now_ms() > 0);
     }
 
-    /// A row from the 0002 schema, with a made-up token hash and blob.
-    fn insert_pre_0003_session(connection: &Connection) {
+    /// An organization with its owner, valid from the first schema on.
+    fn insert_owner(connection: &Connection) {
         connection
             .execute(
                 "INSERT INTO organizations (id, name, created_at) VALUES ('o', 'o', 0)",
@@ -159,10 +166,26 @@ mod tests {
                 [],
             )
             .unwrap();
+    }
+
+    /// A row from the 0002 schema, with a made-up token hash and blob.
+    fn insert_pre_0003_session(connection: &Connection) {
         connection
             .execute(
                 "INSERT INTO sessions (token_hash, user_id, sealed, created_at, last_seen_at)
                  VALUES (X'0102', 'u', X'0304', 7, 9)",
+                [],
+            )
+            .unwrap();
+    }
+
+    /// A row from the 0003 schema, with a made-up sealed blob.
+    fn insert_pre_0004_account(connection: &Connection) {
+        connection
+            .execute(
+                "INSERT INTO accounts
+                 (id, organization_id, user_id, kind, auth_method, credentials, created_at)
+                 VALUES ('a', 'o', 'u', 'jmap', 'bearer', X'0304', 5)",
                 [],
             )
             .unwrap();
@@ -185,6 +208,7 @@ mod tests {
             .pragma_update(None, "foreign_keys", true)
             .unwrap();
         migrations().to_version(&mut connection, 2).unwrap();
+        insert_owner(&connection);
         insert_pre_0003_session(&connection);
         migrations().to_latest(&mut connection).unwrap();
         let session = connection
@@ -217,5 +241,40 @@ mod tests {
             })
             .unwrap();
         assert_eq!(name, "mira");
+    }
+
+    #[test]
+    fn the_settings_migration_keeps_accounts_and_they_list() {
+        use crate::accounts::{self, AccountKind, AuthMethod, Provider};
+        use crate::ids::UserId;
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        migrations().to_version(&mut connection, 3).unwrap();
+        insert_owner(&connection);
+        insert_pre_0004_account(&connection);
+        let store = Store::initialize(connection).unwrap();
+        let scope = crate::scope::resolve(&store, &UserId::from("u".to_owned()), None).unwrap();
+        let listed = accounts::list(&store, &scope).unwrap();
+        assert_eq!(listed.len(), 1);
+        let account = &listed[0];
+        assert_eq!(account.id.as_str(), "a");
+        assert_eq!(account.kind, AccountKind::Jmap);
+        assert_eq!(account.auth_method, AuthMethod::Bearer);
+        assert_eq!(account.provider, Provider::Generic);
+        assert_eq!((account.address.as_str(), account.name.as_str()), ("", ""));
+        assert_eq!(account.created_at, 5);
+        let (settings, credentials): (String, Vec<u8>) = store
+            .read(|connection| {
+                connection
+                    .query_row("SELECT settings, credentials FROM accounts", [], |row| {
+                        Ok((row.get(0)?, row.get(1)?))
+                    })
+                    .map_err(StoreError::from)
+            })
+            .unwrap();
+        assert_eq!(settings, "{}");
+        assert_eq!(credentials, vec![3, 4]);
     }
 }
