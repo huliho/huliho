@@ -7,17 +7,11 @@ import type { APIRequestContext, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 import { STORYBOOK_URL } from "../playwright.config";
+import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
 
 // The sweep must fail loudly when a rename leaves it iterating nothing.
 const MIN_STORY_COUNT = 9;
 const PER_STORY_TIMEOUT_MS = 15000;
-const THEMES = ["light", "dark"] as const;
-// The phone and desktop reference widths every sheet is captured at.
-const VIEWPORTS = [
-  { name: "phone", width: 390, height: 844 },
-  { name: "desktop", width: 1440, height: 900 },
-] as const;
-const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

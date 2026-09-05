@@ -7,15 +7,10 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 import { mockSessionFlow, mockSignedIn, mockSignedOut } from "./session-mocks";
+import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
 
 const ATTRIBUTION = "Huliho, by Eric Kochen";
 const COPYRIGHT_LINE = "Copyright (C) 2026 Eric Kochen";
-const THEMES = ["light", "dark"] as const;
-const VIEWPORTS = [
-  { name: "phone", width: 390, height: 844 },
-  { name: "desktop", width: 1440, height: 900 },
-] as const;
-const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 const RETRY_SECONDS = 90;
 
 async function expectNotices(page: Page): Promise<void> {

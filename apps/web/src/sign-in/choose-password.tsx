@@ -47,7 +47,7 @@ export function ChoosePassword() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const signOut = useSignOut(locale);
-  const change = usePasswordChange(locale, signOut, async () => {
+  const change = usePasswordChange(locale, async () => {
     queryClient.removeQueries({ queryKey: sessionQueryOptions.queryKey });
     await navigate({ to: "/" });
   });

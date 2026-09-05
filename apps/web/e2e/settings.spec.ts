@@ -7,6 +7,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 import { mockSessions, mockSignedIn, sessionRows } from "./session-mocks";
+import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
 
 // Screenshots must not age, so the page renders a pinned date.
 const FIXED_NOW = new Date("2026-05-14T10:00:00");
@@ -14,12 +15,6 @@ const FIXED_NOW = new Date("2026-05-14T10:00:00");
 const UNDO_WINDOW_MS = 5_000;
 const PAST_WINDOW_MS = UNDO_WINDOW_MS + 1_000;
 const LIST_DELAY_MS = 1_500;
-const THEMES = ["light", "dark"] as const;
-const VIEWPORTS = [
-  { name: "phone", width: 390, height: 844 },
-  { name: "desktop", width: 1440, height: 900 },
-] as const;
-const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
 async function openSessions(page: Page): Promise<{ deletes: string[] }> {
   const mocks = await mockSessions(page, sessionRows(FIXED_NOW));

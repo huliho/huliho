@@ -7,6 +7,7 @@ import type { PasswordChangeInput } from "@huliho/core";
 
 import { useCredentialMutation } from "../auth/use-credential-mutation";
 import type { CredentialMutation } from "../auth/use-credential-mutation";
+import { useSessionEnded } from "../auth/use-session-ended";
 import { toastManager } from "../design-system/toast";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
@@ -15,9 +16,9 @@ import type { Locale } from "../paraglide/runtime.js";
 // thing on success. A session gone meanwhile ends here for both.
 export function usePasswordChange(
   locale: Locale,
-  signOut: () => void,
   onSaved: () => Promise<void> | void,
 ): CredentialMutation<PasswordChangeInput> {
+  const sessionEnded = useSessionEnded(locale);
   return useCredentialMutation(changePassword, {
     onSuccess: async () => {
       toastManager.add({ description: m.password_changed_toast({}, { locale }) });
@@ -25,8 +26,7 @@ export function usePasswordChange(
     },
     onFailure: (failure) => {
       if (failure === "unauthenticated") {
-        toastManager.add({ description: m.session_ended({}, { locale }) });
-        signOut();
+        sessionEnded();
       }
     },
   });

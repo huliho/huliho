@@ -14,6 +14,7 @@ import {
   sessionRows,
 } from "./session-mocks";
 import type { PasswordAnswer, PasswordChangeBody } from "./session-mocks";
+import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
 
 // Screenshots must not age, so the page renders a pinned date.
 const FIXED_NOW = new Date("2026-05-14T10:00:00");
@@ -21,12 +22,6 @@ const CURRENT = "the old passphrase";
 const NEXT = "a brand new passphrase";
 const RETRY_SECONDS = 90;
 const CHANGED_TOAST = "Password changed. Other devices were signed out.";
-const THEMES = ["light", "dark"] as const;
-const VIEWPORTS = [
-  { name: "phone", width: 390, height: 844 },
-  { name: "desktop", width: 1440, height: 900 },
-] as const;
-const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
 async function openPasswordSection(
   page: Page,

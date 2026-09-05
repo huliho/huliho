@@ -7,18 +7,12 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 import { mockSignedIn } from "./session-mocks";
+import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
 
 const EN_TAGLINE = "Your mail, wherever it lives.";
 const NL_TAGLINE = "Je mail, waar die ook staat.";
 // Screenshots must not age, so the page renders a pinned date.
 const FIXED_NOW = new Date("2026-05-14T10:00:00");
-const THEMES = ["light", "dark"] as const;
-// The phone and desktop reference widths every page is captured at.
-const VIEWPORTS = [
-  { name: "phone", width: 390, height: 844 },
-  { name: "desktop", width: 1440, height: 900 },
-] as const;
-const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
 async function openPinned(page: Page, locale?: string): Promise<void> {
   await mockSignedIn(page);

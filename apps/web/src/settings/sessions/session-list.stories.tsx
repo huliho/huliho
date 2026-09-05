@@ -5,13 +5,16 @@
 import type { SessionRow } from "@huliho/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
+import { ListSkeleton } from "../../design-system/list-skeleton";
 import { SettingsSection } from "../settings-section";
-import { SessionList, SessionListSkeleton } from "./session-list";
+import { SessionList } from "./session-list";
 
 // Screenshots must not age, so the rows sit at fixed distances from a fixed now.
 const NOW = new Date("2026-05-14T10:00:00");
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
+// The current device plus two typical others, the shape the list usually has.
+const SKELETON_ROW_COUNT = 3;
 
 const ROWS: SessionRow[] = [
   {
@@ -61,7 +64,7 @@ export const Default: StoryObj = {
 export const Loading: StoryObj = {
   render: () => (
     <SettingsSection title="Active sessions">
-      <SessionListSkeleton locale="en" />
+      <ListSkeleton locale="en" rows={SKELETON_ROW_COUNT} />
     </SettingsSection>
   ),
 };

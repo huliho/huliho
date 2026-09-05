@@ -9,7 +9,7 @@ import { useState } from "react";
 
 import { CredentialNotice, retryLabel } from "../auth/credential-notice";
 import { Button } from "../design-system/button";
-import { Field } from "../design-system/field";
+import { Field, focusFormField, formEntry } from "../design-system/field";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import styles from "./password-form.module.css";
@@ -41,24 +41,12 @@ interface PasswordFieldsProps {
   onEdit: () => void;
 }
 
-function entry(data: FormData, name: string): string {
-  const value = data.get(name);
-  return typeof value === "string" ? value : "";
-}
-
 // The first thing wrong with what was typed; null when it can go out.
 function issueOf(next: string, repeat: string): Issue | null {
   if (!fitsPasswordWindow(next)) {
     return "window";
   }
   return next === repeat ? null : "mismatch";
-}
-
-function focusField(form: HTMLFormElement, name: string): void {
-  const input = form.elements.namedItem(name);
-  if (input instanceof HTMLInputElement) {
-    input.focus();
-  }
 }
 
 function submitLabel(locale: Locale, mode: PasswordFormMode, pending: boolean): string {
@@ -134,14 +122,16 @@ export function PasswordForm({
       return;
     }
     const data = new FormData(event.currentTarget);
-    const next = entry(data, "new");
-    const found = issueOf(next, entry(data, "repeat"));
+    const next = formEntry(data, "new");
+    const found = issueOf(next, formEntry(data, "repeat"));
     setIssue(found);
     if (found !== null) {
-      focusField(event.currentTarget, found === "window" ? "new" : "repeat");
+      focusFormField(event.currentTarget, found === "window" ? "new" : "repeat");
       return;
     }
-    onSubmit(mode === "change" ? { current: entry(data, "current"), new: next } : { new: next });
+    onSubmit(
+      mode === "change" ? { current: formEntry(data, "current"), new: next } : { new: next },
+    );
   };
   const label = retryLabel(locale, retryRemaining) ?? submitLabel(locale, mode, pending);
   return (

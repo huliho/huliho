@@ -6,7 +6,6 @@ import { queryKeys } from "@huliho/state";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 
-import { useSignOut } from "../../auth/use-sign-out";
 import { m } from "../../paraglide/messages.js";
 import { getLocale } from "../../paraglide/runtime.js";
 import { PasswordForm } from "../../password/password-form";
@@ -16,10 +15,9 @@ import { SettingsSection } from "../settings-section";
 export function PasswordSection() {
   const locale = getLocale();
   const queryClient = useQueryClient();
-  const signOut = useSignOut(locale);
   const form = useRef<HTMLFormElement>(null);
   // The change ended every other session and moved this one onto a new row.
-  const change = usePasswordChange(locale, signOut, async () => {
+  const change = usePasswordChange(locale, async () => {
     form.current?.reset();
     await queryClient.invalidateQueries({ queryKey: queryKeys.sessions });
   });

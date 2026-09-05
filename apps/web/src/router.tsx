@@ -10,6 +10,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 
+import { mayManageUsers } from "@huliho/core";
 import type { SessionInfo } from "@huliho/core";
 import { sessionQueryOptions } from "@huliho/state";
 import { App } from "./app";
@@ -17,6 +18,7 @@ import { AboutSettings } from "./settings/about";
 import { SessionsPage } from "./settings/sessions/sessions-page";
 import { SettingsIndex } from "./settings/settings-index";
 import { SettingsPage } from "./settings/settings-page";
+import { UsersPage } from "./settings/users/users-page";
 import { RootLayout } from "./shell/root-layout";
 import { RouteError, RoutePending } from "./shell/route-fallbacks";
 import { ChoosePassword } from "./sign-in/choose-password";
@@ -48,6 +50,15 @@ async function requireHome(context: RouterContext, home: Home): Promise<void> {
   const actual = homeOf(await context.queryClient.query(sessionQueryOptions));
   if (actual !== home) {
     redirect({ to: actual, throw: true });
+  }
+}
+
+// Below the admin role the users page does not exist; the sessions page
+// is the nearest one that does.
+async function requireAdmin(context: RouterContext): Promise<void> {
+  const session = await context.queryClient.query(sessionQueryOptions);
+  if (session === null || !mayManageUsers(session.user.role)) {
+    redirect({ to: "/settings/sessions", throw: true });
   }
 }
 
@@ -103,11 +114,18 @@ const aboutRoute = createRoute({
   component: AboutSettings,
 });
 
+const usersRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/users",
+  component: UsersPage,
+  beforeLoad: ({ context }) => requireAdmin(context),
+});
+
 const routeTree = rootRoute.addChildren([
   shellRoute,
   signInRoute,
   choosePasswordRoute,
-  settingsRoute.addChildren([settingsIndexRoute, sessionsRoute, aboutRoute]),
+  settingsRoute.addChildren([settingsIndexRoute, sessionsRoute, aboutRoute, usersRoute]),
 ]);
 
 export const router = createRouter({

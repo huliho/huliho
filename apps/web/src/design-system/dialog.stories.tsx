@@ -6,7 +6,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useRef } from "react";
 
 import { Button } from "./button";
-import { Dialog } from "./dialog";
+import { Dialog, DialogActions } from "./dialog";
 
 function noChange(): void {
   // Stories render states; the dialog stays open.
@@ -22,8 +22,10 @@ function ConfirmDialog() {
       description="Jonas gets a one-time password to sign in with, chooses a new one right away and every session of his is signed out."
       initialFocus={cancel}
     >
-      <Button ref={cancel}>Cancel</Button>
-      <Button variant="danger">Reset password</Button>
+      <DialogActions>
+        <Button ref={cancel}>Cancel</Button>
+        <Button variant="danger">Reset password</Button>
+      </DialogActions>
     </Dialog>
   );
 }

@@ -19,6 +19,23 @@ const SESSION_BODY = {
 
 const SIGNED_OUT_BODY = { error: "unauthenticated" };
 
+export type MockRole = "owner" | "admin" | "member";
+
+// Who the session is per role; each one is a row the users mocks list.
+function actorOf(role: MockRole): { id: string; login: string; name: string } {
+  if (role === "admin") {
+    return { id: "user-3", login: "tomas@example.com", name: "Tomas" };
+  }
+  if (role === "member") {
+    return { id: "user-2", login: "jonas@example.com", name: "Jonas" };
+  }
+  return { id: "user-1", login: "mira@example.com", name: "Mira" };
+}
+
+function sessionBody(role: MockRole): object {
+  return { ...SESSION_BODY, user: { ...actorOf(role), role } };
+}
+
 export interface SessionRowBody {
   id: string;
   current: boolean;
@@ -43,8 +60,8 @@ async function mockLiveSession(page: Page, body: () => object): Promise<void> {
   });
 }
 
-export async function mockSignedIn(page: Page): Promise<void> {
-  await mockLiveSession(page, () => SESSION_BODY);
+export async function mockSignedIn(page: Page, role: MockRole = "owner"): Promise<void> {
+  await mockLiveSession(page, () => sessionBody(role));
 }
 
 export async function mockSignedOut(page: Page): Promise<void> {
