@@ -6,10 +6,13 @@
 
 use std::io::ErrorKind;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
+use ipnet::IpNet;
 use serde::Deserialize;
 use thiserror::Error;
+use url::Url;
 
 /// Environment variable naming the config file path; a named file must exist.
 pub const CONFIG_PATH_VAR: &str = "HULIHO_CONFIG";
@@ -41,14 +44,22 @@ const DEFAULT_IDLE_TIMEOUT_MINUTES: u32 = 14 * MINUTES_PER_DAY;
 /// Ninety days ends a session outright, active or not.
 const DEFAULT_ABSOLUTE_TIMEOUT_MINUTES: u32 = 90 * MINUTES_PER_DAY;
 
+/// Fifteen minutes between checks on an account that stopped on refused
+/// connections: soon enough to notice a recovered server, rare enough to
+/// stay polite to one that is down. Evaluated at compile time.
+const DEFAULT_PROBE_INTERVAL_MINUTES: NonZeroU32 = NonZeroU32::new(15).unwrap();
+
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields, default)]
 pub struct Config {
     pub listen: SocketAddr,
     pub assets: PathBuf,
+    /// The base URL users reach the instance on.
+    pub public_url: Option<Url>,
     pub storage: StorageConfig,
     pub events: EventsConfig,
     pub auth: AuthConfig,
+    pub upstream: UpstreamConfig,
 }
 
 impl Default for Config {
@@ -56,9 +67,11 @@ impl Default for Config {
         Self {
             listen: DEFAULT_LISTEN,
             assets: PathBuf::from(DEFAULT_ASSETS),
+            public_url: None,
             storage: StorageConfig::default(),
             events: EventsConfig::default(),
             auth: AuthConfig::default(),
+            upstream: UpstreamConfig::default(),
         }
     }
 }
@@ -107,6 +120,28 @@ impl Default for AuthConfig {
             secret_file: None,
             idle_timeout_minutes: DEFAULT_IDLE_TIMEOUT_MINUTES,
             absolute_timeout_minutes: DEFAULT_ABSOLUTE_TIMEOUT_MINUTES,
+        }
+    }
+}
+
+/// Rules for reaching upstream mail servers. Certificate validation is
+/// never optional; the CA file only widens what counts as valid.
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, default)]
+pub struct UpstreamConfig {
+    /// Private networks an upstream may resolve to; none by default.
+    pub allow_private_networks: Vec<IpNet>,
+    /// One PEM bundle trusted next to the built-in roots.
+    pub additional_ca_file: Option<PathBuf>,
+    pub probe_interval_minutes: NonZeroU32,
+}
+
+impl Default for UpstreamConfig {
+    fn default() -> Self {
+        Self {
+            allow_private_networks: Vec::new(),
+            additional_ca_file: None,
+            probe_interval_minutes: DEFAULT_PROBE_INTERVAL_MINUTES,
         }
     }
 }
@@ -190,15 +225,55 @@ mod tests {
 
     #[test]
     fn values_override_defaults() {
-        let toml = "listen = \"0.0.0.0:9000\"\nassets = \"web\"\n\n[storage]\npath = \"volume\"\n\n[events]\nretention_days = 30\n\n[auth]\nsecret_file = \"secret\"\nidle_timeout_minutes = 30\nabsolute_timeout_minutes = 60";
+        let toml = "listen = \"0.0.0.0:9000\"\nassets = \"web\"\npublic_url = \"https://mail.example.com\"\n\n[storage]\npath = \"volume\"\n\n[events]\nretention_days = 30\n\n[auth]\nsecret_file = \"secret\"\nidle_timeout_minutes = 30\nabsolute_timeout_minutes = 60\n\n[upstream]\nallow_private_networks = [\"127.0.0.0/8\", \"::1/128\"]\nadditional_ca_file = \"data/dev-certs/ca.pem\"\nprobe_interval_minutes = 5";
         let config = Config::parse(Path::new(ABSENT_PATH), toml).unwrap();
         assert_eq!(config.listen, "0.0.0.0:9000".parse().unwrap());
         assert_eq!(config.assets, PathBuf::from("web"));
+        assert_eq!(
+            config.public_url,
+            Some(Url::parse("https://mail.example.com").unwrap())
+        );
         assert_eq!(config.storage.path, PathBuf::from("volume"));
         assert_eq!(config.events.retention_days, 30);
         assert_eq!(config.auth.secret_file, Some(PathBuf::from("secret")));
         assert_eq!(config.auth.idle_timeout_minutes, 30);
         assert_eq!(config.auth.absolute_timeout_minutes, 60);
+        let loopback: [IpNet; 2] = ["127.0.0.0/8".parse().unwrap(), "::1/128".parse().unwrap()];
+        assert_eq!(config.upstream.allow_private_networks, loopback);
+        assert_eq!(
+            config.upstream.additional_ca_file,
+            Some(PathBuf::from("data/dev-certs/ca.pem"))
+        );
+        assert_eq!(config.upstream.probe_interval_minutes.get(), 5);
+    }
+
+    #[test]
+    fn upstream_defaults_trust_nothing_extra() {
+        let upstream = Config::default().upstream;
+        assert!(upstream.allow_private_networks.is_empty());
+        assert!(upstream.additional_ca_file.is_none());
+        assert_eq!(
+            upstream.probe_interval_minutes,
+            DEFAULT_PROBE_INTERVAL_MINUTES
+        );
+    }
+
+    #[test]
+    fn public_url_without_a_scheme_is_rejected() {
+        let toml = "public_url = \"mail.example.com\"";
+        assert!(Config::parse(Path::new(ABSENT_PATH), toml).is_err());
+    }
+
+    #[test]
+    fn private_network_without_a_prefix_length_is_rejected() {
+        let toml = "[upstream]\nallow_private_networks = [\"10.0.0.1\"]";
+        assert!(Config::parse(Path::new(ABSENT_PATH), toml).is_err());
+    }
+
+    #[test]
+    fn probe_interval_of_zero_is_rejected() {
+        let toml = "[upstream]\nprobe_interval_minutes = 0";
+        assert!(Config::parse(Path::new(ABSENT_PATH), toml).is_err());
     }
 
     #[test]
@@ -209,6 +284,11 @@ mod tests {
     #[test]
     fn unknown_nested_field_is_rejected() {
         assert!(Config::parse(Path::new(ABSENT_PATH), "[storage]\nsurprise = true").is_err());
+    }
+
+    #[test]
+    fn unknown_upstream_field_is_rejected() {
+        assert!(Config::parse(Path::new(ABSENT_PATH), "[upstream]\nsurprise = true").is_err());
     }
 
     #[test]
