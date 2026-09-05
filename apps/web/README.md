@@ -21,6 +21,11 @@ A revoke on the sessions page leaves the list at once and reaches the
 server only when its undo toast has run out. If the page closes first,
 the request goes out on page hide with `keepalive`.
 
+Sign-in and the password change run through one credential hook: a
+rate-limited refusal holds the form and counts down. A session opened
+with a one-time password reaches only `/choose-password`; the router
+sends every other route there until the change lands, then back to `/`.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component

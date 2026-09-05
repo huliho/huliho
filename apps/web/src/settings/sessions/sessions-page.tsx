@@ -13,6 +13,7 @@ import { getLocale } from "../../paraglide/runtime.js";
 import { useDeferredMutation } from "../../undo/use-deferred-mutation";
 import { SettingsSection } from "../settings-section";
 import { revokedToast } from "./device-label";
+import { PasswordSection } from "./password-section";
 import { SessionList, SessionListSkeleton } from "./session-list";
 
 export function SessionsPage() {
@@ -33,29 +34,32 @@ export function SessionsPage() {
     failureMessage: m.sessions_revoke_failed({}, { locale }),
   });
   return (
-    <SettingsSection title={m.sessions_heading({}, { locale })}>
-      {query.isPending && <SessionListSkeleton locale={locale} />}
-      {query.isError && (
-        <ErrorState
-          message={m.sessions_error({}, { locale })}
-          retryLabel={m.retry_action({}, { locale })}
-          onRetry={() => {
-            void query.refetch();
-          }}
-        />
-      )}
-      {query.isSuccess && (
-        <SessionList
-          rows={query.data}
-          locale={locale}
-          // Relative times count from the fetch, so a refetch refreshes them.
-          now={new Date(query.dataUpdatedAt)}
-          onRevoke={revoke}
-          onRevokeOthers={() => {
-            revokeOthers(null);
-          }}
-        />
-      )}
-    </SettingsSection>
+    <>
+      <SettingsSection title={m.sessions_heading({}, { locale })}>
+        {query.isPending && <SessionListSkeleton locale={locale} />}
+        {query.isError && (
+          <ErrorState
+            message={m.sessions_error({}, { locale })}
+            retryLabel={m.retry_action({}, { locale })}
+            onRetry={() => {
+              void query.refetch();
+            }}
+          />
+        )}
+        {query.isSuccess && (
+          <SessionList
+            rows={query.data}
+            locale={locale}
+            // Relative times count from the fetch, so a refetch refreshes them.
+            now={new Date(query.dataUpdatedAt)}
+            onRevoke={revoke}
+            onRevokeOthers={() => {
+              revokeOthers(null);
+            }}
+          />
+        )}
+      </SettingsSection>
+      <PasswordSection />
+    </>
   );
 }

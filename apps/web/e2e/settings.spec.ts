@@ -38,7 +38,7 @@ test("the list names each device, its address and when it was last seen", async 
   await expect(page.getByText("2 hours ago")).toBeVisible();
   await expect(page.getByText("Safari on macOS")).toBeVisible();
   await expect(page.getByText("3 weeks ago")).toBeVisible();
-  await expect(page.getByText("Current")).toBeVisible();
+  await expect(page.getByText("Current", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Revoke (?!all others)/ })).toHaveCount(2);
 });
 

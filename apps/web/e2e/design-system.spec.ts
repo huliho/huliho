@@ -45,9 +45,11 @@ async function storyIds(request: APIRequestContext): Promise<string[]> {
 
 async function auditStory(page: Page, id: string, theme: string, name: string): Promise<void> {
   await page.goto(`${STORYBOOK_URL}/iframe.html?id=${id}&globals=theme:${theme}`);
+  // A story that fails to load never sets the theme; the wait must end with the step.
   await page.waitForFunction(
     (expected) => document.documentElement.dataset["theme"] === expected,
     theme,
+    { timeout: PER_STORY_TIMEOUT_MS },
   );
   await page.evaluate(async () => {
     await document.fonts.ready;
