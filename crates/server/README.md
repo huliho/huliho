@@ -20,7 +20,12 @@ A user changes their own password against the current one; every
 other session ends and the current one continues on a fresh token.
 An admin creates users and resets passwords through a one-time
 password that is shown once, works for one sign-in within a day and
-opens a session that reaches only the password change.
+opens a session that reaches only the password change. A user's
+connected accounts are rows carrying the address, a display name, the
+provider preset and the connection settings; the credential sits beside
+them sealed under a key of its own and bound to the row, so it never
+reaches the browser. A signed-in user lists their own accounts and
+removes any of them; the credential leaves with the row.
 
 Configuration is one TOML file; unknown keys are rejected. Top-level
 keys are the `listen` address, the `assets` directory and the optional
@@ -33,8 +38,9 @@ mail servers. `allow_private_networks` lists the private networks an
 upstream may resolve to, written as CIDRs. It is empty by default.
 `additional_ca_file` names one PEM bundle trusted next to the built-in
 roots. `probe_interval_minutes` says how often a stopped account is
-checked for recovery, fifteen by default. Nothing reads the upstream
-rules yet. The file path comes from `HULIHO_CONFIG` and that file must
+checked for recovery, fifteen by default. The account list reports the
+probe interval; nothing acts on the upstream rules yet. The file path
+comes from `HULIHO_CONFIG` and that file must
 exist. Without the variable the server reads `huliho.toml` from the
 working directory and falls back to the defaults when it is absent.
 

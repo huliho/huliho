@@ -4,14 +4,16 @@
 
 //! The domain event log: recording, isolation and retention.
 
+mod connecting;
 mod organization;
 
 use std::time::Duration;
 
-use huliho_server::accounts::{self, AccountKind, AuthMethod};
+use connecting::{ACCOUNT_TOKEN, keys, new_account};
+use huliho_server::accounts::{self, StopCause};
 use huliho_server::events;
 use huliho_server::identity::{self, NewUser};
-use huliho_server::ids::{Role, UserId};
+use huliho_server::ids::{AccountId, Role, UserId};
 use huliho_server::scope;
 use huliho_server::store::StoreError;
 use organization::{new_user, personal, scope_of, store};
@@ -31,8 +33,13 @@ fn lifecycle_facts_land_in_order_with_monotonic_ids() {
     )
     .unwrap();
     identity::change_role(&store, &owner_scope, &member.id, Role::Admin).unwrap();
-    let account =
-        accounts::link(&store, &owner_scope, AccountKind::Jmap, AuthMethod::Bearer).unwrap();
+    let account = accounts::add(
+        &store,
+        &keys(),
+        &owner_scope,
+        &new_account("owner@fastmail.com"),
+    )
+    .unwrap();
     let scoped = scope::resolve(&store, &owner.id, Some(&account.id)).unwrap();
     accounts::remove(&store, &scoped).unwrap();
 
@@ -109,6 +116,42 @@ fn payloads_carry_no_login() {
 }
 
 #[test]
+fn account_payloads_carry_no_address_host_or_secret() {
+    let store = store();
+    let (_, owner) = personal(&store, "owner@example.com");
+    let owner_scope = scope_of(&store, &owner);
+    let account = accounts::add(
+        &store,
+        &keys(),
+        &owner_scope,
+        &new_account("owner@fastmail.com"),
+    )
+    .unwrap();
+    let scoped = scope::resolve(&store, &owner.id, Some(&account.id)).unwrap();
+    accounts::remove(&store, &scoped).unwrap();
+
+    let records = events::for_organization(&store, &owner_scope).unwrap();
+    let payloads: Vec<&str> = records
+        .iter()
+        .map(|record| record.payload.as_str())
+        .collect();
+    for word in ["fastmail", "Fastmail", "@", ACCOUNT_TOKEN] {
+        assert!(
+            payloads.iter().all(|payload| !payload.contains(word)),
+            "{word}"
+        );
+    }
+    let id_field = format!("\"account_id\":\"{}\"", account.id.as_str());
+    assert_eq!(
+        payloads
+            .iter()
+            .filter(|payload| payload.contains(&id_field))
+            .count(),
+        2
+    );
+}
+
+#[test]
 fn a_member_reads_no_event_log() {
     let store = store();
     let (_, owner) = personal(&store, "owner@example.com");
@@ -128,11 +171,11 @@ fn the_log_stays_inside_the_organization() {
     let store = store();
     let (_, alpha) = personal(&store, "alpha@example.com");
     let (organization, beta) = personal(&store, "beta@example.com");
-    accounts::link(
+    accounts::add(
         &store,
+        &keys(),
         &scope_of(&store, &alpha),
-        AccountKind::Jmap,
-        AuthMethod::Bearer,
+        &new_account("alpha@fastmail.com"),
     )
     .unwrap();
 
@@ -165,6 +208,7 @@ fn pruning_removes_only_expired_rows_and_records_itself() {
 fn the_new_lifecycle_types_carry_stable_names() {
     use huliho_server::events::DomainEvent;
     let user_id = UserId::from("u".to_owned());
+    let account_id = AccountId::from("a".to_owned());
     let named = [
         (
             DomainEvent::SessionRevoked {
@@ -191,6 +235,23 @@ fn the_new_lifecycle_types_carry_stable_names() {
             "user.password_reset",
         ),
         (
+            DomainEvent::AccountStopped {
+                account_id: account_id.clone(),
+                cause: StopCause::Connection,
+            },
+            "account.stopped",
+        ),
+        (
+            DomainEvent::AccountResumed {
+                account_id: account_id.clone(),
+            },
+            "account.resumed",
+        ),
+        (
+            DomainEvent::AccountCredentialsUpdated { account_id },
+            "account.credentials_updated",
+        ),
+        (
             DomainEvent::UserActive {
                 user_id,
                 period: "2026-09".to_owned(),
@@ -201,6 +262,17 @@ fn the_new_lifecycle_types_carry_stable_names() {
     for (event, name) in named {
         assert_eq!(event.event_type(), name);
     }
+}
+
+#[test]
+fn a_stop_payload_carries_the_id_and_the_cause_word() {
+    use huliho_server::events::DomainEvent;
+    let event = DomainEvent::AccountStopped {
+        account_id: AccountId::from("a".to_owned()),
+        cause: StopCause::Credentials,
+    };
+    let payload = serde_json::to_string(&event).unwrap();
+    assert_eq!(payload, r#"{"account_id":"a","cause":"credentials"}"#);
 }
 
 #[test]

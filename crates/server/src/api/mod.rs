@@ -4,6 +4,7 @@
 
 //! The /api router: its guards, extractors and the error shape.
 
+mod accounts;
 mod login;
 mod password;
 mod sessions;
@@ -11,6 +12,7 @@ mod users;
 
 use std::fmt::Display;
 use std::net::{IpAddr, SocketAddr};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use axum::Router;
@@ -26,7 +28,7 @@ use tokio::sync::Semaphore;
 
 use crate::auth::AuthError;
 use crate::rate::RateLimiter;
-use crate::secrets::SessionKeys;
+use crate::secrets::Keys;
 use crate::session::{self, SESSION_COOKIE, Session, SessionError, SessionTimeouts};
 use crate::store::{MS_PER_SECOND, Store, StoreError};
 
@@ -44,10 +46,12 @@ pub const MAX_CONCURRENT_VERIFICATIONS: usize = 4;
 #[derive(Clone)]
 pub struct ApiState {
     pub store: Arc<Store>,
-    pub keys: Arc<SessionKeys>,
+    pub keys: Arc<Keys>,
     pub timeouts: SessionTimeouts,
     pub limiter: Arc<RateLimiter>,
     pub verify_gate: Arc<Semaphore>,
+    /// From the config; the account list tells the page.
+    pub probe_interval_minutes: NonZeroU32,
 }
 
 /// Builds the /api router on the given state.
@@ -65,6 +69,8 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/sessions/{id}", delete(sessions::revoke_session))
         .route("/password", put(password::change_password))
+        .route("/accounts", get(accounts::list_accounts))
+        .route("/accounts/{id}", delete(accounts::remove_account))
         .route("/users", get(users::list_users).post(users::create_user))
         .route("/users/{id}/password-reset", post(users::reset_password))
         .layer(axum::middleware::from_fn(require_csrf_header))
@@ -142,7 +148,6 @@ impl From<SessionError> for ApiError {
         match error {
             SessionError::Unauthenticated => Self::Unauthenticated,
             SessionError::Store(inner) => Self::from(inner),
-            SessionError::Random | SessionError::Sealing => internal(error),
         }
     }
 }
@@ -168,6 +173,9 @@ impl From<StoreError> for ApiError {
             | StoreError::Database(_)
             | StoreError::Migration(_)
             | StoreError::Encoding(_)
+            | StoreError::Random
+            | StoreError::Sealing
+            | StoreError::Tampered
             | StoreError::Poisoned
             | StoreError::LastOwner
             | StoreError::MissingAccount => internal(error),

@@ -11,7 +11,7 @@ use super::activity::record_activity;
 use super::{Client, SealedSession, SessionError, TokenHash, organization_of, seal};
 use crate::events::{Actor, DomainEvent, append};
 use crate::ids::{SessionId, UserId};
-use crate::secrets::SessionKeys;
+use crate::secrets::Keys;
 use crate::store::{Store, StoreError, now_ms};
 
 /// 128 random bits per token, beyond guessing.
@@ -41,7 +41,7 @@ struct Prepared {
 /// database fails.
 pub fn create(
     store: &Store,
-    keys: &SessionKeys,
+    keys: &Keys,
     user_id: &UserId,
     client: &Client,
 ) -> Result<String, SessionError> {
@@ -65,7 +65,7 @@ pub fn create(
 /// As [`create`].
 pub fn create_for_password_change(
     store: &Store,
-    keys: &SessionKeys,
+    keys: &Keys,
     user_id: &UserId,
     client: &Client,
 ) -> Result<Option<String>, SessionError> {
@@ -87,11 +87,11 @@ pub fn create_for_password_change(
 
 pub(super) fn fresh_token() -> Result<String, SessionError> {
     let mut bytes = [0u8; TOKEN_BYTES];
-    getrandom::fill(&mut bytes).map_err(|_| SessionError::Random)?;
+    getrandom::fill(&mut bytes).map_err(|_| StoreError::Random)?;
     Ok(base16ct::lower::encode_string(&bytes))
 }
 
-fn prepare(keys: &SessionKeys, row: &NewRow<'_>) -> Result<Prepared, SessionError> {
+fn prepare(keys: &Keys, row: &NewRow<'_>) -> Result<Prepared, SessionError> {
     let token = fresh_token()?;
     let token_hash = TokenHash::of(&token);
     let created_at = now_ms();

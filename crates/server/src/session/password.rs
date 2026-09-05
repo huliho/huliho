@@ -16,7 +16,7 @@ use super::{SealedSession, Session, SessionError, TokenHash, seal};
 use crate::events::{Actor, DomainEvent, append};
 use crate::ids::SessionId;
 use crate::scope::Scope;
-use crate::secrets::SessionKeys;
+use crate::secrets::Keys;
 use crate::store::{Store, StoreError, now_ms};
 
 /// The current session, the hash of the chosen password and where the
@@ -46,7 +46,7 @@ struct Replacement<'a> {
 /// gone; randomness, sealing and database failures pass through.
 pub fn apply_password_change(
     store: &Store,
-    keys: &SessionKeys,
+    keys: &Keys,
     scope: &Scope,
     change: &PasswordChange<'_>,
 ) -> Result<String, SessionError> {
@@ -209,12 +209,22 @@ mod tests {
 
     #[test]
     fn a_change_leaves_the_accounts_alone() {
-        use crate::accounts::{self, AccountKind, AuthMethod};
+        use crate::accounts::{self, AccountSettings, Credential, NewAccount, Provider};
         let (store, user_id) = store_with_user();
         let keys = keys();
         let scope = scope::resolve(&store, &user_id, None).unwrap();
-        let account =
-            accounts::link(&store, &scope, AccountKind::Jmap, AuthMethod::Bearer).unwrap();
+        let new = NewAccount {
+            address: "mira@fastmail.com".to_owned(),
+            name: "Fastmail".to_owned(),
+            provider: Provider::Fastmail,
+            settings: AccountSettings::Jmap {
+                session_url: "https://api.fastmail.com/jmap/session".parse().unwrap(),
+            },
+            credential: Credential::Bearer {
+                token: "token".to_owned(),
+            },
+        };
+        let account = accounts::add(&store, &keys, &scope, &new).unwrap();
         let token = create(&store, &keys, &user_id, &Client::default()).unwrap();
         let current = authenticate(&store, &keys, GENEROUS_TIMEOUTS, &token).unwrap();
         apply_password_change(&store, &keys, &scope, &change_for(&current)).unwrap();

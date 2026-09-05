@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! The instance secret and the session key derived from it.
+//! The instance secret and the keys derived from it.
 
 use std::path::{Path, PathBuf};
 
@@ -20,8 +20,10 @@ const MIN_SECRET_BYTES: usize = 32;
 /// Group and world permission bits; a secret file must carry none of them.
 const GROUP_WORLD_BITS: u32 = 0o077;
 
-/// Domain separation label for the session store key.
+/// Domain separation labels, one per purpose; a blob sealed under one
+/// key opens under no other.
 const SESSION_KEY_INFO: &[u8] = b"huliho session store v1";
+const CREDENTIAL_KEY_INFO: &[u8] = b"huliho account credentials v1";
 
 /// AEAD key size for XChaCha20-Poly1305.
 const KEY_BYTES: usize = 32;
@@ -63,6 +65,19 @@ impl InstanceSecret {
         }
     }
 
+    /// Takes the secret as raw bytes, the form the environment variable
+    /// carries.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SecretError::TooShort`] below the minimum length.
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, SecretError> {
+        if bytes.len() < MIN_SECRET_BYTES {
+            return Err(SecretError::TooShort);
+        }
+        Ok(Self(bytes))
+    }
+
     fn from_file(path: &Path) -> Result<Self, SecretError> {
         let read_error = |source| SecretError::Read {
             path: path.to_owned(),
@@ -80,22 +95,16 @@ impl InstanceSecret {
         }
         Self::from_bytes(bytes)
     }
-
-    fn from_bytes(bytes: Vec<u8>) -> Result<Self, SecretError> {
-        if bytes.len() < MIN_SECRET_BYTES {
-            return Err(SecretError::TooShort);
-        }
-        Ok(Self(bytes))
-    }
 }
 
 /// Keys derived from the instance secret, one per purpose.
-pub struct SessionKeys {
-    cipher: XChaCha20Poly1305,
+pub struct Keys {
+    sessions: XChaCha20Poly1305,
+    credentials: XChaCha20Poly1305,
 }
 
-impl SessionKeys {
-    /// Derives the session store key with HKDF-SHA256.
+impl Keys {
+    /// Derives every key with HKDF-SHA256 under its own label.
     ///
     /// # Panics
     ///
@@ -104,24 +113,28 @@ impl SessionKeys {
     #[must_use]
     pub fn derive(secret: &InstanceSecret) -> Self {
         let hkdf = Hkdf::<Sha256>::new(None, &secret.0);
-        let mut key = [0u8; KEY_BYTES];
-        hkdf.expand(SESSION_KEY_INFO, &mut key)
-            .expect("the fixed key length is within the HKDF output bound");
         Self {
-            cipher: XChaCha20Poly1305::new(&Key::from(key)),
+            sessions: cipher(&hkdf, SESSION_KEY_INFO),
+            credentials: cipher(&hkdf, CREDENTIAL_KEY_INFO),
         }
     }
 
-    pub(crate) fn cipher(&self) -> &XChaCha20Poly1305 {
-        &self.cipher
+    /// The session store key.
+    pub(crate) fn sessions(&self) -> &XChaCha20Poly1305 {
+        &self.sessions
+    }
+
+    /// The key for the credential sealed on an account row.
+    pub(crate) fn credentials(&self) -> &XChaCha20Poly1305 {
+        &self.credentials
     }
 }
 
-#[cfg(test)]
-impl InstanceSecret {
-    pub(crate) fn for_tests(bytes: &[u8]) -> Self {
-        Self(bytes.to_vec())
-    }
+fn cipher(hkdf: &Hkdf<Sha256>, info: &[u8]) -> XChaCha20Poly1305 {
+    let mut key = [0u8; KEY_BYTES];
+    hkdf.expand(info, &mut key)
+        .expect("the fixed key length is within the HKDF output bound");
+    XChaCha20Poly1305::new(&Key::from(key))
 }
 
 #[cfg(unix)]

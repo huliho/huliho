@@ -4,7 +4,7 @@
 
 //! Typed identifiers and the fixed role set.
 
-use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
+use rusqlite::types::{FromSql, FromSqlResult, ValueRef};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -39,6 +39,46 @@ macro_rules! id_type {
     };
 }
 
+/// A closed set of words stored as TEXT: `as_str` for the column and
+/// `FromSql` back, refusing any word outside the set.
+macro_rules! text_enum {
+    ($(#[$meta:meta])* $name:ident { $($variant:ident => $text:literal),+ $(,)? }) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, ::serde::Serialize, ::serde::Deserialize)]
+        pub enum $name {
+            $(
+                #[serde(rename = $text)]
+                $variant
+            ),+
+        }
+
+        impl $name {
+            #[must_use]
+            pub fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $text),+
+                }
+            }
+        }
+
+        impl ::rusqlite::types::FromSql for $name {
+            fn column_result(
+                value: ::rusqlite::types::ValueRef<'_>,
+            ) -> ::rusqlite::types::FromSqlResult<Self> {
+                let word = <String as ::rusqlite::types::FromSql>::column_result(value)?;
+                match word.as_str() {
+                    $($text => Ok(Self::$variant),)+
+                    other => Err(::rusqlite::types::FromSqlError::Other(
+                        format!("unknown {} {other}", stringify!($name)).into(),
+                    )),
+                }
+            }
+        }
+    };
+}
+
+pub(crate) use text_enum;
+
 id_type!(
     /// Identifies an organization.
     OrganizationId
@@ -59,36 +99,15 @@ id_type!(
     SessionId
 );
 
-/// Fixed roles within an organization, ordered lowest authority first.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Role {
-    Member,
-    Admin,
-    Owner,
-}
-
-impl Role {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Member => "member",
-            Self::Admin => "admin",
-            Self::Owner => "owner",
-        }
+text_enum!(
+    /// Fixed roles within an organization, ordered lowest authority first.
+    #[derive(PartialOrd, Ord)]
+    Role {
+        Member => "member",
+        Admin => "admin",
+        Owner => "owner",
     }
-}
-
-impl FromSql for Role {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        match String::column_result(value)?.as_str() {
-            "member" => Ok(Self::Member),
-            "admin" => Ok(Self::Admin),
-            "owner" => Ok(Self::Owner),
-            other => Err(FromSqlError::Other(format!("unknown role {other}").into())),
-        }
-    }
-}
+);
 
 #[cfg(test)]
 mod tests {
@@ -103,5 +122,14 @@ mod tests {
     #[test]
     fn generated_ids_are_unique() {
         assert_ne!(UserId::generate(), UserId::generate());
+    }
+
+    #[test]
+    fn a_role_serializes_to_its_stored_word() {
+        for role in [Role::Member, Role::Admin, Role::Owner] {
+            let json = serde_json::to_string(&role).unwrap();
+            assert_eq!(json, format!("\"{}\"", role.as_str()));
+            assert_eq!(serde_json::from_str::<Role>(&json).unwrap(), role);
+        }
     }
 }

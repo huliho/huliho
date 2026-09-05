@@ -9,7 +9,7 @@ use rusqlite::params;
 use super::SessionTimeouts;
 use crate::identity;
 use crate::ids::UserId;
-use crate::secrets::{InstanceSecret, SessionKeys};
+use crate::secrets::{InstanceSecret, Keys};
 use crate::store::{Store, StoreError};
 
 pub(crate) const GENEROUS_TIMEOUTS: SessionTimeouts = SessionTimeouts {
@@ -17,10 +17,8 @@ pub(crate) const GENEROUS_TIMEOUTS: SessionTimeouts = SessionTimeouts {
     absolute_ms: 3_600_000,
 };
 
-pub(crate) fn keys() -> SessionKeys {
-    SessionKeys::derive(&InstanceSecret::for_tests(
-        b"0123456789abcdef0123456789abcdef",
-    ))
+pub(crate) fn keys() -> Keys {
+    Keys::derive(&InstanceSecret::from_bytes(b"0123456789abcdef0123456789abcdef".to_vec()).unwrap())
 }
 
 pub(crate) fn store_with_user() -> (Store, UserId) {

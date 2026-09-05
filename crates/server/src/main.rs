@@ -15,7 +15,7 @@ use tracing_subscriber::EnvFilter;
 use huliho_server::api::{ApiState, MAX_CONCURRENT_VERIFICATIONS};
 use huliho_server::config::{CONFIG_PATH_VAR, Config, DEFAULT_CONFIG_PATH};
 use huliho_server::rate::RateLimiter;
-use huliho_server::secrets::{InstanceSecret, SessionKeys};
+use huliho_server::secrets::{InstanceSecret, Keys};
 use huliho_server::session::SessionTimeouts;
 use huliho_server::store::Store;
 use huliho_server::{events, session};
@@ -58,10 +58,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let api = ApiState {
         store,
-        keys: Arc::new(SessionKeys::derive(&secret)),
+        keys: Arc::new(Keys::derive(&secret)),
         timeouts,
         limiter: Arc::new(RateLimiter::default()),
         verify_gate: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_VERIFICATIONS)),
+        probe_interval_minutes: config.upstream.probe_interval_minutes,
     };
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     tracing::info!(listen = %config.listen, "listening");
