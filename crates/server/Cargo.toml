@@ -6,6 +6,10 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+[features]
+# Tests that need the compose targets and the public internet.
+live-targets = []
+
 [dependencies]
 argon2 = "0.6.0"
 axum = "0.8.9"
@@ -13,10 +17,14 @@ axum-extra = { version = "0.12.6", features = ["cookie"] }
 base16ct = { version = "1.0.0", features = ["alloc"] }
 chacha20poly1305 = "0.11.0"
 getrandom = "0.4.3"
+hickory-resolver = "0.26.2"
 hkdf = "0.13.0"
 ipnet = { version = "2.12.1", features = ["serde"] }
+quick-xml = { version = "0.42.0", features = ["overlapped-lists", "serialize"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 rusqlite_migration = "2.6.0"
+rustls = { version = "0.23.43", default-features = false, features = ["logging", "ring", "std", "tls12"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
@@ -29,9 +37,12 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 url = { version = "2.5.8", features = ["serde"] }
 uuid = { version = "1.26.0", features = ["v4"] }
+webpki-roots = "1.0.9"
 
 [dev-dependencies]
+axum-server = { version = "0.8.0", features = ["tls-rustls-no-provider"] }
 http-body-util = "0.1.5"
+rcgen = "0.14.10"
 tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }
 trybuild = "1.0.120"

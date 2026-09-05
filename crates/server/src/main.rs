@@ -18,6 +18,7 @@ use huliho_server::rate::RateLimiter;
 use huliho_server::secrets::{InstanceSecret, Keys};
 use huliho_server::session::SessionTimeouts;
 use huliho_server::store::Store;
+use huliho_server::upstream::Upstream;
 use huliho_server::{events, session};
 
 /// Request logs without debug noise; override via `RUST_LOG`.
@@ -50,6 +51,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let secret = InstanceSecret::load(config.auth.secret_file.as_deref())?;
     let store = Arc::new(Store::open(&config.storage.path)?);
     let timeouts = SessionTimeouts::from(&config.auth);
+    let upstream = Arc::new(Upstream::new(&config.upstream)?);
     tokio::spawn(events::prune_periodically(
         Arc::clone(&store),
         config.events.retention_days,
@@ -63,6 +65,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         limiter: Arc::new(RateLimiter::default()),
         verify_gate: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_VERIFICATIONS)),
         probe_interval_minutes: config.upstream.probe_interval_minutes,
+        public_url: config.public_url.clone(),
+        upstream,
     };
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     tracing::info!(listen = %config.listen, "listening");
