@@ -4,6 +4,7 @@
 
 import { CredentialError, rateLimited } from "./credentials";
 import { CSRF_HEADERS } from "./http";
+import { roleSchema } from "./role";
 import { z } from "./schema";
 
 const SESSION_ENDPOINT = "/api/session";
@@ -13,7 +14,7 @@ export const sessionInfoSchema = z.object({
     id: z.string(),
     login: z.string(),
     name: z.string(),
-    role: z.enum(["owner", "admin", "member"]),
+    role: roleSchema,
   }),
   organization: z.object({
     id: z.string(),

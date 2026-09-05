@@ -1,0 +1,45 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* The bordered list of rows the session list, the user cards and the
+   list skeleton share; each keeps its own module for what is its own. */
+
+.list {
+  display: block;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-field);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-3);
+  min-block-size: var(--hhx-row-height);
+  padding: var(--hhx-space-2) var(--hhx-pane-padding);
+  border-block-end: var(--hhx-border-width) solid var(--hh-border);
+}
+
+.row:last-child {
+  border-block-end: none;
+}
+
+.facts {
+  flex: 1;
+  min-inline-size: 0;
+  display: grid;
+  gap: var(--hhx-space-1);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--hhx-space-2);
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+}

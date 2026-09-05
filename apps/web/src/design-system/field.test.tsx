@@ -25,3 +25,16 @@ test("without an error the input is plain", () => {
   expect(input.getAttribute("autocomplete")).toBe("username");
   expect(screen.queryByRole("alert")).toBeNull();
 });
+
+test("options make the control a select the label names", () => {
+  render(
+    <Field label="Role" name="role" defaultValue="admin">
+      <option value="member">Member</option>
+      <option value="admin">Admin</option>
+    </Field>,
+  );
+  const select = screen.getByLabelText("Role");
+  expect(select).toBeInstanceOf(HTMLSelectElement);
+  expect(select).toHaveProperty("value", "admin");
+  expect(screen.getAllByRole("option")).toHaveLength(2);
+});

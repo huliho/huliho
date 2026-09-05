@@ -8,13 +8,17 @@ import { queryKeys, sessionsQueryOptions } from "@huliho/state";
 import { useQuery } from "@tanstack/react-query";
 
 import { ErrorState } from "../../design-system/error-state";
+import { ListSkeleton } from "../../design-system/list-skeleton";
 import { m } from "../../paraglide/messages.js";
 import { getLocale } from "../../paraglide/runtime.js";
 import { useDeferredMutation } from "../../undo/use-deferred-mutation";
 import { SettingsSection } from "../settings-section";
 import { revokedToast } from "./device-label";
 import { PasswordSection } from "./password-section";
-import { SessionList, SessionListSkeleton } from "./session-list";
+import { SessionList } from "./session-list";
+
+// The current device plus two typical others, the shape the list usually has.
+const SKELETON_ROW_COUNT = 3;
 
 export function SessionsPage() {
   const locale = getLocale();
@@ -36,7 +40,7 @@ export function SessionsPage() {
   return (
     <>
       <SettingsSection title={m.sessions_heading({}, { locale })}>
-        {query.isPending && <SessionListSkeleton locale={locale} />}
+        {query.isPending && <ListSkeleton locale={locale} rows={SKELETON_ROW_COUNT} />}
         {query.isError && (
           <ErrorState
             message={m.sessions_error({}, { locale })}

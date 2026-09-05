@@ -11,6 +11,8 @@ export {
   fitsPasswordWindow,
 } from "./password";
 export type { PasswordChangeInput } from "./password";
+export { ROLES, grantableRoles, mayManageUsers } from "./role";
+export type { Role } from "./role";
 export { fetchSession, sessionInfoSchema, signIn, signOut } from "./session";
 export type { SessionInfo } from "./session";
 export {
@@ -21,3 +23,12 @@ export {
   sessionRowSchema,
 } from "./sessions";
 export type { Device, RevokeOptions, SessionRow } from "./sessions";
+export {
+  USER_NAME_MAX_CHARS,
+  UsersError,
+  createUser,
+  fetchUsers,
+  fitsLogin,
+  resetPassword,
+} from "./users";
+export type { CreatedUser, IssuedPassword, NewUser, UserRow, UsersFailureCode } from "./users";

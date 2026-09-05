@@ -45,6 +45,11 @@
   color: var(--hh-text-muted);
 }
 
+.failure {
+  margin: 0;
+  color: var(--hh-danger);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

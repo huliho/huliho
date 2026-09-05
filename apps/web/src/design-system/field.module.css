@@ -23,7 +23,8 @@
   font-size: var(--hhx-type-3);
 }
 
-.input:read-only {
+/* The attribute, since a select matches :read-only on its own. */
+.input[readonly] {
   background: var(--hh-bg);
   color: var(--hh-text-muted);
 }

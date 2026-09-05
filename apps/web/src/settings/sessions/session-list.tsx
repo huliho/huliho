@@ -6,15 +6,13 @@ import type { SessionRow } from "@huliho/core";
 import { relativeTime } from "@huliho/i18n";
 import { useEffect, useRef } from "react";
 
+import { Badge } from "../../design-system/badge";
 import { Button } from "../../design-system/button";
-import { Skeleton } from "../../design-system/skeleton";
+import rowList from "../../design-system/row-list.module.css";
 import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
 import { deviceLabel, isUnknownDevice } from "./device-label";
 import styles from "./session-list.module.css";
-
-// The current device plus two typical others, the shape the list usually has.
-const SKELETON_ROW_COUNT = 3;
 
 interface SessionListProps {
   rows: SessionRow[];
@@ -42,13 +40,12 @@ function deviceTitle(row: SessionRow, locale: Locale): string {
 }
 
 function SessionItem({ row, locale, now, onRevoke }: SessionItemProps) {
-  const seen =
-    relativeTime(locale, new Date(row.lastSeenAt), now) ?? m.sessions_active_now({}, { locale });
+  const seen = relativeTime(locale, new Date(row.lastSeenAt), now) ?? m.active_now({}, { locale });
   return (
-    <li className={styles.row}>
-      <div className={styles.details}>
+    <li className={rowList.row}>
+      <div className={rowList.facts}>
         <span className={styles.device}>{deviceTitle(row, locale)}</span>
-        <span className={styles.meta}>
+        <span className={rowList.meta}>
           {row.address !== null && (
             <>
               <span className={styles.address}>{row.address}</span>
@@ -59,7 +56,7 @@ function SessionItem({ row, locale, now, onRevoke }: SessionItemProps) {
         </span>
       </div>
       {row.current ? (
-        <span className={styles.current}>{m.sessions_current({}, { locale })}</span>
+        <Badge tone="accent">{m.sessions_current({}, { locale })}</Badge>
       ) : (
         <Button
           aria-label={m.sessions_revoke_device(
@@ -113,7 +110,7 @@ export function SessionList({ rows, locale, now, onRevoke, onRevokeOthers }: Ses
     <>
       <ul
         ref={list}
-        className={styles.list}
+        className={rowList.list}
         tabIndex={-1}
         aria-label={m.sessions_heading({}, { locale })}
       >
@@ -136,22 +133,5 @@ export function SessionList({ rows, locale, now, onRevoke, onRevokeOthers }: Ses
         </div>
       )}
     </>
-  );
-}
-
-// Spans only: an output element takes phrasing content.
-export function SessionListSkeleton({ locale }: { locale: Locale }) {
-  return (
-    <output className={styles.list} aria-label={m.loading_label({}, { locale })}>
-      {Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
-        <span key={index} className={styles.row}>
-          <span className={styles.details}>
-            <Skeleton className={styles.deviceSkeleton} />
-            <Skeleton className={styles.metaSkeleton} />
-          </span>
-          <Skeleton className={styles.buttonSkeleton} />
-        </span>
-      ))}
-    </output>
   );
 }

@@ -26,6 +26,12 @@ rate-limited refusal holds the form and counts down. A session opened
 with a one-time password reaches only `/choose-password`; the router
 sends every other route there until the change lands, then back to `/`.
 
+Admin > Users lists the organization's users for admins and owners; a
+member is sent to the sessions page and never sees the Admin group.
+Reset and create hand over a one-time password in a dialog that shows
+it once: it lives in mutation state until the dialog has closed, then
+both mutations reset.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component

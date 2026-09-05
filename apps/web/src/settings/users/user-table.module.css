@@ -1,0 +1,54 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* Between the sidebar breakpoint and the width where every column fits,
+   the table scrolls sideways inside its card. */
+.scroll {
+  overflow-inline: auto;
+}
+
+.table {
+  inline-size: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: var(--hhx-space-2) var(--hhx-space-3);
+  border-block-end: var(--hhx-border-width) solid var(--hh-border);
+  text-align: start;
+  vertical-align: middle;
+}
+
+.table th {
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+  white-space: nowrap;
+}
+
+.table tbody tr:last-child td {
+  border-block-end: none;
+}
+
+.name {
+  font-weight: 600;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.action {
+  text-align: end;
+  white-space: nowrap;
+}
+
+.you {
+  color: var(--hh-text-muted);
+}
+
+.login {
+  overflow-wrap: anywhere;
+  color: var(--hh-text-muted);
+}

@@ -18,6 +18,14 @@
   gap: var(--hhx-space-3);
 }
 
+.cardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hhx-space-3);
+}
+
 .cardTitle {
   margin: 0;
   font-size: var(--hhx-type-2);

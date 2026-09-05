@@ -5,3 +5,4 @@
 export { queryKeys } from "./keys";
 export { sessionQueryOptions } from "./session";
 export { sessionsQueryOptions } from "./sessions";
+export { usersQueryOptions } from "./users";

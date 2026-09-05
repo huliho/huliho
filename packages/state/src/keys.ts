@@ -6,4 +6,5 @@
 export const queryKeys = {
   session: ["session"],
   sessions: ["sessions"],
+  users: ["users"],
 } as const;

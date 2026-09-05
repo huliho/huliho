@@ -25,6 +25,10 @@
   color: var(--hh-text-muted);
 }
 
+.group:not(:first-child) {
+  margin-block-start: var(--hhx-space-3);
+}
+
 .entry {
   display: flex;
   align-items: center;
