@@ -12,15 +12,12 @@ use axum::response::Json;
 use serde::{Deserialize, Serialize};
 
 use super::login::MAX_LOGIN_BYTES;
-use super::{ApiError, ApiState, ClientInfo, Full, internal};
+use super::{ApiError, ApiState, ClientInfo, Full, MAX_NAME_CHARS, internal};
 use crate::auth::{self, OneTimePassword};
 use crate::identity::{self, NewUser, User};
 use crate::ids::{Role, UserId};
 use crate::scope;
 use crate::session;
-
-/// A display name longer than this is a paragraph, not a name.
-const MAX_NAME_CHARS: usize = 100;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

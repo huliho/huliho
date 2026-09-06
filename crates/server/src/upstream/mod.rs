@@ -8,9 +8,10 @@
 mod dns;
 mod network;
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use hickory_resolver::net::NetError;
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
@@ -22,13 +23,17 @@ use thiserror::Error;
 use url::Host;
 
 pub use dns::{Dns, DnsError, HickoryDns, Lookup, SrvTarget};
-pub use network::NetworkRule;
+use network::NetworkRule;
 
 use crate::config::UpstreamConfig;
 
 /// Redirect chains longer than this are refused; the providers seen so
 /// far need two hops at most.
 const MAX_REDIRECTS: usize = 3;
+
+/// One upstream connection, connect and answer included, gets this
+/// long; a server slower than that counts as unreachable.
+pub const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Debug, Error)]
 pub enum UpstreamError {
@@ -52,6 +57,12 @@ pub enum UpstreamError {
     Tls(#[from] rustls::Error),
     #[error("cannot set up the HTTP client: {0}")]
     Http(#[from] reqwest::Error),
+    #[error("cannot resolve {host}: {source}")]
+    Resolve {
+        host: String,
+        #[source]
+        source: DnsError,
+    },
     #[error("{host} resolves to {address}, inside a network this instance does not reach")]
     PrivateNetwork { host: String, address: IpAddr },
 }
@@ -59,7 +70,8 @@ pub enum UpstreamError {
 /// The one way out: every outbound connection resolves, checks and
 /// trusts the same way.
 pub struct Upstream {
-    dns: Arc<dyn Dns>,
+    pinned: Pinned,
+    tls: Arc<rustls::ClientConfig>,
     http: reqwest::Client,
 }
 
@@ -80,30 +92,62 @@ impl Upstream {
     ///
     /// Returns an error when the CA file or the client cannot be set up.
     pub fn with_dns(config: &UpstreamConfig, dns: Arc<dyn Dns>) -> Result<Self, UpstreamError> {
-        let resolver = PinnedResolver {
-            dns: Arc::clone(&dns),
+        let pinned = Pinned {
+            dns,
             rule: NetworkRule::new(&config.allow_private_networks),
         };
+        let tls = Arc::new(tls_config(config.additional_ca_file.as_deref())?);
         let http = reqwest::Client::builder()
-            .tls_backend_preconfigured(tls_config(config.additional_ca_file.as_deref())?)
+            .tls_backend_preconfigured((*tls).clone())
             .https_only(true)
             .no_proxy()
+            .connect_timeout(ATTEMPT_TIMEOUT)
+            .timeout(ATTEMPT_TIMEOUT)
             .redirect(redirect_policy())
-            .dns_resolver(Arc::new(resolver))
+            .dns_resolver(Arc::new(pinned.clone()))
             .build()?;
-        Ok(Self { dns, http })
+        Ok(Self { pinned, tls, http })
     }
 
     #[must_use]
     pub fn dns(&self) -> &dyn Dns {
-        self.dns.as_ref()
+        self.pinned.dns.as_ref()
     }
 
-    /// The HTTPS client: TLS only, pinned addresses, three redirects at
-    /// most and only to named hosts.
+    /// The HTTPS client: TLS only, pinned addresses, twenty seconds per
+    /// request, three redirects at most and only to named hosts.
     #[must_use]
     pub fn http(&self) -> &reqwest::Client {
         &self.http
+    }
+
+    /// The trust every outbound connection validates against: the
+    /// built-in roots plus the CA file.
+    #[must_use]
+    pub fn tls(&self) -> Arc<rustls::ClientConfig> {
+        Arc::clone(&self.tls)
+    }
+
+    /// The addresses of `host` on `port`, each checked against the
+    /// network rule, so a connect can pin them.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the lookup fails or any address lies inside
+    /// a network this instance does not reach.
+    pub async fn resolve(&self, host: &str, port: u16) -> Result<Vec<SocketAddr>, UpstreamError> {
+        let addresses = self.pinned.lookup(host).await?;
+        Ok(addresses
+            .into_iter()
+            .map(|address| {
+                let port = if address.port() == dns::URL_PORT {
+                    port
+                } else {
+                    address.port()
+                };
+                SocketAddr::new(address.ip(), port)
+            })
+            .collect())
     }
 }
 
@@ -161,30 +205,70 @@ fn redirect_policy() -> redirect::Policy {
     })
 }
 
+/// The body up to `limit` bytes; `None` when it is longer or fails to
+/// read.
+pub(crate) async fn read_bounded(mut response: reqwest::Response, limit: usize) -> Option<Vec<u8>> {
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.ok()? {
+        if body.len() + chunk.len() > limit {
+            return None;
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Some(body)
+}
+
 /// Resolves through the one resolver and refuses every address the rule
 /// denies, so a connect never reaches a private network by way of a
 /// name.
-struct PinnedResolver {
+#[derive(Clone)]
+struct Pinned {
     dns: Arc<dyn Dns>,
     rule: NetworkRule,
 }
 
-impl Resolve for PinnedResolver {
+impl Pinned {
+    /// The addresses as the resolver answers them; a test double may
+    /// name a port of its own.
+    async fn lookup(&self, host: &str) -> Result<Vec<SocketAddr>, UpstreamError> {
+        let addresses =
+            self.dns
+                .addresses(host)
+                .await
+                .map_err(|source| UpstreamError::Resolve {
+                    host: host.to_owned(),
+                    source,
+                })?;
+        if let Some(denied) = addresses
+            .iter()
+            .find(|address| !self.rule.permits(address.ip()))
+        {
+            return Err(UpstreamError::PrivateNetwork {
+                host: host.to_owned(),
+                address: denied.ip(),
+            });
+        }
+        Ok(addresses)
+    }
+}
+
+impl Resolve for Pinned {
     fn resolve(&self, name: Name) -> Resolving {
-        let dns = Arc::clone(&self.dns);
-        let rule = self.rule.clone();
+        let pinned = self.clone();
         Box::pin(async move {
-            let host = name.as_str().to_owned();
-            let addresses = dns.addresses(&host).await?;
-            if let Some(denied) = addresses.iter().find(|address| !rule.permits(address.ip())) {
-                let refused = UpstreamError::PrivateNetwork {
-                    host,
-                    address: denied.ip(),
-                };
-                return Err(refused.into());
-            }
+            let addresses = pinned.lookup(name.as_str()).await?;
             let addrs: Addrs = Box::new(addresses.into_iter());
             Ok(addrs)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn one_attempt_gets_twenty_seconds() {
+        assert_eq!(ATTEMPT_TIMEOUT, Duration::from_secs(20));
     }
 }

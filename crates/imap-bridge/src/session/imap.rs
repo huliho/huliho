@@ -22,7 +22,7 @@ use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::pki_types::ServerName;
 
-use super::{Capabilities, Session, SessionError, Target, TlsMode};
+use super::{Capabilities, Session, SessionError, Target, TlsMode, io_error};
 
 type Stream = TlsStream<TcpStream>;
 type Attempt = Result<async_imap::Session<Stream>, (ImapError, Client<Stream>)>;
@@ -304,15 +304,5 @@ fn command_error(error: ImapError) -> SessionError {
         ImapError::Bad(_) => SessionError::Protocol("the server answered BAD"),
         ImapError::Parse(_) => SessionError::Protocol("the answer could not be parsed"),
         _ => SessionError::Protocol("the command was not accepted"),
-    }
-}
-
-/// The client library reports bytes it cannot parse under the kind
-/// `Other` and a connection that ends mid-response as an unexpected end.
-fn io_error(error: io::Error) -> SessionError {
-    match error.kind() {
-        io::ErrorKind::Other => SessionError::Protocol("the answer could not be parsed"),
-        io::ErrorKind::UnexpectedEof => SessionError::Closed,
-        _ => SessionError::Io(error),
     }
 }

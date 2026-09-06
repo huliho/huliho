@@ -85,6 +85,14 @@ configs:
         key_file = /certs/dovecot-key.pem
       }
 
+  dovecot-submission.conf:
+    content: |
+      # AUTH on the submission port needs a relay named. With the
+      # capabilities fixed here the relay is first reached at MAIL FROM,
+      # which the credential check never sends.
+      submission_relay_host = 127.0.0.1
+      submission_backend_capabilities = 8BITMIME PIPELINING SIZE
+
 services:
   certs:
     image: alpine/openssl:3.5.8
@@ -133,6 +141,9 @@ services:
     configs:
       - source: dovecot-tls.conf
         target: /etc/dovecot/conf.d/tls.conf
+        mode: 0444
+      - source: dovecot-submission.conf
+        target: /etc/dovecot/conf.d/submission.conf
         mode: 0444
     volumes:
       - dev-certs:/certs:ro

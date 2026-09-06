@@ -3,7 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 //! The IMAP session layer: one narrow trait over the client library, so
-//! a swap costs one module.
+//! a swap costs one module. The causes below serve the SMTP check too.
 
 mod imap;
 
@@ -33,7 +33,7 @@ pub enum TlsMode {
     Starttls,
 }
 
-/// An IMAP server to reach. The caller resolves the host and checks the
+/// A server to reach. The caller resolves the host and checks the
 /// addresses; the bridge connects to them in order and resolves nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
@@ -76,7 +76,8 @@ impl FromIterator<String> for Capabilities {
     }
 }
 
-/// Why a step of the session failed. No variant carries a credential.
+/// Why a step of an IMAP or SMTP session failed. No variant carries a
+/// credential.
 #[derive(Debug, Error)]
 pub enum SessionError {
     #[error("no address to connect to")]
@@ -97,8 +98,10 @@ pub enum SessionError {
     Closed,
     #[error("the server refused the credential")]
     CredentialRejected,
+    #[error("the server offers no way to sign in with this credential")]
+    AuthUnavailable,
     /// The text is fixed at the call site, never the server's own words.
-    #[error("the server does not speak IMAP as expected: {0}")]
+    #[error("the server does not speak the protocol as expected: {0}")]
     Protocol(&'static str),
     #[error("read or write failed: {0}")]
     Io(#[source] io::Error),
@@ -159,6 +162,16 @@ pub trait Session: Sized + Send {
     ///
     /// Returns an error when the server does not answer the command.
     fn logout(self) -> impl Future<Output = Result<(), SessionError>> + Send;
+}
+
+/// Bytes a client library cannot parse arrive under the kind `Other`
+/// and a connection that ends mid-response as an unexpected end.
+pub(crate) fn io_error(error: io::Error) -> SessionError {
+    match error.kind() {
+        io::ErrorKind::Other => SessionError::Protocol("the answer could not be parsed"),
+        io::ErrorKind::UnexpectedEof => SessionError::Closed,
+        _ => SessionError::Io(error),
+    }
 }
 
 #[cfg(test)]

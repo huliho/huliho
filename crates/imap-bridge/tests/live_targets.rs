@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use huliho_imap_bridge::session::{STEP_TIMEOUT, SessionError, Target, TlsMode};
+use huliho_imap_bridge::smtp;
 use huliho_imap_bridge::verify::{Credential, VerifyError, verify};
 use tokio_rustls::rustls::pki_types::CertificateDer;
 use tokio_rustls::rustls::pki_types::pem::PemObject;
@@ -21,6 +22,7 @@ use tokio_rustls::rustls::{ClientConfig, RootCertStore};
 const DOVECOT_HOST: &str = "localhost";
 const IMAPS_PORT: u16 = 31993;
 const IMAP_PORT: u16 = 31143;
+const SUBMISSION_PORT: u16 = 31587;
 const USER: &str = "sanne@huliho.test";
 const PASSWORD: &str = "password";
 
@@ -99,4 +101,21 @@ async fn dovecot_is_insecure_without_the_dev_ca() {
         matches!(error, VerifyError::Insecure(SessionError::Tls(_))),
         "{error}"
     );
+}
+
+#[tokio::test]
+async fn dovecot_accepts_the_password_on_submission_over_starttls_rfc3207_4() {
+    let target = dovecot(SUBMISSION_PORT, TlsMode::Starttls);
+    smtp::verify(tls(true), &target, &password(PASSWORD), STEP_TIMEOUT)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn dovecot_rejects_a_wrong_password_on_submission() {
+    let target = dovecot(SUBMISSION_PORT, TlsMode::Starttls);
+    let error = smtp::verify(tls(true), &target, &password("wrong"), STEP_TIMEOUT)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, VerifyError::CredentialRejected), "{error}");
 }

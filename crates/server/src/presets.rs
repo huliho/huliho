@@ -40,6 +40,9 @@ enum FixedTarget {
 
 pub struct Preset {
     pub provider: Provider,
+    /// The name a new account gets when the user leaves it blank; a
+    /// generic server has none.
+    pub display_name: Option<&'static str>,
     /// Mail domains that name the provider before any lookup.
     pub domains: &'static [&'static str],
     /// Host suffixes that mark the provider: its MX names and its servers.
@@ -52,6 +55,7 @@ pub struct Preset {
 
 const GMAIL: Preset = Preset {
     provider: Provider::Gmail,
+    display_name: Some("Gmail"),
     domains: &["gmail.com", "googlemail.com"],
     host_suffixes: &["gmail.com", "google.com", "googlemail.com"],
     credential_kind: CredentialKind::AppPassword,
@@ -64,6 +68,7 @@ const GMAIL: Preset = Preset {
 
 const MICROSOFT: Preset = Preset {
     provider: Provider::Microsoft,
+    display_name: Some("Microsoft"),
     domains: &["outlook.com", "hotmail.com", "live.com", "msn.com"],
     host_suffixes: &["outlook.com", "office365.com"],
     credential_kind: CredentialKind::Oauth,
@@ -76,6 +81,7 @@ const MICROSOFT: Preset = Preset {
 
 const FASTMAIL: Preset = Preset {
     provider: Provider::Fastmail,
+    display_name: Some("Fastmail"),
     domains: &["fastmail.com"],
     host_suffixes: &["fastmail.com", "messagingengine.com"],
     credential_kind: CredentialKind::ApiToken,
@@ -85,6 +91,7 @@ const FASTMAIL: Preset = Preset {
 
 const ICLOUD: Preset = Preset {
     provider: Provider::Icloud,
+    display_name: Some("iCloud"),
     domains: &["icloud.com", "me.com", "mac.com"],
     host_suffixes: &["icloud.com", "me.com"],
     credential_kind: CredentialKind::AppPassword,
@@ -97,6 +104,7 @@ const ICLOUD: Preset = Preset {
 
 const YAHOO: Preset = Preset {
     provider: Provider::Yahoo,
+    display_name: Some("Yahoo"),
     domains: &["yahoo.com", "ymail.com", "rocketmail.com"],
     host_suffixes: &["yahoo.com", "yahoodns.net"],
     credential_kind: CredentialKind::AppPassword,
@@ -109,6 +117,7 @@ const YAHOO: Preset = Preset {
 
 const GENERIC: Preset = Preset {
     provider: Provider::Generic,
+    display_name: None,
     domains: &[],
     host_suffixes: &[],
     credential_kind: CredentialKind::Password,
@@ -153,6 +162,15 @@ pub fn provider_for_host(host: &str) -> Provider {
                 .any(|suffix| ends_with_labels(host, suffix))
         })
         .map_or(Provider::Generic, |preset| preset.provider)
+}
+
+/// The name a new account gets when the user leaves it blank: the
+/// provider's name, the mail domain for a generic server.
+#[must_use]
+pub fn default_name(provider: Provider, address: &Address) -> String {
+    for_provider(provider)
+        .display_name
+        .map_or_else(|| address.domain().to_owned(), str::to_owned)
 }
 
 /// The fixed servers of a provider as an account target, `None` for a
@@ -335,6 +353,20 @@ mod tests {
             (CredentialKind::Oauth, "\"oauth\""),
         ] {
             assert_eq!(serde_json::to_string(&kind).unwrap(), word);
+        }
+    }
+
+    #[test]
+    fn the_default_name_is_the_provider_or_the_domain() {
+        for (provider, name) in [
+            (Provider::Gmail, "Gmail"),
+            (Provider::Microsoft, "Microsoft"),
+            (Provider::Fastmail, "Fastmail"),
+            (Provider::Icloud, "iCloud"),
+            (Provider::Yahoo, "Yahoo"),
+            (Provider::Generic, "example.test"),
+        ] {
+            assert_eq!(default_name(provider, &address("sanne@example.test")), name);
         }
     }
 }
