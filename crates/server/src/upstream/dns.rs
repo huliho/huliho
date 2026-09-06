@@ -19,7 +19,7 @@ use thiserror::Error;
 pub type Lookup<'a, T> = Pin<Box<dyn Future<Output = Result<T, DnsError>> + Send + 'a>>;
 
 /// Port 0 in an answer means "the URL's port"; hyper fills it in.
-const URL_PORT: u16 = 0;
+pub(super) const URL_PORT: u16 = 0;
 
 /// A lookup that failed for a reason other than "no such record".
 #[derive(Debug, Error)]

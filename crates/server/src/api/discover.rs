@@ -10,7 +10,7 @@ use axum::extract::State;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
 
-use super::{ApiError, ApiState, ClientInfo, Full, internal};
+use super::{ApiError, ApiState, ClientInfo, Full, internal, upstream_keys};
 use crate::accounts::{AccountKind, AccountSettings, Provider};
 use crate::discovery::{self, Address, Budget, Discovered};
 use crate::presets::{self, CredentialKind};
@@ -62,10 +62,7 @@ pub(super) async fn discover(
     Json(request): Json<DiscoverRequest>,
 ) -> Result<Json<DiscoveryView>, ApiError> {
     let address = Address::parse(&request.address).map_err(|_| ApiError::InvalidRequest)?;
-    let limiter_keys = [
-        format!("discover:{}", auth.session.user_id.as_str()),
-        client.address_key(),
-    ];
+    let limiter_keys = upstream_keys(&auth.session.user_id, &client);
     let keys: Vec<&str> = limiter_keys.iter().map(String::as_str).collect();
     let now = now_ms();
     if let Some(retry_after_ms) = state.limiter.blocked_for(&keys, now) {

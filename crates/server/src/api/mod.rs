@@ -29,6 +29,8 @@ use tokio::sync::Semaphore;
 use url::Url;
 
 use crate::auth::AuthError;
+use crate::ids::UserId;
+use crate::probe::ProbeError;
 use crate::rate::RateLimiter;
 use crate::secrets::Keys;
 use crate::session::{self, SESSION_COOKIE, Session, SessionError, SessionTimeouts};
@@ -40,6 +42,9 @@ const API_BODY_LIMIT_BYTES: usize = 16 * 1024;
 
 /// State-changing requests prove they come from the SPA with this header.
 const CSRF_HEADER: &str = "x-requested-with";
+
+/// A display name longer than this is a paragraph, not a name.
+const MAX_NAME_CHARS: usize = 100;
 
 /// Each verification holds 19 MiB of argon2 memory, so concurrency is
 /// bounded; further attempts queue on the connection instead.
@@ -75,7 +80,10 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/sessions/{id}", delete(sessions::revoke_session))
         .route("/password", put(password::change_password))
-        .route("/accounts", get(accounts::list_accounts))
+        .route(
+            "/accounts",
+            get(accounts::list_accounts).post(accounts::add_account),
+        )
         .route("/accounts/discover", post(discover::discover))
         .route("/accounts/{id}", delete(accounts::remove_account))
         .route("/users", get(users::list_users).post(users::create_user))
@@ -97,6 +105,11 @@ enum ApiError {
     LoginTaken,
     MissingCsrfHeader,
     RateLimited { retry_after_ms: i64 },
+    UpstreamCredentials,
+    UpstreamUnreachable,
+    UpstreamInsecure,
+    UpstreamUnsupported,
+    SmtpAuthUnavailable,
     Internal,
 }
 
@@ -112,14 +125,25 @@ impl ApiError {
             Self::LoginTaken => "login_taken",
             Self::MissingCsrfHeader => "missing_csrf_header",
             Self::RateLimited { .. } => "rate_limited",
+            Self::UpstreamCredentials => "upstream_credentials",
+            Self::UpstreamUnreachable => "upstream_unreachable",
+            Self::UpstreamInsecure => "upstream_insecure",
+            Self::UpstreamUnsupported => "upstream_unsupported",
+            Self::SmtpAuthUnavailable => "smtp_auth_unavailable",
             Self::Internal => "internal",
         }
     }
 
     fn status(&self) -> StatusCode {
         match self {
-            Self::InvalidRequest => StatusCode::BAD_REQUEST,
-            Self::InvalidCredentials | Self::Unauthenticated => StatusCode::UNAUTHORIZED,
+            Self::InvalidRequest
+            | Self::UpstreamInsecure
+            | Self::UpstreamUnsupported
+            | Self::SmtpAuthUnavailable => StatusCode::BAD_REQUEST,
+            Self::InvalidCredentials | Self::Unauthenticated | Self::UpstreamCredentials => {
+                StatusCode::UNAUTHORIZED
+            }
+            Self::UpstreamUnreachable => StatusCode::BAD_GATEWAY,
             Self::Forbidden | Self::PasswordChangeRequired | Self::MissingCsrfHeader => {
                 StatusCode::FORBIDDEN
             }
@@ -190,6 +214,18 @@ impl From<StoreError> for ApiError {
     }
 }
 
+impl From<ProbeError> for ApiError {
+    fn from(error: ProbeError) -> Self {
+        match error {
+            ProbeError::CredentialRejected => Self::UpstreamCredentials,
+            ProbeError::Unreachable(_) => Self::UpstreamUnreachable,
+            ProbeError::Insecure(_) => Self::UpstreamInsecure,
+            ProbeError::Unsupported(_) => Self::UpstreamUnsupported,
+            ProbeError::SmtpAuthUnavailable => Self::SmtpAuthUnavailable,
+        }
+    }
+}
+
 fn internal(error: impl Display) -> ApiError {
     tracing::error!(%error, "api request failed");
     ApiError::Internal
@@ -209,6 +245,15 @@ impl ClientInfo {
             .map_or("unknown".to_owned(), |address| address.to_string());
         format!("ip:{address}")
     }
+}
+
+/// The limiter keys discovery and connect share, so nobody scans hosts
+/// through the instance.
+fn upstream_keys(user_id: &UserId, client: &ClientInfo) -> [String; 2] {
+    [
+        format!("discover:{}", user_id.as_str()),
+        client.address_key(),
+    ]
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for ClientInfo {

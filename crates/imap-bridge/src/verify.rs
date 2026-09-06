@@ -52,6 +52,8 @@ pub enum VerifyError {
     Insecure(#[source] SessionError),
     #[error("the server is not usable: {0}")]
     Unsupported(#[source] SessionError),
+    #[error("the server offers no way to sign in with this credential")]
+    AuthUnavailable,
 }
 
 impl From<SessionError> for VerifyError {
@@ -67,6 +69,7 @@ impl From<SessionError> for VerifyError {
             SessionError::Tls(_) | SessionError::StarttlsAbsent | SessionError::StarttlsRefused => {
                 Self::Insecure(error)
             }
+            SessionError::AuthUnavailable => Self::AuthUnavailable,
             SessionError::Protocol(_) => Self::Unsupported(error),
         }
     }
@@ -137,5 +140,7 @@ mod tests {
         ));
         let rejected: VerifyError = SessionError::CredentialRejected.into();
         assert!(matches!(rejected, VerifyError::CredentialRejected));
+        let unavailable: VerifyError = SessionError::AuthUnavailable.into();
+        assert!(matches!(unavailable, VerifyError::AuthUnavailable));
     }
 }

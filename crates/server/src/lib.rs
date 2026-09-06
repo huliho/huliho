@@ -15,6 +15,7 @@ pub mod identity;
 pub mod ids;
 pub mod prefs;
 pub mod presets;
+pub mod probe;
 pub mod providers;
 pub mod rate;
 pub mod scope;

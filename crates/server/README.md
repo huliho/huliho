@@ -37,6 +37,21 @@ resolver that refuses private networks unless the config lists them,
 follows at most three redirects over HTTPS to named hosts only and
 validates certificates against the built-in roots plus the configured
 CA file. Discovery counts against the sign-in rate limiter.
+Connecting the account is the second step. The client sends the
+address, the target it confirmed and the credential once; the server
+checks the credential upstream before it stores anything. A JMAP
+account is checked against its session resource with Basic or Bearer
+authentication and must advertise the mail capability. An IMAP account
+is checked through the bridge, the IMAP sign-in first and then the SMTP
+submission sign-in with the same credential, so a mailbox that refuses
+SMTP AUTH is caught at add time. Every target, discovered or typed, is
+validated the same way, resolved once through the pinned resolver and
+connected with the instance's TLS trust; each connection gets twenty
+seconds. Connect counts against the sign-in rate limiter like
+discovery. The answer is the account row or a stable error code naming
+the cause: a refused credential, an unreachable server, an insecure
+connection, a server that is not usable or a submission server without
+SMTP AUTH.
 
 Configuration is one TOML file; unknown keys are rejected. Top-level
 keys are the `listen` address, the `assets` directory and the optional
@@ -49,9 +64,9 @@ mail servers. `allow_private_networks` lists the private networks an
 upstream may resolve to, written as CIDRs. It is empty by default.
 `additional_ca_file` names one PEM bundle trusted next to the built-in
 roots. `probe_interval_minutes` says how often a stopped account is
-checked for recovery, fifteen by default. Discovery reads the network
-rules and the CA file; the account list reports the probe interval,
-which nothing acts on yet. The file path comes from `HULIHO_CONFIG` and
+checked for recovery, fifteen by default. Discovery and the credential
+check read the network rules and the CA file; the account list reports
+the probe interval, which nothing acts on yet. The file path comes from `HULIHO_CONFIG` and
 that file must exist. Without the variable the server reads
 `huliho.toml` from the working directory and falls back to the defaults
 when it is absent.

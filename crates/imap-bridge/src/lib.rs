@@ -6,4 +6,7 @@
 //! (RFC 9051) and SMTP submission (RFC 6409).
 
 pub mod session;
+pub mod smtp;
+#[cfg(feature = "test-support")]
+pub mod testing;
 pub mod verify;

@@ -214,3 +214,41 @@ fn a_ca_file_the_roots_cannot_use_fails_the_start() {
         assert!(error.to_string().contains(&path.display().to_string()));
     }
 }
+
+#[tokio::test]
+async fn resolve_pins_the_checked_addresses_on_the_port() {
+    let server = TlsServer::start(app()).await;
+    let mut dns = FakeDns::default();
+    dns.addresses.insert(HOST.to_owned(), vec![server.address]);
+    dns.addresses.insert(
+        "public.test".to_owned(),
+        vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 0)],
+    );
+    let upstream = Upstream::with_dns(&server.config(true), Arc::new(dns)).unwrap();
+    assert_eq!(upstream.resolve(HOST, 993).await.unwrap(), [server.address]);
+    assert_eq!(
+        upstream.resolve("public.test", 993).await.unwrap(),
+        [SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 993)]
+    );
+    assert!(
+        upstream
+            .resolve("unknown.test", 993)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn resolve_refuses_a_private_address_unless_its_network_is_listed() {
+    let server = TlsServer::start(app()).await;
+    let dns = dns_at(&server, &[HOST]);
+    let refusing = Upstream::with_dns(&server.config(false), Arc::clone(&dns)).unwrap();
+    let error = refusing.resolve(HOST, 993).await.unwrap_err();
+    assert!(
+        matches!(error, UpstreamError::PrivateNetwork { .. }),
+        "{error}"
+    );
+    let allowing = Upstream::with_dns(&server.config(true), dns).unwrap();
+    assert_eq!(allowing.resolve(HOST, 993).await.unwrap(), [server.address]);
+}

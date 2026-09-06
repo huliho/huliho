@@ -5,31 +5,16 @@
 //! The credential check against a scripted IMAP server: every refusal,
 //! then the two ways in.
 
-mod fake_imap;
-
 use std::time::Duration;
 
-use fake_imap::{CAPABILITIES, FakeImap, Greeting, HOST, PASSWORD, Script, Starttls, TOKEN, USER};
 use huliho_imap_bridge::session::{Capabilities, SessionError, Target, TlsMode};
+use huliho_imap_bridge::testing::imap::{CAPABILITIES, FakeImap, HOST, Script};
+use huliho_imap_bridge::testing::{Greeting, PASSWORD, Starttls, TOKEN, USER, password, token};
 use huliho_imap_bridge::verify::{Credential, VerifyError, verify};
 use tokio::net::TcpListener;
 
 /// Room for a loopback exchange; the hang tests wait this long once.
 const STEP: Duration = Duration::from_secs(1);
-
-fn password(password: &str) -> Credential {
-    Credential::Password {
-        username: USER.to_owned(),
-        password: password.to_owned(),
-    }
-}
-
-fn token(token: &str) -> Credential {
-    Credential::Xoauth2 {
-        username: USER.to_owned(),
-        token: token.to_owned(),
-    }
-}
 
 async fn check(
     fake: &FakeImap,
@@ -37,6 +22,16 @@ async fn check(
     credential: &Credential,
 ) -> Result<Capabilities, VerifyError> {
     verify(fake.trusting(), &fake.target(HOST, tls), credential, STEP).await
+}
+
+/// The error a server running `script` answers the right password with
+/// over TLS from the first byte.
+async fn refusal(script: Script) -> (FakeImap, VerifyError) {
+    let fake = FakeImap::start(script).await;
+    let error = check(&fake, TlsMode::Implicit, &password(PASSWORD))
+        .await
+        .unwrap_err();
+    (fake, error)
 }
 
 fn assert_no_secret(error: &VerifyError, secret: &str) {
@@ -80,14 +75,11 @@ async fn a_rejected_token_ends_in_the_empty_answer_and_is_credential_rejected() 
 
 #[tokio::test]
 async fn login_disabled_over_tls_is_unsupported_and_no_login_travels_rfc9051_7_2_2() {
-    let fake = FakeImap::start(Script {
+    let (fake, error) = refusal(Script {
         capabilities: "IMAP4rev1 LOGINDISABLED AUTH=PLAIN",
         ..Script::tls()
     })
     .await;
-    let error = check(&fake, TlsMode::Implicit, &password(PASSWORD))
-        .await
-        .unwrap_err();
     assert!(
         matches!(error, VerifyError::Unsupported(SessionError::Protocol(_))),
         "{error}"
@@ -169,14 +161,11 @@ async fn an_empty_address_list_is_unreachable() {
 
 #[tokio::test]
 async fn a_server_that_never_greets_is_unreachable() {
-    let fake = FakeImap::start(Script {
+    let (_fake, error) = refusal(Script {
         greeting: Greeting::Silence,
         ..Script::tls()
     })
     .await;
-    let error = check(&fake, TlsMode::Implicit, &password(PASSWORD))
-        .await
-        .unwrap_err();
     assert!(
         matches!(error, VerifyError::Unreachable(SessionError::Timeout)),
         "{error}"
@@ -185,14 +174,11 @@ async fn a_server_that_never_greets_is_unreachable() {
 
 #[tokio::test]
 async fn a_server_that_stops_answering_is_unreachable() {
-    let fake = FakeImap::start(Script {
+    let (_fake, error) = refusal(Script {
         answers: false,
         ..Script::tls()
     })
     .await;
-    let error = check(&fake, TlsMode::Implicit, &password(PASSWORD))
-        .await
-        .unwrap_err();
     assert!(
         matches!(error, VerifyError::Unreachable(SessionError::Timeout)),
         "{error}"
@@ -201,14 +187,11 @@ async fn a_server_that_stops_answering_is_unreachable() {
 
 #[tokio::test]
 async fn a_bye_greeting_is_unreachable() {
-    let fake = FakeImap::start(Script {
+    let (fake, error) = refusal(Script {
         greeting: Greeting::Bye,
         ..Script::tls()
     })
     .await;
-    let error = check(&fake, TlsMode::Implicit, &password(PASSWORD))
-        .await
-        .unwrap_err();
     assert!(
         matches!(error, VerifyError::Unreachable(SessionError::Closed)),
         "{error}"
@@ -218,14 +201,11 @@ async fn a_bye_greeting_is_unreachable() {
 
 #[tokio::test]
 async fn a_server_that_does_not_speak_imap_is_unsupported() {
-    let fake = FakeImap::start(Script {
+    let (fake, error) = refusal(Script {
         greeting: Greeting::Garbage,
         ..Script::tls()
     })
     .await;
-    let error = check(&fake, TlsMode::Implicit, &password(PASSWORD))
-        .await
-        .unwrap_err();
     assert!(
         matches!(error, VerifyError::Unsupported(SessionError::Protocol(_))),
         "{error}"
@@ -292,10 +272,7 @@ async fn starttls_refused_is_insecure() {
 
 #[tokio::test]
 async fn an_implicit_target_never_speaks_plaintext() {
-    let fake = FakeImap::start(Script::plain(Starttls::Offered)).await;
-    let error = check(&fake, TlsMode::Implicit, &password(PASSWORD))
-        .await
-        .unwrap_err();
+    let (fake, error) = refusal(Script::plain(Starttls::Offered)).await;
     assert!(
         matches!(error, VerifyError::Insecure(SessionError::Tls(_))),
         "{error}"

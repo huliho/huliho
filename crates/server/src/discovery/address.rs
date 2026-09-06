@@ -87,7 +87,7 @@ impl fmt::Debug for Address {
 
 /// A host the chain may look up and connect to: a name, never an
 /// address literal, so the connect resolves through the pinned resolver.
-pub(super) fn named_host(text: &str) -> Option<String> {
+pub(crate) fn named_host(text: &str) -> Option<String> {
     match Host::parse(text).ok()? {
         Host::Domain(name) => Some(name),
         Host::Ipv4(_) | Host::Ipv6(_) => None,

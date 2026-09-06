@@ -15,12 +15,12 @@ use reqwest::StatusCode;
 use reqwest::header::WWW_AUTHENTICATE;
 use url::Url;
 
-use address::named_host;
+pub(crate) use address::named_host;
 pub use address::{Address, InvalidAddress, MAX_ADDRESS_BYTES};
 
 use crate::accounts::{AccountSettings, Endpoint, Provider, TlsMode};
 use crate::presets;
-use crate::upstream::{Lookup, SrvTarget, Upstream};
+use crate::upstream::{Lookup, SrvTarget, Upstream, read_bounded};
 
 /// One step waits this long before the chain moves on.
 const STEP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -299,19 +299,6 @@ fn select_srv(mut records: Vec<SrvTarget>) -> Option<(String, u16)> {
     let first = records.into_iter().next()?;
     let host = named_host(&first.host?)?;
     Some((host, first.port))
-}
-
-/// The body up to `limit` bytes; `None` when it is longer or fails to
-/// read.
-async fn read_bounded(mut response: reqwest::Response, limit: usize) -> Option<Vec<u8>> {
-    let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await.ok()? {
-        if body.len() + chunk.len() > limit {
-            return None;
-        }
-        body.extend_from_slice(&chunk);
-    }
-    Some(body)
 }
 
 #[cfg(test)]
