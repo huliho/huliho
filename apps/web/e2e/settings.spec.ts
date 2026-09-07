@@ -74,7 +74,7 @@ test("when the toast runs out the server hears about it", async ({ page }) => {
   await page.getByRole("button", { name: "Revoke Safari on macOS" }).click();
   await page.clock.runFor(PAST_WINDOW_MS);
   await expect(page.getByText("Safari session revoked.")).toBeHidden();
-  expect(deletes).toEqual(["s-mac"]);
+  await expect.poll(() => deletes).toEqual(["s-mac"]);
 });
 
 test("hovering the toast pauses it and says so", async ({ page }) => {
@@ -89,7 +89,7 @@ test("hovering the toast pauses it and says so", async ({ page }) => {
   await page.mouse.move(0, 0);
   await page.clock.runFor(PAST_WINDOW_MS);
   await expect(toast).toBeHidden();
-  expect(deletes).toEqual(["s-mac"]);
+  await expect.poll(() => deletes).toEqual(["s-mac"]);
 });
 
 test("revoking all others removes every other row and hits the collection", async ({ page }) => {
@@ -100,7 +100,7 @@ test("revoking all others removes every other row and hits the collection", asyn
   await expect(page.getByRole("button", { name: "Revoke all others" })).toBeHidden();
   await expect(page.getByRole("list")).toBeFocused();
   await page.clock.runFor(PAST_WINDOW_MS);
-  expect(deletes).toEqual(["*"]);
+  await expect.poll(() => deletes).toEqual(["*"]);
 });
 
 test("a slow list shows skeleton rows first", async ({ page }) => {
