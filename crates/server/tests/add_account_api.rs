@@ -192,6 +192,18 @@ async fn a_malformed_request_is_refused_before_anything_connects() {
                 body["credential"] = json!({ "kind": "bearer", "token": "t" });
             }),
         ),
+        (
+            "oauth tokens sent by the client",
+            edited(imap_body(), |body| {
+                body["credential"] = json!({
+                    "kind": "oauth2",
+                    "provider": "google",
+                    "refreshToken": "r",
+                    "accessToken": "a",
+                    "expiresAt": 0,
+                });
+            }),
+        ),
     ];
     for (label, body) in &cases {
         let (status, text) = post(&router, &cookie, ROUTE, body).await;

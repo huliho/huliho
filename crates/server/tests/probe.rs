@@ -21,6 +21,7 @@ use huliho_server::accounts::{AccountSettings, Credential, Endpoint, TlsMode};
 use huliho_server::config::UpstreamConfig;
 use huliho_server::discovery::Address;
 use huliho_server::probe::{Probe, ProbeError};
+use huliho_server::providers::OauthProvider;
 use huliho_server::upstream::Upstream;
 use tempfile::NamedTempFile;
 use tokio::net::TcpListener;
@@ -382,4 +383,29 @@ async fn a_password_passes_with_starttls_on_both_servers() {
     .unwrap();
     assert!(saw(&servers.imap.lines(), "plain A0002 STARTTLS"));
     assert!(saw(&servers.smtp.lines(), "plain STARTTLS"));
+}
+
+#[tokio::test]
+async fn an_oauth_credential_signs_in_with_xoauth2_on_both_servers() {
+    let servers = Servers::start(imap::Script::tls(), smtp::Script::tls()).await;
+    let probe = servers.trusting_both();
+    let target = servers.target(TlsMode::Implicit, TlsMode::Implicit);
+    let tokens = Credential::Oauth2 {
+        provider: OauthProvider::Google,
+        refresh_token: "1//refresh".to_owned(),
+        access_token: TOKEN.to_owned(),
+        expires_at: i64::MAX,
+    };
+    check(&probe, &target, &tokens).await.unwrap();
+    assert!(saw(&servers.imap.lines(), "AUTHENTICATE XOAUTH2"));
+    assert!(saw(&servers.smtp.lines(), "AUTH XOAUTH2"));
+    let wrong = Credential::Oauth2 {
+        provider: OauthProvider::Google,
+        refresh_token: "1//refresh".to_owned(),
+        access_token: "ya29.wrong".to_owned(),
+        expires_at: i64::MAX,
+    };
+    let error = check(&probe, &target, &wrong).await.unwrap_err();
+    assert!(matches!(error, ProbeError::CredentialRejected), "{error}");
+    assert!(!format!("{error} {error:?}").contains("ya29"));
 }

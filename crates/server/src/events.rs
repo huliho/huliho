@@ -63,6 +63,12 @@ pub enum DomainEvent {
     UserPasswordReset {
         user_id: UserId,
     },
+    UserInstanceAdminGranted {
+        user_id: UserId,
+    },
+    UserInstanceAdminRevoked {
+        user_id: UserId,
+    },
     AccountLinked {
         account_id: AccountId,
         kind: AccountKind,
@@ -106,6 +112,8 @@ impl DomainEvent {
             Self::UserActive { .. } => "user.active",
             Self::UserPasswordChanged { .. } => "user.password_changed",
             Self::UserPasswordReset { .. } => "user.password_reset",
+            Self::UserInstanceAdminGranted { .. } => "user.instance_admin_granted",
+            Self::UserInstanceAdminRevoked { .. } => "user.instance_admin_revoked",
             Self::AccountLinked { .. } => "account.linked",
             Self::AccountRemoved { .. } => "account.removed",
             Self::AccountStopped { .. } => "account.stopped",

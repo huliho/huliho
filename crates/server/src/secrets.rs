@@ -24,6 +24,7 @@ const GROUP_WORLD_BITS: u32 = 0o077;
 /// key opens under no other.
 const SESSION_KEY_INFO: &[u8] = b"huliho session store v1";
 const CREDENTIAL_KEY_INFO: &[u8] = b"huliho account credentials v1";
+const PROVIDER_KEY_INFO: &[u8] = b"huliho provider secrets v1";
 
 /// AEAD key size for XChaCha20-Poly1305.
 const KEY_BYTES: usize = 32;
@@ -101,6 +102,7 @@ impl InstanceSecret {
 pub struct Keys {
     sessions: XChaCha20Poly1305,
     credentials: XChaCha20Poly1305,
+    providers: XChaCha20Poly1305,
 }
 
 impl Keys {
@@ -116,6 +118,7 @@ impl Keys {
         Self {
             sessions: cipher(&hkdf, SESSION_KEY_INFO),
             credentials: cipher(&hkdf, CREDENTIAL_KEY_INFO),
+            providers: cipher(&hkdf, PROVIDER_KEY_INFO),
         }
     }
 
@@ -127,6 +130,11 @@ impl Keys {
     /// The key for the credential sealed on an account row.
     pub(crate) fn credentials(&self) -> &XChaCha20Poly1305 {
         &self.credentials
+    }
+
+    /// The key for the client secret sealed on a provider row.
+    pub(crate) fn providers(&self) -> &XChaCha20Poly1305 {
+        &self.providers
     }
 }
 

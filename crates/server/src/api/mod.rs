@@ -7,7 +7,9 @@
 mod accounts;
 mod discover;
 mod login;
+mod oauth;
 mod password;
+mod providers;
 mod sessions;
 mod users;
 
@@ -30,6 +32,7 @@ use url::Url;
 
 use crate::auth::AuthError;
 use crate::ids::UserId;
+use crate::oauth::Consents;
 use crate::probe::ProbeError;
 use crate::rate::RateLimiter;
 use crate::secrets::Keys;
@@ -45,6 +48,10 @@ const CSRF_HEADER: &str = "x-requested-with";
 
 /// A display name longer than this is a paragraph, not a name.
 const MAX_NAME_CHARS: usize = 100;
+
+/// Longer than any app password, API token or OAuth client secret; the
+/// body limit stops the rest.
+const MAX_CREDENTIAL_BYTES: usize = 1024;
 
 /// Each verification holds 19 MiB of argon2 memory, so concurrency is
 /// bounded; further attempts queue on the connection instead.
@@ -63,6 +70,8 @@ pub struct ApiState {
     /// From the config; without it no sign-in provider is available.
     pub public_url: Option<Url>,
     pub upstream: Arc<Upstream>,
+    /// The consents in flight, one process wide.
+    pub consents: Arc<Consents>,
 }
 
 /// Builds the /api router on the given state.
@@ -86,10 +95,25 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/accounts/discover", post(discover::discover))
         .route("/accounts/{id}", delete(accounts::remove_account))
+        .route("/accounts/oauth/start", post(oauth::start_consent))
+        .route(
+            "/accounts/oauth/pending/{state}",
+            get(oauth::pending_consent),
+        )
+        .route("/auth-providers", get(providers::list_providers))
+        .route("/auth-providers/{provider}", put(providers::set_provider))
         .route("/users", get(users::list_users).post(users::create_user))
         .route("/users/{id}/password-reset", post(users::reset_password))
         .layer(axum::middleware::from_fn(require_csrf_header))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT_BYTES))
+        .with_state(state)
+}
+
+/// The routes a browser reaches by navigation rather than through the
+/// app: the provider callback. No CSRF header applies to a GET.
+pub fn browser_router(state: ApiState) -> Router {
+    Router::new()
+        .route("/auth/{provider}/callback", get(oauth::callback))
         .with_state(state)
 }
 
@@ -105,6 +129,7 @@ enum ApiError {
     LoginTaken,
     MissingCsrfHeader,
     RateLimited { retry_after_ms: i64 },
+    ProviderNotConfigured,
     UpstreamCredentials,
     UpstreamUnreachable,
     UpstreamInsecure,
@@ -125,6 +150,7 @@ impl ApiError {
             Self::LoginTaken => "login_taken",
             Self::MissingCsrfHeader => "missing_csrf_header",
             Self::RateLimited { .. } => "rate_limited",
+            Self::ProviderNotConfigured => "provider_not_configured",
             Self::UpstreamCredentials => "upstream_credentials",
             Self::UpstreamUnreachable => "upstream_unreachable",
             Self::UpstreamInsecure => "upstream_insecure",
@@ -148,7 +174,7 @@ impl ApiError {
                 StatusCode::FORBIDDEN
             }
             Self::NotFound => StatusCode::NOT_FOUND,
-            Self::LoginTaken => StatusCode::CONFLICT,
+            Self::LoginTaken | Self::ProviderNotConfigured => StatusCode::CONFLICT,
             Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -256,6 +282,13 @@ fn upstream_keys(user_id: &UserId, client: &ClientInfo) -> [String; 2] {
     ]
 }
 
+/// A secret the client typed: not empty, printable and bounded.
+fn secret_fits(secret: &str) -> bool {
+    !secret.is_empty()
+        && secret.len() <= MAX_CREDENTIAL_BYTES
+        && !secret.chars().any(char::is_control)
+}
+
 impl<S: Send + Sync> FromRequestParts<S> for ClientInfo {
     type Rejection = std::convert::Infallible;
 
@@ -323,6 +356,23 @@ impl FromRequestParts<ApiState> for Full {
             return Err(ApiError::PasswordChangeRequired);
         }
         Ok(Self { session })
+    }
+}
+
+/// The client and the full session behind a mutation, taken together so a
+/// handler with a path and a body stays within the argument budget.
+struct Caller {
+    client: ClientInfo,
+    session: Session,
+}
+
+impl FromRequestParts<ApiState> for Caller {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &ApiState) -> Result<Self, ApiError> {
+        let Ok(client) = ClientInfo::from_request_parts(parts, state).await;
+        let Full { session } = Full::from_request_parts(parts, state).await?;
+        Ok(Self { client, session })
     }
 }
 

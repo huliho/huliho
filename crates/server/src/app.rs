@@ -8,6 +8,7 @@ use std::path::Path;
 
 use axum::Router;
 use axum::body::Body;
+use axum::extract::MatchedPath;
 use axum::http::{HeaderName, HeaderValue, Request, header};
 use axum::routing::get;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
@@ -41,7 +42,8 @@ pub fn router(assets: &Path, api: ApiState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/license", get(license))
-        .nest("/api", api::router(api))
+        .nest("/api", api::router(api.clone()))
+        .merge(api::browser_router(api))
         .fallback_service(spa)
         .layer(response_header(
             header::CONTENT_SECURITY_POLICY,
@@ -77,16 +79,23 @@ async fn license() -> ([(HeaderName, &'static str); 1], &'static str) {
     )
 }
 
+/// The matched route rather than the path, so no id, consent state or
+/// query enters a log line; an asset request has no route and keeps its
+/// path.
 fn request_span(request: &Request<Body>) -> tracing::Span {
     let request_id = request
         .headers()
         .get(REQUEST_ID_HEADER)
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
+    let route = request
+        .extensions()
+        .get::<MatchedPath>()
+        .map_or_else(|| request.uri().path(), MatchedPath::as_str);
     tracing::info_span!(
         "request",
         method = %request.method(),
-        uri = %request.uri(),
+        path = route,
         request_id
     )
 }

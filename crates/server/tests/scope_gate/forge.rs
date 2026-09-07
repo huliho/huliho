@@ -10,6 +10,7 @@ fn main() {
         organization_id: "org".to_owned().into(),
         user_id: "user".to_owned().into(),
         role: Role::Member,
+        instance_admin: false,
         account_id: None,
     };
 }

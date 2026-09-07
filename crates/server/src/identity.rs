@@ -41,6 +41,13 @@ pub struct NewUser {
     pub role: Role,
 }
 
+/// Whether a grant or a revocation changed anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FlagChange {
+    Changed,
+    Unchanged,
+}
+
 const USER_COLUMNS: &str = "id, organization_id, login, name, role, external_issuer, \
                             external_subject, last_active_at, created_at";
 
@@ -243,6 +250,56 @@ pub fn change_role(
             role: to,
             ..current
         })
+    })
+}
+
+/// Makes the user behind `login` an instance admin. The system acts, so
+/// the operator CLI needs no session.
+///
+/// # Errors
+///
+/// Returns [`StoreError::NotFound`] for an unknown sign-in name; database
+/// failures pass through.
+pub fn grant_instance_admin(store: &Store, login: &str) -> Result<FlagChange, StoreError> {
+    set_instance_admin(store, login, true)
+}
+
+/// Takes the instance-admin flag away from the user behind `login`.
+///
+/// # Errors
+///
+/// Returns [`StoreError::NotFound`] for an unknown sign-in name; database
+/// failures pass through.
+pub fn revoke_instance_admin(store: &Store, login: &str) -> Result<FlagChange, StoreError> {
+    set_instance_admin(store, login, false)
+}
+
+/// The flag as asked; nothing is written or appended when it already
+/// stands that way.
+fn set_instance_admin(store: &Store, login: &str, granted: bool) -> Result<FlagChange, StoreError> {
+    store.write(|transaction| {
+        let (user_id, organization_id, current): (UserId, OrganizationId, bool) = transaction
+            .query_row(
+                "SELECT id, organization_id, instance_admin FROM users WHERE login = ?1",
+                [login],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?
+            .ok_or(StoreError::NotFound)?;
+        if current == granted {
+            return Ok(FlagChange::Unchanged);
+        }
+        transaction.execute(
+            "UPDATE users SET instance_admin = ?1 WHERE id = ?2",
+            params![granted, user_id.as_str()],
+        )?;
+        let event = if granted {
+            DomainEvent::UserInstanceAdminGranted { user_id }
+        } else {
+            DomainEvent::UserInstanceAdminRevoked { user_id }
+        };
+        append(transaction, &organization_id, &Actor::System, &event)?;
+        Ok(FlagChange::Changed)
     })
 }
 

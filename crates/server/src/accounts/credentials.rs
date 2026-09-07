@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::AuthMethod;
 use crate::ids::AccountId;
+use crate::providers::OauthProvider;
 use crate::sealed;
 use crate::secrets::Keys;
 use crate::store::StoreError;
@@ -19,8 +20,21 @@ use crate::store::StoreError;
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Credential {
-    Password { password: String },
-    Bearer { token: String },
+    Password {
+        password: String,
+    },
+    Bearer {
+        token: String,
+    },
+    /// The tokens a consent yielded: the access token signs in until
+    /// `expires_at`, the refresh token buys the next one.
+    #[serde(rename_all = "camelCase")]
+    Oauth2 {
+        provider: OauthProvider,
+        refresh_token: String,
+        access_token: String,
+        expires_at: i64,
+    },
 }
 
 impl Credential {
@@ -29,6 +43,7 @@ impl Credential {
         match self {
             Self::Password { .. } => AuthMethod::Password,
             Self::Bearer { .. } => AuthMethod::Bearer,
+            Self::Oauth2 { .. } => AuthMethod::Oauth2,
         }
     }
 }
@@ -126,5 +141,24 @@ mod tests {
             serde_json::to_string(&password()).unwrap(),
             format!(r#"{{"kind":"password","password":"{PASSWORD}"}}"#)
         );
+    }
+
+    #[test]
+    fn the_oauth_kind_serializes_with_its_provider_and_camel_case_fields() {
+        let tokens = Credential::Oauth2 {
+            provider: OauthProvider::Google,
+            refresh_token: "r".to_owned(),
+            access_token: "a".to_owned(),
+            expires_at: 5,
+        };
+        assert_eq!(
+            serde_json::to_string(&tokens).unwrap(),
+            r#"{"kind":"oauth2","provider":"google","refreshToken":"r","accessToken":"a","expiresAt":5}"#
+        );
+        assert_eq!(tokens.auth_method(), AuthMethod::Oauth2);
+        assert_eq!(format!("{tokens:?}"), "Credential(oauth2)");
+        let keys = keys();
+        let sealed = seal(&keys, &account("a"), &tokens).unwrap();
+        assert_eq!(open(&keys, &account("a"), &sealed), Some(tokens));
     }
 }

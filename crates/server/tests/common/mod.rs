@@ -11,6 +11,7 @@ use axum::Router;
 
 use huliho_server::api::ApiState;
 use huliho_server::config::{AuthConfig, UpstreamConfig};
+use huliho_server::oauth::Consents;
 use huliho_server::rate::RateLimiter;
 use huliho_server::secrets::{InstanceSecret, Keys};
 use huliho_server::session::SessionTimeouts;
@@ -39,6 +40,7 @@ pub fn api_state(store: Arc<Store>) -> ApiState {
         probe_interval_minutes: UpstreamConfig::default().probe_interval_minutes,
         public_url: None,
         upstream: Arc::new(Upstream::new(&UpstreamConfig::default()).unwrap()),
+        consents: Arc::new(Consents::default()),
     }
 }
 

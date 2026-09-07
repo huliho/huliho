@@ -71,27 +71,18 @@ impl Probe {
         target: &AccountSettings,
         credential: &Credential,
     ) -> Result<(), ProbeError> {
-        let outcome = match (target, credential) {
-            (AccountSettings::Jmap { session_url }, _) => {
+        let outcome = match target {
+            AccountSettings::Jmap { session_url } => {
                 jmap::check(&self.upstream, session_url, address, credential).await
             }
-            (
-                AccountSettings::Imap {
-                    username,
-                    imap: incoming,
-                    smtp: outgoing,
-                },
-                Credential::Password { password },
-            ) => {
-                let credential = BridgeCredential::Password {
-                    username: username.clone(),
-                    password: password.clone(),
-                };
-                self.imap_then_smtp(incoming, outgoing, &credential).await
-            }
-            (AccountSettings::Imap { .. }, Credential::Bearer { .. }) => Err(
-                ProbeError::Unsupported("a token signs in over JMAP only".to_owned()),
-            ),
+            AccountSettings::Imap {
+                username,
+                imap: incoming,
+                smtp: outgoing,
+            } => match bridge_credential(username, credential) {
+                Ok(credential) => self.imap_then_smtp(incoming, outgoing, &credential).await,
+                Err(error) => Err(error),
+            },
         };
         if let Err(error) = &outcome {
             tracing::debug!(kind = target.kind().as_str(), %error, "credential check failed");
@@ -183,6 +174,27 @@ fn smtp_error(error: VerifyError) -> ProbeError {
     }
 }
 
+/// The credential as the bridge signs in with it: LOGIN for a password,
+/// XOAUTH2 for the access token of a consent.
+fn bridge_credential(
+    username: &str,
+    credential: &Credential,
+) -> Result<BridgeCredential, ProbeError> {
+    match credential {
+        Credential::Password { password } => Ok(BridgeCredential::Password {
+            username: username.to_owned(),
+            password: password.clone(),
+        }),
+        Credential::Oauth2 { access_token, .. } => Ok(BridgeCredential::Xoauth2 {
+            username: username.to_owned(),
+            token: access_token.clone(),
+        }),
+        Credential::Bearer { .. } => Err(ProbeError::Unsupported(
+            "a token signs in over JMAP only".to_owned(),
+        )),
+    }
+}
+
 /// A resolve failure in fixed words; the error's own text names the
 /// host.
 fn unreachable(error: &UpstreamError) -> ProbeError {
@@ -246,6 +258,28 @@ mod tests {
         assert!(matches!(mapped, ProbeError::Unreachable(_)));
         assert!(!text.contains("secret.example.test"));
         assert!(!text.contains("10.0.0.1"));
+    }
+
+    #[test]
+    fn an_oauth_credential_signs_in_with_xoauth2_and_a_bearer_token_not_at_all() {
+        let tokens = Credential::Oauth2 {
+            provider: crate::providers::OauthProvider::Google,
+            refresh_token: "r".to_owned(),
+            access_token: "ya29.token".to_owned(),
+            expires_at: 0,
+        };
+        assert!(matches!(
+            bridge_credential("sanne", &tokens),
+            Ok(BridgeCredential::Xoauth2 { username, token })
+                if username == "sanne" && token == "ya29.token"
+        ));
+        let bearer = Credential::Bearer {
+            token: "t".to_owned(),
+        };
+        assert!(matches!(
+            bridge_credential("sanne", &bearer),
+            Err(ProbeError::Unsupported(_))
+        ));
     }
 
     #[test]

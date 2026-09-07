@@ -8,7 +8,7 @@
 mod credentials;
 mod settings;
 
-use rusqlite::{OptionalExtension, Row, params};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 
 pub use credentials::Credential;
 pub use settings::{AccountSettings, Endpoint, TlsMode};
@@ -174,23 +174,7 @@ pub fn list(store: &Store, scope: &Scope) -> Result<Vec<Account>, StoreError> {
 /// and [`StoreError::NotFound`] when the row is gone.
 pub fn get(store: &Store, scope: &Scope) -> Result<Account, StoreError> {
     let account_id = scope.account()?;
-    store.read(|connection| {
-        connection
-            .query_row(
-                &format!(
-                    "SELECT {ACCOUNT_COLUMNS} FROM accounts
-                     WHERE id = ?1 AND user_id = ?2 AND organization_id = ?3"
-                ),
-                [
-                    account_id.as_str(),
-                    scope.user_id().as_str(),
-                    scope.organization_id().as_str(),
-                ],
-                account_from_row,
-            )
-            .optional()?
-            .ok_or(StoreError::NotFound)
-    })
+    store.read(|connection| read_account(connection, scope, account_id))
 }
 
 /// Opens the credential sealed on the account the scope was resolved
@@ -223,6 +207,142 @@ pub fn credential(store: &Store, keys: &Keys, scope: &Scope) -> Result<Credentia
         .ok_or(StoreError::Tampered)
 }
 
+/// Reads the connection settings of the account the scope was resolved
+/// for, so a consent can check a reconnect against the stored target.
+///
+/// # Errors
+///
+/// Returns [`StoreError::MissingAccount`] for a scope without an account,
+/// [`StoreError::NotFound`] when the row is gone and
+/// [`StoreError::Encoding`] when the column does not parse.
+pub fn settings(store: &Store, scope: &Scope) -> Result<AccountSettings, StoreError> {
+    let account_id = scope.account()?;
+    let text: String = store.read(|connection| {
+        connection
+            .query_row(
+                "SELECT settings FROM accounts
+                 WHERE id = ?1 AND user_id = ?2 AND organization_id = ?3",
+                [
+                    account_id.as_str(),
+                    scope.user_id().as_str(),
+                    scope.organization_id().as_str(),
+                ],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or(StoreError::NotFound)
+    })?;
+    Ok(serde_json::from_str(&text)?)
+}
+
+/// Stops the account with `cause` and appends the fact. An account
+/// already stopped with that cause stays as it is.
+///
+/// # Errors
+///
+/// Returns [`StoreError::MissingAccount`] for a scope without an account
+/// and [`StoreError::NotFound`] when the row is gone.
+pub fn stop(
+    store: &Store,
+    scope: &Scope,
+    cause: StopCause,
+    actor: &Actor,
+) -> Result<(), StoreError> {
+    let account_id = scope.account()?.clone();
+    store.write(|transaction| {
+        let current = read_account(transaction, scope, &account_id)?;
+        if current.stopped_cause == Some(cause) {
+            return Ok(());
+        }
+        transaction.execute(
+            "UPDATE accounts SET stopped_cause = ?1, stopped_at = ?2 WHERE id = ?3",
+            params![cause.as_str(), now_ms(), account_id.as_str()],
+        )?;
+        let event = DomainEvent::AccountStopped { account_id, cause };
+        append(transaction, scope.organization_id(), actor, &event)
+    })
+}
+
+/// Replaces the sealed credential after a passing check, the user's
+/// action: a stop for a refused credential clears and the fact is
+/// appended.
+///
+/// # Errors
+///
+/// Returns [`StoreError::MissingAccount`] for a scope without an account
+/// and [`StoreError::NotFound`] when the row is gone; sealing failures
+/// pass through.
+pub fn replace_credential(
+    store: &Store,
+    keys: &Keys,
+    scope: &Scope,
+    credential: &Credential,
+) -> Result<Account, StoreError> {
+    let account_id = scope.account()?.clone();
+    let sealed = credentials::seal(keys, &account_id, credential)?;
+    store.write(|transaction| {
+        let current = read_account(transaction, scope, &account_id)?;
+        let cleared = current.stopped_cause == Some(StopCause::Credentials);
+        transaction.execute(
+            "UPDATE accounts SET credentials = ?1, auth_method = ?2,
+                 stopped_cause = CASE WHEN ?3 THEN NULL ELSE stopped_cause END,
+                 stopped_at = CASE WHEN ?3 THEN NULL ELSE stopped_at END
+             WHERE id = ?4",
+            params![
+                sealed,
+                credential.auth_method().as_str(),
+                cleared,
+                account_id.as_str()
+            ],
+        )?;
+        let event = DomainEvent::AccountCredentialsUpdated {
+            account_id: account_id.clone(),
+        };
+        let actor = Actor::User(scope.user_id().clone());
+        append(transaction, scope.organization_id(), &actor, &event)?;
+        Ok(Account {
+            auth_method: credential.auth_method(),
+            stopped_cause: if cleared { None } else { current.stopped_cause },
+            stopped_at: if cleared { None } else { current.stopped_at },
+            ..current
+        })
+    })
+}
+
+/// Writes tokens the provider rotated. Nobody acted, so nothing else on
+/// the row changes and no fact is appended.
+///
+/// # Errors
+///
+/// Returns [`StoreError::MissingAccount`] for a scope without an account
+/// and [`StoreError::NotFound`] when the row is gone; sealing failures
+/// pass through.
+pub fn update_credential(
+    store: &Store,
+    keys: &Keys,
+    scope: &Scope,
+    credential: &Credential,
+) -> Result<(), StoreError> {
+    let account_id = scope.account()?;
+    let sealed = credentials::seal(keys, account_id, credential)?;
+    store.write(|transaction| {
+        let updated = transaction.execute(
+            "UPDATE accounts SET credentials = ?1
+             WHERE id = ?2 AND user_id = ?3 AND organization_id = ?4",
+            params![
+                sealed,
+                account_id.as_str(),
+                scope.user_id().as_str(),
+                scope.organization_id().as_str()
+            ],
+        )?;
+        if updated == 0 {
+            return Err(StoreError::NotFound);
+        }
+        Ok(())
+    })
+}
+
 /// Removes the account the scope was resolved for; the sealed credential
 /// leaves with the row and the snooze rows cascade.
 ///
@@ -251,6 +371,29 @@ pub fn remove(store: &Store, scope: &Scope) -> Result<(), StoreError> {
         append(transaction, scope.organization_id(), &actor, &event)?;
         Ok(())
     })
+}
+
+/// The row as [`get`] reads it, on a connection the caller holds.
+fn read_account(
+    connection: &Connection,
+    scope: &Scope,
+    account_id: &AccountId,
+) -> Result<Account, StoreError> {
+    connection
+        .query_row(
+            &format!(
+                "SELECT {ACCOUNT_COLUMNS} FROM accounts
+                 WHERE id = ?1 AND user_id = ?2 AND organization_id = ?3"
+            ),
+            [
+                account_id.as_str(),
+                scope.user_id().as_str(),
+                scope.organization_id().as_str(),
+            ],
+            account_from_row,
+        )
+        .optional()?
+        .ok_or(StoreError::NotFound)
 }
 
 fn account_from_row(row: &Row<'_>) -> rusqlite::Result<Account> {
