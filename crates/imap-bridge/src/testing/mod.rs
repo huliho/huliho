@@ -206,13 +206,23 @@ pub struct Fake<P> {
 
 impl<P: Protocol> Fake<P> {
     /// Listens on a loopback port and serves every connection by the
-    /// script.
+    /// script, under the certificate for the protocol's own host name.
     ///
     /// # Panics
     ///
     /// When no loopback port can be bound.
     pub async fn start(script: P) -> Self {
-        let certificates = certificates(P::HOST);
+        Self::start_as(script, P::HOST).await
+    }
+
+    /// Like [`start`](Self::start), under a certificate for `host`, so a
+    /// fake stands in for a server the caller names.
+    ///
+    /// # Panics
+    ///
+    /// When no loopback port can be bound.
+    pub async fn start_as(script: P, host: &str) -> Self {
+        let certificates = certificates(host);
         let acceptor =
             TlsAcceptor::from(Arc::new(server_config(certificates.leaf, certificates.key)));
         let listener = TcpListener::bind("127.0.0.1:0")

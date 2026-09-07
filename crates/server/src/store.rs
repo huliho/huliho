@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, Transaction};
 use rusqlite_migration::{M, Migrations};
@@ -21,7 +21,12 @@ const MIGRATION_SOURCES: &[&str] = &[
     include_str!("migrations/0002_sessions.sql"),
     include_str!("migrations/0003_sessions_devices.sql"),
     include_str!("migrations/0004_account_settings.sql"),
+    include_str!("migrations/0005_instance_admin.sql"),
 ];
+
+/// The operator CLI writes while the server runs; a connection waits this
+/// long for the other's transaction before it gives up.
+const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -93,6 +98,7 @@ impl Store {
     fn initialize(mut connection: Connection) -> Result<Self, StoreError> {
         connection.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
         connection.pragma_update(None, "foreign_keys", true)?;
+        connection.busy_timeout(BUSY_TIMEOUT)?;
         migrations().to_latest(&mut connection)?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -276,5 +282,63 @@ mod tests {
             .unwrap();
         assert_eq!(settings, "{}");
         assert_eq!(credentials, vec![3, 4]);
+    }
+
+    #[test]
+    fn the_instance_admin_migration_keeps_users_without_the_flag() {
+        use crate::ids::{Role, UserId};
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        migrations().to_version(&mut connection, 4).unwrap();
+        insert_owner(&connection);
+        let store = Store::initialize(connection).unwrap();
+        let scope = crate::scope::resolve(&store, &UserId::from("u".to_owned()), None).unwrap();
+        assert!(!scope.instance_admin());
+        assert_eq!(scope.role(), Role::Owner);
+    }
+
+    /// Long enough that the second writer arrives while the first holds
+    /// the lock, short enough for a test.
+    const HOLD: Duration = Duration::from_millis(300);
+    const ARRIVE_AFTER: Duration = Duration::from_millis(50);
+
+    #[test]
+    fn a_second_connection_waits_for_a_writer_instead_of_failing() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = Store::open(dir.path()).unwrap();
+        let second = Store::open(dir.path()).unwrap();
+        let holder = std::thread::spawn(move || {
+            first
+                .write(|transaction| {
+                    transaction.execute(
+                        "INSERT INTO organizations (id, name, created_at) VALUES ('a', 'a', 0)",
+                        [],
+                    )?;
+                    std::thread::sleep(HOLD);
+                    Ok(())
+                })
+                .unwrap();
+        });
+        std::thread::sleep(ARRIVE_AFTER);
+        second
+            .write(|transaction| {
+                transaction.execute(
+                    "INSERT INTO organizations (id, name, created_at) VALUES ('b', 'b', 0)",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        holder.join().unwrap();
+        let rows: i64 = second
+            .read(|connection| {
+                connection
+                    .query_row("SELECT COUNT(*) FROM organizations", [], |row| row.get(0))
+                    .map_err(StoreError::from)
+            })
+            .unwrap();
+        assert_eq!(rows, 2);
     }
 }

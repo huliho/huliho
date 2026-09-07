@@ -52,10 +52,29 @@ discovery. The answer is the account row or a stable error code naming
 the cause: a refused credential, an unreachable server, an insecure
 connection, a server that is not usable or a submission server without
 SMTP AUTH.
+Google and Microsoft accounts sign in through a consent instead of a
+password. The instance holds one OAuth client per provider, registered
+over the API by an instance admin with the secret sealed like an
+account credential; the flag comes from `huliho instance-admin grant
+<login>` on the operator CLI and `revoke` takes it back. With a client
+and the public URL set, the app starts a consent and gets the
+provider's URL to open in a window: code flow with PKCE, a state bound
+to the user, the least scopes a mail client needs. The provider sends
+the window back to `/auth/{provider}/callback`, where the code turns
+into tokens through the same pinned HTTP client as every other outbound
+request, the tokens are checked with XOAUTH2 on IMAP and SMTP and
+sealed on a new row or on the row being reconnected. The window then
+shows one sentence in the browser's language; the app polls the
+outcome. A consent lives ten minutes and is claimed once. An access
+token about to run out is refreshed before use and the rotated tokens
+are written back; a provider that refuses the grant stops the account.
+Request logs carry the matched route, never a path with an id or a
+query in it.
 
 Configuration is one TOML file; unknown keys are rejected. Top-level
 keys are the `listen` address, the `assets` directory and the optional
-`public_url`, the base URL the instance is reached on. `[storage]`
+`public_url`, the base URL the instance is reached on, which the
+provider sign-in needs for its redirect URI. `[storage]`
 holds the data directory `path` (default `data`) and `[events]` holds
 the event log `retention_days` (default 365). `[auth]` holds the
 `secret_file` path plus the session `idle_timeout_minutes` and
@@ -71,7 +90,7 @@ that file must exist. Without the variable the server reads
 `huliho.toml` from the working directory and falls back to the defaults
 when it is absent.
 
-Build and test from the workspace root: `cargo build` and
-`cargo test --workspace`. `cargo test -p huliho-server --features
-live-targets` adds the tests that need the compose targets and the
-public internet.
+The binary is `huliho`; without a subcommand it serves. Build and test
+from the workspace root: `cargo build` and `cargo test --workspace`.
+`cargo test -p huliho-server --features live-targets` adds the tests
+that need the compose targets and the public internet.

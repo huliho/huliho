@@ -100,5 +100,6 @@
   "users_copied": "Gekopieerd",
   "users_copy_failed": "Kopiëren is niet gelukt. Selecteer het en kopieer het zelf.",
   "users_done": "Klaar",
-  "users_error": "De gebruikers konden niet worden geladen."
+  "users_error": "De gebruikers konden niet worden geladen.",
+  "consent_close_window": "Je kunt dit venster sluiten."
 }

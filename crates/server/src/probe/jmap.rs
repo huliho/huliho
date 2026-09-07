@@ -71,7 +71,11 @@ pub(super) async fn check(
         Credential::Password { password } => {
             request.basic_auth(address.to_string(), Some(password))
         }
-        Credential::Bearer { token } => request.bearer_auth(token),
+        Credential::Bearer { token }
+        | Credential::Oauth2 {
+            access_token: token,
+            ..
+        } => request.bearer_auth(token),
     };
     let response = request
         .send()

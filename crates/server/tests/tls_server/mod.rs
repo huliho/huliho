@@ -26,6 +26,8 @@ const NAMES: &[&str] = &[
     "other.test",
     "*.other.test",
     "autoconfig.thunderbird.net",
+    "oauth2.googleapis.com",
+    "login.microsoftonline.com",
 ];
 
 type Requests = Arc<Mutex<Vec<String>>>;

@@ -33,10 +33,13 @@ pub struct Script {
     pub answers: bool,
     /// Advertised once TLS is on.
     pub capabilities: &'static str,
+    /// The one user the server signs in.
+    pub user: &'static str,
 }
 
 impl Script {
-    /// TLS from the first byte, an OK greeting, every command answered.
+    /// TLS from the first byte, an OK greeting, every command answered,
+    /// the fixture user signed in.
     #[must_use]
     pub fn tls() -> Self {
         Self {
@@ -44,6 +47,7 @@ impl Script {
             greeting: Greeting::Ok,
             answers: true,
             capabilities: CAPABILITIES,
+            user: USER,
         }
     }
 
@@ -121,13 +125,18 @@ impl Protocol for Script {
                     format!("{tag} NO not now\r\n")
                 }
                 "LOGIN"
-                    if phase.is_tls() && command == format!("LOGIN \"{USER}\" \"{PASSWORD}\"") =>
+                    if phase.is_tls()
+                        && command == format!("LOGIN \"{}\" \"{PASSWORD}\"", self.user) =>
                 {
                     format!("{tag} OK signed in\r\n")
                 }
                 "LOGIN" => format!("{tag} NO [AUTHENTICATIONFAILED] Authentication failed.\r\n"),
                 "AUTHENTICATE" if phase.is_tls() => {
-                    xoauth2(&mut reader, &mut writer, lines, tag).await?
+                    if xoauth2(&mut reader, &mut writer, lines, self.user).await? {
+                        format!("{tag} OK signed in\r\n")
+                    } else {
+                        format!("{tag} NO [AUTHENTICATIONFAILED] Invalid credentials (Failure)\r\n")
+                    }
                 }
                 "LOGOUT" => {
                     writer
@@ -144,18 +153,19 @@ impl Protocol for Script {
 }
 
 /// The XOAUTH2 exchange as Google runs it: an empty challenge, the
-/// identity; on a wrong token a challenge carrying the error, an empty
-/// answer and then NO. AUTHENTICATE is only answered over TLS.
+/// identity; on a wrong token a challenge carrying the error and an
+/// empty answer before the refusal. Whether `user` signed in with the
+/// fixture token; the caller sends the tagged answer.
 async fn xoauth2<R: AsyncBufRead + Unpin, W: AsyncWrite + Unpin>(
     reader: &mut R,
     writer: &mut W,
     lines: &Lines,
-    tag: &str,
-) -> Option<String> {
+    user: &str,
+) -> Option<bool> {
     writer.write_all(b"+ \r\n").await.ok()?;
     let identity = decoded(lines, Phase::Tls, &read_line(reader).await?);
-    if identity == format!("user={USER}\x01auth=Bearer {TOKEN}\x01\x01") {
-        return Some(format!("{tag} OK signed in\r\n"));
+    if identity == format!("user={user}\x01auth=Bearer {TOKEN}\x01\x01") {
+        return Some(true);
     }
     let error = BASE64.encode(GOOGLE_ERROR);
     writer
@@ -164,7 +174,5 @@ async fn xoauth2<R: AsyncBufRead + Unpin, W: AsyncWrite + Unpin>(
         .ok()?;
     let empty = read_line(reader).await?;
     record(lines, Phase::Tls, &format!("SASL {empty:?}"));
-    Some(format!(
-        "{tag} NO [AUTHENTICATIONFAILED] Invalid credentials (Failure)\r\n"
-    ))
+    Some(false)
 }

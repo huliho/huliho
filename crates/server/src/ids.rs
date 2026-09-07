@@ -99,6 +99,11 @@ id_type!(
     SessionId
 );
 
+id_type!(
+    /// Identifies a sign-in provider row.
+    ProviderId
+);
+
 text_enum!(
     /// Fixed roles within an organization, ordered lowest authority first.
     #[derive(PartialOrd, Ord)]

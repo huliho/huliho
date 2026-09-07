@@ -43,11 +43,13 @@ pub struct Script {
     /// Whether the right credential signs in; a mailbox with SMTP AUTH
     /// off says no to everything.
     pub accepts: bool,
+    /// The one user the server signs in.
+    pub user: &'static str,
 }
 
 impl Script {
     /// TLS from the first byte, a 220 greeting, every mechanism, every
-    /// command answered.
+    /// command answered, the fixture user signed in.
     #[must_use]
     pub fn tls() -> Self {
         Self {
@@ -56,6 +58,7 @@ impl Script {
             answers: true,
             mechanisms: MECHANISMS,
             accepts: true,
+            user: USER,
         }
     }
 
@@ -174,12 +177,12 @@ impl<R: AsyncBufRead + Unpin, W: AsyncWrite + Unpin> Exchange<'_, R, W> {
         match mechanism.to_ascii_uppercase().as_str() {
             "PLAIN" => {
                 let identity = decoded(self.lines, Phase::Tls, initial);
-                Some(script.verdict(identity == format!("\0{USER}\0{PASSWORD}")))
+                Some(script.verdict(identity == format!("\0{}\0{PASSWORD}", script.user)))
             }
             "LOGIN" => {
                 let username = self.ask(ASK_USERNAME).await?;
                 let password = self.ask(ASK_PASSWORD).await?;
-                Some(script.verdict(username == USER && password == PASSWORD))
+                Some(script.verdict(username == script.user && password == PASSWORD))
             }
             "XOAUTH2" => self.xoauth2(script, initial).await,
             _ => Some("504 5.5.4 mechanism not supported\r\n".to_owned()),
@@ -190,7 +193,8 @@ impl<R: AsyncBufRead + Unpin, W: AsyncWrite + Unpin> Exchange<'_, R, W> {
     /// challenge carrying the error, one more line and then the refusal.
     async fn xoauth2(&mut self, script: Script, initial: &str) -> Option<String> {
         let identity = decoded(self.lines, Phase::Tls, initial);
-        if identity == format!("user={USER}\x01auth=Bearer {TOKEN}\x01\x01") && script.accepts {
+        let expected = format!("user={}\x01auth=Bearer {TOKEN}\x01\x01", script.user);
+        if identity == expected && script.accepts {
             return Some(ACCEPTED.to_owned());
         }
         let error = BASE64.encode(GOOGLE_ERROR);

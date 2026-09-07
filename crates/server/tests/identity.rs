@@ -6,7 +6,8 @@
 
 mod organization;
 
-use huliho_server::identity::{self, NewUser};
+use huliho_server::events;
+use huliho_server::identity::{self, FlagChange, NewUser};
 use huliho_server::ids::{Role, UserId};
 use huliho_server::scope;
 use huliho_server::store::StoreError;
@@ -186,4 +187,45 @@ fn a_role_change_to_the_same_role_is_a_no_op() {
     let owner_scope = scope_of(&store, &owner);
     let unchanged = identity::change_role(&store, &owner_scope, &owner.id, Role::Owner).unwrap();
     assert_eq!(unchanged.role, Role::Owner);
+}
+
+#[test]
+fn the_instance_admin_flag_is_granted_once_revoked_once_and_logged() {
+    let store = store();
+    let (_, owner) = personal(&store, "owner@example.com");
+    assert!(!scope_of(&store, &owner).instance_admin());
+    assert_eq!(
+        identity::grant_instance_admin(&store, "owner@example.com").unwrap(),
+        FlagChange::Changed
+    );
+    assert_eq!(
+        identity::grant_instance_admin(&store, "owner@example.com").unwrap(),
+        FlagChange::Unchanged
+    );
+    assert!(scope_of(&store, &owner).instance_admin());
+    assert_eq!(
+        identity::revoke_instance_admin(&store, "owner@example.com").unwrap(),
+        FlagChange::Changed
+    );
+    assert!(!scope_of(&store, &owner).instance_admin());
+    let result = identity::grant_instance_admin(&store, "ghost@example.com");
+    assert!(matches!(result, Err(StoreError::NotFound)));
+    let records = events::for_organization(&store, &scope_of(&store, &owner)).unwrap();
+    let flagged: Vec<(&str, &str)> = records
+        .iter()
+        .filter(|record| record.event_type.starts_with("user.instance_admin"))
+        .map(|record| (record.event_type.as_str(), record.actor.as_str()))
+        .collect();
+    assert_eq!(
+        flagged,
+        [
+            ("user.instance_admin_granted", "system"),
+            ("user.instance_admin_revoked", "system")
+        ]
+    );
+    assert!(
+        records
+            .iter()
+            .all(|record| !record.payload.contains("example.com"))
+    );
 }

@@ -252,6 +252,18 @@ fn the_new_lifecycle_types_carry_stable_names() {
             "account.credentials_updated",
         ),
         (
+            DomainEvent::UserInstanceAdminGranted {
+                user_id: user_id.clone(),
+            },
+            "user.instance_admin_granted",
+        ),
+        (
+            DomainEvent::UserInstanceAdminRevoked {
+                user_id: user_id.clone(),
+            },
+            "user.instance_admin_revoked",
+        ),
+        (
             DomainEvent::UserActive {
                 user_id,
                 period: "2026-09".to_owned(),

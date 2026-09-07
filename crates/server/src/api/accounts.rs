@@ -14,7 +14,9 @@ use axum::response::Json;
 use serde::{Deserialize, Serialize};
 use url::Host;
 
-use super::{ApiError, ApiState, ClientInfo, Full, MAX_NAME_CHARS, internal, upstream_keys};
+use super::{
+    ApiError, ApiState, ClientInfo, Full, MAX_NAME_CHARS, internal, secret_fits, upstream_keys,
+};
 use crate::accounts::{
     self, Account, AccountKind, AccountSettings, AuthMethod, Credential, Endpoint, NewAccount,
     Provider, StopCause,
@@ -26,10 +28,6 @@ use crate::probe::Probe;
 use crate::scope;
 use crate::session;
 use crate::store::now_ms;
-
-/// Longer than any app password or API token; the body limit stops the
-/// rest.
-const MAX_CREDENTIAL_BYTES: usize = 1024;
 
 /// One account as the list shows it; never a credential, never the
 /// connection settings.
@@ -228,18 +226,15 @@ fn username_fits(username: &str) -> bool {
 
 /// The secret is bounded and printable; a token signs in over JMAP only.
 fn credential_fits(credential: &Credential, target: &AccountSettings) -> bool {
-    let secret = match credential {
-        Credential::Password { password } => password,
+    match credential {
+        Credential::Password { password } => secret_fits(password),
         Credential::Bearer { token } => {
-            if matches!(target, AccountSettings::Imap { .. }) {
-                return false;
-            }
-            token
+            !matches!(target, AccountSettings::Imap { .. }) && secret_fits(token)
         }
-    };
-    !secret.is_empty()
-        && secret.len() <= MAX_CREDENTIAL_BYTES
-        && !secret.chars().any(char::is_control)
+        // The tokens of a consent come from the provider, never from the
+        // client.
+        Credential::Oauth2 { .. } => false,
+    }
 }
 
 #[cfg(test)]
@@ -297,5 +292,12 @@ mod tests {
             password: String::new(),
         };
         assert!(!credential_fits(&empty, &imap));
+        let tokens = Credential::Oauth2 {
+            provider: crate::providers::OauthProvider::Google,
+            refresh_token: "r".to_owned(),
+            access_token: "a".to_owned(),
+            expires_at: 0,
+        };
+        assert!(!credential_fits(&tokens, &jmap));
     }
 }

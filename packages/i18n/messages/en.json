@@ -100,5 +100,6 @@
   "users_copied": "Copied",
   "users_copy_failed": "Couldn’t copy. Select it and copy by hand.",
   "users_done": "Done",
-  "users_error": "Couldn’t load the users."
+  "users_error": "Couldn’t load the users.",
+  "consent_close_window": "You can close this window."
 }

@@ -17,7 +17,9 @@ use tracing_subscriber::util::SubscriberInitExt as _;
 use tracing_subscriber::{EnvFilter, Layer as _};
 
 use huliho_server::api::{ApiState, MAX_CONCURRENT_VERIFICATIONS};
-use huliho_server::config::{CONFIG_PATH_VAR, Config, DEFAULT_CONFIG_PATH};
+use huliho_server::cli::{self, Command};
+use huliho_server::config::{CONFIG_PATH_VAR, Config, ConfigError, DEFAULT_CONFIG_PATH};
+use huliho_server::oauth::Consents;
 use huliho_server::rate::RateLimiter;
 use huliho_server::secrets::{InstanceSecret, Keys};
 use huliho_server::session::SessionTimeouts;
@@ -48,12 +50,28 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let requested =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_FILTER));
     subscriber(requested, std::io::stdout).init();
+    let command = cli::parse(std::env::args().skip(1))?;
+    let config = load_config()?;
+    match command {
+        Command::Serve => serve(config).await,
+        Command::InstanceAdmin { grant, login } => {
+            let store = Store::open(&config.storage.path)?;
+            println!("{}", cli::instance_admin(&store, grant, &login)?);
+            Ok(())
+        }
+    }
+}
 
-    let config = match std::env::var_os(CONFIG_PATH_VAR) {
-        Some(path) => Config::load(Path::new(&path))?,
-        None => Config::load_or_default(Path::new(DEFAULT_CONFIG_PATH))?,
-    };
+/// The file `HULIHO_CONFIG` names (it must exist) or else the default
+/// path (it may be absent).
+fn load_config() -> Result<Config, ConfigError> {
+    match std::env::var_os(CONFIG_PATH_VAR) {
+        Some(path) => Config::load(Path::new(&path)),
+        None => Config::load_or_default(Path::new(DEFAULT_CONFIG_PATH)),
+    }
+}
 
+async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     let secret = InstanceSecret::load(config.auth.secret_file.as_deref())?;
     let store = Arc::new(Store::open(&config.storage.path)?);
     let timeouts = SessionTimeouts::from(&config.auth);
@@ -73,6 +91,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         probe_interval_minutes: config.upstream.probe_interval_minutes,
         public_url: config.public_url.clone(),
         upstream,
+        consents: Arc::new(Consents::default()),
     };
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     tracing::info!(listen = %config.listen, "listening");

@@ -11,8 +11,9 @@ mod organization;
 use connecting::{ACCOUNT_TOKEN, keys, new_account};
 use huliho_server::accounts::{
     self, AccountKind, AccountSettings, AuthMethod, Credential, Endpoint, NewAccount, Provider,
-    TlsMode,
+    StopCause, TlsMode,
 };
+use huliho_server::events::{self, Actor};
 use huliho_server::identity;
 use huliho_server::ids::{AccountId, Role};
 use huliho_server::scope;
@@ -277,4 +278,111 @@ fn the_credential_round_trips_through_its_row() {
         accounts::credential(&store, &keys, &scoped).unwrap(),
         new.credential
     );
+}
+
+#[test]
+fn a_stop_lands_once_per_cause_and_a_replaced_credential_clears_it() {
+    let store = store();
+    let (_, user) = personal(&store, "mira@example.com");
+    let keys = keys();
+    let scope = scope_of(&store, &user);
+    let new = imap_account(IMAP_ADDRESS, PASSWORD);
+    let account = accounts::add(&store, &keys, &scope, &new).unwrap();
+    let scoped = scope::resolve(&store, &user.id, Some(&account.id)).unwrap();
+    assert_eq!(accounts::settings(&store, &scoped).unwrap(), new.settings);
+    accounts::stop(&store, &scoped, StopCause::Connection, &Actor::System).unwrap();
+    accounts::stop(&store, &scoped, StopCause::Connection, &Actor::System).unwrap();
+    accounts::stop(&store, &scoped, StopCause::Credentials, &Actor::System).unwrap();
+    let stopped = accounts::get(&store, &scoped).unwrap();
+    assert_eq!(stopped.stopped_cause, Some(StopCause::Credentials));
+    assert!(stopped.stopped_at.is_some());
+    let fresh = Credential::Password {
+        password: "another app password".to_owned(),
+    };
+    let replaced = accounts::replace_credential(&store, &keys, &scoped, &fresh).unwrap();
+    assert_eq!(replaced.id, account.id);
+    assert_eq!(replaced.stopped_cause, None);
+    assert_eq!(replaced.stopped_at, None);
+    assert_eq!(accounts::credential(&store, &keys, &scoped).unwrap(), fresh);
+    let types: Vec<String> = events::for_organization(&store, &scope)
+        .unwrap()
+        .into_iter()
+        .map(|record| record.event_type)
+        .collect();
+    assert_eq!(
+        types
+            .iter()
+            .filter(|kind| *kind == "account.stopped")
+            .count(),
+        2
+    );
+    assert!(types.contains(&"account.credentials_updated".to_owned()));
+}
+
+#[test]
+fn a_connection_stop_outlives_a_replaced_credential_and_a_rotation_is_silent() {
+    let store = store();
+    let (_, user) = personal(&store, "mira@example.com");
+    let keys = keys();
+    let scope = scope_of(&store, &user);
+    let account =
+        accounts::add(&store, &keys, &scope, &imap_account(IMAP_ADDRESS, PASSWORD)).unwrap();
+    let scoped = scope::resolve(&store, &user.id, Some(&account.id)).unwrap();
+    accounts::stop(&store, &scoped, StopCause::Connection, &Actor::System).unwrap();
+    let fresh = Credential::Password {
+        password: "another app password".to_owned(),
+    };
+    let replaced = accounts::replace_credential(&store, &keys, &scoped, &fresh).unwrap();
+    assert_eq!(replaced.stopped_cause, Some(StopCause::Connection));
+    let before = events::for_organization(&store, &scope).unwrap().len();
+    let rotated = Credential::Password {
+        password: "rotated".to_owned(),
+    };
+    accounts::update_credential(&store, &keys, &scoped, &rotated).unwrap();
+    assert_eq!(
+        accounts::credential(&store, &keys, &scoped).unwrap(),
+        rotated
+    );
+    assert_eq!(
+        events::for_organization(&store, &scope).unwrap().len(),
+        before
+    );
+    assert_eq!(
+        accounts::get(&store, &scoped).unwrap().stopped_cause,
+        Some(StopCause::Connection)
+    );
+}
+
+#[test]
+fn stopping_and_updating_need_the_account_within_scope() {
+    let store = store();
+    let (_, user) = personal(&store, "mira@example.com");
+    let keys = keys();
+    let scope = scope_of(&store, &user);
+    let fresh = Credential::Password {
+        password: "another app password".to_owned(),
+    };
+    assert!(matches!(
+        accounts::stop(&store, &scope, StopCause::Connection, &Actor::System),
+        Err(StoreError::MissingAccount)
+    ));
+    assert!(matches!(
+        accounts::settings(&store, &scope),
+        Err(StoreError::MissingAccount)
+    ));
+    let account = accounts::add(&store, &keys, &scope, &new_account(ADDRESS)).unwrap();
+    let scoped = scope::resolve(&store, &user.id, Some(&account.id)).unwrap();
+    accounts::remove(&store, &scoped).unwrap();
+    assert!(matches!(
+        accounts::stop(&store, &scoped, StopCause::Connection, &Actor::System),
+        Err(StoreError::NotFound)
+    ));
+    assert!(matches!(
+        accounts::replace_credential(&store, &keys, &scoped, &fresh),
+        Err(StoreError::NotFound)
+    ));
+    assert!(matches!(
+        accounts::update_credential(&store, &keys, &scoped, &fresh),
+        Err(StoreError::NotFound)
+    ));
 }
