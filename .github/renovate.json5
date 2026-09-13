@@ -20,8 +20,9 @@
   ],
   packageRules: [
     {
-      description: "pnpm refuses to install a release younger than a day, so wait past that.",
+      description: "Version updates wait two days; a lock file refresh has no release date, so pnpm's one-day minimum covers it.",
       matchManagers: ["npm"],
+      matchUpdateTypes: ["major", "minor", "patch"],
       minimumReleaseAge: "2 days",
     },
     {
