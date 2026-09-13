@@ -65,7 +65,8 @@ impl From<SessionError> for VerifyError {
             | SessionError::ServerName(_)
             | SessionError::Timeout
             | SessionError::Closed
-            | SessionError::Io(_) => Self::Unreachable(error),
+            | SessionError::Io(_)
+            | SessionError::Unavailable => Self::Unreachable(error),
             SessionError::Tls(_) | SessionError::StarttlsAbsent | SessionError::StarttlsRefused => {
                 Self::Insecure(error)
             }
@@ -142,5 +143,10 @@ mod tests {
         assert!(matches!(rejected, VerifyError::CredentialRejected));
         let unavailable: VerifyError = SessionError::AuthUnavailable.into();
         assert!(matches!(unavailable, VerifyError::AuthUnavailable));
+        let down: VerifyError = SessionError::Unavailable.into();
+        assert!(matches!(
+            down,
+            VerifyError::Unreachable(SessionError::Unavailable)
+        ));
     }
 }

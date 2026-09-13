@@ -8,6 +8,7 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::signal::unix::{SignalKind, signal};
 use tracing_subscriber::filter::{LevelFilter, Targets};
@@ -19,6 +20,7 @@ use tracing_subscriber::{EnvFilter, Layer as _};
 use huliho_server::api::{ApiState, MAX_CONCURRENT_VERIFICATIONS};
 use huliho_server::cli::{self, Command};
 use huliho_server::config::{CONFIG_PATH_VAR, Config, ConfigError, DEFAULT_CONFIG_PATH};
+use huliho_server::gate::{Gate, Reconnect};
 use huliho_server::oauth::Consents;
 use huliho_server::rate::RateLimiter;
 use huliho_server::secrets::{InstanceSecret, Keys};
@@ -83,6 +85,7 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(session::prune_periodically(Arc::clone(&store), timeouts));
 
     let api = ApiState {
+        gate: Gate::new(Arc::clone(&store)),
         store,
         keys: Arc::new(Keys::derive(&secret)),
         timeouts,
@@ -93,6 +96,9 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         upstream,
         consents: Arc::new(Consents::default()),
     };
+    let probe_interval =
+        Duration::from_mins(u64::from(config.upstream.probe_interval_minutes.get()));
+    tokio::spawn(Reconnect::from(&api).probe_periodically(probe_interval));
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     tracing::info!(listen = %config.listen, "listening");
     axum::serve(

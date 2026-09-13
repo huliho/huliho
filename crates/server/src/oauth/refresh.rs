@@ -92,7 +92,7 @@ pub async fn access_token(
             Ok(tokens.access_token)
         }
         Err(TokenError::Revoked) => {
-            accounts::stop(&store, &scope, StopCause::Credentials, &Actor::System)?;
+            let _changed = accounts::stop(&store, &scope, StopCause::Credentials, &Actor::System)?;
             Err(RefreshError::Revoked)
         }
         Err(other) => Err(RefreshError::Unavailable(other)),

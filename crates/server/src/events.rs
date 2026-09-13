@@ -24,7 +24,7 @@ const MS_PER_DAY: i64 = 86_400_000;
 const PRUNE_INTERVAL: Duration = Duration::from_hours(24);
 
 /// Who caused an event: a user in the organization or the system itself.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Actor {
     System,
     User(UserId),

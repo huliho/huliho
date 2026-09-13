@@ -11,7 +11,9 @@ submission server with EHLO and AUTH, so a mailbox that refuses SMTP
 AUTH is caught before anything is stored. Both connections use TLS from
 the first byte or upgrade with STARTTLS before any credential is sent;
 a server that does not offer STARTTLS is refused, never spoken to in
-plaintext. Certificates are validated against the trust the caller
+plaintext. A NO carrying the RFC 5530 `UNAVAILABLE` code means the
+server could not judge the credential; it reads as unreachable, not as
+a refusal. Certificates are validated against the trust the caller
 hands in and nothing else. The caller resolves the host and checks the
 addresses; the bridge connects to them in order and resolves nothing
 itself. Every step runs within one timeout. No error carries the

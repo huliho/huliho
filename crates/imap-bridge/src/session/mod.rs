@@ -100,6 +100,10 @@ pub enum SessionError {
     CredentialRejected,
     #[error("the server offers no way to sign in with this credential")]
     AuthUnavailable,
+    /// The server could not judge the credential: a subsystem behind it
+    /// is down (RFC 5530 section 3, `UNAVAILABLE`).
+    #[error("the server cannot sign anyone in right now")]
+    Unavailable,
     /// The text is fixed at the call site, never the server's own words.
     #[error("the server does not speak the protocol as expected: {0}")]
     Protocol(&'static str),

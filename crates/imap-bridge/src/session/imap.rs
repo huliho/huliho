@@ -31,6 +31,10 @@ type Attempt = Result<async_imap::Session<Stream>, (ImapError, Client<Stream>)>;
 /// OK; one is the norm, the rest is room for alerts.
 const CAPABILITY_LINES: usize = 8;
 
+/// The response code of a server whose sign-in backend is down (RFC 5530
+/// section 3); the client library folds it into the text of its error.
+const UNAVAILABLE_CODE: &str = "[UNAVAILABLE]";
+
 /// The stream types the client library accepts.
 trait Wire: AsyncRead + AsyncWrite + Unpin + Send + fmt::Debug {}
 
@@ -285,13 +289,20 @@ fn capability_name(capability: &Capability<'_>) -> String {
     }
 }
 
-/// A NO answers the credential; a BAD is about the command.
+/// A NO answers the credential, unless its code says the server could
+/// not judge it; a BAD is about the command.
 fn auth_error(error: ImapError) -> SessionError {
     match error {
+        ImapError::No(text) if unavailable(&text) => SessionError::Unavailable,
         ImapError::No(_) | ImapError::Validate(_) => SessionError::CredentialRejected,
         ImapError::Bad(_) => SessionError::Protocol("the sign-in command was not accepted"),
         other => command_error(other),
     }
+}
+
+/// A response code is an atom, so its case is the server's choice.
+fn unavailable(text: &str) -> bool {
+    text.to_ascii_uppercase().contains(UNAVAILABLE_CODE)
 }
 
 /// The server's own words never travel: a server that has just seen a
@@ -304,5 +315,38 @@ fn command_error(error: ImapError) -> SessionError {
         ImapError::Bad(_) => SessionError::Protocol("the server answered BAD"),
         ImapError::Parse(_) => SessionError::Protocol("the answer could not be parsed"),
         _ => SessionError::Protocol("the command was not accepted"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The client library's text for a tagged NO: the code it parsed
+    /// (it knows none from RFC 5530) and the information verbatim.
+    fn no(information: &str) -> ImapError {
+        ImapError::No(format!("code: None, info: Some({information:?})"))
+    }
+
+    #[test]
+    fn a_no_with_the_unavailable_code_is_not_a_verdict_on_the_credential_rfc5530_3() {
+        for text in [
+            "[UNAVAILABLE] Temporary authentication failure.",
+            "[unavailable] backend down",
+        ] {
+            assert!(
+                matches!(auth_error(no(text)), SessionError::Unavailable),
+                "{text}"
+            );
+        }
+        for text in [
+            "[AUTHENTICATIONFAILED] Authentication failed.",
+            "Authentication failed.",
+        ] {
+            assert!(
+                matches!(auth_error(no(text)), SessionError::CredentialRejected),
+                "{text}"
+            );
+        }
     }
 }

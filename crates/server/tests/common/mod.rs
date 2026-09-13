@@ -11,6 +11,7 @@ use axum::Router;
 
 use huliho_server::api::ApiState;
 use huliho_server::config::{AuthConfig, UpstreamConfig};
+use huliho_server::gate::Gate;
 use huliho_server::oauth::Consents;
 use huliho_server::rate::RateLimiter;
 use huliho_server::secrets::{InstanceSecret, Keys};
@@ -30,6 +31,7 @@ fn keys() -> Keys {
 /// timeouts; tests reach the verification gate through it.
 pub fn api_state(store: Arc<Store>) -> ApiState {
     ApiState {
+        gate: Gate::new(Arc::clone(&store)),
         store,
         keys: Arc::new(keys()),
         timeouts: SessionTimeouts::from(&AuthConfig::default()),
