@@ -1,0 +1,159 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100svh;
+  background: var(--hh-surface);
+}
+
+.screen {
+  flex: 1;
+  display: grid;
+}
+
+/* The phone card is the screen; from the sidebar width on it floats centered. */
+.card {
+  display: grid;
+  align-content: start;
+  gap: var(--hhx-space-4);
+  inline-size: 100%;
+  padding: var(--hhx-space-6) var(--hhx-space-5);
+  background: var(--hh-surface);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--hhx-type-5);
+  font-weight: 600;
+}
+
+.lead {
+  margin: 0;
+  font-size: var(--hhx-type-3);
+  color: var(--hh-text-muted);
+}
+
+.form {
+  display: grid;
+  gap: var(--hhx-space-4);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--hhx-space-3);
+}
+
+.callout {
+  display: flex;
+  gap: var(--hhx-space-3);
+  padding: var(--hhx-space-3);
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-field);
+  background: var(--hh-hover);
+  font-size: var(--hhx-type-2);
+}
+
+.calloutDanger {
+  border-color: var(--hh-danger);
+  background: var(--hh-surface);
+}
+
+.calloutText {
+  flex: 1;
+}
+
+.dot {
+  flex: none;
+  inline-size: var(--hhx-space-2);
+  block-size: var(--hhx-space-2);
+  margin-block-start: var(--hhx-space-1);
+  border-radius: var(--hhx-radius-control);
+  background: var(--hh-accent);
+}
+
+.dotWarn {
+  background: var(--hh-warn);
+}
+
+.dotDanger {
+  background: var(--hh-danger);
+}
+
+.status {
+  color: var(--hh-text-muted);
+}
+
+.hostBox {
+  display: grid;
+  gap: var(--hhx-space-1);
+  padding: var(--hhx-space-4);
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-field);
+}
+
+.host {
+  font-family: var(--hhx-font-mono);
+  font-weight: 500;
+}
+
+.hostMeta {
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+}
+
+.submit {
+  padding-block: var(--hhx-space-3);
+  font-size: var(--hhx-type-3);
+}
+
+.centered {
+  justify-self: center;
+}
+
+.note {
+  margin: 0;
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+  text-align: center;
+}
+
+.disclosure {
+  display: grid;
+  gap: var(--hhx-space-4);
+}
+
+.disclosure summary {
+  display: flex;
+  align-items: center;
+  min-block-size: var(--hhx-hit-target);
+  cursor: pointer;
+  color: var(--hh-accent);
+  font-weight: 600;
+}
+
+.disclosure summary:hover {
+  color: var(--hh-accent-strong);
+  text-decoration: underline;
+}
+
+@media (min-width: 720px) {
+  .page {
+    background: var(--hh-bg);
+  }
+
+  .screen {
+    place-items: center;
+    padding: var(--hhx-space-5) var(--hhx-space-4);
+  }
+
+  .card {
+    inline-size: min(var(--hhx-measure-narrow), 100%);
+    padding: var(--hhx-space-6);
+    border: var(--hhx-border-width) solid var(--hh-border);
+    border-radius: var(--hhx-radius-overlay);
+  }
+}

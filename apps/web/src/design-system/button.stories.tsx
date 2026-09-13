@@ -19,6 +19,7 @@ export const Variants: StoryObj = {
       <Button variant="primary">Sign in</Button>
       <Button>Try again</Button>
       <Button variant="danger">Revoke all others</Button>
+      <Button variant="plain">Change</Button>
     </div>
   ),
 };

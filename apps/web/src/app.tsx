@@ -3,33 +3,15 @@
 // Additional terms apply, see NOTICE.
 
 import { localeEndonym, PSEUDO_LOCALE } from "@huliho/i18n";
-import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import styles from "./app.module.css";
-import { useSignOut } from "./auth/use-sign-out";
 import { m } from "./paraglide/messages.js";
 import { getLocale, isLocale, locales, setLocale } from "./paraglide/runtime.js";
 import type { Locale } from "./paraglide/runtime.js";
+import { ShellHeader } from "./shell/shell-header";
 
 const DEMO_MESSAGE_COUNT = 24817;
-
-function ShellHeader({ locale }: { locale: Locale }) {
-  const signOut = useSignOut(locale);
-  return (
-    <header className={styles.topbar}>
-      <span className={styles.topbarBrand}>Huliho</span>
-      <nav className={styles.topbarNav}>
-        <Link to="/settings" className={styles.topbarLink}>
-          {m.settings_title({}, { locale })}
-        </Link>
-        <button type="button" className={styles.topbarButton} onClick={signOut}>
-          {m.signout_action({}, { locale })}
-        </button>
-      </nav>
-    </header>
-  );
-}
 
 // The pseudo locale is a development aid, so only development builds list it.
 function listedLocales(current: Locale): Locale[] {

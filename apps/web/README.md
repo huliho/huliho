@@ -32,6 +32,17 @@ Reset and create hand over a one-time password in a dialog that shows
 it once: it lives in mutation state until the dialog has closed, then
 both mutations reset.
 
+Adding a mail account is a card at `/accounts/new`, where a session
+without accounts lands from the shell. The flow is a reducer over the
+steps (typing, detecting, found, confirm host, not found, manual,
+connecting, insecure) with the fields of each step in plain component
+state; three requests sit behind it (discover, add, replace a
+credential) and every refusal is one sentence on the field or above
+the fields. A reconnect opens the same card at
+`/accounts/new?reconnect={id}` with the address fixed. The address is
+checked against the server's shape rule before it goes out. A
+credential travels once, at Connect; no cache ever holds it.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component
@@ -51,6 +62,6 @@ themes at phone and
 desktop width. Baselines are rendered on Linux, so the comparison runs
 in CI and the images are refreshed from the repo root with the
 container whose tag matches the installed `@playwright/test` version:
-`docker run --rm -e CI=true -v "$PWD":/work -w /work mcr.microsoft.com/playwright:v1.62.1-noble bash -c "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @huliho/web exec playwright test --update-snapshots"`
+`docker run --rm -e CI=true -v "$PWD":/work -w /work mcr.microsoft.com/playwright:v1.63.0-noble bash -c "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @huliho/web exec playwright test --update-snapshots"`
 The container swaps `node_modules` to Linux binaries; run
 `CI=true pnpm install` afterwards to restore them.

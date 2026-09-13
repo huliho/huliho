@@ -38,6 +38,18 @@
   color: var(--hh-danger);
 }
 
+.plain {
+  background: none;
+  border-color: transparent;
+  color: var(--hh-accent);
+  padding-inline: var(--hhx-space-2);
+}
+
+.plain:hover {
+  color: var(--hh-accent-strong);
+  text-decoration: underline;
+}
+
 .secondary:hover,
 .danger:hover {
   background: var(--hh-hover);
@@ -54,4 +66,9 @@
   background: var(--hh-accent-tint);
   border-color: transparent;
   color: var(--hh-accent);
+}
+
+.plain[data-disabled] {
+  background: none;
+  border-color: transparent;
 }
