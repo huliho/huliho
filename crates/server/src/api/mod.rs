@@ -5,11 +5,13 @@
 //! The /api router: its guards, extractors and the error shape.
 
 mod accounts;
+mod consent_page;
 mod discover;
 mod login;
 mod oauth;
 mod password;
 mod providers;
+mod reconnect;
 mod sessions;
 mod users;
 
@@ -30,7 +32,9 @@ use serde::Serialize;
 use tokio::sync::Semaphore;
 use url::Url;
 
+use crate::accounts::StopCause;
 use crate::auth::AuthError;
+use crate::gate::{Gate, Reconnect};
 use crate::ids::UserId;
 use crate::oauth::Consents;
 use crate::probe::ProbeError;
@@ -72,6 +76,20 @@ pub struct ApiState {
     pub upstream: Arc<Upstream>,
     /// The consents in flight, one process wide.
     pub consents: Arc<Consents>,
+    /// The connection gate, one process wide.
+    pub gate: Gate,
+}
+
+/// The wiring of a check on a stored account, as the routes and the
+/// probe share it.
+impl From<&ApiState> for Reconnect {
+    fn from(state: &ApiState) -> Self {
+        Self {
+            gate: state.gate.clone(),
+            keys: Arc::clone(&state.keys),
+            upstream: Arc::clone(&state.upstream),
+        }
+    }
 }
 
 /// Builds the /api router on the given state.
@@ -95,6 +113,11 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/accounts/discover", post(discover::discover))
         .route("/accounts/{id}", delete(accounts::remove_account))
+        .route("/accounts/{id}/retry", post(reconnect::retry_account))
+        .route(
+            "/accounts/{id}/credentials",
+            put(reconnect::replace_credentials),
+        )
         .route("/accounts/oauth/start", post(oauth::start_consent))
         .route(
             "/accounts/oauth/pending/{state}",
@@ -130,6 +153,7 @@ enum ApiError {
     MissingCsrfHeader,
     RateLimited { retry_after_ms: i64 },
     ProviderNotConfigured,
+    StillStopped { cause: StopCause },
     UpstreamCredentials,
     UpstreamUnreachable,
     UpstreamInsecure,
@@ -151,6 +175,7 @@ impl ApiError {
             Self::MissingCsrfHeader => "missing_csrf_header",
             Self::RateLimited { .. } => "rate_limited",
             Self::ProviderNotConfigured => "provider_not_configured",
+            Self::StillStopped { .. } => "still_stopped",
             Self::UpstreamCredentials => "upstream_credentials",
             Self::UpstreamUnreachable => "upstream_unreachable",
             Self::UpstreamInsecure => "upstream_insecure",
@@ -174,7 +199,9 @@ impl ApiError {
                 StatusCode::FORBIDDEN
             }
             Self::NotFound => StatusCode::NOT_FOUND,
-            Self::LoginTaken | Self::ProviderNotConfigured => StatusCode::CONFLICT,
+            Self::LoginTaken | Self::ProviderNotConfigured | Self::StillStopped { .. } => {
+                StatusCode::CONFLICT
+            }
             Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -184,11 +211,21 @@ impl ApiError {
 #[derive(Serialize)]
 struct ErrorBody {
     error: &'static str,
+    /// The stop cause, on `still_stopped` only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cause: Option<StopCause>,
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let body = Json(ErrorBody { error: self.code() });
+        let cause = match &self {
+            Self::StillStopped { cause } => Some(*cause),
+            _ => None,
+        };
+        let body = Json(ErrorBody {
+            error: self.code(),
+            cause,
+        });
         let mut response = (self.status(), body).into_response();
         if let Self::RateLimited { retry_after_ms } = self {
             let seconds = ((retry_after_ms + MS_PER_SECOND - 1) / MS_PER_SECOND).max(1);

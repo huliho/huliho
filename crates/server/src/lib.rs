@@ -12,6 +12,7 @@ pub mod cli;
 pub mod config;
 pub mod discovery;
 pub mod events;
+pub mod gate;
 pub mod identity;
 pub mod ids;
 pub mod oauth;

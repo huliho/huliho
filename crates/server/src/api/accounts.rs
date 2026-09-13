@@ -140,11 +140,13 @@ pub(super) async fn remove_account(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let store = Arc::clone(&state.store);
+    let gate = state.gate.clone();
     tokio::task::spawn_blocking(move || -> Result<(), ApiError> {
         let account_id = AccountId::from(id);
         let scope = scope::resolve(&store, &auth.session.user_id, Some(&account_id))?;
         session::touch(&store, &scope, &auth.session, client.address)?;
         accounts::remove(&store, &scope)?;
+        gate.forget(&account_id);
         Ok(())
     })
     .await
@@ -225,7 +227,7 @@ fn username_fits(username: &str) -> bool {
 }
 
 /// The secret is bounded and printable; a token signs in over JMAP only.
-fn credential_fits(credential: &Credential, target: &AccountSettings) -> bool {
+pub(super) fn credential_fits(credential: &Credential, target: &AccountSettings) -> bool {
     match credential {
         Credential::Password { password } => secret_fits(password),
         Credential::Bearer { token } => {

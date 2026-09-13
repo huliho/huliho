@@ -7,11 +7,14 @@
 
 mod credentials;
 mod settings;
+mod stopping;
 
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 pub use credentials::Credential;
 pub use settings::{AccountSettings, Endpoint, TlsMode};
+pub(crate) use stopping::stopped_on_connection;
+pub use stopping::{Resumed, resume, stop};
 
 use crate::events::{Actor, DomainEvent, append};
 use crate::ids::{AccountId, OrganizationId, UserId, text_enum};
@@ -235,34 +238,6 @@ pub fn settings(store: &Store, scope: &Scope) -> Result<AccountSettings, StoreEr
     Ok(serde_json::from_str(&text)?)
 }
 
-/// Stops the account with `cause` and appends the fact. An account
-/// already stopped with that cause stays as it is.
-///
-/// # Errors
-///
-/// Returns [`StoreError::MissingAccount`] for a scope without an account
-/// and [`StoreError::NotFound`] when the row is gone.
-pub fn stop(
-    store: &Store,
-    scope: &Scope,
-    cause: StopCause,
-    actor: &Actor,
-) -> Result<(), StoreError> {
-    let account_id = scope.account()?.clone();
-    store.write(|transaction| {
-        let current = read_account(transaction, scope, &account_id)?;
-        if current.stopped_cause == Some(cause) {
-            return Ok(());
-        }
-        transaction.execute(
-            "UPDATE accounts SET stopped_cause = ?1, stopped_at = ?2 WHERE id = ?3",
-            params![cause.as_str(), now_ms(), account_id.as_str()],
-        )?;
-        let event = DomainEvent::AccountStopped { account_id, cause };
-        append(transaction, scope.organization_id(), actor, &event)
-    })
-}
-
 /// Replaces the sealed credential after a passing check, the user's
 /// action: a stop for a refused credential clears and the fact is
 /// appended.
@@ -374,7 +349,7 @@ pub fn remove(store: &Store, scope: &Scope) -> Result<(), StoreError> {
 }
 
 /// The row as [`get`] reads it, on a connection the caller holds.
-fn read_account(
+pub(super) fn read_account(
     connection: &Connection,
     scope: &Scope,
     account_id: &AccountId,

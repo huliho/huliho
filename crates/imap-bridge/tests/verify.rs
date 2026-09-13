@@ -74,6 +74,39 @@ async fn a_rejected_token_ends_in_the_empty_answer_and_is_credential_rejected() 
 }
 
 #[tokio::test]
+async fn a_no_with_the_unavailable_code_is_unreachable_not_a_verdict_rfc5530_3() {
+    let fake = FakeImap::start(Script {
+        unavailable: true,
+        ..Script::tls()
+    })
+    .await;
+    for credential in [password(PASSWORD), token(TOKEN)] {
+        let error = check(&fake, TlsMode::Implicit, &credential)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, VerifyError::Unreachable(SessionError::Unavailable)),
+            "{error}"
+        );
+    }
+    let lines = fake.lines();
+    assert!(
+        lines.iter().any(|line| line.contains(" LOGIN ")),
+        "{lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("AUTHENTICATE XOAUTH2")),
+        "{lines:?}"
+    );
+    assert_eq!(
+        lines.iter().filter(|line| line.contains("LOGOUT")).count(),
+        2
+    );
+}
+
+#[tokio::test]
 async fn login_disabled_over_tls_is_unsupported_and_no_login_travels_rfc9051_7_2_2() {
     let (fake, error) = refusal(Script {
         capabilities: "IMAP4rev1 LOGINDISABLED AUTH=PLAIN",

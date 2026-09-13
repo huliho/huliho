@@ -70,6 +70,20 @@ token about to run out is refreshed before use and the rotated tokens
 are written back; a provider that refuses the grant stops the account.
 Request logs carry the matched route, never a path with an id or a
 query in it.
+Once an account is connected, every attempt on it passes through one
+gate. A rejected credential stops the account at once and the row says
+so with the cause `credentials`; five refused, timed-out or TLS-failed
+connections in a row stop it with the cause `connection`. The stop
+lives on the row, so a restart does not resume retrying by itself. A
+probe checks every account stopped on connection at startup and then
+at the configured interval and resumes it when the server answers
+again. The user retries a stopped account with
+`POST /api/accounts/{id}/retry`, which answers the row or
+`still_stopped` with the cause. A new credential goes to
+`PUT /api/accounts/{id}/credentials` and replaces the stored one after
+a passing check. An OAuth account whose access token is about to run
+out gets a fresh one before the check. Attempts on one account run one
+at a time.
 
 Configuration is one TOML file; unknown keys are rejected. Top-level
 keys are the `listen` address, the `assets` directory and the optional
@@ -85,7 +99,7 @@ upstream may resolve to, written as CIDRs. It is empty by default.
 roots. `probe_interval_minutes` says how often a stopped account is
 checked for recovery, fifteen by default. Discovery and the credential
 check read the network rules and the CA file; the account list reports
-the probe interval, which nothing acts on yet. The file path comes from `HULIHO_CONFIG` and
+the probe interval and the probe runs at it. The file path comes from `HULIHO_CONFIG` and
 that file must exist. Without the variable the server reads
 `huliho.toml` from the working directory and falls back to the defaults
 when it is absent.

@@ -12,6 +12,7 @@ mod signin;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Arc;
 
 use axum::Router;
@@ -23,6 +24,7 @@ use huliho_server::accounts::{AccountSettings, Provider};
 use huliho_server::api::ApiState;
 use huliho_server::config::UpstreamConfig;
 use huliho_server::discovery::{self, Address, Budget, Discovered};
+use huliho_server::gate::{MAX_REFUSED_RUN, Reconnect};
 use huliho_server::upstream::{Dns, SrvTarget, Upstream};
 use serde_json::{Value, json};
 use signin::{
@@ -42,6 +44,37 @@ const SUBMISSION_PORT: u16 = 31587;
 const MAIL_ADDRESS: &str = "sanne@huliho.test";
 const MAIL_PASSWORD: &str = "password";
 const ROUTE: &str = "/api/accounts";
+
+/// Two tests reach the compose Dovecot and one of them pauses it, so
+/// they take turns.
+static DOVECOT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+fn compose_file() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docker-compose.dev.yml")
+}
+
+/// `docker compose <verb> dovecot` against the dev file; whether it
+/// succeeded.
+fn compose(verb: &str) -> bool {
+    Command::new("docker")
+        .arg("compose")
+        .arg("-f")
+        .arg(compose_file())
+        .arg(verb)
+        .arg("dovecot")
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+/// Resumes Dovecot on the way out, however the test ended. No assert
+/// here: a panic inside a drop during an unwind aborts the test binary.
+struct Paused;
+
+impl Drop for Paused {
+    fn drop(&mut self) {
+        compose("unpause");
+    }
+}
 
 fn logging() {
     let _ = tracing_subscriber::fmt()
@@ -190,19 +223,38 @@ async fn add(router: &Router, cookie: &str, body: &Value) -> (StatusCode, String
 }
 
 /// The router on the compose rules: the dev CA trusted, the loopback
-/// allowed, `localhost` answered by the fake resolver.
-fn compose_router() -> Router {
+/// allowed, `localhost` answered by the fake resolver; the state behind
+/// it for the probe.
+fn compose_router() -> (Router, ApiState) {
     let upstream = Upstream::with_dns(&compose_config(true, true), cyrus_dns()).unwrap();
-    router_with(ApiState {
+    let api = ApiState {
         upstream: Arc::new(upstream),
         ..api_state(store_with_account())
-    })
+    };
+    (router_with(api.clone()), api)
+}
+
+async fn retry(router: &Router, cookie: &str, id: &str) -> (StatusCode, String) {
+    let request = with_cookie(Method::POST, &format!("{ROUTE}/{id}/retry"), cookie);
+    let response = router.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    (status, body_text(response).await)
+}
+
+async fn listed(router: &Router, cookie: &str) -> Value {
+    let response = router
+        .clone()
+        .oneshot(with_cookie(Method::GET, ROUTE, cookie))
+        .await
+        .unwrap();
+    serde_json::from_str(&body_text(response).await).unwrap()
 }
 
 #[tokio::test]
 async fn cyrus_and_dovecot_accounts_add_through_the_router_and_list() {
     logging();
-    let router = compose_router();
+    let _dovecot = DOVECOT.lock().await;
+    let (router, _) = compose_router();
     let cookie = sign_in(&router).await;
     for body in [cyrus_body("wrong"), dovecot_body("wrong")] {
         let (status, text) = add(&router, &cookie, &body).await;
@@ -213,19 +265,49 @@ async fn cyrus_and_dovecot_accounts_add_through_the_router_and_list() {
         let (status, text) = add(&router, &cookie, &body).await;
         assert_eq!(status, StatusCode::CREATED, "{text}");
     }
-    let response = router
-        .clone()
-        .oneshot(with_cookie(Method::GET, ROUTE, &cookie))
-        .await
-        .unwrap();
-    let listed: Value = serde_json::from_str(&body_text(response).await).unwrap();
-    let kinds: Vec<&str> = listed["accounts"]
+    let rows = listed(&router, &cookie).await;
+    let kinds: Vec<&str> = rows["accounts"]
         .as_array()
         .unwrap()
         .iter()
         .map(|row| row["kind"].as_str().unwrap())
         .collect();
     assert_eq!(kinds, ["jmap", "imap"]);
+}
+
+#[tokio::test]
+async fn a_paused_dovecot_stops_the_account_and_the_probe_resumes_it() {
+    logging();
+    let _dovecot = DOVECOT.lock().await;
+    let (router, api) = compose_router();
+    let cookie = sign_in(&router).await;
+    let (status, text) = add(&router, &cookie, &dovecot_body(MAIL_PASSWORD)).await;
+    assert_eq!(status, StatusCode::CREATED, "{text}");
+    let row: Value = serde_json::from_str(&text).unwrap();
+    let id = row["id"].as_str().unwrap().to_owned();
+    assert!(compose("pause"));
+    let paused = Paused;
+    for attempt in 1..=MAX_REFUSED_RUN {
+        let (status, text) = retry(&router, &cookie, &id).await;
+        if attempt < MAX_REFUSED_RUN {
+            assert_eq!(status, StatusCode::BAD_GATEWAY, "{text}");
+        } else {
+            assert_eq!(status, StatusCode::CONFLICT, "{text}");
+            assert!(text.contains("\"cause\":\"connection\""), "{text}");
+        }
+    }
+    let reconnect = Reconnect::from(&api);
+    assert_eq!(reconnect.probe_once().await, 0);
+    drop(paused);
+    assert_eq!(reconnect.probe_once().await, 1);
+    let rows = listed(&router, &cookie).await;
+    let row = rows["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == id)
+        .unwrap();
+    assert!(row["stoppedCause"].is_null(), "{row}");
 }
 
 #[tokio::test]

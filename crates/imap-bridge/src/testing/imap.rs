@@ -35,6 +35,9 @@ pub struct Script {
     pub capabilities: &'static str,
     /// The one user the server signs in.
     pub user: &'static str,
+    /// The sign-in backend is down: every sign-in over TLS answers NO
+    /// with the RFC 5530 `UNAVAILABLE` code.
+    pub unavailable: bool,
 }
 
 impl Script {
@@ -48,6 +51,7 @@ impl Script {
             answers: true,
             capabilities: CAPABILITIES,
             user: USER,
+            unavailable: false,
         }
     }
 
@@ -123,6 +127,9 @@ impl Protocol for Script {
                 }
                 "STARTTLS" if phase == Phase::Plain(Starttls::Refused) => {
                     format!("{tag} NO not now\r\n")
+                }
+                "LOGIN" | "AUTHENTICATE" if phase.is_tls() && self.unavailable => {
+                    format!("{tag} NO [UNAVAILABLE] Temporary authentication failure.\r\n")
                 }
                 "LOGIN"
                     if phase.is_tls()
