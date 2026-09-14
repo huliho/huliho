@@ -2,6 +2,27 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+export {
+  AccountsError,
+  addAccount,
+  discoverServer,
+  fetchAccounts,
+  replaceCredential,
+} from "./accounts";
+export type {
+  AccountList,
+  AccountRow,
+  AccountTarget,
+  AccountsFailureCode,
+  AuthMethod,
+  Credential,
+  CredentialKind,
+  FoundServer,
+  NewAccountInput,
+  Provider,
+  TlsMode,
+} from "./accounts";
+export { fitsAddress, fitsHostName } from "./address";
 export { CredentialError } from "./credentials";
 export type { CredentialFailureCode } from "./credentials";
 export {

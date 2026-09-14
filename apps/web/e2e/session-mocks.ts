@@ -19,6 +19,35 @@ const SESSION_BODY = {
 
 const SIGNED_OUT_BODY = { error: "unauthenticated" };
 
+const ACCOUNTS_ROUTE = "**/api/accounts";
+
+// One connected account, so the shell has something to show and keeps
+// the session instead of sending it to the card.
+const ACCOUNT_LIST_BODY = {
+  accounts: [
+    {
+      id: "acc-0",
+      address: "mira@example.com",
+      name: "example.com",
+      provider: "generic",
+      kind: "imap",
+      authMethod: "password",
+      stoppedCause: null,
+      stoppedAt: null,
+      createdAt: 1_778_750_400_000,
+    },
+  ],
+  probeIntervalMinutes: 15,
+};
+
+async function mockOneAccount(page: Page): Promise<void> {
+  await page.route(ACCOUNTS_ROUTE, (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ json: ACCOUNT_LIST_BODY })
+      : route.fallback(),
+  );
+}
+
 export type MockRole = "owner" | "admin" | "member";
 
 // Who the session is per role; each one is a row the users mocks list.
@@ -48,6 +77,7 @@ export interface SessionRowBody {
 // A live session that answers until it signs out, as the server's would.
 async function mockLiveSession(page: Page, body: () => object): Promise<void> {
   let signedIn = true;
+  await mockOneAccount(page);
   await page.route(SESSION_ROUTE, (route) => {
     if (route.request().method() === "DELETE") {
       signedIn = false;
@@ -71,6 +101,7 @@ export async function mockSignedOut(page: Page): Promise<void> {
 // One page-scoped account: any credentials sign in, sign-out signs out.
 export async function mockSessionFlow(page: Page): Promise<void> {
   let signedIn = false;
+  await mockOneAccount(page);
   await page.route(SESSION_ROUTE, (route) => {
     const method = route.request().method();
     if (method === "POST") {

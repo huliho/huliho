@@ -1,0 +1,44 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hhx-space-3);
+  padding: var(--hhx-space-2) var(--hhx-space-4);
+  border-block-end: var(--hhx-border-width) solid var(--hh-border);
+  background: var(--hh-surface);
+  min-block-size: var(--hhx-toolbar-height);
+}
+
+.brand {
+  font-weight: 600;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-2);
+}
+
+.link,
+.button {
+  display: grid;
+  place-items: center;
+  min-block-size: var(--hhx-hit-target);
+  padding-inline: var(--hhx-space-3);
+  border: none;
+  border-radius: var(--hhx-radius-field);
+  background: none;
+  color: var(--hh-text);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.link:hover,
+.button:hover {
+  background: var(--hh-hover);
+}

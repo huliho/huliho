@@ -11,8 +11,9 @@ import {
 } from "@tanstack/react-router";
 
 import { mayManageUsers } from "@huliho/core";
-import type { SessionInfo } from "@huliho/core";
-import { sessionQueryOptions } from "@huliho/state";
+import type { AccountRow, SessionInfo } from "@huliho/core";
+import { accountsQueryOptions, sessionQueryOptions } from "@huliho/state";
+import { AddAccount } from "./accounts/add/add-account";
 import { App } from "./app";
 import { AboutSettings } from "./settings/about";
 import { SessionsPage } from "./settings/sessions/sessions-page";
@@ -62,11 +63,42 @@ async function requireAdmin(context: RouterContext): Promise<void> {
   }
 }
 
+interface AddAccountSearch {
+  // The row to reconnect; absent for a fresh add.
+  reconnect?: string;
+}
+
+// The shell has nothing to show without an account, so a session with
+// none starts by adding one.
+async function requireAccount(context: RouterContext): Promise<void> {
+  const list = await context.queryClient.query(accountsQueryOptions);
+  if (list.accounts.length === 0) {
+    redirect({ to: "/accounts/new", throw: true });
+  }
+}
+
+// The row a reconnect opens on; a row that signs in through a consent
+// or one that is gone opens the card plain.
+async function reconnectRow(
+  context: RouterContext,
+  id: string | undefined,
+): Promise<AccountRow | null> {
+  if (id === undefined) {
+    return null;
+  }
+  const list = await context.queryClient.query(accountsQueryOptions);
+  const row = list.accounts.find((account) => account.id === id);
+  return row !== undefined && row.authMethod !== "oauth2" ? row : null;
+}
+
 const shellRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   component: App,
-  beforeLoad: ({ context }) => requireHome(context, "/"),
+  beforeLoad: async ({ context }) => {
+    await requireHome(context, "/");
+    await requireAccount(context);
+  },
 });
 
 const signInRoute = createRoute({
@@ -87,6 +119,17 @@ const choosePasswordRoute = createRoute({
   path: "/choose-password",
   component: ChoosePassword,
   beforeLoad: ({ context }) => requireHome(context, "/choose-password"),
+});
+
+const addAccountRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/accounts/new",
+  component: AddAccount,
+  validateSearch: (search: Record<string, unknown>): AddAccountSearch =>
+    typeof search["reconnect"] === "string" ? { reconnect: search["reconnect"] } : {},
+  beforeLoad: ({ context }) => requireHome(context, "/"),
+  loaderDeps: ({ search }) => ({ reconnect: search.reconnect }),
+  loader: ({ context, deps }) => reconnectRow(context, deps.reconnect),
 });
 
 const settingsRoute = createRoute({
@@ -125,6 +168,7 @@ const routeTree = rootRoute.addChildren([
   shellRoute,
   signInRoute,
   choosePasswordRoute,
+  addAccountRoute,
   settingsRoute.addChildren([settingsIndexRoute, sessionsRoute, aboutRoute, usersRoute]),
 ]);
 

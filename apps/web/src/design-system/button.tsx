@@ -8,7 +8,7 @@ import type { ComponentProps } from "react";
 import { cx } from "./cx";
 import styles from "./button.module.css";
 
-type Variant = "primary" | "secondary" | "danger";
+type Variant = "primary" | "secondary" | "danger" | "plain";
 
 interface ButtonProps extends Omit<ComponentProps<"button">, "disabled"> {
   variant?: Variant;
@@ -19,10 +19,16 @@ interface ButtonProps extends Omit<ComponentProps<"button">, "disabled"> {
 }
 
 function variantClass(variant: Variant): string | undefined {
-  if (variant === "primary") {
-    return styles.primary;
+  switch (variant) {
+    case "primary":
+      return styles.primary;
+    case "danger":
+      return styles.danger;
+    case "plain":
+      return styles.plain;
+    default:
+      return styles.secondary;
   }
-  return variant === "danger" ? styles.danger : styles.secondary;
 }
 
 export function Button({

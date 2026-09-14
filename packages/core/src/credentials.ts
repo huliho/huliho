@@ -14,16 +14,21 @@ export class CredentialError extends Error {
   readonly code: CredentialFailureCode;
   readonly retryAfterSeconds: number;
 
-  constructor(code: CredentialFailureCode, retryAfterSeconds = 0) {
+  constructor(code: CredentialFailureCode, retryAfter = 0) {
     super(`credential check failed: ${code}`);
     this.name = "CredentialError";
     this.code = code;
-    this.retryAfterSeconds = retryAfterSeconds;
+    this.retryAfterSeconds = retryAfter;
   }
 }
 
-export function rateLimited(response: Response): CredentialError {
+// The seconds a rate-limited answer asks the caller to wait; the
+// fallback when the header is unusable.
+export function retryAfterSeconds(response: Response): number {
   const seconds = Number(response.headers.get("retry-after") ?? "");
-  const delay = Number.isFinite(seconds) && seconds > 0 ? seconds : FALLBACK_RETRY_SECONDS;
-  return new CredentialError("rate_limited", delay);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : FALLBACK_RETRY_SECONDS;
+}
+
+export function rateLimited(response: Response): CredentialError {
+  return new CredentialError("rate_limited", retryAfterSeconds(response));
 }
