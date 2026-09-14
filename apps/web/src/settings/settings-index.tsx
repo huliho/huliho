@@ -13,7 +13,7 @@ export function SettingsIndex() {
   const locale = getLocale();
   const sidebarShown = useSidebarShown();
   if (sidebarShown) {
-    return <Navigate to="/settings/sessions" replace />;
+    return <Navigate to="/settings/accounts" replace />;
   }
   return <SettingsNav locale={locale} layout="list" />;
 }

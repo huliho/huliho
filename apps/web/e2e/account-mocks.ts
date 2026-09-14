@@ -7,6 +7,8 @@ import type { Page, Route } from "@playwright/test";
 const ACCOUNTS_ROUTE = "**/api/accounts";
 const DISCOVER_ROUTE = "**/api/accounts/discover";
 const CREDENTIALS_ROUTE = "**/api/accounts/*/credentials";
+const ACCOUNT_ROW_ROUTE = "**/api/accounts/*";
+const RETRY_ROUTE = "**/api/accounts/*/retry";
 const CONSENT_START_ROUTE = "**/api/accounts/oauth/start";
 const CONSENT_PENDING_ROUTE = "**/api/accounts/oauth/pending/*";
 // Where a mocked start sends the window; the context answers it with a page.
@@ -52,6 +54,15 @@ interface AccountsAnswer {
   retryAfter?: number;
 }
 
+interface StillStoppedAnswer {
+  status: 409;
+  cause: "credentials" | "connection";
+}
+
+// A 200 resumes the row; a 409 names the stop that stands; any other
+// status is a refusal with its code.
+type RetryAnswer = StillStoppedAnswer | AccountsAnswer;
+
 export interface AccountsAnswers {
   list?: number[];
   // A found server or a refusal per discovery; null and an empty queue read as not found.
@@ -59,6 +70,10 @@ export interface AccountsAnswers {
   // Refusals in order; once they run out every add and reconnect passes.
   add?: AccountsAnswer[];
   credentials?: AccountsAnswer[];
+  // Answers per retry in order; once they run out every retry passes.
+  retry?: RetryAnswer[];
+  // Refusals per removal in order; once they run out every removal passes.
+  remove?: AccountsAnswer[];
 }
 
 interface CredentialBody {
@@ -83,6 +98,8 @@ export interface Recorded {
   discoveries: string[];
   adds: AddBody[];
   credentials: Reconnect[];
+  retries: string[];
+  deletes: string[];
 }
 
 interface ConsentBody {
@@ -200,6 +217,23 @@ function isConsentBody(value: unknown): value is ConsentBody {
   );
 }
 
+function isStillStopped(answer: RetryAnswer): answer is StillStoppedAnswer {
+  return "cause" in answer;
+}
+
+function rowIdOf(route: Route, fromEnd: number): string {
+  return route.request().url().split("/").at(fromEnd) ?? "";
+}
+
+// The list with one row changed; a row the server never had stays absent.
+function patched(
+  rows: AccountRowBody[],
+  id: string,
+  change: Partial<AccountRowBody>,
+): AccountRowBody[] {
+  return rows.map((row) => (row.id === id ? { ...row, ...change } : row));
+}
+
 function addressOf(route: Route): string {
   const body: unknown = route.request().postDataJSON();
   const address: unknown =
@@ -230,66 +264,131 @@ function rowOf(body: AddBody, ordinal: number): AccountRowBody {
   };
 }
 
-// Answers the list, the discovery, the add and the reconnect; every body
-// sent is recorded and `answers` lets a test refuse a request before the
-// next one passes.
-export async function mockAccounts(
-  page: Page,
-  rows: AccountRowBody[],
-  answers: AccountsAnswers = {},
-): Promise<Recorded> {
-  const recorded: Recorded = { discoveries: [], adds: [], credentials: [] };
-  let listed = rows;
-  await page.route(ACCOUNTS_ROUTE, (route) => {
+// What the account routes share: the rows the server lists, what the
+// page sent and the answers a test queued.
+interface Mocked {
+  listed: AccountRowBody[];
+  recorded: Recorded;
+  answers: AccountsAnswers;
+}
+
+type Handler = (route: Route) => Promise<void>;
+
+// A pass clears the stop on the row and answers it; a row the server
+// never had is not found.
+function answerResumed(mocked: Mocked, route: Route, id: string): Promise<void> {
+  mocked.listed = patched(mocked.listed, id, { stoppedCause: null, stoppedAt: null });
+  const row = mocked.listed.find((candidate) => candidate.id === id);
+  return row === undefined
+    ? refuse(route, { status: 404, error: "not_found" })
+    : route.fulfill({ json: row });
+}
+
+function removeRoute(mocked: Mocked): Handler {
+  return (route) => {
+    if (route.request().method() !== "DELETE") {
+      return route.fallback();
+    }
+    const id = rowIdOf(route, -1);
+    mocked.recorded.deletes.push(id);
+    const answer = mocked.answers.remove?.shift();
+    if (answer !== undefined) {
+      return refuse(route, answer);
+    }
+    mocked.listed = mocked.listed.filter((row) => row.id !== id);
+    return route.fulfill({ status: 204 });
+  };
+}
+
+function listRoute(mocked: Mocked): Handler {
+  return (route) => {
     if (route.request().method() === "POST") {
       const body: unknown = route.request().postDataJSON();
       if (!isAddBody(body)) {
         throw new Error("the add carried no account");
       }
-      recorded.adds.push(body);
-      const answer = answers.add?.shift();
+      mocked.recorded.adds.push(body);
+      const answer = mocked.answers.add?.shift();
       if (answer !== undefined) {
         return refuse(route, answer);
       }
-      const row = rowOf(body, listed.length + 1);
-      listed = [...listed, row];
+      const row = rowOf(body, mocked.listed.length + 1);
+      mocked.listed = [...mocked.listed, row];
       return route.fulfill({ status: 201, json: row });
     }
-    const status = answers.list?.shift();
+    const status = mocked.answers.list?.shift();
     if (status !== undefined && status !== 200) {
       return refuse(route, { status });
     }
     return route.fulfill({
-      json: { accounts: listed, probeIntervalMinutes: PROBE_INTERVAL_MINUTES },
+      json: { accounts: mocked.listed, probeIntervalMinutes: PROBE_INTERVAL_MINUTES },
     });
-  });
-  await page.route(DISCOVER_ROUTE, (route) => {
-    recorded.discoveries.push(addressOf(route));
-    const answer = answers.discover?.shift() ?? null;
+  };
+}
+
+function discoverRoute(mocked: Mocked): Handler {
+  return (route) => {
+    mocked.recorded.discoveries.push(addressOf(route));
+    const answer = mocked.answers.discover?.shift() ?? null;
     if (answer === null) {
       return route.fulfill({ json: { status: "notFound" } });
     }
     return typeof answer.status === "number"
       ? refuse(route, answer)
       : route.fulfill({ json: answer });
-  });
-  await page.route(CREDENTIALS_ROUTE, (route) => {
-    const id = route.request().url().split("/").at(-2) ?? "";
+  };
+}
+
+function credentialsRoute(mocked: Mocked): Handler {
+  return (route) => {
+    const id = rowIdOf(route, -2);
     const body: unknown = route.request().postDataJSON();
     if (!isReconnectBody(body)) {
       throw new Error("the reconnect carried no credential");
     }
-    recorded.credentials.push({ id, credential: body.credential });
-    const answer = answers.credentials?.shift();
-    if (answer !== undefined) {
-      return refuse(route, answer);
+    mocked.recorded.credentials.push({ id, credential: body.credential });
+    const answer = mocked.answers.credentials?.shift();
+    return answer === undefined ? answerResumed(mocked, route, id) : refuse(route, answer);
+  };
+}
+
+function retryRoute(mocked: Mocked): Handler {
+  return (route) => {
+    const id = rowIdOf(route, -2);
+    mocked.recorded.retries.push(id);
+    const answer = mocked.answers.retry?.shift() ?? { status: 200 };
+    if (isStillStopped(answer)) {
+      mocked.listed = patched(mocked.listed, id, { stoppedCause: answer.cause });
+      return route.fulfill({ status: 409, json: { error: "still_stopped", cause: answer.cause } });
     }
-    const row = listed.find((candidate) => candidate.id === id);
-    return row === undefined
-      ? refuse(route, { status: 404, error: "not_found" })
-      : route.fulfill({ json: { ...row, stoppedCause: null, stoppedAt: null } });
-  });
-  return recorded;
+    // A row the server does not have leaves the next list answer as well.
+    if (answer.status === 404) {
+      mocked.listed = mocked.listed.filter((row) => row.id !== id);
+    }
+    return answer.status === 200 ? answerResumed(mocked, route, id) : refuse(route, answer);
+  };
+}
+
+// Answers the list, the discovery, the add, the reconnect, the retry and
+// the removal; every body sent is recorded and `answers` lets a test
+// refuse a request before the next one passes.
+export async function mockAccounts(
+  page: Page,
+  rows: AccountRowBody[],
+  answers: AccountsAnswers = {},
+): Promise<Recorded> {
+  const mocked: Mocked = {
+    listed: rows,
+    recorded: { discoveries: [], adds: [], credentials: [], retries: [], deletes: [] },
+    answers,
+  };
+  // Registered first, so the routes below take precedence over it.
+  await page.route(ACCOUNT_ROW_ROUTE, removeRoute(mocked));
+  await page.route(ACCOUNTS_ROUTE, listRoute(mocked));
+  await page.route(DISCOVER_ROUTE, discoverRoute(mocked));
+  await page.route(CREDENTIALS_ROUTE, credentialsRoute(mocked));
+  await page.route(RETRY_ROUTE, retryRoute(mocked));
+  return mocked.recorded;
 }
 
 // Answers the start and the poll; the provider's page comes from the

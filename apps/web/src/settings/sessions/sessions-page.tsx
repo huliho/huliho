@@ -11,7 +11,7 @@ import { ErrorState } from "../../design-system/error-state";
 import { ListSkeleton } from "../../design-system/list-skeleton";
 import { m } from "../../paraglide/messages.js";
 import { getLocale } from "../../paraglide/runtime.js";
-import { useDeferredMutation } from "../../undo/use-deferred-mutation";
+import { listLens, useDeferredMutation } from "../../undo/use-deferred-mutation";
 import { SettingsSection } from "../settings-section";
 import { revokedToast } from "./device-label";
 import { PasswordSection } from "./password-section";
@@ -23,15 +23,17 @@ const SKELETON_ROW_COUNT = 3;
 export function SessionsPage() {
   const locale = getLocale();
   const query = useQuery(sessionsQueryOptions);
-  const revoke = useDeferredMutation<SessionRow, string>({
+  const revoke = useDeferredMutation<SessionRow[], SessionRow, string>({
     queryKey: queryKeys.sessions,
+    ...listLens<SessionRow>(),
     keep: (row, id) => row.id !== id,
     mutate: (id, options) => revokeSession(id, options),
     message: (removed) => revokedToast(removed[0]?.device, locale),
     failureMessage: m.sessions_revoke_failed({}, { locale }),
   });
-  const revokeOthers = useDeferredMutation<SessionRow, null>({
+  const revokeOthers = useDeferredMutation<SessionRow[], SessionRow, null>({
     queryKey: queryKeys.sessions,
+    ...listLens<SessionRow>(),
     keep: (row) => row.current,
     mutate: (_variables, options) => revokeOtherSessions(options),
     message: (removed) => m.sessions_revoked_others_toast({ count: removed.length }, { locale }),

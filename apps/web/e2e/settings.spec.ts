@@ -142,7 +142,7 @@ test("a phone lists the pages first and a wide screen opens the first page", asy
   await expect(page).toHaveURL(/\/settings$/);
   await page.setViewportSize(VIEWPORTS[1]);
   await page.goto("/settings");
-  await expect(page).toHaveURL(/\/settings\/sessions$/);
+  await expect(page).toHaveURL(/\/settings\/accounts$/);
   await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
 });
 

@@ -1,0 +1,42 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* On a phone the actions wrap under the text; a wide row keeps one line. */
+.row {
+  flex-wrap: wrap;
+}
+
+.facts {
+  flex: 1 1 var(--hhx-row-facts-min);
+}
+
+.name {
+  font-weight: 600;
+}
+
+.address {
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-1);
+  overflow-wrap: anywhere;
+}
+
+.caption {
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+}
+
+.captionWarn {
+  color: var(--hh-warn);
+}
+
+.captionDanger {
+  color: var(--hh-danger);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hhx-space-2);
+  margin-inline-start: auto;
+}

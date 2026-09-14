@@ -4,11 +4,12 @@
 
 import type { SessionRow } from "@huliho/core";
 import { relativeTime } from "@huliho/i18n";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 
 import { Badge } from "../../design-system/badge";
 import { Button } from "../../design-system/button";
 import rowList from "../../design-system/row-list.module.css";
+import { useRowFocus } from "../../design-system/use-row-focus";
 import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
 import { deviceLabel, isUnknownDevice } from "./device-label";
@@ -77,29 +78,11 @@ function SessionItem({ row, locale, now, onRevoke }: SessionItemProps) {
 
 export function SessionList({ rows, locale, now, onRevoke, onRevokeOthers }: SessionListProps) {
   const list = useRef<HTMLUListElement>(null);
-  // Rows revoked but still rendered until the cache update lands; a quick
-  // second keypress must not hand focus to one of them.
-  const leaving = useRef(new Set<string>());
-  useEffect(() => {
-    for (const id of leaving.current) {
-      if (!rows.some((row) => row.id === id)) {
-        leaving.current.delete(id);
-      }
-    }
-  }, [rows]);
+  const focusBefore = useRowFocus(rows, list, (id) => `[data-session="${CSS.escape(id)}"]`);
   const others = rows.filter((row) => !row.current).length;
-  // The pressed button leaves with its row, so focus moves on before it does:
-  // to the next row's button, else the previous one's, else the list itself.
+  // The current device offers no revoke, so it never takes the cursor.
   const revokeAndKeepFocus = (id: string): void => {
-    leaving.current.add(id);
-    const index = rows.findIndex((row) => row.id === id);
-    const staying = (row: SessionRow): boolean => !row.current && !leaving.current.has(row.id);
-    const neighbor = rows.slice(index + 1).find(staying) ?? rows.slice(0, index).findLast(staying);
-    const target =
-      neighbor === undefined
-        ? list.current
-        : list.current?.querySelector<HTMLElement>(`[data-session="${CSS.escape(neighbor.id)}"]`);
-    target?.focus();
+    focusBefore(id, (row) => !row.current);
     onRevoke(id);
   };
   const revokeOthersAndKeepFocus = (): void => {

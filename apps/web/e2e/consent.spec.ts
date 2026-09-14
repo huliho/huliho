@@ -63,7 +63,7 @@ test("a Gmail address by consent takes three stops and one typed field; the wind
   await popup.waitForURL(PROVIDER_PAGE);
   expect(await popup.evaluate(() => window.opener === null)).toBe(true);
   await expect(page.getByText("Gmail connected.")).toBeVisible();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/settings\/accounts$/);
   expect(walk.stops).toEqual(["typing", "found", "consent"]);
   expect(walk.typed).toEqual(["Email address"]);
   expect(consent.starts).toEqual([{ provider: "gmail", address: GMAIL_ADDRESS }]);

@@ -16,7 +16,7 @@ import { useAddAccount } from "./use-add-account";
 import styles from "./add-account.module.css";
 
 // The card's page: the shell bar above it keeps Settings and sign-out
-// reachable; a connect lands on the shell with a toast.
+// reachable; a connect lands on the accounts page with a toast.
 export function AddAccount() {
   const locale = getLocale();
   const navigate = useNavigate();
@@ -29,7 +29,7 @@ export function AddAccount() {
     // The shell guard reads the list; a stale one would send the session back here.
     void queryClient.invalidateQueries({ queryKey: queryKeys.accounts });
     toastManager.add({ description: m.account_connected_toast({ name }, { locale }) });
-    void navigate({ to: "/" });
+    void navigate({ to: "/settings/accounts" });
   });
   return (
     <div className={styles.page}>

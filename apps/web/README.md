@@ -49,6 +49,15 @@ the provider in a window it holds no opener to, polls the outcome
 every two seconds and ends in the toast or in one sentence saying why
 nothing was connected. An OAuth row reconnects the same way.
 
+Settings > Accounts lists the connected accounts, one row each with
+its state: nothing while connected, Connection expired with Reconnect
+once the upstream rejected the credential, the stopped sentence with
+Retry once a run of refused connections tripped the stop. Retry sends
+the row id and says on the row what came of it; Remove takes the row
+out at once and reaches the server when its undo toast has run out,
+through the same deferred mutation as a revoke. A connect from the
+card lands here with its toast.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component
