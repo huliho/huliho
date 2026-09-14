@@ -8,6 +8,8 @@ import { z } from "./schema";
 
 const ACCOUNTS_ENDPOINT = "/api/accounts";
 const DISCOVER_ENDPOINT = "/api/accounts/discover";
+const CONSENT_START_ENDPOINT = "/api/accounts/oauth/start";
+const CONSENT_PENDING_ENDPOINT = "/api/accounts/oauth/pending";
 
 const providerSchema = z.enum(["gmail", "microsoft", "fastmail", "icloud", "yahoo", "generic"]);
 const accountKindSchema = z.enum(["jmap", "imap"]);
@@ -63,6 +65,30 @@ const discoverySchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("notFound") }),
 ]);
 
+const consentDeniedCauseSchema = z.enum([
+  "accessDenied",
+  "exchangeFailed",
+  "noRefreshToken",
+  "upstreamCredentials",
+  "upstreamUnreachable",
+  "upstreamInsecure",
+  "upstreamUnsupported",
+  "smtpAuthUnavailable",
+  "failed",
+]);
+
+// The window goes wherever this says, so only an https URL passes.
+const startedConsentSchema = z.object({
+  url: z.url({ protocol: /^https$/ }),
+  state: z.string().min(1),
+});
+
+const consentOutcomeSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("pending") }),
+  z.object({ status: z.literal("done"), accountId: z.string() }),
+  z.object({ status: z.literal("denied"), cause: consentDeniedCauseSchema }),
+]);
+
 const errorBodySchema = z.object({ error: z.string() });
 
 export type Provider = z.infer<typeof providerSchema>;
@@ -73,8 +99,19 @@ export type AccountTarget = z.infer<typeof accountTargetSchema>;
 export type AccountRow = z.infer<typeof accountRowSchema>;
 export type AccountList = z.infer<typeof accountListSchema>;
 export type FoundServer = z.infer<typeof foundServerSchema>;
+export type ConsentDeniedCause = z.infer<typeof consentDeniedCauseSchema>;
+export type StartedConsent = z.infer<typeof startedConsentSchema>;
+// What the poll answers; gone once the consent ran out or was never this user's.
+export type ConsentOutcome = z.infer<typeof consentOutcomeSchema> | { status: "gone" };
 
 type Found = Extract<z.infer<typeof discoverySchema>, { status: "found" }>;
+
+export interface ConsentInput {
+  provider: Provider;
+  address: string;
+  // The row whose tokens the consent replaces; absent for a new account.
+  accountId?: string;
+}
 
 // What the user hands over, sent once at Connect; the tokens of a
 // consent come from the provider, never from here.
@@ -95,6 +132,7 @@ export type AccountsFailureCode =
   | "upstream_unsupported"
   | "smtp_auth_unavailable"
   | "rate_limited"
+  | "provider_not_configured"
   | "not_found"
   | "unauthenticated"
   | "unavailable";
@@ -106,6 +144,7 @@ const NAMED_FAILURES: readonly AccountsFailureCode[] = [
   "upstream_insecure",
   "upstream_unsupported",
   "smtp_auth_unavailable",
+  "provider_not_configured",
   "not_found",
   "unauthenticated",
 ];
@@ -149,6 +188,23 @@ export async function replaceCredential(id: string, credential: Credential): Pro
   return accountRowSchema.parse(await response.json());
 }
 
+export async function startConsent(input: ConsentInput): Promise<StartedConsent> {
+  const response = await send("POST", CONSENT_START_ENDPOINT, input);
+  return startedConsentSchema.parse(await response.json());
+}
+
+// Where a consent stands; a 404 is one that ran out or was never this user's.
+export async function fetchConsent(id: string): Promise<ConsentOutcome> {
+  const response = await reach(`${CONSENT_PENDING_ENDPOINT}/${encodeURIComponent(id)}`);
+  if (response.status === 404) {
+    return { status: "gone" };
+  }
+  if (!response.ok) {
+    throw await failureOf(response);
+  }
+  return consentOutcomeSchema.parse(await response.json());
+}
+
 function foundOf(found: Found): FoundServer {
   return {
     provider: found.provider,
@@ -160,17 +216,21 @@ function foundOf(found: Found): FoundServer {
   };
 }
 
-async function send(method: "POST" | "PUT", url: string, body: object): Promise<Response> {
-  let response: Response;
+// A request the network could not carry reads as unavailable.
+async function reach(url: string, init?: RequestInit): Promise<Response> {
   try {
-    response = await fetch(url, {
-      method,
-      headers: { "content-type": "application/json", ...CSRF_HEADERS },
-      body: JSON.stringify(body),
-    });
+    return await fetch(url, init);
   } catch {
     throw new AccountsError("unavailable");
   }
+}
+
+async function send(method: "POST" | "PUT", url: string, body: object): Promise<Response> {
+  const response = await reach(url, {
+    method,
+    headers: { "content-type": "application/json", ...CSRF_HEADERS },
+    body: JSON.stringify(body),
+  });
   if (response.ok) {
     return response;
   }

@@ -28,6 +28,19 @@ const ROW: AccountRow = {
   stoppedAt: 1_778_750_400_000,
   createdAt: 1_778_664_000_000,
 };
+const GMAIL: FoundServer = {
+  ...FOUND,
+  provider: "gmail",
+  credentialKind: "appPassword",
+  oauthAvailable: true,
+};
+const OAUTH_ROW: AccountRow = {
+  ...ROW,
+  name: "Gmail",
+  provider: "gmail",
+  kind: "imap",
+  authMethod: "oauth2",
+};
 
 function at(step: Step, failure: FlowState["failure"] = null): FlowState {
   return { step, address: ADDRESS, failure };
@@ -116,6 +129,86 @@ test("a reconnect connects from its step and returns to it after a refusal", () 
   );
 });
 
+test("a consent starts from typing, found, reconnect or a denied consent and remembers where", () => {
+  const start: Action = { type: "startConsent", signIn: "google", opened: true };
+  expect(run(at({ name: "typing" }), start)).toEqual(
+    at({ name: "consent", signIn: "google", from: { name: "typing" }, id: null, opened: true }),
+  );
+  expect(run(at({ name: "found", found: GMAIL }), start).step).toMatchObject({
+    name: "consent",
+    from: { name: "found", found: GMAIL },
+  });
+  expect(run(at({ name: "reconnect", account: OAUTH_ROW }), start).step).toMatchObject({
+    from: { name: "reconnect", account: OAUTH_ROW },
+  });
+  const denied = at({
+    name: "consentDenied",
+    signIn: "google",
+    from: { name: "found", found: GMAIL },
+    cause: "accessDenied",
+  });
+  expect(run(denied, start).step).toMatchObject({
+    name: "consent",
+    from: { name: "found", found: GMAIL },
+    id: null,
+  });
+  for (const name of ["detecting", "notFound", "manual", "connected"] as const) {
+    const state = at({ name });
+    expect(reduce(state, start)).toBe(state);
+  }
+});
+
+test("a started consent takes its id, settles or returns on Cancel; a refused start returns with the refusal", () => {
+  const from: Step = { name: "found", found: GMAIL };
+  const consent = at({ name: "consent", signIn: "google", from, id: null, opened: true });
+  const started = run(consent, { type: "consentStarted", id: "s1" });
+  expect(started.step).toMatchObject({ name: "consent", id: "s1" });
+  expect(run(started, { type: "consentRefused", cause: "gone" })).toEqual(
+    at({ name: "consentDenied", signIn: "google", from, cause: "gone" }),
+  );
+  expect(run(started, { type: "connected" })).toEqual(at({ name: "connected" }));
+  expect(run(started, { type: "cancelConsent" })).toEqual(at(from));
+  expect(run(consent, { type: "failed", failure: "provider_not_configured" })).toEqual(
+    at(from, "provider_not_configured"),
+  );
+  const fromTyping = at({
+    name: "consent",
+    signIn: "microsoft",
+    from: { name: "typing" },
+    id: null,
+    opened: false,
+  });
+  expect(run(fromTyping, { type: "consentOpened" }).step).toMatchObject({ opened: true });
+  expect(run(fromTyping, { type: "failed", failure: "invalid_request" })).toEqual(
+    at({ name: "typing" }, "invalid_request"),
+  );
+});
+
+test("the password route leaves a denied consent for the found step or for discovery; a reconnect has none", () => {
+  const fromFound = at({
+    name: "consentDenied",
+    signIn: "google",
+    from: { name: "found", found: GMAIL },
+    cause: "accessDenied",
+  });
+  expect(run(fromFound, { type: "usePassword" })).toEqual(at({ name: "found", found: GMAIL }));
+  const fromTyping = at({
+    name: "consentDenied",
+    signIn: "google",
+    from: { name: "typing" },
+    cause: "accessDenied",
+  });
+  expect(run(fromTyping, { type: "usePassword" })).toEqual(at({ name: "detecting" }));
+  const fromReconnect = at({
+    name: "consentDenied",
+    signIn: "google",
+    from: { name: "reconnect", account: OAUTH_ROW },
+    cause: "upstreamCredentials",
+  });
+  expect(reduce(fromReconnect, { type: "usePassword" })).toBe(fromReconnect);
+  expect(reduce(fromReconnect, { type: "cancelConsent" })).toBe(fromReconnect);
+});
+
 test("edited clears the refusal and touches nothing else", () => {
   const refused = at({ name: "found", found: FOUND }, "upstream_credentials");
   expect(run(refused, { type: "edited" })).toEqual(at({ name: "found", found: FOUND }));
@@ -132,6 +225,8 @@ test("an action that does not fit the step leaves the state alone", () => {
     [at({ name: "manual" }), { type: "back" }],
     [at({ name: "typing" }), { type: "enterDetails" }],
     [at({ name: "connected" }), { type: "detect" }],
+    [at({ name: "typing" }), { type: "consentStarted", id: "s1" }],
+    [at({ name: "found", found: FOUND }), { type: "usePassword" }],
   ];
   for (const [state, action] of cases) {
     expect(reduce(state, action)).toBe(state);

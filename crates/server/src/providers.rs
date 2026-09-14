@@ -209,22 +209,24 @@ pub fn client(
     }))
 }
 
-/// Whether the instance holds a client for the provider.
+/// The providers the instance holds a client for, Google first.
+/// Provider rows belong to the instance, so no scope is asked.
 ///
 /// # Errors
 ///
 /// Returns an error when the database fails.
-pub fn is_registered(store: &Store, provider: OauthProvider) -> Result<bool, StoreError> {
-    store.read(|connection| {
-        let row: Option<i64> = connection
-            .query_row(
-                "SELECT 1 FROM auth_providers WHERE issuer = ?1",
-                [provider.issuer()],
-                |row| row.get(0),
-            )
-            .optional()?;
-        Ok(row.is_some())
-    })
+pub fn registered(store: &Store) -> Result<Vec<OauthProvider>, StoreError> {
+    let issuers: Vec<String> = store.read(|connection| {
+        let mut statement = connection.prepare("SELECT issuer FROM auth_providers")?;
+        let rows = statement
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })?;
+    Ok(ALL
+        .into_iter()
+        .filter(|provider| issuers.iter().any(|issuer| issuer == provider.issuer()))
+        .collect())
 }
 
 /// The registered clients without their secrets, by issuer. Requires the
@@ -312,7 +314,7 @@ mod tests {
             client(&store, &keys(), OauthProvider::Google).unwrap(),
             None
         );
-        assert!(!is_registered(&store, OauthProvider::Google).unwrap());
+        assert!(registered(&store).unwrap().is_empty());
     }
 
     #[test]
@@ -373,7 +375,7 @@ mod tests {
             client(&store, &keys, OauthProvider::Google).unwrap(),
             Some(google())
         );
-        assert!(is_registered(&store, OauthProvider::Google).unwrap());
+        assert_eq!(registered(&store).unwrap(), [OauthProvider::Google]);
         let replaced = OauthClient {
             id: "other-id".to_owned(),
             secret: "GOCSPX-another-one".to_owned(),

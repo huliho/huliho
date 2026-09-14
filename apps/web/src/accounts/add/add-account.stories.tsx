@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { AccountRow, FoundServer } from "@huliho/core";
+import type { AccountRow, FoundServer, SignInProvider } from "@huliho/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
 import { AddAccountCard } from "./add-account-card";
-import type { FlowState, Step } from "./flow";
+import type { ConsentOrigin, FlowState, Step } from "./flow";
 import type { AddAccountFlow } from "./use-add-account";
 import styles from "./add-account.module.css";
 
@@ -77,6 +77,18 @@ const ROW: AccountRow = {
   stoppedAt: NOW - HOUR_MS,
   createdAt: NOW - DAY_MS,
 };
+const GMAIL_SIGN_IN: FoundServer = { ...GMAIL, oauthAvailable: true };
+const MICROSOFT_SIGN_IN: FoundServer = { ...MICROSOFT, oauthAvailable: true };
+const OAUTH_ROW: AccountRow = {
+  ...ROW,
+  address: "sanne@gmail.com",
+  name: "Gmail",
+  provider: "gmail",
+  kind: "imap",
+  authMethod: "oauth2",
+};
+const FROM_GMAIL: ConsentOrigin = { name: "found", found: GMAIL_SIGN_IN };
+const NO_SIGN_IN: SignInProvider[] = [];
 
 function nothing(): void {
   // Stories render states; nothing runs.
@@ -90,6 +102,10 @@ function frozen(state: FlowState, retryRemaining: number | null): AddAccountFlow
     detect: nothing,
     connect: nothing,
     reconnect: nothing,
+    startConsent: nothing,
+    openConsentWindow: nothing,
+    cancelConsent: nothing,
+    usePassword: nothing,
   };
 }
 
@@ -101,13 +117,24 @@ interface CardProps {
   state: FlowState;
   online?: boolean;
   retryRemaining?: number | null;
+  signInProviders?: SignInProvider[];
 }
 
-function Card({ state, online = true, retryRemaining = null }: CardProps): JSX.Element {
+function Card({
+  state,
+  online = true,
+  retryRemaining = null,
+  signInProviders = NO_SIGN_IN,
+}: CardProps): JSX.Element {
   return (
     <div className={styles.page}>
       <div className={styles.screen}>
-        <AddAccountCard locale="en" flow={frozen(state, retryRemaining)} online={online} />
+        <AddAccountCard
+          locale="en"
+          flow={frozen(state, retryRemaining)}
+          online={online}
+          signInProviders={signInProviders}
+        />
       </div>
     </div>
   );
@@ -203,4 +230,78 @@ export const Offline: StoryObj = {
 
 export const Reconnect: StoryObj = {
   render: () => <Card state={at({ name: "reconnect", account: ROW })} />,
+};
+
+export const DefaultWithSignIn: StoryObj = {
+  render: () => (
+    <Card state={at({ name: "typing" }, "")} signInProviders={["google", "microsoft"]} />
+  ),
+};
+
+export const FoundGmailSignIn: StoryObj = {
+  render: () => <Card state={at({ name: "found", found: GMAIL_SIGN_IN }, "sanne@gmail.com")} />,
+};
+
+export const FoundMicrosoftSignIn: StoryObj = {
+  render: () => (
+    <Card state={at({ name: "found", found: MICROSOFT_SIGN_IN }, "sanne@outlook.com")} />
+  ),
+};
+
+export const Consent: StoryObj = {
+  render: () => (
+    <Card
+      state={at(
+        { name: "consent", signIn: "google", from: FROM_GMAIL, id: "s1", opened: true },
+        "sanne@gmail.com",
+      )}
+    />
+  ),
+};
+
+export const ConsentBlocked: StoryObj = {
+  render: () => (
+    <Card
+      state={at(
+        { name: "consent", signIn: "microsoft", from: { name: "typing" }, id: "s1", opened: false },
+        "sanne@outlook.com",
+      )}
+    />
+  ),
+};
+
+export const ConsentDenied: StoryObj = {
+  render: () => (
+    <Card
+      state={at(
+        { name: "consentDenied", signIn: "google", from: FROM_GMAIL, cause: "accessDenied" },
+        "sanne@gmail.com",
+      )}
+    />
+  ),
+};
+
+export const ConsentDeniedMicrosoft: StoryObj = {
+  render: () => (
+    <Card
+      state={at(
+        {
+          name: "consentDenied",
+          signIn: "microsoft",
+          from: { name: "typing" },
+          cause: "accessDenied",
+        },
+        "sanne@outlook.com",
+      )}
+    />
+  ),
+};
+
+export const ReconnectSignIn: StoryObj = {
+  render: () => (
+    <Card
+      state={at({ name: "reconnect", account: OAUTH_ROW }, "sanne@gmail.com")}
+      signInProviders={["google"]}
+    />
+  ),
 };

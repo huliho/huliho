@@ -3,7 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import { fitsAddress } from "@huliho/core";
-import type { AccountRow, AccountsFailureCode, FoundServer } from "@huliho/core";
+import type { AccountRow, FoundServer, SignInProvider } from "@huliho/core";
 import { useId, useState } from "react";
 
 import { m } from "../../paraglide/messages.js";
@@ -12,13 +12,22 @@ import { AddressStep } from "./address-step";
 import type { AddressStepName } from "./address-step";
 import { Callout } from "./callout";
 import { ConfirmHostStep } from "./confirm-host-step";
+import { ConsentDeniedStep } from "./consent-denied-step";
+import { ConsentStep } from "./consent-step";
 import { CredentialStep } from "./credential-step";
-import type { FieldStep, Step } from "./flow";
+import type { SignInOffer } from "./credential-step";
+import type {
+  ConsentDeniedStep as DeniedState,
+  ConsentStep as ConsentState,
+  FieldStep,
+  Step,
+} from "./flow";
 import { InsecureStep } from "./insecure-step";
 import { ManualStep } from "./manual-step";
 import { initialManual } from "./manual-target";
 import type { ManualValues } from "./manual-target";
-import { credentialKindOf, credentialOf } from "./presets";
+import { noticeText } from "./notice";
+import { credentialKindOf, credentialOf, signInProviderOf } from "./presets";
 import type { AddAccountFlow } from "./use-add-account";
 import styles from "./add-account.module.css";
 
@@ -26,6 +35,8 @@ export interface AddAccountCardProps {
   locale: Locale;
   flow: AddAccountFlow;
   online: boolean;
+  // The sign-in providers the instance can start a consent with.
+  signInProviders: SignInProvider[];
 }
 
 // What the user typed, kept across the steps that leave and return.
@@ -49,66 +60,44 @@ function isAddressStep(step: Step): step is Extract<Step, { name: AddressStepNam
   return step.name === "typing" || step.name === "detecting" || step.name === "notFound";
 }
 
-// The server a refusal names; null on a reconnect, where the row has no
-// server name to check.
-function hostOf(step: Step, fields: Fields): string | null {
-  if (step.name === "found" || step.name === "confirmHost") {
-    return step.found.host;
-  }
-  if (step.name === "reconnect" || (step.name === "connecting" && step.from.name === "reconnect")) {
-    return null;
-  }
-  return step.name === "connecting" ? step.host : fields.manual.server.trim();
-}
-
-// The row a reconnect refusal names, when the step is one.
-function rowNameOf(step: Step): string {
-  if (step.name === "reconnect") {
-    return step.account.name;
-  }
-  return step.name === "connecting" && step.from.name === "reconnect" ? step.from.account.name : "";
-}
-
-// A server that did not answer as one: the host to check where there is
-// one, the row's name where there is none.
-function serverText(
-  failure: AccountsFailureCode,
-  host: string | null,
-  name: string,
-  locale: Locale,
-): string {
-  if (host === null) {
-    return m.account_error_server_again({ name }, { locale });
-  }
-  return failure === "upstream_unreachable"
-    ? m.account_error_unreachable({ host }, { locale })
-    : m.account_error_unsupported({ host }, { locale });
-}
-
-// The refusals no field owns, said above the fields.
-function noticeText(
-  failure: AccountsFailureCode | null,
-  step: Step,
-  fields: Fields,
-  locale: Locale,
-): string | null {
-  switch (failure) {
-    case "rate_limited":
-      return m.account_error_rate_limited({}, { locale });
-    case "unavailable":
-      return m.signin_error_unavailable({}, { locale });
-    case "upstream_unreachable":
-    case "upstream_unsupported":
-      return serverText(failure, hostOf(step, fields), rowNameOf(step), locale);
-    case "smtp_auth_unavailable":
-      return m.account_error_smtp_auth({}, { locale });
-    case "invalid_request":
-      return m.account_error_invalid({}, { locale });
-    case "not_found":
-      return m.account_error_gone({}, { locale });
+// The row whose reconnect the card is on, through its consent and its connect.
+function reconnectRow(step: Step): AccountRow | null {
+  switch (step.name) {
+    case "reconnect":
+      return step.account;
+    case "connecting":
+    case "consent":
+    case "consentDenied":
+      return step.from.name === "reconnect" ? step.from.account : null;
     default:
       return null;
   }
+}
+
+// The address goes out only when it fits; a typo marks the field.
+function withAddress(flow: AddAccountFlow, then: () => void): void {
+  if (fitsAddress(flow.state.address)) {
+    then();
+  } else {
+    flow.dispatch({ type: "failed", failure: "invalid_request" });
+  }
+}
+
+// The consent route beside a credential step, when the instance can start it.
+function signInOffer(
+  signIn: SignInProvider | null,
+  available: boolean,
+  flow: AddAccountFlow,
+): SignInOffer | null {
+  if (signIn === null || !available) {
+    return null;
+  }
+  return {
+    provider: signIn,
+    onStart: () => {
+      flow.startConsent(signIn);
+    },
+  };
 }
 
 function AddressView({
@@ -116,6 +105,7 @@ function AddressView({
   flow,
   fields,
   patch,
+  signInProviders,
   step,
 }: StepViewProps & { step: AddressStepName }) {
   return (
@@ -126,6 +116,7 @@ function AddressView({
       password={fields.password}
       failure={flow.state.failure}
       retryRemaining={flow.retryRemaining}
+      signInProviders={signInProviders}
       on={{
         address: (value) => {
           flow.dispatch({ type: "typed", address: value });
@@ -134,11 +125,12 @@ function AddressView({
           patch({ password: value });
         },
         continue: () => {
-          if (fitsAddress(flow.state.address)) {
-            flow.detect();
-          } else {
-            flow.dispatch({ type: "failed", failure: "invalid_request" });
-          }
+          withAddress(flow, flow.detect);
+        },
+        signIn: (signIn) => {
+          withAddress(flow, () => {
+            flow.startConsent(signIn);
+          });
         },
         enterDetails: () => {
           flow.dispatch({ type: "enterDetails" });
@@ -203,7 +195,7 @@ function ManualView({ locale, flow, fields, patch, pending }: StepViewProps & Wa
 }
 
 // The server found: the credential of its kind, with the typed password
-// as the start for a password server.
+// as the start for a password server and the consent where it has one.
 function FoundView({
   locale,
   flow,
@@ -227,6 +219,7 @@ function FoundView({
           flow.dispatch({ type: "change" });
         },
       }}
+      signIn={signInOffer(signInProviderOf(found.provider), found.oauthAvailable, flow)}
       secret={fields.secret ?? (kind === "password" ? fields.password : "")}
       failure={flow.state.failure}
       pending={pending}
@@ -242,17 +235,21 @@ function FoundView({
   );
 }
 
-// The row to reconnect: the credential of its kind, sent to the row.
+// The row to reconnect: the credential of its kind sent to the row; a
+// row that signs in through a consent gets the consent again.
 function ReconnectView({
   locale,
   flow,
   fields,
   patch,
+  signInProviders,
   account,
   pending,
 }: StepViewProps & Waiting & { account: AccountRow }) {
   const kind = credentialKindOf(account.provider, account.authMethod);
   const secret = fields.secret ?? "";
+  const signIn = signInProviderOf(account.provider);
+  const consent = kind === "oauth" && signIn !== null && signInProviders.includes(signIn);
   return (
     <CredentialStep
       locale={locale}
@@ -261,6 +258,7 @@ function ReconnectView({
       credentialKind={kind}
       host={account.name}
       found={null}
+      signIn={signInOffer(signIn, consent, flow)}
       secret={secret}
       failure={flow.state.failure}
       pending={pending}
@@ -272,6 +270,35 @@ function ReconnectView({
       onSubmit={() => {
         flow.reconnect(credentialOf(kind, secret));
       }}
+    />
+  );
+}
+
+function ConsentView({ locale, flow, step }: StepViewProps & { step: ConsentState }) {
+  return (
+    <ConsentStep
+      locale={locale}
+      signIn={step.signIn}
+      opened={step.opened}
+      starting={step.id === null}
+      onOpen={flow.openConsentWindow}
+      onCancel={flow.cancelConsent}
+    />
+  );
+}
+
+function ConsentDeniedView({ locale, flow, step }: StepViewProps & { step: DeniedState }) {
+  return (
+    <ConsentDeniedStep
+      locale={locale}
+      signIn={step.signIn}
+      address={flow.state.address}
+      cause={step.cause}
+      passwordOffered={step.from.name !== "reconnect"}
+      onRetry={() => {
+        flow.startConsent(step.signIn);
+      }}
+      onUsePassword={flow.usePassword}
     />
   );
 }
@@ -288,38 +315,52 @@ function FieldView({ step, ...props }: StepViewProps & Waiting & { step: FieldSt
   }
 }
 
-function StepView(props: StepViewProps) {
+// The steps without a credential field.
+function PlainView(props: StepViewProps) {
   const { locale, flow } = props;
   const { step } = flow.state;
-  if (isAddressStep(step)) {
-    return <AddressView {...props} step={step.name} />;
+  switch (step.name) {
+    case "typing":
+    case "detecting":
+    case "notFound":
+      return <AddressView {...props} step={step.name} />;
+    case "confirmHost":
+      return <ConfirmView {...props} found={step.found} pending={false} />;
+    case "insecure":
+      return (
+        <InsecureStep
+          locale={locale}
+          onBack={() => {
+            flow.dispatch({ type: "back" });
+          }}
+        />
+      );
+    case "consent":
+      return <ConsentView {...props} step={step} />;
+    case "consentDenied":
+      return <ConsentDeniedView {...props} step={step} />;
+    default:
+      return null;
   }
-  if (step.name === "confirmHost") {
-    return <ConfirmView {...props} found={step.found} pending={false} />;
-  }
-  if (step.name === "connecting" && step.from.name === "found") {
-    return <ConfirmView {...props} found={step.from.found} pending />;
-  }
-  if (step.name === "connecting") {
-    return <FieldView {...props} step={step.from} pending />;
-  }
-  if (step.name === "insecure") {
-    return (
-      <InsecureStep
-        locale={locale}
-        onBack={() => {
-          flow.dispatch({ type: "back" });
-        }}
-      />
-    );
-  }
-  if (step.name === "connected") {
-    return null;
-  }
-  return <FieldView {...props} step={step} pending={false} />;
 }
 
-export function AddAccountCard({ locale, flow, online }: AddAccountCardProps) {
+function StepView(props: StepViewProps) {
+  const { step } = props.flow.state;
+  if (step.name === "connecting") {
+    return step.from.name === "found" ? (
+      <ConfirmView {...props} found={step.from.found} pending />
+    ) : (
+      <FieldView {...props} step={step.from} pending />
+    );
+  }
+  if (step.name === "found" || step.name === "manual" || step.name === "reconnect") {
+    return <FieldView {...props} step={step} pending={false} />;
+  }
+  return <PlainView {...props} />;
+}
+
+export function AddAccountCard(props: AddAccountCardProps) {
+  const { locale, flow, online } = props;
   const titleId = useId();
   const { step, failure } = flow.state;
   const [fields, setFields] = useState<Fields>(() => ({
@@ -330,13 +371,14 @@ export function AddAccountCard({ locale, flow, online }: AddAccountCardProps) {
   const patch = (part: Partial<Fields>): void => {
     setFields((current) => ({ ...current, ...part }));
   };
+  const row = reconnectRow(step);
   const title =
-    step.name === "reconnect"
-      ? m.account_reconnect_title({ name: step.account.name }, { locale })
-      : m.account_title({}, { locale });
+    row === null
+      ? m.account_title({}, { locale })
+      : m.account_reconnect_title({ name: row.name }, { locale });
   // The address field owns a malformed address; every other refusal is a callout.
   const owned = isAddressStep(step) && failure === "invalid_request";
-  const notice = noticeText(owned ? null : failure, step, fields, locale);
+  const notice = noticeText(owned ? null : failure, step, fields.manual.server, locale);
   return (
     <section className={styles.card} data-step={step.name} aria-labelledby={titleId}>
       <h1 id={titleId} className={styles.title}>
@@ -353,7 +395,7 @@ export function AddAccountCard({ locale, flow, online }: AddAccountCardProps) {
           {notice}
         </Callout>
       )}
-      <StepView locale={locale} flow={flow} online={online} fields={fields} patch={patch} />
+      <StepView {...props} fields={fields} patch={patch} />
     </section>
   );
 }

@@ -7,7 +7,9 @@ export {
   addAccount,
   discoverServer,
   fetchAccounts,
+  fetchConsent,
   replaceCredential,
+  startConsent,
 } from "./accounts";
 export type {
   AccountList,
@@ -15,11 +17,15 @@ export type {
   AccountTarget,
   AccountsFailureCode,
   AuthMethod,
+  ConsentDeniedCause,
+  ConsentInput,
+  ConsentOutcome,
   Credential,
   CredentialKind,
   FoundServer,
   NewAccountInput,
   Provider,
+  StartedConsent,
   TlsMode,
 } from "./accounts";
 export { fitsAddress, fitsHostName } from "./address";
@@ -35,7 +41,7 @@ export type { PasswordChangeInput } from "./password";
 export { ROLES, grantableRoles, mayManageUsers } from "./role";
 export type { Role } from "./role";
 export { fetchSession, sessionInfoSchema, signIn, signOut } from "./session";
-export type { SessionInfo } from "./session";
+export type { SessionInfo, SignInProvider } from "./session";
 export {
   deviceSchema,
   fetchSessions,

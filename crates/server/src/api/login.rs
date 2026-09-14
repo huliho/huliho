@@ -13,10 +13,12 @@ use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use serde::{Deserialize, Serialize};
 use time::Duration;
 
+use super::providers::available;
 use super::{ApiError, ApiState, Authenticated, ClientInfo, internal, session_token};
 use crate::auth::{self, LoginOutcome, MAX_PASSWORD_CHARS};
 use crate::identity;
 use crate::ids::{OrganizationId, Role, UserId};
+use crate::providers::OauthProvider;
 use crate::scope;
 use crate::secrets::Keys;
 use crate::session::{self, Client, SESSION_COOKIE, SessionTimeouts, device};
@@ -119,6 +121,9 @@ struct SessionOrganization {
 pub(super) struct SessionInfo {
     user: SessionUser,
     organization: SessionOrganization,
+    /// The providers a consent can start with; empty until the admin
+    /// registers one and the public URL is set.
+    sign_in_providers: Vec<OauthProvider>,
     password_change_required: bool,
 }
 
@@ -127,10 +132,12 @@ pub(super) async fn current_session(
     auth: Authenticated,
 ) -> Result<Json<SessionInfo>, ApiError> {
     let store = Arc::clone(&state.store);
+    let public_url = state.public_url.clone();
     let info = tokio::task::spawn_blocking(move || -> Result<SessionInfo, ApiError> {
         let scope = scope::resolve(&store, &auth.session.user_id, None)?;
         let user = identity::user(&store, &scope)?;
         let organization = identity::organization(&store, &scope)?;
+        let sign_in_providers = available(&store, public_url.as_ref())?;
         Ok(SessionInfo {
             user: SessionUser {
                 id: user.id,
@@ -142,6 +149,7 @@ pub(super) async fn current_session(
                 id: organization.id,
                 name: organization.name,
             },
+            sign_in_providers,
             password_change_required: auth.session.password_change_required,
         })
     })

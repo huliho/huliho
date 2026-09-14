@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { AuthMethod, Credential, CredentialKind, Provider, TlsMode } from "@huliho/core";
+import type {
+  AuthMethod,
+  Credential,
+  CredentialKind,
+  Provider,
+  SignInProvider,
+  TlsMode,
+} from "@huliho/core";
 
 import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
@@ -69,11 +76,39 @@ export function credentialHint(provider: Provider, locale: Locale): string | nul
       return m.account_hint_yahoo({}, { locale });
     case "fastmail":
       return m.account_hint_fastmail({}, { locale });
-    case "microsoft":
-      return m.account_hint_microsoft({}, { locale });
     default:
       return null;
   }
+}
+
+// The sentence of a consent-only step without its button: Microsoft
+// says who registers the client, any other provider that none is set up.
+export function oauthHint(provider: Provider, locale: Locale): string {
+  return provider === "microsoft"
+    ? m.account_hint_microsoft({}, { locale })
+    : m.account_no_providers({}, { locale });
+}
+
+// The sign-in provider behind a preset; null where the preset has none.
+export function signInProviderOf(provider: Provider): SignInProvider | null {
+  if (provider === "gmail") {
+    return "google";
+  }
+  return provider === "microsoft" ? "microsoft" : null;
+}
+
+// The preset the provider's accounts get.
+export function mailProviderOf(signIn: SignInProvider): Provider {
+  return signIn === "google" ? "gmail" : "microsoft";
+}
+
+export function signInName(signIn: SignInProvider): string {
+  return signIn === "google" ? "Google" : "Microsoft";
+}
+
+// Microsoft has no password route, so a refused consent offers none.
+export function passwordRoute(signIn: SignInProvider): boolean {
+  return signIn === "google";
 }
 
 // The sentence for a refused credential, by what the field asked for.

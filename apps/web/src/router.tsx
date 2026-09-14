@@ -77,8 +77,7 @@ async function requireAccount(context: RouterContext): Promise<void> {
   }
 }
 
-// The row a reconnect opens on; a row that signs in through a consent
-// or one that is gone opens the card plain.
+// The row a reconnect opens on; a row that is gone opens the card plain.
 async function reconnectRow(
   context: RouterContext,
   id: string | undefined,
@@ -87,8 +86,7 @@ async function reconnectRow(
     return null;
   }
   const list = await context.queryClient.query(accountsQueryOptions);
-  const row = list.accounts.find((account) => account.id === id);
-  return row !== undefined && row.authMethod !== "oauth2" ? row : null;
+  return list.accounts.find((account) => account.id === id) ?? null;
 }
 
 const shellRoute = createRoute({

@@ -9,7 +9,12 @@ import {
   credentialKindOf,
   credentialLabel,
   credentialOf,
+  mailProviderOf,
+  oauthHint,
+  passwordRoute,
   providerName,
+  signInName,
+  signInProviderOf,
   wrongCredential,
 } from "./presets";
 
@@ -33,8 +38,27 @@ test("every preset but generic says where its secret comes from", () => {
   expect(credentialHint("icloud", "en")).toContain("app-specific password");
   expect(credentialHint("yahoo", "en")).toContain("app password");
   expect(credentialHint("fastmail", "en")).toContain("API token");
-  expect(credentialHint("microsoft", "en")).toContain("admin");
+  expect(credentialHint("microsoft", "en")).toBeNull();
   expect(credentialHint("generic", "en")).toBeNull();
+});
+
+test("a consent-only step without its button says who sets it up", () => {
+  expect(oauthHint("microsoft", "en")).toContain("Microsoft Entra");
+  expect(oauthHint("gmail", "en")).toContain("not set up here");
+});
+
+test("the sign-in provider behind a preset and the preset behind a sign-in provider", () => {
+  expect(signInProviderOf("gmail")).toBe("google");
+  expect(signInProviderOf("microsoft")).toBe("microsoft");
+  for (const provider of ["fastmail", "icloud", "yahoo", "generic"] as const) {
+    expect(signInProviderOf(provider)).toBeNull();
+  }
+  expect(mailProviderOf("google")).toBe("gmail");
+  expect(mailProviderOf("microsoft")).toBe("microsoft");
+  expect(signInName("google")).toBe("Google");
+  expect(signInName("microsoft")).toBe("Microsoft");
+  expect(passwordRoute("google")).toBe(true);
+  expect(passwordRoute("microsoft")).toBe(false);
 });
 
 test("a stored row's kind follows its auth method, then its provider", () => {

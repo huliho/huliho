@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { AccountRow, FoundServer } from "@huliho/core";
+import type { AccountRow, FoundServer, SignInProvider } from "@huliho/core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { Mock } from "vitest";
 
 import { AddAccountCard } from "./add-account-card";
-import type { FlowState, Step } from "./flow";
+import type { ConsentRefusal, FlowState, Step } from "./flow";
 import type { AddAccountFlow, ConnectInput } from "./use-add-account";
 
 const ADDRESS = "sanne@fastmail.com";
@@ -39,6 +39,12 @@ const MICROSOFT: FoundServer = {
   credentialKind: "oauth",
   host: "outlook.office365.com",
 };
+const GMAIL: FoundServer = {
+  ...GENERIC,
+  provider: "gmail",
+  credentialKind: "appPassword",
+  host: "imap.gmail.com",
+};
 const ROW: AccountRow = {
   id: "acc-1",
   address: ADDRESS,
@@ -50,22 +56,42 @@ const ROW: AccountRow = {
   stoppedAt: 1_778_750_400_000,
   createdAt: 1_778_664_000_000,
 };
+const OAUTH_ROW: AccountRow = {
+  ...ROW,
+  address: "sanne@gmail.com",
+  name: "Gmail",
+  provider: "gmail",
+  kind: "imap",
+  authMethod: "oauth2",
+};
 
 interface Rendered {
   flow: AddAccountFlow;
   dispatch: Mock<AddAccountFlow["dispatch"]>;
   connect: Mock<(input: ConnectInput) => void>;
   reconnect: Mock<AddAccountFlow["reconnect"]>;
+  startConsent: Mock<AddAccountFlow["startConsent"]>;
+  openConsentWindow: Mock<() => void>;
+  cancelConsent: Mock<() => void>;
+  usePassword: Mock<() => void>;
   // Renders the same card again with another state, as a refusal would.
   update: (state: FlowState) => void;
 }
 
 afterEach(cleanup);
 
-function renderCard(state: FlowState, online = true): Rendered {
+function renderCard(
+  state: FlowState,
+  online = true,
+  signInProviders: SignInProvider[] = [],
+): Rendered {
   const dispatch = vi.fn<AddAccountFlow["dispatch"]>();
   const connect = vi.fn<(input: ConnectInput) => void>();
   const reconnect = vi.fn<AddAccountFlow["reconnect"]>();
+  const startConsent = vi.fn<AddAccountFlow["startConsent"]>();
+  const openConsentWindow = vi.fn<() => void>();
+  const cancelConsent = vi.fn<() => void>();
+  const usePassword = vi.fn<() => void>();
   const flow: AddAccountFlow = {
     state,
     retryRemaining: null,
@@ -73,12 +99,35 @@ function renderCard(state: FlowState, online = true): Rendered {
     detect: vi.fn<() => void>(),
     connect,
     reconnect,
+    startConsent,
+    openConsentWindow,
+    cancelConsent,
+    usePassword,
   };
-  const { rerender } = render(<AddAccountCard locale="en" flow={flow} online={online} />);
+  const { rerender } = render(
+    <AddAccountCard locale="en" flow={flow} online={online} signInProviders={signInProviders} />,
+  );
   const update = (next: FlowState): void => {
-    rerender(<AddAccountCard locale="en" flow={{ ...flow, state: next }} online={online} />);
+    rerender(
+      <AddAccountCard
+        locale="en"
+        flow={{ ...flow, state: next }}
+        online={online}
+        signInProviders={signInProviders}
+      />,
+    );
   };
-  return { flow, dispatch, connect, reconnect, update };
+  return {
+    flow,
+    dispatch,
+    connect,
+    reconnect,
+    startConsent,
+    openConsentWindow,
+    cancelConsent,
+    usePassword,
+    update,
+  };
 }
 
 function at(step: Step, failure: FlowState["failure"] = null): FlowState {
@@ -149,6 +198,141 @@ test("the reconnect step asks for the credential only and sends it to the row", 
   fill("API token", "fmu1-y");
   fireEvent.click(screen.getByRole("button", { name: "Connect" }));
   expect(reconnect).toHaveBeenCalledExactlyOnceWith({ kind: "bearer", token: "fmu1-y" });
+});
+
+test("the first screen offers the sign-in providers the session lists; without any it says none is set up", () => {
+  renderCard(at({ name: "typing" }), true, ["google", "microsoft"]);
+  expect(screen.getByRole("button", { name: "Continue with Google" })).toBeDefined();
+  expect(screen.getByRole("button", { name: "Continue with Microsoft" })).toBeDefined();
+  expect(screen.queryByText(/not set up here/)).toBeNull();
+  cleanup();
+  renderCard(at({ name: "typing" }));
+  expect(screen.queryByRole("button", { name: /Continue with/ })).toBeNull();
+  expect(screen.getByText(/not set up here/)).toBeDefined();
+});
+
+test("a sign-in button checks the address first and then starts the consent", () => {
+  const bad = renderCard({ ...at({ name: "typing" }), address: "sanne@localhost" }, true, [
+    "google",
+  ]);
+  fireEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
+  expect(bad.startConsent).not.toHaveBeenCalled();
+  expect(bad.dispatch).toHaveBeenCalledWith({ type: "failed", failure: "invalid_request" });
+  cleanup();
+  const good = renderCard(at({ name: "typing" }), true, ["google"]);
+  fireEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
+  expect(good.startConsent).toHaveBeenCalledExactlyOnceWith("google");
+});
+
+test("a found Gmail address offers Google above the app password; Microsoft gets the button in place of the admin sentence", () => {
+  const gmail = renderCard(at({ name: "found", found: { ...GMAIL, oauthAvailable: true } }));
+  const button = screen.getByRole("button", { name: "Continue with Google" });
+  const field = screen.getByLabelText("App password");
+  expect(field.compareDocumentPosition(button)).toBe(Node.DOCUMENT_POSITION_PRECEDING);
+  fireEvent.click(button);
+  expect(gmail.startConsent).toHaveBeenCalledExactlyOnceWith("google");
+  cleanup();
+  renderCard(at({ name: "found", found: { ...MICROSOFT, oauthAvailable: true } }));
+  expect(screen.getByRole("button", { name: "Continue with Microsoft" })).toBe(
+    document.activeElement,
+  );
+  expect(screen.queryByText(/the admin does/)).toBeNull();
+  expect(screen.queryByLabelText("Password")).toBeNull();
+  cleanup();
+  renderCard(at({ name: "found", found: GMAIL }));
+  expect(screen.queryByRole("button", { name: /Continue with/ })).toBeNull();
+});
+
+test("the consent step says the window is open, notes Google's testing mode and cancels; a closed window gets its button", () => {
+  const open = renderCard(
+    at({ name: "consent", signIn: "google", from: { name: "typing" }, id: "s1", opened: true }),
+  );
+  expect(screen.getByRole("status").textContent).toContain("A Google window is open");
+  expect(screen.getByText(/testing mode/)).toBeDefined();
+  expect(screen.getByRole("button", { name: "Cancel" })).toBe(document.activeElement);
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(open.cancelConsent).toHaveBeenCalledOnce();
+  cleanup();
+  const blocked = renderCard(
+    at({ name: "consent", signIn: "microsoft", from: { name: "typing" }, id: null, opened: false }),
+  );
+  expect(screen.getByRole("status").textContent).toContain("kept the Microsoft window closed");
+  expect(screen.queryByText(/testing mode/)).toBeNull();
+  const button = screen.getByRole("button", { name: "Open the Microsoft window" });
+  expect(button).toBe(document.activeElement);
+  // Nothing to open until the start answers.
+  expect(button.getAttribute("aria-disabled")).toBe("true");
+  blocked.update(
+    at({ name: "consent", signIn: "microsoft", from: { name: "typing" }, id: "s1", opened: false }),
+  );
+  expect(button.getAttribute("aria-disabled")).toBe("false");
+  fireEvent.click(button);
+  expect(blocked.openConsentWindow).toHaveBeenCalledOnce();
+  blocked.update(
+    at({ name: "consent", signIn: "microsoft", from: { name: "typing" }, id: "s1", opened: true }),
+  );
+  expect(screen.getByRole("button", { name: "Cancel" })).toBe(document.activeElement);
+});
+
+test("a denied consent names its cause; Google offers the password route where Microsoft and a reconnect do not", () => {
+  const cases: [ConsentRefusal, RegExp][] = [
+    ["accessDenied", /Google didn’t grant access.*app password/],
+    ["upstreamCredentials", /isn’t sanne@fastmail.com/],
+    ["smtpAuthUnavailable", /turn on SMTP AUTH/],
+    ["gone", /wasn’t finished in time/],
+    ["exchangeFailed", /didn’t complete/],
+  ];
+  for (const [cause, sentence] of cases) {
+    const denied = renderCard(
+      at({ name: "consentDenied", signIn: "google", from: { name: "typing" }, cause }),
+    );
+    expect(screen.getByRole("alert").textContent).toMatch(sentence);
+    expect(screen.getByRole("button", { name: "Try again" })).toBe(document.activeElement);
+    fireEvent.click(screen.getByRole("button", { name: "Use a password instead" }));
+    expect(denied.usePassword).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(denied.startConsent).toHaveBeenCalledExactlyOnceWith("google");
+    cleanup();
+  }
+  renderCard(
+    at({
+      name: "consentDenied",
+      signIn: "microsoft",
+      from: { name: "typing" },
+      cause: "accessDenied",
+    }),
+  );
+  expect(screen.getByRole("alert").textContent).toMatch(/You can try again\.$/);
+  expect(screen.queryByRole("button", { name: "Use a password instead" })).toBeNull();
+  cleanup();
+  renderCard(
+    at({
+      name: "consentDenied",
+      signIn: "google",
+      from: { name: "reconnect", account: OAUTH_ROW },
+      cause: "accessDenied",
+    }),
+  );
+  expect(screen.getByRole("heading", { name: "Reconnect Gmail" })).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Use a password instead" })).toBeNull();
+});
+
+test("an OAuth row reconnects through its provider's button; without the provider it says none is set up", () => {
+  const offered = renderCard(at({ name: "reconnect", account: OAUTH_ROW }), true, ["google"]);
+  expect(screen.getByRole("heading", { name: "Reconnect Gmail" })).toBeDefined();
+  expect(screen.queryByLabelText(/password/i)).toBeNull();
+  expect(screen.getByRole("button", { name: "Continue with Google" })).toBe(document.activeElement);
+  fireEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
+  expect(offered.startConsent).toHaveBeenCalledExactlyOnceWith("google");
+  cleanup();
+  renderCard(at({ name: "reconnect", account: OAUTH_ROW }));
+  expect(screen.queryByRole("button", { name: /Continue with/ })).toBeNull();
+  expect(screen.getByText(/not set up here/)).toBeDefined();
+});
+
+test("an instance that cannot start the consent says so above the fields", () => {
+  renderCard(at({ name: "found", found: GMAIL }, "provider_not_configured"));
+  expect(screen.getByRole("alert").textContent).toContain("not set up here");
 });
 
 test("a malformed address stays on the field; a good one runs discovery", () => {

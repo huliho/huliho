@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { AccountsFailureCode } from "@huliho/core";
+import type { AccountsFailureCode, SignInProvider } from "@huliho/core";
 import { useEffect, useRef } from "react";
 
 import { retryLabel } from "../../auth/credential-notice";
@@ -11,6 +11,7 @@ import { Field } from "../../design-system/field";
 import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
 import { Callout } from "./callout";
+import { signInName } from "./presets";
 import styles from "./add-account.module.css";
 
 export type AddressStepName = "typing" | "detecting" | "notFound";
@@ -19,6 +20,7 @@ interface AddressHandlers {
   address: (value: string) => void;
   password: (value: string) => void;
   continue: () => void;
+  signIn: (signIn: SignInProvider) => void;
   enterDetails: () => void;
 }
 
@@ -29,6 +31,8 @@ interface AddressStepProps {
   password: string;
   failure: AccountsFailureCode | null;
   retryRemaining: number | null;
+  // The sign-in providers the instance can start a consent with.
+  signInProviders: SignInProvider[];
   on: AddressHandlers;
 }
 
@@ -85,6 +89,30 @@ function AddressFields({ locale, step, address, password, failure, held, on }: A
   );
 }
 
+// The consent route on the first screen, when the instance can start one.
+function SignInButtons({ locale, signInProviders, held, on }: AddressFieldsProps) {
+  if (signInProviders.length === 0) {
+    return <p className={styles.note}>{m.account_no_providers({}, { locale })}</p>;
+  }
+  return (
+    <>
+      <p className={styles.note}>{m.account_or({}, { locale })}</p>
+      {signInProviders.map((signIn) => (
+        <Button
+          key={signIn}
+          type="button"
+          held={held}
+          onClick={() => {
+            on.signIn(signIn);
+          }}
+        >
+          {m.account_continue_with({ provider: signInName(signIn) }, { locale })}
+        </Button>
+      ))}
+    </>
+  );
+}
+
 // The first screen and its two outcomes: the address with an optional
 // password, the wait for discovery and the offer of manual entry.
 export function AddressStep(props: AddressStepProps) {
@@ -120,7 +148,7 @@ export function AddressStep(props: AddressStepProps) {
           {m.account_enter_details({}, { locale })}
         </Button>
       )}
-      {step === "typing" && <p className={styles.note}>{m.account_no_providers({}, { locale })}</p>}
+      {step === "typing" && <SignInButtons {...props} held={held} />}
     </form>
   );
 }

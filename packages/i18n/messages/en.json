@@ -150,5 +150,17 @@
   "account_error_invalid": "Couldn’t connect with these details. Check them, then try again.",
   "account_error_gone": "This account was removed meanwhile. You can add it again from the start.",
   "account_offline": "You’re offline, so nothing can be checked right now. This picks up again the moment you’re back online.",
-  "account_connected_toast": "{name} connected."
+  "account_connected_toast": "{name} connected.",
+  "account_or": "or",
+  "account_continue_with": "Continue with {provider}",
+  "account_use_password": "Use a password instead",
+  "account_consent_open": "A {provider} window is open, finish signing in there. This page continues by itself.",
+  "account_consent_blocked": "The browser kept the {provider} window closed. Open it from here, then finish signing in there.",
+  "account_consent_open_window": "Open the {provider} window",
+  "account_consent_testing_note": "While the Google connection here is in testing mode, you’ll need to reconnect about once a week. That stops once the admin publishes it.",
+  "account_consent_denied": "{provider} didn’t grant access, so nothing was connected. You can try again or sign in with an app password instead.",
+  "account_consent_denied_retry": "{provider} didn’t grant access, so nothing was connected. You can try again.",
+  "account_consent_wrong_account": "The {provider} account you signed in with isn’t {address}, so nothing was connected. Try again with the account for this address.",
+  "account_consent_expired": "The {provider} sign-in wasn’t finished in time, so nothing was connected. You can try again.",
+  "account_consent_failed": "The {provider} sign-in didn’t complete, so nothing was connected. You can try again in a moment."
 }

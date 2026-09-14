@@ -14,6 +14,7 @@ use axum::Router;
 use axum::body::Body;
 use axum::http::{Method, StatusCode, header};
 use common::{api_state, router_on, router_with};
+use huliho_server::api::ApiState;
 use huliho_server::auth;
 use huliho_server::identity;
 use huliho_server::providers::{self, OauthProvider};
@@ -23,6 +24,7 @@ use signin::{
     LOGIN, PASSWORD, body_text, cookie_of, login_request, sign_in, store_with_account, with_cookie,
 };
 use tower::ServiceExt;
+use url::Url;
 
 const ROUTE: &str = "/api/auth-providers";
 const OTHER_LOGIN: &str = "noor@example.com";
@@ -74,6 +76,49 @@ async fn sign_in_other(router: &Router) -> String {
     cookie_of(&response)
 }
 
+/// The providers the session answer lists for the cookie's user.
+async fn sign_in_providers(router: &Router, cookie: &str) -> Value {
+    let response = router
+        .clone()
+        .oneshot(with_cookie(Method::GET, "/api/session", cookie))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let session: Value = serde_json::from_str(&body_text(response).await).unwrap();
+    session["signInProviders"].clone()
+}
+
+#[tokio::test]
+async fn the_session_lists_a_registered_provider_once_the_public_url_is_set() {
+    let store = store_with_instance_admin();
+    let without_url = router_on(Arc::clone(&store));
+    let cookie = sign_in(&without_url).await;
+    assert_eq!(sign_in_providers(&without_url, &cookie).await, json!([]));
+    let (status, _) = put(
+        &without_url,
+        &cookie,
+        "google",
+        &register_body(CLIENT_ID, CLIENT_SECRET),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(sign_in_providers(&without_url, &cookie).await, json!([]));
+    let with_url = router_with(ApiState {
+        public_url: Some(Url::parse("https://mail.example.test").unwrap()),
+        ..api_state(Arc::clone(&store))
+    });
+    let cookie = sign_in(&with_url).await;
+    assert_eq!(
+        sign_in_providers(&with_url, &cookie).await,
+        json!(["google"])
+    );
+    let other = sign_in_other(&with_url).await;
+    assert_eq!(
+        sign_in_providers(&with_url, &other).await,
+        json!(["google"])
+    );
+}
+
 #[tokio::test]
 async fn the_routes_need_a_session_and_the_write_needs_the_header() {
     let router = router_on(store_with_instance_admin());
@@ -115,7 +160,7 @@ async fn an_owner_without_the_flag_is_forbidden_on_both_routes() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
-    assert!(!providers::is_registered(&store, OauthProvider::Google).unwrap());
+    assert!(providers::registered(&store).unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -133,7 +178,11 @@ async fn a_second_organizations_owner_is_forbidden_too() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    assert!(!providers::is_registered(&store, OauthProvider::Microsoft).unwrap());
+    assert!(
+        !providers::registered(&store)
+            .unwrap()
+            .contains(&OauthProvider::Microsoft)
+    );
 }
 
 #[tokio::test]
@@ -231,5 +280,5 @@ async fn an_unknown_provider_word_is_not_found_and_bad_fields_are_refused() {
     )
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(!providers::is_registered(&store, OauthProvider::Google).unwrap());
+    assert!(providers::registered(&store).unwrap().is_empty());
 }

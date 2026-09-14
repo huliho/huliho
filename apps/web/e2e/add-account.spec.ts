@@ -3,9 +3,11 @@
 // Additional terms apply, see NOTICE.
 
 import { AxeBuilder } from "@axe-core/playwright";
-import type { Locator, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
+import { FIXED_NOW, card, field, openCard, stopAt, typeInto } from "./account-card";
+import type { Walk } from "./account-card";
 import {
   DOVECOT_FOUND,
   FASTMAIL_FOUND,
@@ -13,57 +15,15 @@ import {
   accountRow,
   mockAccounts,
 } from "./account-mocks";
-import type { AccountRowBody, AccountsAnswers, Recorded } from "./account-mocks";
 import { mockSignedIn } from "./session-mocks";
 import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
 
-// Screenshots must not age, so the page renders a pinned date.
-const FIXED_NOW = new Date("2026-05-14T10:00:00");
 const RETRY_SECONDS = 90;
 const FASTMAIL_ADDRESS = "sanne@fastmail.com";
 const GENERIC_ADDRESS = "sanne@dekker-mail.nl";
 const SERVER = "mail.dekker-mail.nl";
 const TOKEN = "fmu1-example-token";
 const PASSWORD = "example passphrase";
-
-// What the acceptance criteria record per provider: the steps the user
-// acted on and the fields the test typed into.
-interface Walk {
-  stops: string[];
-  typed: string[];
-}
-
-function card(page: Page): Locator {
-  return page.locator("[data-step]");
-}
-
-function field(page: Page, label: string): Locator {
-  // The outgoing server repeats the incoming labels; the first is the incoming one.
-  return page.getByLabel(label, { exact: true }).first();
-}
-
-async function openCard(
-  page: Page,
-  answers: AccountsAnswers = {},
-  rows: AccountRowBody[] = [],
-): Promise<Recorded> {
-  await mockSignedIn(page);
-  const recorded = await mockAccounts(page, rows, answers);
-  await page.clock.install({ time: FIXED_NOW });
-  await page.goto("/accounts/new");
-  await expect(page.getByRole("heading", { level: 1, name: "Add a mail account" })).toBeVisible();
-  return recorded;
-}
-
-async function stopAt(page: Page, walk: Walk, step: string): Promise<void> {
-  await expect(card(page)).toHaveAttribute("data-step", step);
-  walk.stops.push(step);
-}
-
-async function typeInto(page: Page, walk: Walk, label: string, value: string): Promise<void> {
-  await field(page, label).fill(value);
-  walk.typed.push(label);
-}
 
 // The discovered route from the address to Connect; the label says which
 // secret the provider takes.
@@ -342,13 +302,9 @@ test("a reconnect asks for the credential only and replaces it on the row", asyn
   expect(credentials).toEqual([{ id: "acc-1", credential: { kind: "bearer", token: TOKEN } }]);
 });
 
-test("a consent row or an unknown id at the reconnect address opens the card plain", async ({
-  page,
-}) => {
+test("an unknown id at the reconnect address opens the card plain", async ({ page }) => {
   await mockSignedIn(page);
-  await mockAccounts(page, [accountRow(FIXED_NOW, { provider: "gmail", authMethod: "oauth2" })]);
-  await page.goto("/accounts/new?reconnect=acc-1");
-  await expect(page.getByRole("heading", { level: 1, name: "Add a mail account" })).toBeVisible();
+  await mockAccounts(page, [accountRow(FIXED_NOW)]);
   await page.goto("/accounts/new?reconnect=acc-9");
   await expect(page.getByRole("heading", { level: 1, name: "Add a mail account" })).toBeVisible();
 });

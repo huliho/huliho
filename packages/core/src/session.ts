@@ -9,6 +9,8 @@ import { z } from "./schema";
 
 const SESSION_ENDPOINT = "/api/session";
 
+const signInProviderSchema = z.enum(["google", "microsoft"]);
+
 export const sessionInfoSchema = z.object({
   user: z.object({
     id: z.string(),
@@ -20,10 +22,13 @@ export const sessionInfoSchema = z.object({
     id: z.string(),
     name: z.string(),
   }),
+  // The providers a consent can start with; empty until the admin registers one.
+  signInProviders: z.array(signInProviderSchema),
   // True for a session opened with a one-time password, until the change lands.
   passwordChangeRequired: z.boolean(),
 });
 
+export type SignInProvider = z.infer<typeof signInProviderSchema>;
 export type SessionInfo = z.infer<typeof sessionInfoSchema>;
 
 export async function fetchSession(): Promise<SessionInfo | null> {

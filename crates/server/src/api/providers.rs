@@ -3,7 +3,8 @@
 // Additional terms apply, see NOTICE.
 
 //! The instance's sign-in providers: the clients registered and
-//! registering one. Instance admins only.
+//! registering one, for instance admins only, plus the list a consent
+//! can start with, which every session reads.
 
 use std::sync::Arc;
 
@@ -11,11 +12,26 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 use super::{ApiError, ApiState, Caller, Full, internal, secret_fits};
 use crate::providers::{self, OauthClient, OauthProvider, RegisteredClient};
 use crate::scope;
 use crate::session;
+use crate::store::{Store, StoreError};
+
+/// The providers a consent can start with: the ones holding a client,
+/// once the instance knows its public URL for the redirect. The session
+/// answer and the discover route read the same list.
+pub(super) fn available(
+    store: &Store,
+    public_url: Option<&Url>,
+) -> Result<Vec<OauthProvider>, StoreError> {
+    if public_url.is_none() {
+        return Ok(Vec::new());
+    }
+    providers::registered(store)
+}
 
 /// A registered client as the list shows it: never the secret.
 #[derive(Serialize)]

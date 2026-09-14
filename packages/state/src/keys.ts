@@ -5,6 +5,7 @@
 // The one registry every query key comes from.
 export const queryKeys = {
   accounts: ["accounts"],
+  consent: ["consent"],
   session: ["session"],
   sessions: ["sessions"],
   users: ["users"],
