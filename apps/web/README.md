@@ -58,10 +58,11 @@ The Storybook preview goes without, since its bootstrap uses inline
 scripts.
 
 The e2e suite screenshots every story and the served page in both
-themes at phone and
-desktop width. Baselines are rendered on Linux, so the comparison runs
-in CI and the images are refreshed from the repo root with the
-container whose tag matches the installed `@playwright/test` version:
-`docker run --rm -e CI=true -v "$PWD":/work -w /work mcr.microsoft.com/playwright:v1.63.0-noble bash -c "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @huliho/web exec playwright test --update-snapshots"`
+themes at phone and desktop width. It serves the built app and the
+built Storybook, so a stale build gives stale images. Baselines are
+rendered on Linux, so the comparison runs in CI and the images are
+refreshed from the repo root with the container whose tag matches the
+installed `@playwright/test` version, building both first:
+`docker run --rm -e CI=true -v "$PWD":/work -w /work mcr.microsoft.com/playwright:v1.63.0-noble bash -c "corepack enable && pnpm install --frozen-lockfile && pnpm build && pnpm --filter @huliho/web build:storybook && pnpm --filter @huliho/web exec playwright test --update-snapshots"`
 The container swaps `node_modules` to Linux binaries; run
 `CI=true pnpm install` afterwards to restore them.
