@@ -7,6 +7,12 @@ import type { Page, Route } from "@playwright/test";
 const ACCOUNTS_ROUTE = "**/api/accounts";
 const DISCOVER_ROUTE = "**/api/accounts/discover";
 const CREDENTIALS_ROUTE = "**/api/accounts/*/credentials";
+const CONSENT_START_ROUTE = "**/api/accounts/oauth/start";
+const CONSENT_PENDING_ROUTE = "**/api/accounts/oauth/pending/*";
+// Where a mocked start sends the window; the context answers it with a page.
+const CONSENT_URL = "https://accounts.google.test/consent";
+const CONSENT_STATE = "consent-1";
+const CONSENT_PAGE = "<!doctype html><title>Provider</title><p>Consent page</p>";
 // The server's default, so the page renders the sentence with it.
 const PROBE_INTERVAL_MINUTES = 15;
 const HOUR_MS = 3_600_000;
@@ -77,6 +83,30 @@ export interface Recorded {
   discoveries: string[];
   adds: AddBody[];
   credentials: Reconnect[];
+}
+
+interface ConsentBody {
+  provider: Provider;
+  address: string;
+  accountId?: string;
+}
+
+interface OutcomeBody {
+  status: "pending" | "done" | "denied";
+  accountId?: string;
+  cause?: string;
+}
+
+export interface ConsentAnswers {
+  // Refusals for the start in order; once they run out every start answers the fixture URL.
+  start?: AccountsAnswer[];
+  // The poll answers in order, the last one repeating; a numeric status is a refusal.
+  outcomes: (OutcomeBody | AccountsAnswer)[];
+}
+
+export interface RecordedConsent {
+  starts: ConsentBody[];
+  polls: number;
 }
 
 const PROVIDER_NAMES: Record<Provider, string | null> = {
@@ -155,6 +185,18 @@ function isReconnectBody(value: unknown): value is Pick<Reconnect, "credential">
     typeof value === "object" &&
     value !== null &&
     typeof Reflect.get(value, "credential") === "object"
+  );
+}
+
+function isRefusal(answer: OutcomeBody | AccountsAnswer): answer is AccountsAnswer {
+  return typeof answer.status === "number";
+}
+
+function isConsentBody(value: unknown): value is ConsentBody {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof Reflect.get(value, "provider") === "string"
   );
 }
 
@@ -246,6 +288,41 @@ export async function mockAccounts(
     return row === undefined
       ? refuse(route, { status: 404, error: "not_found" })
       : route.fulfill({ json: { ...row, stoppedCause: null, stoppedAt: null } });
+  });
+  return recorded;
+}
+
+// Answers the start and the poll; the provider's page comes from the
+// context, so the window has somewhere to go.
+export async function mockConsent(page: Page, answers: ConsentAnswers): Promise<RecordedConsent> {
+  const recorded: RecordedConsent = { starts: [], polls: 0 };
+  const outcomes = [...answers.outcomes];
+  await page
+    .context()
+    .route(`${CONSENT_URL}**`, (route) =>
+      route.fulfill({ contentType: "text/html", body: CONSENT_PAGE }),
+    );
+  await page.route(CONSENT_START_ROUTE, (route) => {
+    const body: unknown = route.request().postDataJSON();
+    if (!isConsentBody(body)) {
+      throw new Error("the start carried no consent");
+    }
+    recorded.starts.push(body);
+    const refusal = answers.start?.shift();
+    if (refusal !== undefined) {
+      return refuse(route, refusal);
+    }
+    return route.fulfill({
+      json: { url: `${CONSENT_URL}?state=${CONSENT_STATE}`, state: CONSENT_STATE },
+    });
+  });
+  await page.route(CONSENT_PENDING_ROUTE, (route) => {
+    recorded.polls += 1;
+    const answer = outcomes.length > 1 ? outcomes.shift() : outcomes[0];
+    if (answer === undefined) {
+      return refuse(route, { status: 404, error: "not_found" });
+    }
+    return isRefusal(answer) ? refuse(route, answer) : route.fulfill({ json: answer });
   });
   return recorded;
 }

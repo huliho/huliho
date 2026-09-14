@@ -10,6 +10,7 @@ import { fetchSession, signIn, signOut } from "./session";
 const SESSION_BODY = {
   user: { id: "u1", login: "mira@example.com", name: "Mira", role: "owner" },
   organization: { id: "o1", name: "mira@example.com" },
+  signInProviders: [],
   passwordChangeRequired: false,
 };
 
@@ -45,6 +46,13 @@ test("a session opened with a one-time password says so", async () => {
   const session = await fetchSession();
   expect(session?.passwordChangeRequired).toBe(true);
   expect(session?.user.name).toBe("Mira");
+});
+
+test("the session lists the providers a consent can start with", async () => {
+  answer(200, { ...SESSION_BODY, signInProviders: ["google"] });
+  expect((await fetchSession())?.signInProviders).toEqual(["google"]);
+  answer(200, { ...SESSION_BODY, signInProviders: ["yahoo"] });
+  await expect(fetchSession()).rejects.toThrow(/invalid/i);
 });
 
 test("a malformed session answer is rejected at the boundary", async () => {

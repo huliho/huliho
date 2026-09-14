@@ -150,5 +150,17 @@
   "account_error_invalid": "Verbinden met deze gegevens is niet gelukt. Controleer ze en probeer het opnieuw.",
   "account_error_gone": "Dit account is intussen verwijderd. Je kunt het opnieuw toevoegen vanaf het begin.",
   "account_offline": "Je bent offline, dus er kan nu niets worden gecontroleerd. Dit gaat vanzelf verder zodra je weer online bent.",
-  "account_connected_toast": "{name} verbonden."
+  "account_connected_toast": "{name} verbonden.",
+  "account_or": "of",
+  "account_continue_with": "Doorgaan met {provider}",
+  "account_use_password": "Toch een wachtwoord gebruiken",
+  "account_consent_open": "Er staat een {provider}-venster open, rond het inloggen daar af. Deze pagina gaat vanzelf verder.",
+  "account_consent_blocked": "De browser hield het {provider}-venster dicht. Open het hier en rond het inloggen daar af.",
+  "account_consent_open_window": "Het {provider}-venster openen",
+  "account_consent_testing_note": "Zolang de Google-koppeling hier in testmodus staat, moet je ongeveer eens per week opnieuw verbinden. Dat stopt zodra de beheerder hem publiceert.",
+  "account_consent_denied": "{provider} heeft geen toegang gegeven, dus er is niets verbonden. Je kunt het opnieuw proberen of in plaats daarvan inloggen met een app-wachtwoord.",
+  "account_consent_denied_retry": "{provider} heeft geen toegang gegeven, dus er is niets verbonden. Je kunt het opnieuw proberen.",
+  "account_consent_wrong_account": "Het {provider}-account waarmee je inlogde is niet {address}, dus er is niets verbonden. Probeer het opnieuw met het account van dit adres.",
+  "account_consent_expired": "Het inloggen bij {provider} is niet op tijd afgerond, dus er is niets verbonden. Je kunt het opnieuw proberen.",
+  "account_consent_failed": "Het inloggen bij {provider} is niet afgerond, dus er is niets verbonden. Probeer het straks opnieuw."
 }

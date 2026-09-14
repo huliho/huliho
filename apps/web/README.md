@@ -35,13 +35,19 @@ both mutations reset.
 Adding a mail account is a card at `/accounts/new`, where a session
 without accounts lands from the shell. The flow is a reducer over the
 steps (typing, detecting, found, confirm host, not found, manual,
-connecting, insecure) with the fields of each step in plain component
-state; three requests sit behind it (discover, add, replace a
-credential) and every refusal is one sentence on the field or above
-the fields. A reconnect opens the same card at
+connecting, insecure, consent, consent denied) with the fields of each
+step in plain component state; four requests sit behind it (discover,
+add, replace a credential, start a consent) and every refusal is one
+sentence on the field or above the fields. A reconnect opens the same
+card at
 `/accounts/new?reconnect={id}` with the address fixed. The address is
 checked against the server's shape rule before it goes out. A
 credential travels once, at Connect; no cache ever holds it.
+A Google or Microsoft account signs in through a consent: the session
+lists the providers the instance can start one with, the card opens
+the provider in a window it holds no opener to, polls the outcome
+every two seconds and ends in the toast or in one sentence saying why
+nothing was connected. An OAuth row reconnects the same way.
 
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside

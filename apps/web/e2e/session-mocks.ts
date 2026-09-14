@@ -14,6 +14,7 @@ const DAY_MS = 24 * HOUR_MS;
 const SESSION_BODY = {
   user: { id: "user-1", login: "mira@example.com", name: "Mira", role: "owner" },
   organization: { id: "org-1", name: "mira@example.com" },
+  signInProviders: [],
   passwordChangeRequired: false,
 };
 
@@ -49,6 +50,7 @@ async function mockOneAccount(page: Page): Promise<void> {
 }
 
 export type MockRole = "owner" | "admin" | "member";
+export type MockSignIn = "google" | "microsoft";
 
 // Who the session is per role; each one is a row the users mocks list.
 function actorOf(role: MockRole): { id: string; login: string; name: string } {
@@ -61,8 +63,8 @@ function actorOf(role: MockRole): { id: string; login: string; name: string } {
   return { id: "user-1", login: "mira@example.com", name: "Mira" };
 }
 
-function sessionBody(role: MockRole): object {
-  return { ...SESSION_BODY, user: { ...actorOf(role), role } };
+function sessionBody(role: MockRole, signInProviders: MockSignIn[]): object {
+  return { ...SESSION_BODY, user: { ...actorOf(role), role }, signInProviders };
 }
 
 export interface SessionRowBody {
@@ -90,8 +92,12 @@ async function mockLiveSession(page: Page, body: () => object): Promise<void> {
   });
 }
 
-export async function mockSignedIn(page: Page, role: MockRole = "owner"): Promise<void> {
-  await mockLiveSession(page, () => sessionBody(role));
+export async function mockSignedIn(
+  page: Page,
+  role: MockRole = "owner",
+  signInProviders: MockSignIn[] = [],
+): Promise<void> {
+  await mockLiveSession(page, () => sessionBody(role, signInProviders));
 }
 
 export async function mockSignedOut(page: Page): Promise<void> {

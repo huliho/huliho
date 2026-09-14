@@ -10,11 +10,11 @@ use axum::extract::State;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
 
+use super::providers::available;
 use super::{ApiError, ApiState, ClientInfo, Full, internal, upstream_keys};
 use crate::accounts::{AccountKind, AccountSettings, Provider};
 use crate::discovery::{self, Address, Budget, Discovered};
 use crate::presets::{self, CredentialKind};
-use crate::providers;
 use crate::store::now_ms;
 
 #[derive(Deserialize)]
@@ -79,18 +79,16 @@ pub(super) async fn discover(
     Ok(Json(DiscoveryView::found(found, oauth_available)))
 }
 
-/// True when the instance holds a client for the preset's sign-in
-/// provider and knows its public URL, which the consent needs.
+/// True when the instance can start a consent for the preset's
+/// sign-in provider.
 async fn oauth_available(state: &ApiState, provider: Provider) -> Result<bool, ApiError> {
     let Some(oauth) = presets::for_provider(provider).oauth else {
         return Ok(false);
     };
-    if state.public_url.is_none() {
-        return Ok(false);
-    }
     let store = Arc::clone(&state.store);
-    let registered = tokio::task::spawn_blocking(move || providers::is_registered(&store, oauth))
+    let public_url = state.public_url.clone();
+    let providers = tokio::task::spawn_blocking(move || available(&store, public_url.as_ref()))
         .await
         .map_err(internal)??;
-    Ok(registered)
+    Ok(providers.contains(&oauth))
 }

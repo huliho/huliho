@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { AccountsFailureCode, CredentialKind, Provider } from "@huliho/core";
+import type { AccountsFailureCode, CredentialKind, Provider, SignInProvider } from "@huliho/core";
 import { useEffect, useRef } from "react";
 
 import { retryLabel } from "../../auth/credential-notice";
@@ -11,12 +11,25 @@ import { Field } from "../../design-system/field";
 import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
 import { Callout } from "./callout";
-import { credentialHint, credentialLabel, providerName, wrongCredential } from "./presets";
+import {
+  credentialHint,
+  credentialLabel,
+  oauthHint,
+  providerName,
+  signInName,
+  wrongCredential,
+} from "./presets";
 import styles from "./add-account.module.css";
 
 interface FoundLine {
   host: string;
   onChange: () => void;
+}
+
+// The consent route beside the field, when the instance can start one.
+export interface SignInOffer {
+  provider: SignInProvider;
+  onStart: () => void;
 }
 
 export interface CredentialStepProps {
@@ -26,6 +39,7 @@ export interface CredentialStepProps {
   credentialKind: CredentialKind;
   // The found sentence with its Change; null on a reconnect.
   found: FoundLine | null;
+  signIn: SignInOffer | null;
   // What the connecting sentence names.
   host: string;
   secret: string;
@@ -48,6 +62,47 @@ function submitLabel(props: CredentialStepProps): string {
   return props.found === null
     ? m.account_connect({}, { locale })
     : m.account_continue({}, { locale });
+}
+
+// Where the secret comes from; a consent-only step without its button
+// says who sets the sign-in up instead.
+function hintOf({ provider, credentialKind, signIn, locale }: CredentialStepProps): string | null {
+  if (credentialKind !== "oauth") {
+    return credentialHint(provider, locale);
+  }
+  return signIn === null ? oauthHint(provider, locale) : null;
+}
+
+// The sign-in button: the only action of a consent-only step, the
+// shorter route above an app-password field.
+function SignInButton({
+  locale,
+  signIn,
+  held,
+  askable,
+}: CredentialStepProps & { held: boolean; askable: boolean }) {
+  const button = useRef<HTMLButtonElement>(null);
+  // The only action of the step takes the cursor, as a field would.
+  useEffect(() => {
+    if (!askable) {
+      button.current?.focus();
+    }
+  }, [askable]);
+  if (signIn === null) {
+    return null;
+  }
+  return (
+    <Button
+      ref={button}
+      type="button"
+      variant={askable ? "secondary" : "primary"}
+      className={askable ? undefined : styles.submit}
+      held={held}
+      onClick={signIn.onStart}
+    >
+      {m.account_continue_with({ provider: signInName(signIn.provider) }, { locale })}
+    </Button>
+  );
 }
 
 function FoundCallout({
@@ -103,11 +158,11 @@ function SecretField(props: CredentialStepProps & { held: boolean }) {
 }
 
 // The credential field for the server found or the row to reconnect; a
-// provider without a password route gets its admin sentence instead.
+// provider that signs in through a consent gets its button instead.
 export function CredentialStep(props: CredentialStepProps) {
   const { locale, credentialKind: kind } = props;
   const held = props.pending || props.retryRemaining !== null;
-  const hint = credentialHint(props.provider, locale);
+  const hint = hintOf(props);
   const askable = kind !== "oauth";
   return (
     <form
@@ -126,6 +181,7 @@ export function CredentialStep(props: CredentialStepProps) {
         value={props.address}
       />
       <FoundCallout {...props} held={held} />
+      <SignInButton {...props} held={held} askable={askable} />
       {hint !== null && <Callout tone="warn">{hint}</Callout>}
       {askable && <SecretField {...props} held={held} />}
       {props.pending && (

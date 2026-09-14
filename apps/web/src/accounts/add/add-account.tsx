@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { queryKeys } from "@huliho/state";
-import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys, sessionQueryOptions } from "@huliho/state";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLoaderData, useNavigate } from "@tanstack/react-router";
 
 import { toastManager } from "../../design-system/toast";
@@ -23,17 +23,24 @@ export function AddAccount() {
   const queryClient = useQueryClient();
   const account = useLoaderData({ from: "/accounts/new" });
   const online = useOnline();
-  const flow = useAddAccount(locale, account, (row) => {
+  // The route guard read the session already; the providers ride along.
+  const signInProviders = useQuery(sessionQueryOptions).data?.signInProviders ?? [];
+  const flow = useAddAccount(locale, account, (name) => {
     // The shell guard reads the list; a stale one would send the session back here.
     void queryClient.invalidateQueries({ queryKey: queryKeys.accounts });
-    toastManager.add({ description: m.account_connected_toast({ name: row.name }, { locale }) });
+    toastManager.add({ description: m.account_connected_toast({ name }, { locale }) });
     void navigate({ to: "/" });
   });
   return (
     <div className={styles.page}>
       <ShellHeader locale={locale} />
       <main className={styles.screen}>
-        <AddAccountCard locale={locale} flow={flow} online={online} />
+        <AddAccountCard
+          locale={locale}
+          flow={flow}
+          online={online}
+          signInProviders={signInProviders}
+        />
       </main>
     </div>
   );

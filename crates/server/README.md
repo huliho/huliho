@@ -59,7 +59,9 @@ account credential; the flag comes from `huliho instance-admin grant
 <login>` on the operator CLI and `revoke` takes it back. With a client
 and the public URL set, the app starts a consent and gets the
 provider's URL to open in a window: code flow with PKCE, a state bound
-to the user, the least scopes a mail client needs. The provider sends
+to the user, the least scopes a mail client needs. The session answer
+lists the providers a consent can start with, so the app shows a
+sign-in button only where it works. The provider sends
 the window back to `/auth/{provider}/callback`, where the code turns
 into tokens through the same pinned HTTP client as every other outbound
 request, the tokens are checked with XOAUTH2 on IMAP and SMTP and

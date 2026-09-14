@@ -5,7 +5,14 @@
 import { afterEach, expect, test, vi } from "vitest";
 import type { Mock } from "vitest";
 
-import { addAccount, discoverServer, fetchAccounts, replaceCredential } from "./accounts";
+import {
+  addAccount,
+  discoverServer,
+  fetchAccounts,
+  fetchConsent,
+  replaceCredential,
+  startConsent,
+} from "./accounts";
 import type { NewAccountInput } from "./accounts";
 
 const ROW = {
@@ -103,6 +110,62 @@ test("a reconnect puts the credential on the encoded row", async () => {
   expect(init?.body).toBe(
     JSON.stringify({ credential: { kind: "password", password: "wrong horse" } }),
   );
+});
+
+test("a consent starts with the preset and the address and answers the window's URL", async () => {
+  const started = { url: "https://accounts.google.com/o/oauth2/v2/auth?state=s1", state: "s1" };
+  const fetchMock = answer(200, started);
+  expect(await startConsent({ provider: "gmail", address: "sanne@gmail.com" })).toEqual(started);
+  const [url, init] = fetchMock.mock.calls[0] ?? [];
+  expect(url).toBe("/api/accounts/oauth/start");
+  expect(init?.method).toBe("POST");
+  expect(new Headers(init?.headers).get("x-requested-with")).toBe("huliho");
+  expect(init?.body).toBe(JSON.stringify({ provider: "gmail", address: "sanne@gmail.com" }));
+});
+
+test("a reconnect consent names the row; a start the instance cannot serve names the cause", async () => {
+  const fetchMock = answer(200, { url: "https://x.test/auth", state: "s2" });
+  await startConsent({ provider: "gmail", address: "sanne@gmail.com", accountId: "acc-1" });
+  expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
+    JSON.stringify({ provider: "gmail", address: "sanne@gmail.com", accountId: "acc-1" }),
+  );
+  answer(409, { error: "provider_not_configured" });
+  await expect(
+    startConsent({ provider: "gmail", address: "sanne@gmail.com" }),
+  ).rejects.toMatchObject({
+    code: "provider_not_configured",
+  });
+});
+
+test("a start whose URL is not https is rejected at the boundary", async () => {
+  const input = { provider: "gmail", address: "sanne@gmail.com" } as const;
+  answer(200, { url: "javascript:alert(1)", state: "s1" });
+  await expect(startConsent(input)).rejects.toThrow(/invalid/i);
+  answer(200, { url: "http://accounts.google.com/o/oauth2/v2/auth", state: "s1" });
+  await expect(startConsent(input)).rejects.toThrow(/invalid/i);
+});
+
+test("the poll parses the three outcomes; a 404 reads as gone and a 401 as the session ending", async () => {
+  answer(200, { status: "pending" });
+  expect(await fetchConsent("s1")).toEqual({ status: "pending" });
+  answer(200, { status: "done", accountId: "acc-2" });
+  expect(await fetchConsent("s1")).toEqual({ status: "done", accountId: "acc-2" });
+  answer(200, { status: "denied", cause: "accessDenied" });
+  expect(await fetchConsent("s1")).toEqual({ status: "denied", cause: "accessDenied" });
+  answer(404, { error: "not_found" });
+  expect(await fetchConsent("s1")).toEqual({ status: "gone" });
+  answer(401, { error: "unauthenticated" });
+  await expect(fetchConsent("s1")).rejects.toMatchObject({ code: "unauthenticated" });
+  answer(200, { status: "denied", cause: "somethingElse" });
+  await expect(fetchConsent("s1")).rejects.toThrow(/invalid/i);
+});
+
+test("the poll names the consent in its path; an unreachable server reads as unavailable", async () => {
+  const fetchMock = answer(200, { status: "pending" });
+  await fetchConsent("s 1/x");
+  expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/accounts/oauth/pending/s%201%2Fx");
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("down")));
+  await expect(fetchConsent("s1")).rejects.toMatchObject({ code: "unavailable" });
 });
 
 test.each([
