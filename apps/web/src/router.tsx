@@ -16,6 +16,7 @@ import { accountsQueryOptions, sessionQueryOptions } from "@huliho/state";
 import { AddAccount } from "./accounts/add/add-account";
 import { App } from "./app";
 import { AboutSettings } from "./settings/about";
+import { AccountsPage } from "./settings/accounts/accounts-page";
 import { SessionsPage } from "./settings/sessions/sessions-page";
 import { SettingsIndex } from "./settings/settings-index";
 import { SettingsPage } from "./settings/settings-page";
@@ -143,6 +144,12 @@ const settingsIndexRoute = createRoute({
   component: SettingsIndex,
 });
 
+const accountsRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/accounts",
+  component: AccountsPage,
+});
+
 const sessionsRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: "/sessions",
@@ -167,7 +174,13 @@ const routeTree = rootRoute.addChildren([
   signInRoute,
   choosePasswordRoute,
   addAccountRoute,
-  settingsRoute.addChildren([settingsIndexRoute, sessionsRoute, aboutRoute, usersRoute]),
+  settingsRoute.addChildren([
+    settingsIndexRoute,
+    accountsRoute,
+    sessionsRoute,
+    aboutRoute,
+    usersRoute,
+  ]),
 ]);
 
 export const router = createRouter({

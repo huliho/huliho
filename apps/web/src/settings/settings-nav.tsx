@@ -12,7 +12,7 @@ import type { Locale } from "../paraglide/runtime.js";
 import styles from "./settings-nav.module.css";
 
 export interface SettingsEntry {
-  to: "/settings/sessions" | "/settings/about" | "/settings/users";
+  to: "/settings/accounts" | "/settings/sessions" | "/settings/about" | "/settings/users";
   label: (locale: Locale) => string;
   // Admin entries show for admins and owners only.
   admin?: boolean;
@@ -20,6 +20,7 @@ export interface SettingsEntry {
 
 // Only pages that exist; a drawn page joins when it is built.
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
+  { to: "/settings/accounts", label: (locale) => m.settings_accounts({}, { locale }) },
   { to: "/settings/sessions", label: (locale) => m.settings_sessions({}, { locale }) },
   { to: "/settings/about", label: (locale) => m.settings_about({}, { locale }) },
   { to: "/settings/users", label: (locale) => m.settings_users({}, { locale }), admin: true },

@@ -10,7 +10,9 @@ import {
   discoverServer,
   fetchAccounts,
   fetchConsent,
+  removeAccount,
   replaceCredential,
+  retryAccount,
   startConsent,
 } from "./accounts";
 import type { NewAccountInput } from "./accounts";
@@ -110,6 +112,51 @@ test("a reconnect puts the credential on the encoded row", async () => {
   expect(init?.body).toBe(
     JSON.stringify({ credential: { kind: "password", password: "wrong horse" } }),
   );
+});
+
+test("a retry posts to the encoded row and answers the resumed row or the stop that stands", async () => {
+  const fetchMock = answer(200, ROW);
+  expect(await retryAccount("acc 1")).toEqual({ status: "resumed", account: ROW });
+  const [url, init] = fetchMock.mock.calls[0] ?? [];
+  expect(url).toBe("/api/accounts/acc%201/retry");
+  expect(init?.method).toBe("POST");
+  expect(new Headers(init?.headers).get("x-requested-with")).toBe("huliho");
+  answer(409, { error: "still_stopped", cause: "connection" });
+  expect(await retryAccount("acc-1")).toEqual({ status: "stillStopped", cause: "connection" });
+  answer(409, { error: "still_stopped", cause: "credentials" });
+  expect(await retryAccount("acc-1")).toEqual({ status: "stillStopped", cause: "credentials" });
+});
+
+test("a retry refused for another reason carries its code; an odd 409 reads as unavailable", async () => {
+  answer(401, { error: "unauthenticated" });
+  await expect(retryAccount("acc-1")).rejects.toMatchObject({ code: "unauthenticated" });
+  answer(404, { error: "not_found" });
+  await expect(retryAccount("acc-1")).rejects.toMatchObject({ code: "not_found" });
+  answer(502, { error: "upstream_unreachable" });
+  await expect(retryAccount("acc-1")).rejects.toMatchObject({ code: "upstream_unreachable" });
+  answer(409, { error: "provider_not_configured" });
+  await expect(retryAccount("acc-1")).rejects.toMatchObject({ code: "unavailable" });
+  answer(409, { error: "still_stopped", cause: "weather" });
+  await expect(retryAccount("acc-1")).rejects.toMatchObject({ code: "unavailable" });
+});
+
+test("a removal deletes the encoded row, passes a row already gone and carries keepalive on unload", async () => {
+  const fetchMock = answer(204);
+  await removeAccount("acc 1");
+  const [url, init] = fetchMock.mock.calls[0] ?? [];
+  expect(url).toBe("/api/accounts/acc%201");
+  expect(init?.method).toBe("DELETE");
+  expect(init?.keepalive).toBe(false);
+  expect(new Headers(init?.headers).get("x-requested-with")).toBe("huliho");
+  const unload = answer(204);
+  await removeAccount("acc-1", { keepalive: true });
+  expect(unload.mock.calls[0]?.[1]?.keepalive).toBe(true);
+  answer(404, { error: "not_found" });
+  await expect(removeAccount("acc-1")).resolves.toBeUndefined();
+  answer(401, { error: "unauthenticated" });
+  await expect(removeAccount("acc-1")).rejects.toMatchObject({ code: "unauthenticated" });
+  answer(500, { error: "internal" });
+  await expect(removeAccount("acc-1")).rejects.toMatchObject({ code: "unavailable" });
 });
 
 test("a consent starts with the preset and the address and answers the window's URL", async () => {

@@ -8,7 +8,9 @@ export {
   discoverServer,
   fetchAccounts,
   fetchConsent,
+  removeAccount,
   replaceCredential,
+  retryAccount,
   startConsent,
 } from "./accounts";
 export type {
@@ -25,7 +27,10 @@ export type {
   FoundServer,
   NewAccountInput,
   Provider,
+  RemoveOptions,
+  RetryResult,
   StartedConsent,
+  StopCause,
   TlsMode,
 } from "./accounts";
 export { fitsAddress, fitsHostName } from "./address";

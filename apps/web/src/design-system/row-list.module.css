@@ -28,6 +28,11 @@
   border-block-end: none;
 }
 
+/* The list clips its box, so a focused row keeps its ring inside. */
+.row:focus-visible {
+  outline-offset: calc(-1 * var(--hhx-focus-ring-width));
+}
+
 .facts {
   flex: 1;
   min-inline-size: 0;

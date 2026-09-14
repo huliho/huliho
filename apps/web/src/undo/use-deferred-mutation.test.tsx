@@ -9,7 +9,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { installCommandListener } from "../commands/registry";
 import { ToastProvider, Toasts, UNDO_WINDOW_MS } from "../design-system/toast";
 import { flushPendingOnPageHide, reapplyPendingAfterFetch } from "./pending";
-import { useDeferredMutation } from "./use-deferred-mutation";
+import { listLens, useDeferredMutation } from "./use-deferred-mutation";
 
 interface Row {
   id: string;
@@ -31,8 +31,9 @@ const server = vi.fn<() => Promise<Row[]>>(() => Promise.resolve(ROWS));
 
 function Harness({ mutate }: { mutate: Mutate }) {
   const query = useQuery({ queryKey: ROWS_KEY, queryFn: server, staleTime: Infinity });
-  const remove = useDeferredMutation<Row, string>({
+  const remove = useDeferredMutation<Row[], Row, string>({
     queryKey: ROWS_KEY,
+    ...listLens<Row>(),
     keep: (row, id) => row.id !== id,
     mutate,
     message: (removed) => `${removed.map((row) => row.id).join(",")} gone`,
@@ -52,6 +53,47 @@ function Harness({ mutate }: { mutate: Mutate }) {
           remove {row.id}
         </button>
       ))}
+    </>
+  );
+}
+
+interface Answer {
+  rows: Row[];
+  // Rides beside the rows, as the probe interval does on the accounts list.
+  note: string;
+}
+
+const ANSWER_KEY = ["answer"];
+const ANSWER: Answer = { rows: ROWS, note: "kept" };
+
+// The rows sit inside an answer; the rest of the answer must survive.
+function WrappedHarness({ mutate }: { mutate: Mutate }) {
+  const query = useQuery({
+    queryKey: ANSWER_KEY,
+    queryFn: () => Promise.resolve(ANSWER),
+    staleTime: Infinity,
+  });
+  const remove = useDeferredMutation<Answer, Row, string>({
+    queryKey: ANSWER_KEY,
+    rows: (answer) => answer.rows,
+    withRows: (answer, rows) => ({ ...answer, rows }),
+    keep: (row, id) => row.id !== id,
+    mutate,
+    message: (removed) => `${removed.map((row) => row.id).join(",")} gone`,
+    failureMessage: "Could not remove the row.",
+  });
+  return (
+    <>
+      <output data-testid="ids">{(query.data?.rows ?? []).map((row) => row.id).join(",")}</output>
+      <output data-testid="note">{query.data?.note ?? ""}</output>
+      <button
+        type="button"
+        onClick={() => {
+          remove("b");
+        }}
+      >
+        remove b
+      </button>
     </>
   );
 }
@@ -248,4 +290,29 @@ test("a failed removal brings its row back, says so and spares the other pending
   expect(mutate).toHaveBeenCalledExactlyOnceWith("b", { keepalive: false });
   expect(screen.getByText("Could not remove the row.")).toBeDefined();
   expect(ids()).toBe("b");
+});
+
+test("rows inside an answer leave and return while the rest of the answer stays", async () => {
+  const mutate = vi.fn<Mutate>().mockResolvedValue(undefined);
+  client = new QueryClient();
+  client.setQueryData(ANSWER_KEY, ANSWER);
+  cleanups = [installCommandListener(), flushPendingOnPageHide(), reapplyPendingAfterFetch(client)];
+  render(
+    <QueryClientProvider client={client}>
+      <ToastProvider>
+        <WrappedHarness mutate={mutate} />
+        <Toasts />
+      </ToastProvider>
+    </QueryClientProvider>,
+  );
+  await removeRow("b");
+  expect(ids()).toBe("a");
+  expect(screen.getByTestId("note").textContent).toBe("kept");
+  await undoByKey();
+  expect(ids()).toBe("a,b");
+  expect(screen.getByTestId("note").textContent).toBe("kept");
+  await removeRow("b");
+  await elapse(PAST_WINDOW_MS);
+  expect(mutate).toHaveBeenCalledExactlyOnceWith("b", { keepalive: false });
+  expect(ids()).toBe("a");
 });

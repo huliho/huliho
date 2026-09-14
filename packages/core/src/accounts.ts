@@ -89,6 +89,12 @@ const consentOutcomeSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("denied"), cause: consentDeniedCauseSchema }),
 ]);
 
+// The answer to a retry on a row that stays stopped.
+const stillStoppedSchema = z.object({
+  error: z.literal("still_stopped"),
+  cause: stopCauseSchema,
+});
+
 const errorBodySchema = z.object({ error: z.string() });
 
 export type Provider = z.infer<typeof providerSchema>;
@@ -103,6 +109,15 @@ export type ConsentDeniedCause = z.infer<typeof consentDeniedCauseSchema>;
 export type StartedConsent = z.infer<typeof startedConsentSchema>;
 // What the poll answers; gone once the consent ran out or was never this user's.
 export type ConsentOutcome = z.infer<typeof consentOutcomeSchema> | { status: "gone" };
+export type StopCause = z.infer<typeof stopCauseSchema>;
+// What a retry did: the row runs again or the stop stands with its cause.
+export type RetryResult =
+  { status: "resumed"; account: AccountRow } | { status: "stillStopped"; cause: StopCause };
+
+export interface RemoveOptions {
+  // A removal that fires while the page unloads needs keepalive to finish.
+  keepalive?: boolean;
+}
 
 type Found = Extract<z.infer<typeof discoverySchema>, { status: "found" }>;
 
@@ -186,6 +201,38 @@ export async function replaceCredential(id: string, credential: Credential): Pro
   const url = `${ACCOUNTS_ENDPOINT}/${encodeURIComponent(id)}/credentials`;
   const response = await send("PUT", url, { credential });
   return accountRowSchema.parse(await response.json());
+}
+
+// Runs the check now with the credential the row holds; nothing travels
+// but the id.
+export async function retryAccount(id: string): Promise<RetryResult> {
+  const response = await reach(`${ACCOUNTS_ENDPOINT}/${encodeURIComponent(id)}/retry`, {
+    method: "POST",
+    headers: CSRF_HEADERS,
+  });
+  if (response.status === 409) {
+    const stop = stillStoppedSchema.safeParse(await response.json().catch(() => null));
+    if (!stop.success) {
+      throw new AccountsError("unavailable");
+    }
+    return { status: "stillStopped", cause: stop.data.cause };
+  }
+  if (!response.ok) {
+    throw await failureOf(response);
+  }
+  return { status: "resumed", account: accountRowSchema.parse(await response.json()) };
+}
+
+// A row that is already gone is the outcome asked for, so 404 passes.
+export async function removeAccount(id: string, options: RemoveOptions = {}): Promise<void> {
+  const response = await reach(`${ACCOUNTS_ENDPOINT}/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: CSRF_HEADERS,
+    keepalive: options.keepalive === true,
+  });
+  if (!response.ok && response.status !== 404) {
+    throw await failureOf(response);
+  }
 }
 
 export async function startConsent(input: ConsentInput): Promise<StartedConsent> {

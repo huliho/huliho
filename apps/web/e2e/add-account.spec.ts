@@ -80,7 +80,8 @@ test("a Fastmail address takes three stops and two typed fields; the token goes 
   const { adds } = await openCard(page, { discover: [FASTMAIL_FOUND] });
   const walk = await walkDiscovered(page, FASTMAIL_ADDRESS, "API token", TOKEN);
   await expect(page.getByText("Fastmail connected.")).toBeVisible();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/settings\/accounts$/);
+  await expect(page.getByRole("list", { name: "Mail accounts" })).toContainText(FASTMAIL_ADDRESS);
   expect(walk.stops).toEqual(["typing", "found", "confirmHost"]);
   expect(walk.typed).toHaveLength(2);
   expect(adds).toEqual([
@@ -298,7 +299,7 @@ test("a reconnect asks for the credential only and replaces it on the row", asyn
   await field(page, "API token").fill(TOKEN);
   await page.getByRole("button", { name: "Connect" }).click();
   await expect(page.getByText("Fastmail connected.")).toBeVisible();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/settings\/accounts$/);
   expect(credentials).toEqual([{ id: "acc-1", credential: { kind: "bearer", token: TOKEN } }]);
 });
 
