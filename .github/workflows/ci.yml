@@ -168,7 +168,7 @@ jobs:
         with:
           command: check
       - name: install cargo-machete
-        uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2.87.13
         with:
           tool: cargo-machete
       - run: cargo machete
@@ -279,7 +279,7 @@ jobs:
       actions: read
       contents: read
       security-events: write
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
     with:
       # A fork pull request holds a read-only token, which cannot upload.
       upload-sarif: ${{ github.event.pull_request.head.repo.fork != true }}
@@ -458,7 +458,7 @@ jobs:
           echo "$out" | grep -q "cognitive complexity" || { echo "cognitive_complexity did not fire"; exit 1; }
           echo "$out" | grep -q "must_use" || { echo "the pedantic set did not fire"; exit 1; }
       - name: install cargo-machete and cargo-deny
-        uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2.87.13
         with:
           tool: cargo-machete,cargo-deny
       - name: cargo-machete unused dependency
@@ -507,7 +507,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+      - uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2.87.13
         with:
           tool: cargo-audit
       - run: cargo audit
