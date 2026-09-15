@@ -16,8 +16,11 @@ use axum::http::{Method, StatusCode, header};
 use common::{api_state, router_on, router_with};
 use huliho_server::api::ApiState;
 use huliho_server::auth;
+use huliho_server::events;
 use huliho_server::identity;
+use huliho_server::ids::UserId;
 use huliho_server::providers::{self, OauthProvider};
+use huliho_server::scope;
 use huliho_server::store::Store;
 use serde_json::{Value, json};
 use signin::{
@@ -76,16 +79,34 @@ async fn sign_in_other(router: &Router) -> String {
     cookie_of(&response)
 }
 
-/// The providers the session answer lists for the cookie's user.
-async fn sign_in_providers(router: &Router, cookie: &str) -> Value {
+/// The session answer for the cookie's user.
+async fn current_session(router: &Router, cookie: &str) -> Value {
     let response = router
         .clone()
         .oneshot(with_cookie(Method::GET, "/api/session", cookie))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let session: Value = serde_json::from_str(&body_text(response).await).unwrap();
-    session["signInProviders"].clone()
+    serde_json::from_str(&body_text(response).await).unwrap()
+}
+
+/// The providers the session answer lists for the cookie's user.
+async fn sign_in_providers(router: &Router, cookie: &str) -> Value {
+    current_session(router, cookie).await["signInProviders"].clone()
+}
+
+/// The `provider.*` rows of the cookie's organization, as actor and
+/// payload pairs.
+async fn provider_events(router: &Router, store: &Store, cookie: &str) -> Vec<(String, String)> {
+    let session = current_session(router, cookie).await;
+    let user_id = UserId::from(session["user"]["id"].as_str().unwrap().to_owned());
+    let scope = scope::resolve(store, &user_id, None).unwrap();
+    events::for_organization(store, &scope)
+        .unwrap()
+        .into_iter()
+        .filter(|record| record.event_type.starts_with("provider."))
+        .map(|record| (record.actor, record.payload))
+        .collect()
 }
 
 #[tokio::test]
@@ -161,6 +182,7 @@ async fn an_owner_without_the_flag_is_forbidden_on_both_routes() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert!(providers::registered(&store).unwrap().is_empty());
+    assert!(provider_events(&router, &store, &cookie).await.is_empty());
 }
 
 #[tokio::test]
@@ -240,6 +262,18 @@ async fn an_instance_admin_registers_lists_and_replaces_without_seeing_the_secre
             { "provider": "google", "clientId": "second-id" },
             { "provider": "microsoft", "clientId": "ms-id" }
         ])
+    );
+    let admin = current_session(&router, &cookie).await["user"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        provider_events(&router, &store, &cookie).await,
+        [
+            (admin.clone(), r#"{"provider":"google"}"#.to_owned()),
+            (admin.clone(), r#"{"provider":"google"}"#.to_owned()),
+            (admin, r#"{"provider":"microsoft"}"#.to_owned())
+        ]
     );
 }
 

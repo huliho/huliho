@@ -14,6 +14,7 @@ use huliho_server::accounts::{self, StopCause};
 use huliho_server::events;
 use huliho_server::identity::{self, NewUser};
 use huliho_server::ids::{AccountId, Role, UserId};
+use huliho_server::providers::OauthProvider;
 use huliho_server::scope;
 use huliho_server::store::StoreError;
 use organization::{new_user, personal, scope_of, store};
@@ -250,6 +251,12 @@ fn the_new_lifecycle_types_carry_stable_names() {
         (
             DomainEvent::AccountCredentialsUpdated { account_id },
             "account.credentials_updated",
+        ),
+        (
+            DomainEvent::ProviderClientUpdated {
+                provider: OauthProvider::Microsoft,
+            },
+            "provider.client_updated",
         ),
         (
             DomainEvent::UserInstanceAdminGranted {

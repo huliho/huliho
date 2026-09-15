@@ -12,6 +12,7 @@ use serde::Serialize;
 
 use crate::accounts::{AccountKind, StopCause};
 use crate::ids::{AccountId, OrganizationId, Role, UserId};
+use crate::providers::OauthProvider;
 use crate::scope::Scope;
 use crate::store::{Store, StoreError, now_ms};
 
@@ -86,6 +87,9 @@ pub enum DomainEvent {
     AccountCredentialsUpdated {
         account_id: AccountId,
     },
+    ProviderClientUpdated {
+        provider: OauthProvider,
+    },
     SessionCreated {},
     SessionRevoked {
         user_id: UserId,
@@ -119,6 +123,7 @@ impl DomainEvent {
             Self::AccountStopped { .. } => "account.stopped",
             Self::AccountResumed { .. } => "account.resumed",
             Self::AccountCredentialsUpdated { .. } => "account.credentials_updated",
+            Self::ProviderClientUpdated { .. } => "provider.client_updated",
             Self::SessionCreated {} => "session.created",
             Self::SessionRevoked { .. } => "session.revoked",
             Self::SessionExpired { .. } => "session.expired",
