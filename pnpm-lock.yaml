@@ -320,7 +320,7 @@ importers:
     dependencies:
       zod:
         specifier: ^4.5.4
-        version: 4.6.2
+        version: 4.6.4
     devDependencies:
       vitest:
         specifier: ^5.0.0
@@ -4704,8 +4704,8 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
-  zod@4.6.2:
-    resolution: {integrity: sha512-lh5RCAGFa1Cm2hjtNwLQhSs/AsqdWnTQaBER9fEwN/88pSh7KOtJavtBx/0VlkN/uFd61SwYmljLMDAsHlvzBQ==}
+  zod@4.6.4:
+    resolution: {integrity: sha512-AXSD6hvGdvRjajG/l1cC+d6IrhH+sjmPKtYeQdJIK8MFJl3LyClzS+o/YsVC+zQZPupAaeH5skwwm8YqYH7BqA==}
 
 snapshots:
 
@@ -7364,7 +7364,7 @@ snapshots:
       tinyglobby: 0.2.17
       unbash: 4.0.11
       yaml: 2.9.0
-      zod: 4.6.2
+      zod: 4.6.4
 
   kysely@0.28.17: {}
 
@@ -8865,4 +8865,4 @@ snapshots:
 
   zod@3.25.76: {}
 
-  zod@4.6.2: {}
+  zod@4.6.4: {}
