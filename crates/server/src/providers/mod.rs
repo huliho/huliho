@@ -6,108 +6,20 @@
 //! `auth_providers` is that client, its secret sealed under the issuer so
 //! it opens for no other provider.
 
+mod endpoints;
+
 use std::fmt;
 
 use rusqlite::{OptionalExtension, params};
 
-use crate::ids::{ProviderId, text_enum};
+pub use endpoints::OauthProvider;
+
+use crate::events::{Actor, DomainEvent, append};
+use crate::ids::ProviderId;
 use crate::scope::Scope;
 use crate::sealed;
 use crate::secrets::Keys;
 use crate::store::{Store, StoreError, now_ms};
-
-text_enum!(
-    /// The providers a mail account can sign in through.
-    OauthProvider {
-        Google => "google",
-        Microsoft => "microsoft",
-    }
-);
-
-/// A refresh token comes only when the consent asks for it: Google wants
-/// these two parameters, Microsoft a scope.
-const GOOGLE_EXTRA_PARAMS: &[(&str, &str)] = &[("access_type", "offline"), ("prompt", "consent")];
-
-/// Full mailbox access, the one scope Gmail's IMAP and SMTP accept.
-const GOOGLE_SCOPES: &[&str] = &["https://mail.google.com/"];
-
-/// IMAP and SMTP access plus the refresh token.
-const MICROSOFT_SCOPES: &[&str] = &[
-    "https://outlook.office.com/IMAP.AccessAsUser.All",
-    "https://outlook.office.com/SMTP.Send",
-    "offline_access",
-];
-
-const ALL: [OauthProvider; 2] = [OauthProvider::Google, OauthProvider::Microsoft];
-
-impl OauthProvider {
-    /// The provider behind a word from a URL path.
-    #[must_use]
-    pub fn from_word(word: &str) -> Option<Self> {
-        ALL.into_iter().find(|provider| provider.as_str() == word)
-    }
-
-    /// The issuer, which keys the provider row.
-    #[must_use]
-    pub fn issuer(self) -> &'static str {
-        match self {
-            Self::Google => "https://accounts.google.com",
-            Self::Microsoft => "https://login.microsoftonline.com/common/v2.0",
-        }
-    }
-
-    /// The `OpenID` configuration document, for the sign-in that comes
-    /// later.
-    #[must_use]
-    pub fn discovery_url(self) -> &'static str {
-        match self {
-            Self::Google => "https://accounts.google.com/.well-known/openid-configuration",
-            Self::Microsoft => {
-                "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"
-            }
-        }
-    }
-
-    /// The authorization endpoint the discovery document names.
-    #[must_use]
-    pub fn authorization_url(self) -> &'static str {
-        match self {
-            Self::Google => "https://accounts.google.com/o/oauth2/v2/auth",
-            Self::Microsoft => "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-        }
-    }
-
-    /// The token endpoint the discovery document names.
-    #[must_use]
-    pub fn token_url(self) -> &'static str {
-        match self {
-            Self::Google => "https://oauth2.googleapis.com/token",
-            Self::Microsoft => "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-        }
-    }
-
-    /// The least a mail client asks for.
-    #[must_use]
-    pub fn scopes(self) -> &'static [&'static str] {
-        match self {
-            Self::Google => GOOGLE_SCOPES,
-            Self::Microsoft => MICROSOFT_SCOPES,
-        }
-    }
-
-    /// Parameters beyond the standard ones the consent needs.
-    #[must_use]
-    pub fn extra_params(self) -> &'static [(&'static str, &'static str)] {
-        match self {
-            Self::Google => GOOGLE_EXTRA_PARAMS,
-            Self::Microsoft => &[],
-        }
-    }
-
-    fn from_issuer(issuer: &str) -> Option<Self> {
-        ALL.into_iter().find(|provider| provider.issuer() == issuer)
-    }
-}
 
 /// A registered client: what the admin got from the provider.
 #[derive(Clone, PartialEq, Eq)]
@@ -131,8 +43,8 @@ pub struct RegisteredClient {
     pub id: String,
 }
 
-/// Registers or replaces the provider's client. Requires the
-/// instance-admin flag.
+/// Registers or replaces the provider's client and appends the fact to
+/// the acting user's organization. Requires the instance-admin flag.
 ///
 /// # Errors
 ///
@@ -152,6 +64,10 @@ pub fn set_client(
         client.secret.as_bytes(),
     )?;
     let id = ProviderId::generate();
+    let actor = Actor::User(scope.user_id().clone());
+    let event = DomainEvent::ProviderClientUpdated {
+        provider: client.provider,
+    };
     store.write(|transaction| {
         transaction.execute(
             "INSERT INTO auth_providers
@@ -168,7 +84,7 @@ pub fn set_client(
                 now_ms()
             ],
         )?;
-        Ok(())
+        append(transaction, scope.organization_id(), &actor, &event)
     })
 }
 
@@ -223,7 +139,7 @@ pub fn registered(store: &Store) -> Result<Vec<OauthProvider>, StoreError> {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     })?;
-    Ok(ALL
+    Ok(endpoints::ALL
         .into_iter()
         .filter(|provider| issuers.iter().any(|issuer| issuer == provider.issuer()))
         .collect())
@@ -258,9 +174,8 @@ pub fn list(store: &Store, scope: &Scope) -> Result<Vec<RegisteredClient>, Store
 
 #[cfg(test)]
 mod tests {
-    use url::Url;
-
     use super::*;
+    use crate::events;
     use crate::identity;
     use crate::scope;
     use crate::secrets::InstanceSecret;
@@ -304,6 +219,17 @@ mod tests {
             .unwrap()
     }
 
+    /// The `provider.*` rows of the owner's organization, as actor and
+    /// payload pairs.
+    fn provider_events(store: &Store, scope: &Scope) -> Vec<(String, String)> {
+        events::for_organization(store, scope)
+            .unwrap()
+            .into_iter()
+            .filter(|record| record.event_type.starts_with("provider."))
+            .map(|record| (record.actor, record.payload))
+            .collect()
+    }
+
     #[test]
     fn an_owner_without_the_flag_registers_nothing_and_lists_nothing() {
         let (store, scope) = store_with_owner(false);
@@ -315,6 +241,25 @@ mod tests {
             None
         );
         assert!(registered(&store).unwrap().is_empty());
+        assert!(provider_events(&store, &scope).is_empty());
+    }
+
+    #[test]
+    fn every_write_appends_the_fact_with_the_provider_word_only() {
+        let (store, scope) = store_with_owner(true);
+        let keys = keys();
+        set_client(&store, &keys, &scope, &google()).unwrap();
+        let replaced = OauthClient {
+            id: "other-id".to_owned(),
+            ..google()
+        };
+        set_client(&store, &keys, &scope, &replaced).unwrap();
+        let actor = scope.user_id().as_str().to_owned();
+        let payload = r#"{"provider":"google"}"#.to_owned();
+        assert_eq!(
+            provider_events(&store, &scope),
+            [(actor.clone(), payload.clone()), (actor, payload)]
+        );
     }
 
     #[test]
@@ -396,40 +341,6 @@ mod tests {
                 provider: OauthProvider::Google,
                 id: "other-id".to_owned(),
             }]
-        );
-    }
-
-    #[test]
-    fn the_endpoints_are_https_and_the_discovery_url_hangs_off_the_issuer() {
-        for provider in ALL {
-            assert_eq!(
-                provider.discovery_url(),
-                format!("{}/.well-known/openid-configuration", provider.issuer())
-            );
-            for text in [provider.authorization_url(), provider.token_url()] {
-                let url = Url::parse(text).unwrap();
-                assert_eq!(url.scheme(), "https", "{text}");
-            }
-            assert!(!provider.scopes().is_empty());
-            assert_eq!(OauthProvider::from_word(provider.as_str()), Some(provider));
-        }
-        assert_eq!(OauthProvider::from_word("yahoo"), None);
-        assert!(
-            OauthProvider::Microsoft
-                .scopes()
-                .contains(&"offline_access")
-        );
-        assert!(OauthProvider::Microsoft.extra_params().is_empty());
-        assert_eq!(OauthProvider::Google.extra_params().len(), 2);
-    }
-
-    #[test]
-    fn the_provider_words_are_stable() {
-        assert_eq!(OauthProvider::Google.as_str(), "google");
-        assert_eq!(OauthProvider::Microsoft.as_str(), "microsoft");
-        assert_eq!(
-            serde_json::to_string(&OauthProvider::Microsoft).unwrap(),
-            "\"microsoft\""
         );
     }
 }
