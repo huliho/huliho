@@ -2,20 +2,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! The /api router: its guards, extractors and the error shape.
+//! The /api router: its guards and extractors.
 
 mod accounts;
 mod consent_page;
 mod discover;
+mod error;
+mod jmap;
 mod login;
 mod oauth;
 mod password;
+mod preferences;
 mod providers;
 mod reconnect;
 mod sessions;
 mod users;
 
-use std::fmt::Display;
 use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -23,25 +25,24 @@ use std::sync::Arc;
 use axum::Router;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRequestParts, Request};
 use axum::http::request::Parts;
-use axum::http::{HeaderValue, Method, StatusCode, header};
+use axum::http::{Method, header};
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Json, Response};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use axum_extra::extract::cookie::CookieJar;
-use serde::Serialize;
 use tokio::sync::Semaphore;
 use url::Url;
 
-use crate::accounts::StopCause;
-use crate::auth::AuthError;
+use error::{ApiError, internal};
+
 use crate::gate::{Gate, Reconnect};
 use crate::ids::UserId;
+use crate::jmap::{Endpoints, JMAP_REQUEST_LIMIT, Proxy};
 use crate::oauth::Consents;
-use crate::probe::ProbeError;
 use crate::rate::RateLimiter;
 use crate::secrets::Keys;
-use crate::session::{self, SESSION_COOKIE, Session, SessionError, SessionTimeouts};
-use crate::store::{MS_PER_SECOND, Store, StoreError};
+use crate::session::{self, SESSION_COOKIE, Session, SessionTimeouts};
+use crate::store::Store;
 use crate::upstream::Upstream;
 
 /// Nothing on /api carries more than a small form.
@@ -78,6 +79,8 @@ pub struct ApiState {
     pub consents: Arc<Consents>,
     /// The connection gate, one process wide.
     pub gate: Gate,
+    /// What the JMAP proxy keeps per account, one process wide.
+    pub endpoints: Arc<Endpoints>,
 }
 
 /// The wiring of a check on a stored account, as the routes and the
@@ -88,6 +91,17 @@ impl From<&ApiState> for Reconnect {
             gate: state.gate.clone(),
             keys: Arc::clone(&state.keys),
             upstream: Arc::clone(&state.upstream),
+        }
+    }
+}
+
+/// The wiring of a proxied request: the reconnect wiring plus what the
+/// proxy keeps per account.
+impl From<&ApiState> for Proxy {
+    fn from(state: &ApiState) -> Self {
+        Self {
+            wiring: Reconnect::from(state),
+            endpoints: Arc::clone(&state.endpoints),
         }
     }
 }
@@ -125,6 +139,13 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/auth-providers", get(providers::list_providers))
         .route("/auth-providers/{provider}", put(providers::set_provider))
+        .route("/jmap/{id}/session", get(jmap::session))
+        .route(
+            "/jmap/{id}",
+            post(jmap::request).layer(DefaultBodyLimit::max(JMAP_REQUEST_LIMIT)),
+        )
+        .route("/preferences", get(preferences::list_preferences))
+        .route("/preferences/{key}", put(preferences::set_preference))
         .route("/users", get(users::list_users).post(users::create_user))
         .route("/users/{id}/password-reset", post(users::reset_password))
         .layer(axum::middleware::from_fn(require_csrf_header))
@@ -138,160 +159,6 @@ pub fn browser_router(state: ApiState) -> Router {
     Router::new()
         .route("/auth/{provider}/callback", get(oauth::callback))
         .with_state(state)
-}
-
-/// Stable machine-readable errors; the client owns the wording.
-#[derive(Debug)]
-enum ApiError {
-    InvalidRequest,
-    InvalidCredentials,
-    Unauthenticated,
-    Forbidden,
-    PasswordChangeRequired,
-    NotFound,
-    LoginTaken,
-    MissingCsrfHeader,
-    RateLimited { retry_after_ms: i64 },
-    ProviderNotConfigured,
-    StillStopped { cause: StopCause },
-    UpstreamCredentials,
-    UpstreamUnreachable,
-    UpstreamInsecure,
-    UpstreamUnsupported,
-    SmtpAuthUnavailable,
-    Internal,
-}
-
-impl ApiError {
-    fn code(&self) -> &'static str {
-        match self {
-            Self::InvalidRequest => "invalid_request",
-            Self::InvalidCredentials => "invalid_credentials",
-            Self::Unauthenticated => "unauthenticated",
-            Self::Forbidden => "forbidden",
-            Self::PasswordChangeRequired => "password_change_required",
-            Self::NotFound => "not_found",
-            Self::LoginTaken => "login_taken",
-            Self::MissingCsrfHeader => "missing_csrf_header",
-            Self::RateLimited { .. } => "rate_limited",
-            Self::ProviderNotConfigured => "provider_not_configured",
-            Self::StillStopped { .. } => "still_stopped",
-            Self::UpstreamCredentials => "upstream_credentials",
-            Self::UpstreamUnreachable => "upstream_unreachable",
-            Self::UpstreamInsecure => "upstream_insecure",
-            Self::UpstreamUnsupported => "upstream_unsupported",
-            Self::SmtpAuthUnavailable => "smtp_auth_unavailable",
-            Self::Internal => "internal",
-        }
-    }
-
-    fn status(&self) -> StatusCode {
-        match self {
-            Self::InvalidRequest
-            | Self::UpstreamInsecure
-            | Self::UpstreamUnsupported
-            | Self::SmtpAuthUnavailable => StatusCode::BAD_REQUEST,
-            Self::InvalidCredentials | Self::Unauthenticated | Self::UpstreamCredentials => {
-                StatusCode::UNAUTHORIZED
-            }
-            Self::UpstreamUnreachable => StatusCode::BAD_GATEWAY,
-            Self::Forbidden | Self::PasswordChangeRequired | Self::MissingCsrfHeader => {
-                StatusCode::FORBIDDEN
-            }
-            Self::NotFound => StatusCode::NOT_FOUND,
-            Self::LoginTaken | Self::ProviderNotConfigured | Self::StillStopped { .. } => {
-                StatusCode::CONFLICT
-            }
-            Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
-            Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
-
-#[derive(Serialize)]
-struct ErrorBody {
-    error: &'static str,
-    /// The stop cause, on `still_stopped` only.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    cause: Option<StopCause>,
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        let cause = match &self {
-            Self::StillStopped { cause } => Some(*cause),
-            _ => None,
-        };
-        let body = Json(ErrorBody {
-            error: self.code(),
-            cause,
-        });
-        let mut response = (self.status(), body).into_response();
-        if let Self::RateLimited { retry_after_ms } = self {
-            let seconds = ((retry_after_ms + MS_PER_SECOND - 1) / MS_PER_SECOND).max(1);
-            if let Ok(value) = HeaderValue::from_str(&seconds.to_string()) {
-                response.headers_mut().insert(header::RETRY_AFTER, value);
-            }
-        }
-        response
-    }
-}
-
-impl From<SessionError> for ApiError {
-    fn from(error: SessionError) -> Self {
-        match error {
-            SessionError::Unauthenticated => Self::Unauthenticated,
-            SessionError::Store(inner) => Self::from(inner),
-        }
-    }
-}
-
-impl From<AuthError> for ApiError {
-    fn from(error: AuthError) -> Self {
-        match error {
-            AuthError::PasswordLength | AuthError::OwnPassword => Self::InvalidRequest,
-            AuthError::Store(inner) => Self::from(inner),
-            AuthError::Random | AuthError::Hash(_) => internal(error),
-        }
-    }
-}
-
-impl From<StoreError> for ApiError {
-    fn from(error: StoreError) -> Self {
-        match error {
-            StoreError::NotFound => Self::NotFound,
-            StoreError::Forbidden => Self::Forbidden,
-            StoreError::CurrentSession => Self::InvalidRequest,
-            StoreError::LoginTaken => Self::LoginTaken,
-            StoreError::DataDirectory { .. }
-            | StoreError::Database(_)
-            | StoreError::Migration(_)
-            | StoreError::Encoding(_)
-            | StoreError::Random
-            | StoreError::Sealing
-            | StoreError::Tampered
-            | StoreError::Poisoned
-            | StoreError::LastOwner
-            | StoreError::MissingAccount => internal(error),
-        }
-    }
-}
-
-impl From<ProbeError> for ApiError {
-    fn from(error: ProbeError) -> Self {
-        match error {
-            ProbeError::CredentialRejected => Self::UpstreamCredentials,
-            ProbeError::Unreachable(_) => Self::UpstreamUnreachable,
-            ProbeError::Insecure(_) => Self::UpstreamInsecure,
-            ProbeError::Unsupported(_) => Self::UpstreamUnsupported,
-            ProbeError::SmtpAuthUnavailable => Self::SmtpAuthUnavailable,
-        }
-    }
-}
-
-fn internal(error: impl Display) -> ApiError {
-    tracing::error!(%error, "api request failed");
-    ApiError::Internal
 }
 
 /// What the listener and the request headers say about the client.
@@ -396,8 +263,9 @@ impl FromRequestParts<ApiState> for Full {
     }
 }
 
-/// The client and the full session behind a mutation, taken together so a
-/// handler with a path and a body stays within the argument budget.
+/// The client and the full session behind a call that touches the
+/// session, taken together so a handler with a path and a body stays
+/// within the argument budget.
 struct Caller {
     client: ClientInfo,
     session: Session,

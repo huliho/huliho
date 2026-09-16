@@ -15,6 +15,7 @@ pub mod events;
 pub mod gate;
 pub mod identity;
 pub mod ids;
+pub mod jmap;
 pub mod oauth;
 pub mod prefs;
 pub mod presets;

@@ -94,19 +94,31 @@ impl TlsServer {
         }
     }
 
-    /// Every request so far as `METHOD host path`.
+    /// Every request so far as `METHOD host path`, plus the
+    /// `Authorization` value when the request carried one.
     pub fn requests(&self) -> Vec<String> {
         self.requests.lock().unwrap().clone()
     }
 }
 
 async fn record(State(requests): State<Requests>, request: Request, next: Next) -> Response {
-    let host = request
-        .headers()
-        .get(header::HOST)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default();
-    let line = format!("{} {host} {}", request.method(), request.uri());
+    let host = header_text(&request, header::HOST);
+    let authorization = header_text(&request, header::AUTHORIZATION);
+    let credential = if authorization.is_empty() {
+        String::new()
+    } else {
+        format!(" {authorization}")
+    };
+    let line = format!("{} {host} {}{credential}", request.method(), request.uri());
     requests.lock().unwrap().push(line);
     next.run(request).await
+}
+
+fn header_text(request: &Request, name: header::HeaderName) -> String {
+    request
+        .headers()
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_owned()
 }

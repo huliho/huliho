@@ -179,7 +179,7 @@ impl Reconnect {
     /// tokens. The check reads the access token alone, so the rest of the
     /// blob rides along as stored; the refresh itself writes the rotated
     /// tokens to the row.
-    async fn live_credential(
+    pub(crate) async fn live_credential(
         &self,
         scope: &Scope,
         stored: Credential,

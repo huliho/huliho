@@ -6,6 +6,7 @@
 //! again, the loop that runs it and a replaced credential.
 
 mod common;
+mod readers;
 mod reconnect;
 mod signin;
 

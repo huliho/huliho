@@ -205,17 +205,31 @@ fn redirect_policy() -> redirect::Policy {
     })
 }
 
-/// The body up to `limit` bytes; `None` when it is longer or fails to
-/// read.
-pub(crate) async fn read_bounded(mut response: reqwest::Response, limit: usize) -> Option<Vec<u8>> {
+/// Why a body did not come back whole.
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BodyError {
+    /// The body runs past the limit the caller set.
+    #[error("the body runs past the limit")]
+    TooLarge,
+    /// A chunk failed to read: the connection ended or timed out.
+    #[error("the body could not be read")]
+    ReadFailed,
+}
+
+/// The body up to `limit` bytes; [`BodyError::TooLarge`] when it is
+/// longer, [`BodyError::ReadFailed`] when a chunk fails to read.
+pub(crate) async fn read_bounded(
+    mut response: reqwest::Response,
+    limit: usize,
+) -> Result<Vec<u8>, BodyError> {
     let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await.ok()? {
+    while let Some(chunk) = response.chunk().await.map_err(|_| BodyError::ReadFailed)? {
         if body.len() + chunk.len() > limit {
-            return None;
+            return Err(BodyError::TooLarge);
         }
         body.extend_from_slice(&chunk);
     }
-    Some(body)
+    Ok(body)
 }
 
 /// Resolves through the one resolver and refuses every address the rule
@@ -265,10 +279,28 @@ impl Resolve for Pinned {
 
 #[cfg(test)]
 mod tests {
+    use axum::body::Bytes;
+    use http_body_util::{Full, Limited};
+
     use super::*;
+
+    fn answer(body: reqwest::Body) -> reqwest::Response {
+        reqwest::Response::from(axum::http::Response::new(body))
+    }
 
     #[test]
     fn one_attempt_gets_twenty_seconds() {
         assert_eq!(ATTEMPT_TIMEOUT, Duration::from_secs(20));
+    }
+
+    #[tokio::test]
+    async fn a_body_comes_back_whole_or_names_why_not() {
+        let whole = read_bounded(answer("abc".into()), 3).await;
+        assert_eq!(whole, Ok(b"abc".to_vec()));
+        let long = read_bounded(answer("abcd".into()), 3).await;
+        assert_eq!(long, Err(BodyError::TooLarge));
+        let failing = Limited::new(Full::new(Bytes::from_static(b"abc")), 1);
+        let cut = read_bounded(answer(reqwest::Body::wrap(failing)), 3).await;
+        assert_eq!(cut, Err(BodyError::ReadFailed));
     }
 }

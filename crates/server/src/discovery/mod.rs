@@ -214,7 +214,7 @@ impl Chain<'_> {
             if response.status() != StatusCode::OK {
                 continue;
             }
-            let Some(document) = read_bounded(response, MAX_AUTOCONFIG_BYTES).await else {
+            let Ok(document) = read_bounded(response, MAX_AUTOCONFIG_BYTES).await else {
                 continue;
             };
             if let Some(servers) = autoconfig::parse(&document) {

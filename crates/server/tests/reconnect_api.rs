@@ -7,6 +7,7 @@
 
 mod common;
 mod log_capture;
+mod readers;
 mod reconnect;
 mod signin;
 

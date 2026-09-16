@@ -52,6 +52,7 @@ http-body-util = "0.1.5"
 huliho-imap-bridge = { version = "0.0.0", path = "../imap-bridge", features = ["test-support"] }
 rcgen = "0.14.10"
 tempfile = "3.27.0"
+tokio = { version = "1.53.1", features = ["test-util"] }
 tower = { version = "0.5.3", features = ["util"] }
 trybuild = "1.0.120"
 

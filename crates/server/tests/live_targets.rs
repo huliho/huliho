@@ -25,6 +25,7 @@ use huliho_server::api::ApiState;
 use huliho_server::config::UpstreamConfig;
 use huliho_server::discovery::{self, Address, Budget, Discovered};
 use huliho_server::gate::{MAX_REFUSED_RUN, Reconnect};
+use huliho_server::jmap::{JMAP_REQUEST_LIMIT, MAX_CONCURRENT_REQUESTS};
 use huliho_server::upstream::{Dns, SrvTarget, Upstream};
 use serde_json::{Value, json};
 use signin::{
@@ -41,6 +42,10 @@ const CYRUS_PORT: u16 = 8443;
 /// The compose Dovecot on the same loopback: IMAPS and submission.
 const IMAPS_PORT: u16 = 31993;
 const SUBMISSION_PORT: u16 = 31587;
+
+const CORE: &str = "urn:ietf:params:jmap:core";
+const MAIL: &str = "urn:ietf:params:jmap:mail";
+
 const MAIL_ADDRESS: &str = "sanne@huliho.test";
 const MAIL_PASSWORD: &str = "password";
 const ROUTE: &str = "/api/accounts";
@@ -250,6 +255,23 @@ async fn listed(router: &Router, cookie: &str) -> Value {
     serde_json::from_str(&body_text(response).await).unwrap()
 }
 
+/// One request through the proxy: the JSON body on the account's
+/// endpoint with the header the router demands.
+async fn proxied(router: &Router, cookie: &str, id: &str, body: &Value) -> (StatusCode, Value) {
+    let mut request = with_cookie(Method::POST, &format!("/api/jmap/{id}"), cookie);
+    request
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+    *request.body_mut() = Body::from(body.to_string());
+    let response = router.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    let text = body_text(response).await;
+    (
+        status,
+        serde_json::from_str(&text).unwrap_or(Value::String(text)),
+    )
+}
+
 #[tokio::test]
 async fn cyrus_and_dovecot_accounts_add_through_the_router_and_list() {
     logging();
@@ -308,6 +330,74 @@ async fn a_paused_dovecot_stops_the_account_and_the_probe_resumes_it() {
         .find(|row| row["id"] == id)
         .unwrap();
     assert!(row["stoppedCause"].is_null(), "{row}");
+}
+
+#[tokio::test]
+async fn the_proxy_answers_the_cyrus_session_object_and_one_query_round_trip() {
+    logging();
+    let (router, _) = compose_router();
+    let cookie = sign_in(&router).await;
+    let (status, text) = add(&router, &cookie, &cyrus_body(MAIL_PASSWORD)).await;
+    assert_eq!(status, StatusCode::CREATED, "{text}");
+    let row: Value = serde_json::from_str(&text).unwrap();
+    let id = row["id"].as_str().unwrap().to_owned();
+    let response = router
+        .clone()
+        .oneshot(with_cookie(
+            Method::GET,
+            &format!("/api/jmap/{id}/session"),
+            &cookie,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let session: Value = serde_json::from_str(&body_text(response).await).unwrap();
+    assert_eq!(session["apiUrl"], format!("/api/jmap/{id}"));
+    assert_eq!(
+        session["downloadUrl"],
+        format!("/api/jmap/{id}/download/{{accountId}}/{{blobId}}/{{name}}?type={{type}}")
+    );
+    assert_eq!(
+        session["uploadUrl"],
+        format!("/api/jmap/{id}/upload/{{accountId}}")
+    );
+    assert_eq!(
+        session["eventSourceUrl"],
+        format!("/api/jmap/{id}/events?types={{types}}&closeafter={{closeafter}}&ping={{ping}}")
+    );
+    let primary: Vec<&str> = session["primaryAccounts"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(primary, [MAIL], "{session}");
+    let carried: Vec<&str> = session["capabilities"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(carried, [CORE, MAIL], "{session}");
+    let core = &session["capabilities"][CORE];
+    assert!(core["maxSizeRequest"].as_u64().unwrap() <= u64::try_from(JMAP_REQUEST_LIMIT).unwrap());
+    assert!(
+        core["maxConcurrentRequests"].as_u64().unwrap()
+            <= u64::try_from(MAX_CONCURRENT_REQUESTS).unwrap()
+    );
+    let text = session.to_string();
+    assert!(!text.contains(CYRUS_HOST), "{text}");
+    let account = session["primaryAccounts"][MAIL].as_str().unwrap();
+    let request = json!({
+        "using": [CORE, MAIL],
+        "methodCalls": [["Email/query", { "accountId": account, "limit": 10 }, "c1"]]
+    });
+    let (status, answer) = proxied(&router, &cookie, &id, &request).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    let call = &answer["methodResponses"][0];
+    assert_eq!(call[0], "Email/query", "{answer}");
+    assert!(call[1]["ids"].is_array(), "{answer}");
+    assert_eq!(call[2], "c1");
 }
 
 #[tokio::test]
