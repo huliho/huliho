@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use huliho_server::identity::{self, User};
-use huliho_server::prefs::{self, PolicyKey};
+use huliho_server::prefs::{self, PolicyKey, PreferenceKey};
 use huliho_server::scope::{self, Scope};
 use huliho_server::store::Store;
 
@@ -75,6 +75,35 @@ fn preferences_stay_with_their_user() {
     prefs::set_preference(&store, &scope_of(&store, &alpha), "theme", &"dark").unwrap();
     let read = prefs::preference::<String>(&store, &scope_of(&store, &beta), "theme").unwrap();
     assert_eq!(read, None);
+}
+
+#[test]
+fn the_listed_preferences_come_back_as_words_and_the_rest_stays_out() {
+    let store = store();
+    let user = personal(&store, "mira@example.com");
+    let scope = scope_of(&store, &user);
+    assert!(prefs::preferences(&store, &scope).unwrap().is_empty());
+    prefs::set_preference(&store, &scope, PreferenceKey::Theme.as_str(), &"dark").unwrap();
+    prefs::set_preference(&store, &scope, PreferenceKey::Locale.as_str(), &"nl").unwrap();
+    prefs::set_preference(
+        &store,
+        &scope,
+        "compose_size",
+        &ComposeSize {
+            width: 1,
+            height: 1,
+        },
+    )
+    .unwrap();
+    let mut listed = prefs::preferences(&store, &scope).unwrap();
+    listed.sort_by_key(|(key, _)| key.as_str());
+    assert_eq!(
+        listed,
+        [
+            (PreferenceKey::Locale, "nl".to_owned()),
+            (PreferenceKey::Theme, "dark".to_owned())
+        ]
+    );
 }
 
 #[test]

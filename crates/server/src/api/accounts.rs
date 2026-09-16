@@ -141,12 +141,14 @@ pub(super) async fn remove_account(
 ) -> Result<StatusCode, ApiError> {
     let store = Arc::clone(&state.store);
     let gate = state.gate.clone();
+    let endpoints = Arc::clone(&state.endpoints);
     tokio::task::spawn_blocking(move || -> Result<(), ApiError> {
         let account_id = AccountId::from(id);
         let scope = scope::resolve(&store, &auth.session.user_id, Some(&account_id))?;
         session::touch(&store, &scope, &auth.session, client.address)?;
         accounts::remove(&store, &scope)?;
         gate.forget(&account_id);
+        endpoints.forget(&account_id);
         Ok(())
     })
     .await

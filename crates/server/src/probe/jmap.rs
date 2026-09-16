@@ -10,7 +10,7 @@ use std::error::Error as _;
 use std::fmt;
 use std::io;
 
-use reqwest::StatusCode;
+use reqwest::{RequestBuilder, Response, StatusCode};
 use serde::de::{IgnoredAny, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use url::Url;
@@ -18,13 +18,13 @@ use url::Url;
 use super::ProbeError;
 use crate::accounts::Credential;
 use crate::discovery::Address;
-use crate::upstream::{Upstream, read_bounded};
+use crate::upstream::{BodyError, Upstream, read_bounded};
 
 /// The capability every mail account needs (RFC 8621 section 1.1).
 const MAIL_CAPABILITY: &str = "urn:ietf:params:jmap:mail";
 
 /// A session object runs to a few kilobytes; more is not one.
-const MAX_SESSION_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_SESSION_BYTES: usize = 64 * 1024;
 
 /// The part of the session object the check reads.
 #[derive(Deserialize)]
@@ -58,15 +58,14 @@ fn capability_names<'de, D: Deserializer<'de>>(
     deserializer.deserialize_map(Names)
 }
 
-/// GET on the session URL with the credential; a pass is a session
-/// object that advertises mail.
-pub(super) async fn check(
-    upstream: &Upstream,
-    session_url: &Url,
+/// Sends `request` with the credential added: Basic with the address as
+/// the user for a password, Bearer for a token. A failure comes back in
+/// fixed words, since the client's own text names the URL.
+pub(crate) async fn send(
+    request: RequestBuilder,
     address: &Address,
     credential: &Credential,
-) -> Result<(), ProbeError> {
-    let request = upstream.http().get(session_url.clone());
+) -> Result<Response, ProbeError> {
     let request = match credential {
         Credential::Password { password } => {
             request.basic_auth(address.to_string(), Some(password))
@@ -77,10 +76,19 @@ pub(super) async fn check(
             ..
         } => request.bearer_auth(token),
     };
-    let response = request
-        .send()
-        .await
-        .map_err(|error| request_error(&error))?;
+    request.send().await.map_err(|error| request_error(&error))
+}
+
+/// GET on the session URL with the credential; a pass is a session
+/// object that advertises mail.
+pub(super) async fn check(
+    upstream: &Upstream,
+    session_url: &Url,
+    address: &Address,
+    credential: &Credential,
+) -> Result<(), ProbeError> {
+    let request = upstream.http().get(session_url.clone());
+    let response = send(request, address, credential).await?;
     match response.status() {
         StatusCode::OK => {}
         StatusCode::UNAUTHORIZED => return Err(ProbeError::CredentialRejected),
@@ -92,8 +100,13 @@ pub(super) async fn check(
     }
     let body = read_bounded(response, MAX_SESSION_BYTES)
         .await
-        .ok_or_else(|| {
-            ProbeError::Unsupported("the session resource answered too much".to_owned())
+        .map_err(|error| match error {
+            BodyError::TooLarge => {
+                ProbeError::Unsupported("the session resource answered too much".to_owned())
+            }
+            BodyError::ReadFailed => {
+                ProbeError::Unreachable("the session resource ended early".to_owned())
+            }
         })?;
     let session: SessionObject = serde_json::from_slice(&body)
         .map_err(|_| ProbeError::Unsupported("the answer is not a session object".to_owned()))?;

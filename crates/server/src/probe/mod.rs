@@ -17,6 +17,8 @@ use huliho_imap_bridge::verify::{Credential as BridgeCredential, VerifyError};
 use huliho_imap_bridge::{smtp, verify};
 use thiserror::Error;
 
+pub(crate) use jmap::{MAX_SESSION_BYTES, send};
+
 use crate::accounts::{AccountSettings, Credential, Endpoint, TlsMode};
 use crate::discovery::Address;
 use crate::upstream::{ATTEMPT_TIMEOUT, Upstream, UpstreamError};

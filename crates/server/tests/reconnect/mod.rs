@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use axum::Router;
 use axum::body::Body;
@@ -23,8 +24,7 @@ use huliho_server::accounts::{
 use huliho_server::api::ApiState;
 use huliho_server::auth::{self, LoginOutcome};
 use huliho_server::config::UpstreamConfig;
-use huliho_server::events;
-use huliho_server::gate::Reconnect;
+use huliho_server::gate::{Gate, Reconnect};
 use huliho_server::identity;
 use huliho_server::ids::{AccountId, UserId};
 use huliho_server::scope::{self, Scope};
@@ -36,9 +36,10 @@ use tokio::net::TcpListener;
 use tower::ServiceExt;
 
 use crate::common::{api_state, router_on, router_with};
+use crate::readers;
 use crate::signin::{
-    LOGIN, PASSWORD as LOGIN_PASSWORD, body_text, cookie_of, login_request, sign_in,
-    store_with_account, with_cookie,
+    LOGIN, PASSWORD as LOGIN_PASSWORD, cookie_of, login_request, sign_in, store_with_account,
+    with_cookie,
 };
 
 /// The mail address of the fixture account.
@@ -122,6 +123,9 @@ impl Instance {
         let resolver: Arc<dyn Dns> = dns.clone();
         let api = ApiState {
             upstream: Arc::new(Upstream::with_dns(&config, resolver).unwrap()),
+            // The fakes refuse within microseconds, so every failure counts
+            // and five retries in a row stop the account.
+            gate: Gate::with_window(Arc::clone(&store), Duration::ZERO),
             ..api_state(Arc::clone(&store))
         };
         let router = router_with(api.clone());
@@ -212,20 +216,12 @@ impl Instance {
 
     /// The row's stop cause word; `None` while it runs.
     pub fn stopped_cause(&self, id: &str) -> Option<String> {
-        accounts::get(&self.store, &self.scope(Some(id)))
-            .unwrap()
-            .stopped_cause
-            .map(|cause| cause.as_str().to_owned())
+        readers::stopped_cause(&self.store, &self.scope(Some(id)))
     }
 
     /// The account events as `(type, actor)`, oldest first.
     pub fn account_events(&self) -> Vec<(String, String)> {
-        events::for_organization(&self.store, &self.scope(None))
-            .unwrap()
-            .into_iter()
-            .filter(|record| record.event_type.starts_with("account."))
-            .map(|record| (record.event_type, record.actor))
-            .collect()
+        readers::account_events(&self.store, &self.scope(None))
     }
 
     pub async fn retry(&self, cookie: &str, id: &str) -> (StatusCode, Value) {
@@ -253,13 +249,7 @@ impl Instance {
     }
 
     async fn answer(&self, request: Request<Body>) -> (StatusCode, Value) {
-        let response = self.router.clone().oneshot(request).await.unwrap();
-        let status = response.status();
-        let text = body_text(response).await;
-        (
-            status,
-            serde_json::from_str(&text).unwrap_or(Value::String(text)),
-        )
+        readers::answer(&self.router, request).await
     }
 }
 

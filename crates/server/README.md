@@ -74,8 +74,9 @@ Request logs carry the matched route, never a path with an id or a
 query in it.
 Once an account is connected, every attempt on it passes through one
 gate. A rejected credential stops the account at once and the row says
-so with the cause `credentials`; five refused, timed-out or TLS-failed
-connections in a row stop it with the cause `connection`. The stop
+so with the cause `credentials`; refused, timed-out or TLS-failed
+connections in five separate ten-second windows stop it with the cause
+`connection`; failures inside one window count once. The stop
 lives on the row, so a restart does not resume retrying by itself. A
 probe checks every account stopped on connection at startup and then
 at the configured interval and resumes it when the server answers
@@ -84,8 +85,28 @@ again. The user retries a stopped account with
 `still_stopped` with the cause. A new credential goes to
 `PUT /api/accounts/{id}/credentials` and replaces the stored one after
 a passing check. An OAuth account whose access token is about to run
-out gets a fresh one before the check. Attempts on one account run one
+out gets a fresh one before the check. Checks on one account run one
 at a time.
+Mail itself moves through one JMAP endpoint per account. `GET
+/api/jmap/{id}/session` answers the account's session object as the
+browser may see it: its URLs point at the proxy, its capabilities are
+cut to core and mail and its two request limits are at most the
+proxy's own.
+`POST /api/jmap/{id}` forwards a Request object to the API endpoint
+that session object named, with the account's credential added on the
+way and the answer handed back as the server sent it. A request body
+of one MiB at most, an answer of sixteen MiB at most, one timeout per
+upstream request and four requests in flight per account; a fifth one
+gets the JMAP `limit` error at once. The API endpoint an upstream
+names passes the pinned resolver and the private-network rule like
+every other target before anything is sent to it. Every outcome
+reports to the gate without the account lock: a rejected credential
+stops the account at once; refused connections count once per
+ten-second window and stop it after five windows; a server error of
+the upstream's own decides nothing; a stopped account answers
+`still_stopped` before anything connects. `GET /api/preferences` and
+`PUT /api/preferences/{key}` read and write the reading pane position,
+the theme, the density and the locale, each from a fixed list of words.
 
 Configuration is one TOML file; unknown keys are rejected. Top-level
 keys are the `listen` address, the `assets` directory and the optional

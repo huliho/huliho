@@ -340,7 +340,7 @@ async fn a_redirect_away_from_https_is_refused() {
         !server
             .requests()
             .iter()
-            .any(|line| line.ends_with("/jmap/session"))
+            .any(|line| line.contains("/jmap/session"))
     );
 }
 

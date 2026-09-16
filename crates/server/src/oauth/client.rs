@@ -276,7 +276,7 @@ async fn send(http: &reqwest::Client, request: HttpRequest) -> Result<HttpRespon
     }
     let body = read_bounded(response, MAX_TOKEN_RESPONSE_BYTES)
         .await
-        .ok_or(HttpError::Body)?;
+        .map_err(|_| HttpError::Body)?;
     answer.body(body).map_err(|_| HttpError::Body)
 }
 

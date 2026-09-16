@@ -40,8 +40,7 @@ pub(super) async fn retry_account(
     match Reconnect::from(&state).retry(&scope, &actor).await {
         Ok(account) => Ok(Json(AccountView::from(account))),
         Err(AttemptError::Upstream(error)) => Err(refused(&state, &scope, error).await),
-        Err(AttemptError::Store(error)) => Err(error.into()),
-        Err(AttemptError::Task) => Err(internal(AttemptError::Task)),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -88,7 +87,7 @@ pub(super) async fn replace_credentials(
 
 /// The account within the caller's scope, the session touched; another
 /// user's id is not found.
-async fn scoped(
+pub(super) async fn scoped(
     state: &ApiState,
     caller: Caller,
     account_id: &AccountId,

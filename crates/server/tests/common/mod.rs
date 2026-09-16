@@ -12,6 +12,7 @@ use axum::Router;
 use huliho_server::api::ApiState;
 use huliho_server::config::{AuthConfig, UpstreamConfig};
 use huliho_server::gate::Gate;
+use huliho_server::jmap::Endpoints;
 use huliho_server::oauth::Consents;
 use huliho_server::rate::RateLimiter;
 use huliho_server::secrets::{InstanceSecret, Keys};
@@ -43,6 +44,7 @@ pub fn api_state(store: Arc<Store>) -> ApiState {
         public_url: None,
         upstream: Arc::new(Upstream::new(&UpstreamConfig::default()).unwrap()),
         consents: Arc::new(Consents::default()),
+        endpoints: Arc::new(Endpoints::default()),
     }
 }
 

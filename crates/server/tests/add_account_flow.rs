@@ -226,7 +226,7 @@ async fn a_jmap_account_adds_lists_and_seals_its_password() {
         server
             .requests()
             .iter()
-            .any(|line| line.ends_with("/jmap/session"))
+            .any(|line| line.contains("/jmap/session"))
     );
 }
 
