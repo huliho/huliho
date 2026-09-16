@@ -247,7 +247,7 @@ importers:
         version: 5.102.8(react@19.3.0)
       '@tanstack/react-router':
         specifier: ^1.170.32
-        version: 1.170.35(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 1.170.36(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       lucide-react:
         specifier: ^1.38.0
         version: 1.45.0(react@19.3.0)
@@ -320,7 +320,7 @@ importers:
     dependencies:
       zod:
         specifier: ^4.5.4
-        version: 4.6.4
+        version: 4.6.5
     devDependencies:
       vitest:
         specifier: ^5.0.0
@@ -1832,8 +1832,8 @@ packages:
       typescript:
         optional: true
 
-  '@tanstack/history@1.162.3':
-    resolution: {integrity: sha512-zZTDxZxdDxZudHXGp42d221R/sEKoQPbZsW2ezpdWknHpOmJVLyiljW21pdWtKXfMnLq+Kg5VJpVBwOe18+ZzQ==}
+  '@tanstack/history@1.162.4':
+    resolution: {integrity: sha512-utTS5L2OkeYUzXGohL1Z8sefu1GLNOJcxe8Hd6iIdc/Xo1K1nDB2JEp4iSFhvYh33xKC9V91TxrS8qfrpoKobQ==}
     engines: {node: '>=20.19'}
 
   '@tanstack/query-core@5.102.8':
@@ -1844,8 +1844,8 @@ packages:
     peerDependencies:
       react: ^18 || ^19
 
-  '@tanstack/react-router@1.170.35':
-    resolution: {integrity: sha512-MiqKL692aSOFsbtEts5eFjfCixxrej+ko+gA2Y85gmWdxolgtfcBPOdJ6tMSi/zFePqwwPLo+CVSUWu/qXu8LQ==}
+  '@tanstack/react-router@1.170.36':
+    resolution: {integrity: sha512-AbgcI/xO8AJY1r6y5tF7TZyHH0VKm0XcfY3QVIVCrHq8k04Hkj1N4nfLL+1xCGC3VnMI3AYGAVWkatnqE2dxAQ==}
     engines: {node: '>=20.19'}
     peerDependencies:
       react: '>=18.0.0 || >=19.0.0'
@@ -1857,8 +1857,8 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  '@tanstack/router-core@1.171.29':
-    resolution: {integrity: sha512-tBXJrU4rDl+UsfTvP/WM1pcQ+fXk4rb2uuK/FMw29JNHEkFdEbptA0yvk8vkNjooTF7DAiTUrZMf2H4X7eGt4g==}
+  '@tanstack/router-core@1.171.30':
+    resolution: {integrity: sha512-wtS1yCAb/k5CJBauvrCyqf2n4/kRc3aiz81tFBJ1QXH4Utsu81xFTMq15AdmNWgWmt2UstUSMfWi4Ua7ph2F+w==}
     engines: {node: '>=20.19'}
 
   '@tanstack/store@0.11.1':
@@ -4704,8 +4704,8 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
-  zod@4.6.4:
-    resolution: {integrity: sha512-AXSD6hvGdvRjajG/l1cC+d6IrhH+sjmPKtYeQdJIK8MFJl3LyClzS+o/YsVC+zQZPupAaeH5skwwm8YqYH7BqA==}
+  zod@4.6.5:
+    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
 snapshots:
 
@@ -5897,7 +5897,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/history@1.162.3': {}
+  '@tanstack/history@1.162.4': {}
 
   '@tanstack/query-core@5.102.8': {}
 
@@ -5906,11 +5906,11 @@ snapshots:
       '@tanstack/query-core': 5.102.8
       react: 19.3.0
 
-  '@tanstack/react-router@1.170.35(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@tanstack/react-router@1.170.36(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
-      '@tanstack/history': 1.162.3
+      '@tanstack/history': 1.162.4
       '@tanstack/react-store': 0.11.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@tanstack/router-core': 1.171.29
+      '@tanstack/router-core': 1.171.30
       isbot: 5.2.2
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
@@ -5922,9 +5922,9 @@ snapshots:
       react-dom: 19.3.0(react@19.3.0)
       use-sync-external-store: 1.6.0(react@19.3.0)
 
-  '@tanstack/router-core@1.171.29':
+  '@tanstack/router-core@1.171.30':
     dependencies:
-      '@tanstack/history': 1.162.3
+      '@tanstack/history': 1.162.4
       cookie-es: 3.1.1
       seroval: 1.6.4
       seroval-plugins: 1.6.4(seroval@1.6.4)
@@ -7364,7 +7364,7 @@ snapshots:
       tinyglobby: 0.2.17
       unbash: 4.0.11
       yaml: 2.9.0
-      zod: 4.6.4
+      zod: 4.6.5
 
   kysely@0.28.17: {}
 
@@ -8865,4 +8865,4 @@ snapshots:
 
   zod@3.25.76: {}
 
-  zod@4.6.4: {}
+  zod@4.6.5: {}
