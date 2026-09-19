@@ -6,6 +6,7 @@
 //! a swap costs one module. The causes below serve the SMTP check too.
 
 mod imap;
+mod read;
 
 use std::collections::BTreeSet;
 use std::future::Future;
@@ -76,6 +77,56 @@ impl FromIterator<String> for Capabilities {
     }
 }
 
+/// The RETURN options of one LIST (RFC 5258 section 3), each behind the
+/// capability that defines it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ListReturn {
+    /// `SUBSCRIBED`, so every line carries `\Subscribed` where it
+    /// applies (RFC 5258 section 3.1).
+    pub subscribed: bool,
+    /// `SPECIAL-USE`, the role attributes (RFC 6154 section 2).
+    pub special_use: bool,
+    /// `STATUS (...)` after every selectable name (RFC 5819).
+    pub status: Option<StatusItems>,
+}
+
+/// The items one STATUS asks for: MESSAGES, UNSEEN, UIDNEXT and
+/// UIDVALIDITY always, HIGHESTMODSEQ where CONDSTORE is advertised
+/// (RFC 7162 section 3.1.7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatusItems {
+    pub modseq: bool,
+}
+
+/// One LIST or LSUB line: the name as the server spells it, the
+/// hierarchy delimiter and every attribute in upper case with its
+/// backslash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListEntry {
+    pub name: String,
+    pub delimiter: Option<char>,
+    pub attributes: Vec<String>,
+}
+
+/// One STATUS line; an item the server left out is `None`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StatusEntry {
+    pub mailbox: String,
+    pub messages: Option<u32>,
+    pub unseen: Option<u32>,
+    pub uid_next: Option<u32>,
+    pub uid_validity: Option<u32>,
+    pub highest_modseq: Option<u64>,
+}
+
+/// What one LIST answered: the names and the STATUS lines that rode
+/// along.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Listing {
+    pub entries: Vec<ListEntry>,
+    pub statuses: Vec<StatusEntry>,
+}
+
 /// Why a step of an IMAP or SMTP session failed. No variant carries a
 /// credential.
 #[derive(Debug, Error)]
@@ -104,6 +155,9 @@ pub enum SessionError {
     /// is down (RFC 5530 section 3, `UNAVAILABLE`).
     #[error("the server cannot sign anyone in right now")]
     Unavailable,
+    /// A tagged NO outside the sign-in (RFC 3501 section 7.1.2).
+    #[error("the server answered NO")]
+    Refused,
     /// The text is fixed at the call site, never the server's own words.
     #[error("the server does not speak the protocol as expected: {0}")]
     Protocol(&'static str),
@@ -158,6 +212,46 @@ pub trait Session: Sized + Send {
     /// Returns an error when the connection fails or the server answers
     /// without capability data.
     fn capabilities(&mut self) -> impl Future<Output = Result<Capabilities, SessionError>> + Send;
+
+    /// `LIST "" "*"` with the given RETURN options (RFC 9051 section
+    /// 6.3.9, RFC 5258), signed in. Every untagged line up to the tagged
+    /// answer is read here, so a STATUS line rides along and an alert
+    /// in between is skipped. A name that holds a control character or
+    /// is too long to send back is left out.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Refused` when the server answers NO and `Protocol` when
+    /// the session is not signed in, the server answers BAD, the answer
+    /// passes the line limit or the listing passes the mailbox limit;
+    /// other errors are about the connection. Past either limit, as
+    /// after `Timeout`, the stream holds unread lines and the session
+    /// must be dropped.
+    fn list(
+        &mut self,
+        options: ListReturn,
+    ) -> impl Future<Output = Result<Listing, SessionError>> + Send;
+
+    /// `LSUB "" "*"` (RFC 3501 section 6.3.9): the subscribed names of a
+    /// server without LIST-EXTENDED.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`].
+    fn lsub(&mut self) -> impl Future<Output = Result<Vec<String>, SessionError>> + Send;
+
+    /// STATUS of one mailbox (RFC 9051 section 6.3.11), by its wire name.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`]; `Protocol` as well when no STATUS line
+    /// comes back and, before anything is sent, when the name holds a
+    /// control character or is too long.
+    fn status(
+        &mut self,
+        mailbox: &str,
+        items: StatusItems,
+    ) -> impl Future<Output = Result<StatusEntry, SessionError>> + Send;
 
     /// The LOGOUT command (RFC 9051 section 6.1.3); the connection is
     /// gone afterwards whatever the answer.

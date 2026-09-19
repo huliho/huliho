@@ -10,8 +10,8 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use super::{
-    Fake, GOOGLE_ERROR, Greeting, Lines, Listen, PASSWORD, Phase, Protocol, Starttls, TOKEN, USER,
-    decoded, open, read_line, record,
+    Fake, GOOGLE_ERROR, Greeting, Lines, Listen, Mailboxes, PASSWORD, Phase, Protocol, Starttls,
+    TOKEN, USER, decoded, open, read_line, record,
 };
 
 /// The name the certificate carries.
@@ -23,7 +23,7 @@ pub const CAPABILITIES: &str = "IMAP4rev2 IMAP4rev1 AUTH=PLAIN AUTH=XOAUTH2 IDLE
 pub type FakeImap = Fake<Script>;
 
 /// How the IMAP server behaves.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Script {
     /// TLS from the first byte or plaintext.
     pub listen: Listen,
@@ -31,13 +31,15 @@ pub struct Script {
     pub greeting: Greeting,
     /// Whether commands after the greeting get an answer.
     pub answers: bool,
-    /// Advertised once TLS is on.
+    /// Advertised once TLS is on, the mailbox model's extensions after it.
     pub capabilities: &'static str,
     /// The one user the server signs in.
     pub user: &'static str,
     /// The sign-in backend is down: every sign-in over TLS answers NO
     /// with the RFC 5530 `UNAVAILABLE` code.
     pub unavailable: bool,
+    /// The folders the server lists and the extensions it honors.
+    pub mailboxes: Mailboxes,
 }
 
 impl Script {
@@ -52,6 +54,7 @@ impl Script {
             capabilities: CAPABILITIES,
             user: USER,
             unavailable: false,
+            mailboxes: Mailboxes::default(),
         }
     }
 
@@ -64,11 +67,18 @@ impl Script {
         }
     }
 
-    fn capabilities(self, phase: Phase) -> &'static str {
+    fn capabilities(&self, phase: Phase) -> String {
         match phase {
-            Phase::Plain(Starttls::Absent) => "IMAP4rev1 LOGINDISABLED",
-            Phase::Plain(_) => "IMAP4rev1 STARTTLS LOGINDISABLED",
-            Phase::Tls | Phase::Upgraded => self.capabilities,
+            Phase::Plain(Starttls::Absent) => "IMAP4rev1 LOGINDISABLED".to_owned(),
+            Phase::Plain(_) => "IMAP4rev1 STARTTLS LOGINDISABLED".to_owned(),
+            Phase::Tls | Phase::Upgraded => {
+                let extensions = self.mailboxes.capabilities();
+                if extensions.is_empty() {
+                    self.capabilities.to_owned()
+                } else {
+                    format!("{} {extensions}", self.capabilities)
+                }
+            }
         }
     }
 }
@@ -76,15 +86,15 @@ impl Script {
 impl Protocol for Script {
     const HOST: &'static str = HOST;
 
-    fn listen(self) -> Listen {
+    fn listen(&self) -> Listen {
         self.listen
     }
 
-    fn greeting(self) -> Greeting {
+    fn greeting(&self) -> Greeting {
         self.greeting
     }
 
-    fn answers(self) -> bool {
+    fn answers(&self) -> bool {
         self.answers
     }
 
@@ -98,7 +108,7 @@ impl Protocol for Script {
     }
 
     async fn converse<S: AsyncRead + AsyncWrite + Unpin + Send>(
-        self,
+        &self,
         phase: Phase,
         lines: &Lines,
         stream: S,
@@ -152,9 +162,14 @@ impl Protocol for Script {
                         .ok();
                     return None;
                 }
+                "LIST" | "LSUB" | "STATUS" if phase.is_tls() => {
+                    self.mailboxes.answer(&verb, command, tag)
+                }
                 _ => format!("{tag} BAD unknown command\r\n"),
             };
             writer.write_all(reply.as_bytes()).await.ok()?;
+            // A TLS write may return with ciphertext still buffered.
+            writer.flush().await.ok()?;
         }
     }
 }

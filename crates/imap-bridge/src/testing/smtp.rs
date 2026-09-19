@@ -102,15 +102,15 @@ impl Script {
 impl Protocol for Script {
     const HOST: &'static str = HOST;
 
-    fn listen(self) -> Listen {
+    fn listen(&self) -> Listen {
         self.listen
     }
 
-    fn greeting(self) -> Greeting {
+    fn greeting(&self) -> Greeting {
         self.greeting
     }
 
-    fn answers(self) -> bool {
+    fn answers(&self) -> bool {
         self.answers
     }
 
@@ -124,7 +124,7 @@ impl Protocol for Script {
     }
 
     async fn converse<S: AsyncRead + AsyncWrite + Unpin + Send>(
-        self,
+        &self,
         phase: Phase,
         lines: &Lines,
         stream: S,
@@ -147,7 +147,7 @@ impl Protocol for Script {
                         writer: &mut writer,
                         lines,
                     };
-                    exchange.auth(self, argument).await?
+                    exchange.auth(*self, argument).await?
                 }
                 "AUTH" => "530 5.7.0 STARTTLS first\r\n".to_owned(),
                 "QUIT" => {

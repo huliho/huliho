@@ -22,9 +22,12 @@ use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::pki_types::ServerName;
 
-use super::{Capabilities, Session, SessionError, Target, TlsMode, io_error};
+use super::{
+    Capabilities, ListReturn, Listing, Session, SessionError, StatusEntry, StatusItems, Target,
+    TlsMode, io_error, read,
+};
 
-type Stream = TlsStream<TcpStream>;
+pub(super) type Stream = TlsStream<TcpStream>;
 type Attempt = Result<async_imap::Session<Stream>, (ImapError, Client<Stream>)>;
 
 /// The untagged lines one CAPABILITY answer may carry before its tagged
@@ -82,7 +85,9 @@ impl Session for ImapSession {
                 }
                 match run(&mut plain, "STARTTLS", step_timeout).await {
                     Ok(()) => {}
-                    Err(SessionError::Protocol(_)) => return Err(SessionError::StarttlsRefused),
+                    Err(SessionError::Refused | SessionError::Protocol(_)) => {
+                        return Err(SessionError::StarttlsRefused);
+                    }
                     Err(other) => return Err(other),
                 }
                 let stream =
@@ -106,7 +111,7 @@ impl Session for ImapSession {
         }
         let client = self.take_fresh()?;
         let attempt = timeout(self.step, client.login(username, password)).await;
-        self.signed_in(attempt)
+        self.finish_sign_in(attempt)
     }
 
     async fn authenticate_xoauth2(
@@ -122,7 +127,7 @@ impl Session for ImapSession {
             initial: Some(format!("user={username}\x01auth=Bearer {token}\x01\x01")),
         };
         let attempt = timeout(self.step, client.authenticate("XOAUTH2", authenticator)).await;
-        self.signed_in(attempt)
+        self.finish_sign_in(attempt)
     }
 
     async fn capabilities(&mut self) -> Result<Capabilities, SessionError> {
@@ -132,6 +137,25 @@ impl Session for ImapSession {
             State::SignedIn(session) => capabilities_of(session, step).await,
             State::Gone => Err(SessionError::Closed),
         }
+    }
+
+    async fn list(&mut self, options: ListReturn) -> Result<Listing, SessionError> {
+        let step = self.step;
+        read::list(self.signed_in()?, options, step).await
+    }
+
+    async fn lsub(&mut self) -> Result<Vec<String>, SessionError> {
+        let step = self.step;
+        read::lsub(self.signed_in()?, step).await
+    }
+
+    async fn status(
+        &mut self,
+        mailbox: &str,
+        items: StatusItems,
+    ) -> Result<StatusEntry, SessionError> {
+        let step = self.step;
+        read::status(self.signed_in()?, mailbox, items, step).await
     }
 
     async fn logout(self) -> Result<(), SessionError> {
@@ -157,7 +181,16 @@ impl ImapSession {
         }
     }
 
-    fn signed_in(&mut self, attempt: Result<Attempt, Elapsed>) -> Result<(), SessionError> {
+    /// The signed-in session the read commands run on.
+    fn signed_in(&mut self) -> Result<&mut async_imap::Session<Stream>, SessionError> {
+        match &mut self.state {
+            State::SignedIn(session) => Ok(session),
+            State::Fresh(_) => Err(SessionError::Protocol("not signed in")),
+            State::Gone => Err(SessionError::Closed),
+        }
+    }
+
+    fn finish_sign_in(&mut self, attempt: Result<Attempt, Elapsed>) -> Result<(), SessionError> {
         match attempt {
             Ok(Ok(session)) => {
                 self.state = State::SignedIn(session);
@@ -307,11 +340,11 @@ fn unavailable(text: &str) -> bool {
 
 /// The server's own words never travel: a server that has just seen a
 /// credential could echo it.
-fn command_error(error: ImapError) -> SessionError {
+pub(super) fn command_error(error: ImapError) -> SessionError {
     match error {
         ImapError::Io(error) => io_error(error),
         ImapError::ConnectionLost => SessionError::Closed,
-        ImapError::No(_) => SessionError::Protocol("the server answered NO"),
+        ImapError::No(_) => SessionError::Refused,
         ImapError::Bad(_) => SessionError::Protocol("the server answered BAD"),
         ImapError::Parse(_) => SessionError::Protocol("the answer could not be parsed"),
         _ => SessionError::Protocol("the command was not accepted"),
@@ -348,5 +381,17 @@ mod tests {
                 "{text}"
             );
         }
+    }
+
+    #[test]
+    fn a_no_to_any_other_command_is_a_refusal_and_a_bad_a_protocol_failure_rfc3501_7_1_2() {
+        assert!(matches!(
+            command_error(no("not now")),
+            SessionError::Refused
+        ));
+        assert!(matches!(
+            command_error(ImapError::Bad("unknown command".to_owned())),
+            SessionError::Protocol("the server answered BAD")
+        ));
     }
 }

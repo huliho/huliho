@@ -15,13 +15,16 @@ use thiserror::Error;
 /// The database file inside the data volume.
 const DATABASE_FILE: &str = "huliho.db";
 
-/// Forward-only numbered migrations, embedded so the binary carries its schema.
+/// Forward-only numbered migrations, embedded so the binary carries its
+/// schema; the sixth is the bridge's, so one version counter covers its
+/// tables as well.
 const MIGRATION_SOURCES: &[&str] = &[
     include_str!("migrations/0001_identity.sql"),
     include_str!("migrations/0002_sessions.sql"),
     include_str!("migrations/0003_sessions_devices.sql"),
     include_str!("migrations/0004_account_settings.sql"),
     include_str!("migrations/0005_instance_admin.sql"),
+    huliho_imap_bridge::store::MIGRATIONS[0],
 ];
 
 /// The operator CLI writes while the server runs; a connection waits this
@@ -153,6 +156,13 @@ mod tests {
     }
 
     #[test]
+    fn every_bridge_migration_is_one_of_the_sources() {
+        for sql in huliho_imap_bridge::store::MIGRATIONS {
+            assert!(MIGRATION_SOURCES.contains(sql));
+        }
+    }
+
+    #[test]
     fn now_is_after_the_epoch() {
         assert!(now_ms() > 0);
     }
@@ -192,6 +202,20 @@ mod tests {
                 "INSERT INTO accounts
                  (id, organization_id, user_id, kind, auth_method, credentials, created_at)
                  VALUES ('a', 'o', 'u', 'jmap', 'bearer', X'0304', 5)",
+                [],
+            )
+            .unwrap();
+    }
+
+    /// An account row as the 0005 schema holds it.
+    fn insert_pre_0006_account(connection: &Connection) {
+        connection
+            .execute(
+                "INSERT INTO accounts
+                 (id, organization_id, user_id, address, name, provider, kind, auth_method,
+                  settings, credentials, created_at)
+                 VALUES ('a', 'o', 'u', 'sanne@example.test', 'Sanne', 'generic', 'imap',
+                         'password', '{}', X'0304', 5)",
                 [],
             )
             .unwrap();
@@ -297,6 +321,47 @@ mod tests {
         let scope = crate::scope::resolve(&store, &UserId::from("u".to_owned()), None).unwrap();
         assert!(!scope.instance_admin());
         assert_eq!(scope.role(), Role::Owner);
+    }
+
+    #[test]
+    fn the_bridge_migration_keeps_accounts_and_creates_the_bridge_tables() {
+        use crate::accounts;
+        use crate::ids::UserId;
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .unwrap();
+        migrations().to_version(&mut connection, 5).unwrap();
+        insert_owner(&connection);
+        insert_pre_0006_account(&connection);
+        migrations().to_latest(&mut connection).unwrap();
+        let tables: Vec<String> = connection
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'bridge%'
+                 ORDER BY name",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            tables,
+            [
+                "bridge_changes",
+                "bridge_emails",
+                "bridge_mailboxes",
+                "bridge_memberships",
+                "bridge_message_ids",
+                "bridge_state",
+                "bridge_sync"
+            ]
+        );
+        let store = Store::initialize(connection).unwrap();
+        let scope = crate::scope::resolve(&store, &UserId::from("u".to_owned()), None).unwrap();
+        let listed = accounts::list(&store, &scope).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].address, "sanne@example.test");
     }
 
     /// Long enough that the second writer arrives while the first holds
