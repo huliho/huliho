@@ -6,6 +6,7 @@
 //! server, one answer per command and a record of every line received.
 
 pub mod imap;
+pub mod mailboxes;
 pub mod smtp;
 
 use std::future::Future;
@@ -29,6 +30,7 @@ use crate::session::{Target, TlsMode};
 use crate::verify::Credential;
 
 pub use imap::FakeImap;
+pub use mailboxes::{Extension, Folder, Mailboxes};
 pub use smtp::FakeSmtp;
 
 /// The user every script signs in.
@@ -143,18 +145,18 @@ pub async fn read_line<R: AsyncBufRead + Unpin>(reader: &mut R) -> Option<String
 
 /// What a scripted server says: the listener it runs and the
 /// conversation it holds.
-pub trait Protocol: Copy + Send + Sync + 'static {
+pub trait Protocol: Clone + Send + Sync + 'static {
     /// The name the certificate carries.
     const HOST: &'static str;
 
     /// TLS from the first byte or plaintext with or without STARTTLS.
-    fn listen(self) -> Listen;
+    fn listen(&self) -> Listen;
 
     /// What the server says first.
-    fn greeting(self) -> Greeting;
+    fn greeting(&self) -> Greeting;
 
     /// Whether commands after the greeting get an answer.
-    fn answers(self) -> bool;
+    fn answers(&self) -> bool;
 
     /// The greeting line for a kind that says something.
     fn words(greeting: Greeting) -> &'static str;
@@ -162,7 +164,7 @@ pub trait Protocol: Copy + Send + Sync + 'static {
     /// Answers commands until the client leaves; hands the stream back
     /// only when STARTTLS was accepted, so the caller can upgrade it.
     fn converse<S: AsyncRead + AsyncWrite + Unpin + Send>(
-        self,
+        &self,
         phase: Phase,
         lines: &Lines,
         stream: S,
@@ -173,7 +175,7 @@ pub trait Protocol: Copy + Send + Sync + 'static {
 /// the connection was just upgraded, then a hold when the script never
 /// answers. `None` when the greeting ends the conversation.
 pub(crate) async fn open<P: Protocol, S: AsyncRead + AsyncWrite>(
-    script: P,
+    script: &P,
     phase: Phase,
     stream: S,
 ) -> Option<(BufReader<ReadHalf<S>>, WriteHalf<S>)> {
@@ -235,7 +237,12 @@ impl<P: Protocol> Fake<P> {
         let recorded = Arc::clone(&lines);
         tokio::spawn(async move {
             while let Ok((tcp, _)) = listener.accept().await {
-                tokio::spawn(serve(script, acceptor.clone(), Arc::clone(&recorded), tcp));
+                tokio::spawn(serve(
+                    script.clone(),
+                    acceptor.clone(),
+                    Arc::clone(&recorded),
+                    tcp,
+                ));
             }
         });
         Self {
