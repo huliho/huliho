@@ -20,6 +20,17 @@ itself. Every step runs within one timeout. No error carries the
 credential or the server's own words. The session layer sits behind one
 narrow trait, so the client library can be swapped in one module.
 
+Every byte a server sends passes a guard before the client library
+parses it. The protocol parser recurses once per open parenthesis and
+the library buffers a response whole, so a response that opens more
+than 32 levels (`session::MAX_NESTING`) or takes more than 32 MiB
+(`session::MAX_RESPONSE_BYTES`) fails the connection with a fixed
+sentence, before STARTTLS as well as after it. The guard follows quoted
+strings and literals only on untagged data lines, the one place the
+parser does the same, so parentheses in a subject or a file name never
+count and nothing can hide depth behind a literal the parser reads as
+text.
+
 The read path begins with the mailbox list. `mailboxes::sync` runs
 LIST with the RETURN options the server's capabilities allow
 (SUBSCRIBED, SPECIAL-USE and STATUS behind LIST-EXTENDED, SPECIAL-USE

@@ -22,12 +22,13 @@ use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::pki_types::ServerName;
 
+use super::guard::Guarded;
 use super::{
     Capabilities, ListReturn, Listing, Session, SessionError, StatusEntry, StatusItems, Target,
     TlsMode, io_error, read,
 };
 
-pub(super) type Stream = TlsStream<TcpStream>;
+pub(super) type Stream = Guarded<TlsStream<TcpStream>>;
 type Attempt = Result<async_imap::Session<Stream>, (ImapError, Client<Stream>)>;
 
 /// The untagged lines one CAPABILITY answer may carry before its tagged
@@ -70,12 +71,12 @@ impl Session for ImapSession {
         let client = match target.tls {
             TlsMode::Implicit => {
                 let stream = handshake(&connector, server_name, tcp, step_timeout).await?;
-                let mut client = Client::new(stream);
+                let mut client = Client::new(Guarded::new(stream));
                 greeting(&mut client, step_timeout).await?;
                 client
             }
             TlsMode::Starttls => {
-                let mut plain = Client::new(tcp);
+                let mut plain = Client::new(Guarded::new(tcp));
                 greeting(&mut plain, step_timeout).await?;
                 if !capabilities_of(&mut plain, step_timeout)
                     .await?
@@ -90,9 +91,9 @@ impl Session for ImapSession {
                     }
                     Err(other) => return Err(other),
                 }
-                let stream =
-                    handshake(&connector, server_name, plain.into_inner(), step_timeout).await?;
-                Client::new(stream)
+                let tcp = plain.into_inner().into_inner();
+                let stream = handshake(&connector, server_name, tcp, step_timeout).await?;
+                Client::new(Guarded::new(stream))
             }
         };
         let mut client = client;
@@ -238,7 +239,7 @@ async fn handshake(
     server_name: ServerName<'static>,
     tcp: TcpStream,
     step: Duration,
-) -> Result<Stream, SessionError> {
+) -> Result<TlsStream<TcpStream>, SessionError> {
     // tokio-rustls reports what rustls refused as invalid data; any other
     // kind is the transport giving up.
     timeout(step, connector.connect(server_name, tcp))

@@ -5,6 +5,7 @@
 //! The IMAP session layer: one narrow trait over the client library, so
 //! a swap costs one module. The causes below serve the SMTP check too.
 
+mod guard;
 mod imap;
 mod read;
 
@@ -19,6 +20,7 @@ use thiserror::Error;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::pki_types::InvalidDnsNameError;
 
+pub use guard::{MAX_NESTING, MAX_RESPONSE_BYTES};
 pub use imap::ImapSession;
 
 /// One connect attempt or one command gets this long; a server slower
@@ -263,8 +265,15 @@ pub trait Session: Sized + Send {
 }
 
 /// Bytes a client library cannot parse arrive under the kind `Other`
-/// and a connection that ends mid-response as an unexpected end.
+/// and a connection that ends mid-response as an unexpected end; a
+/// bound of the guard travels inside the error.
 pub(crate) fn io_error(error: io::Error) -> SessionError {
+    let limit = error
+        .get_ref()
+        .and_then(|inner| inner.downcast_ref::<guard::Limit>());
+    if let Some(limit) = limit {
+        return SessionError::Protocol(limit.words());
+    }
     match error.kind() {
         io::ErrorKind::Other => SessionError::Protocol("the answer could not be parsed"),
         io::ErrorKind::UnexpectedEof => SessionError::Closed,
@@ -275,6 +284,20 @@ pub(crate) fn io_error(error: io::Error) -> SessionError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_bound_of_the_guard_reads_as_a_protocol_failure_in_fixed_words() {
+        for (limit, words) in [
+            (guard::Limit::Nesting, "the answer nests too deep"),
+            (guard::Limit::Size, "the answer passes the byte limit"),
+        ] {
+            let error = io_error(limit.into());
+            assert!(
+                matches!(error, SessionError::Protocol(found) if found == words),
+                "{error}"
+            );
+        }
+    }
 
     #[test]
     fn a_capability_matches_without_regard_to_case_rfc9051_9_note_1() {
