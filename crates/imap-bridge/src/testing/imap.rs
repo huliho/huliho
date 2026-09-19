@@ -40,6 +40,9 @@ pub struct Script {
     pub unavailable: bool,
     /// The folders the server lists and the extensions it honors.
     pub mailboxes: Mailboxes,
+    /// A FETCH line nobody asked for ahead of every CAPABILITY answer,
+    /// its deepest parenthesis this many levels in.
+    pub nested: Option<usize>,
 }
 
 impl Script {
@@ -55,6 +58,7 @@ impl Script {
             user: USER,
             unavailable: false,
             mailboxes: Mailboxes::default(),
+            nested: None,
         }
     }
 
@@ -125,7 +129,8 @@ impl Protocol for Script {
                 .to_ascii_uppercase();
             let reply = match verb.as_str() {
                 "CAPABILITY" => format!(
-                    "* CAPABILITY {}\r\n{tag} OK done\r\n",
+                    "{}* CAPABILITY {}\r\n{tag} OK done\r\n",
+                    self.nested.map(nested_fetch).unwrap_or_default(),
                     self.capabilities(phase)
                 ),
                 "STARTTLS" if phase == Phase::Plain(Starttls::Offered) => {
@@ -172,6 +177,17 @@ impl Protocol for Script {
             writer.flush().await.ok()?;
         }
     }
+}
+
+/// `* 1 FETCH` with a BODYSTRUCTURE of multiparts around one leaf, its
+/// deepest parenthesis `depth` levels in; two levels at least.
+#[must_use]
+pub fn nested_fetch(depth: usize) -> String {
+    let mut body = "(\"TEXT\" \"PLAIN\" NIL NIL NIL \"7BIT\" 1 1)".to_owned();
+    for _ in 2..depth {
+        body = format!("({body} \"MIXED\")");
+    }
+    format!("* 1 FETCH (UID 1 BODYSTRUCTURE {body})\r\n")
 }
 
 /// The XOAUTH2 exchange as Google runs it: an empty challenge, the
