@@ -4,8 +4,9 @@
 
 //! A guard between the socket and the client library. The protocol
 //! parser under that library recurses once per open parenthesis and the
-//! library buffers a response whole, so this reader fails a response
-//! that nests or grows past a bound before the parser sees it.
+//! library buffers a response whole. It also spends many times the
+//! bytes of a response on the heap, its literals aside. So this reader
+//! fails a response that passes a bound before the parser sees it.
 
 mod lexer;
 #[cfg(test)]
@@ -19,13 +20,15 @@ use std::task::{Context, Poll, ready};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use lexer::Lexer;
-pub use lexer::{MAX_NESTING, MAX_RESPONSE_BYTES};
+pub use lexer::{MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
 
 /// The bound a response passed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Limit {
     Nesting,
     Size,
+    Structure,
+    Literal,
 }
 
 impl Limit {
@@ -34,6 +37,8 @@ impl Limit {
         match self {
             Self::Nesting => "the answer nests too deep",
             Self::Size => "the answer passes the byte limit",
+            Self::Structure => "the answer passes the structure limit",
+            Self::Literal => "the answer holds a literal in free text",
         }
     }
 }

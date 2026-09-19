@@ -381,7 +381,7 @@ async fn a_password_passes_with_starttls_on_both_servers() {
     )
     .await
     .unwrap();
-    assert!(saw(&servers.imap.lines(), "plain A0002 STARTTLS"));
+    assert!(saw(&servers.imap.lines(), "plain A0001 STARTTLS"));
     assert!(saw(&servers.smtp.lines(), "plain STARTTLS"));
 }
 

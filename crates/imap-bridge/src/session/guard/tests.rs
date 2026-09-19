@@ -5,6 +5,8 @@
 //! The lexer against lines built to slip past it, and the reader around
 //! it.
 
+mod structure;
+
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
@@ -15,11 +17,14 @@ use proptest::prelude::*;
 use tokio::io::{AsyncRead, ReadBuf};
 
 use super::lexer::Lexer;
-use super::{Guarded, Limit, MAX_NESTING, MAX_RESPONSE_BYTES};
+use super::{Guarded, Limit, MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
 
 /// Half the stack of a tokio worker thread, so the frames above the
 /// parser keep the other half.
 const PARSER_STACK: usize = 1024 * 1024;
+
+/// The most bytes `turning_bytes` makes.
+const TURNING_BYTES: usize = 256;
 
 const LEAF: &str = "(\"TEXT\" \"PLAIN\" NIL NIL NIL \"7BIT\" 1 1)";
 const ENVELOPE: &str = "(NIL \"s\" ((\"n\" NIL \"a\" \"h\")) NIL NIL NIL NIL NIL NIL NIL)";
@@ -140,22 +145,43 @@ fn the_depth_carries_across_a_literal() {
 }
 
 #[test]
-fn a_size_in_free_text_hides_nothing_rfc3501_7_1() {
+fn a_size_marker_in_free_text_fails_the_read_rfc3501_7_1() {
     for opening in [
         "* OK x {100000}\r\n",
-        "* ok [BADCHARSET ({100000}\r\n",
+        "* ok [BADCHARSET ({1}\r\n",
         "* NO {100000}\r\n",
         "* BAD {100000}\r\n",
         "* BYE {100000}\r\n",
         "* PREAUTH {100000}\r\n",
         "* OKAY {100000}\r\n",
         "*OK {100000}\r\n",
-        "A1 OK {100000}\r\n",
+        "A1 OK [BADCHARSET (a {0}\r\n",
         "A1 NO \"{100000}\r\n",
         "+ {100000}\r\n",
+        "+ {{5}\r\n",
+        "{5}\r\n",
     ] {
-        hides_nothing(opening);
+        assert_eq!(fed(opening.as_bytes()), Err(Limit::Literal), "{opening:?}");
     }
+}
+
+#[test]
+fn a_brace_that_is_no_size_marker_is_plain_free_text() {
+    let mut lexer = Lexer::default();
+    for line in [
+        "* OK see {5} items\r\n",
+        "* OK {}\r\n",
+        "* OK {5x}\r\n",
+        "* OK {5}\n",
+        "A1 OK {5}\rx\r\n",
+        "+ {5 }\r\n",
+    ] {
+        assert_eq!(lexer.feed(line.as_bytes()), Ok(()), "{line:?}");
+    }
+    assert_eq!(
+        lexer.feed(multiparts(MAX_NESTING + 1).as_bytes()),
+        Err(Limit::Nesting)
+    );
 }
 
 #[test]
@@ -201,20 +227,39 @@ fn the_byte_bound_holds_per_response_and_starts_over_after_each() {
     assert_eq!(lexer.feed(closing), Err(Limit::Size));
 }
 
-#[test]
-fn a_line_that_never_ends_passes_the_byte_bound() {
+/// The first bound a stream of `x` without a line break passes after
+/// `opening`.
+fn never_ending(opening: &[u8], chunk_bytes: usize) -> Option<Limit> {
     let mut lexer = Lexer::default();
-    let chunk = vec![b'x'; 1024 * 1024];
-    let outcome = (0..=MAX_RESPONSE_BYTES / chunk.len())
-        .map(|_| lexer.feed(&chunk))
-        .find(Result::is_err);
-    assert_eq!(outcome, Some(Err(Limit::Size)));
+    lexer.feed(opening).unwrap();
+    let chunk = vec![b'x'; chunk_bytes];
+    (0..=MAX_RESPONSE_BYTES / chunk.len()).find_map(|_| lexer.feed(&chunk).err())
+}
+
+#[test]
+fn a_line_that_never_ends_passes_the_structure_bound_and_a_literal_the_byte_bound() {
+    assert_eq!(never_ending(b"", 1024), Some(Limit::Structure));
+    assert_eq!(
+        never_ending(b"* X {4294967295}\r\n", 1024 * 1024),
+        Some(Limit::Size)
+    );
 }
 
 /// The bytes the grammar turns on, so random input reaches every state.
 fn turning_bytes() -> impl Strategy<Value = Vec<u8>> {
     let alphabet = b"()\"\\{}0123456789\r\n* OKx".to_vec();
-    prop::collection::vec(prop::sample::select(alphabet), 0..256)
+    prop::collection::vec(prop::sample::select(alphabet), 0..TURNING_BYTES)
+}
+
+/// A lexer on a data line, `room` bytes short of the structure bound.
+fn short_of_the_structure_bound(room: usize) -> Lexer {
+    let opening = "* X ";
+    let filling = "x".repeat(MAX_STRUCTURED_BYTES - room - opening.len());
+    let mut lexer = Lexer::default();
+    lexer
+        .feed(format!("{opening}{filling}").as_bytes())
+        .unwrap();
+    lexer
 }
 
 /// One piece of structured data as a server writes it.
@@ -280,12 +325,14 @@ proptest! {
     fn chunk_borders_change_nothing(
         input in turning_bytes(),
         cuts in prop::collection::vec(any::<prop::sample::Index>(), 0..8),
+        room in prop::option::of(0..TURNING_BYTES),
     ) {
-        let mut whole = Lexer::default();
+        let initial = room.map_or_else(Lexer::default, short_of_the_structure_bound);
+        let mut whole = initial.clone();
         let expected = whole.feed(&input);
         let mut cuts: Vec<usize> = cuts.iter().map(|cut| cut.index(input.len() + 1)).collect();
         cuts.sort_unstable();
-        let mut chunked = Lexer::default();
+        let mut chunked = initial;
         let mut outcome = Ok(());
         let mut start = 0;
         for end in cuts.into_iter().chain([input.len()]) {

@@ -10,10 +10,11 @@ mod list;
 
 use std::time::Duration;
 
+use async_imap::Connection;
 use async_imap::imap_proto::{Response, Status};
 use tokio::time::timeout;
 
-use super::imap::{Stream, command_error};
+use super::imap::{Stream, Wire, command_error};
 use super::{SessionError, io_error};
 
 pub(super) use list::{list, lsub, status};
@@ -34,34 +35,48 @@ const MAX_RAW_NAME_BYTES: usize = 2 * MAX_WIRE_NAME_BYTES;
 /// What bounds one answer: the time one read may take and the lines
 /// that may come before the tagged one.
 #[derive(Clone, Copy)]
-struct Bounds {
-    step: Duration,
-    max_lines: usize,
+pub(super) struct Bounds {
+    pub(super) step: Duration,
+    pub(super) max_lines: usize,
 }
 
 /// Runs `command` and hands every untagged answer to `visit` until the
-/// tagged OK; a tagged NO is `Refused`, a tagged BAD a protocol failure
-/// in fixed words. An answer of more lines than the bounds allow fails
-/// the same way, so one command takes a bounded number of reads.
+/// tagged OK, as [`answer`] reads it.
 async fn collect(
     session: &mut Signed,
     command: &str,
     bounds: Bounds,
-    mut visit: impl FnMut(&Response<'_>) -> Result<(), SessionError>,
+    visit: impl FnMut(&Response<'_>) -> Result<(), SessionError>,
 ) -> Result<(), SessionError> {
     let id = timeout(bounds.step, session.run_command(command))
         .await
         .map_err(|_elapsed| SessionError::Timeout)?
         .map_err(command_error)?;
+    answer(session, &id.0, bounds, visit).await
+}
+
+/// Hands every untagged answer to `visit` until the one tagged `tag`: an
+/// OK ends the read, a NO is `Refused`, a BAD a protocol failure in
+/// fixed words. An answer of more lines than the bounds allow fails the
+/// same way, so one command takes a bounded number of reads. Each
+/// response is dropped before the next one is parsed.
+pub(super) async fn answer<T: Wire>(
+    connection: &mut Connection<T>,
+    tag: &str,
+    bounds: Bounds,
+    mut visit: impl FnMut(&Response<'_>) -> Result<(), SessionError>,
+) -> Result<(), SessionError> {
     let mut lines = 0;
     loop {
-        let response = timeout(bounds.step, session.read_response())
+        let response = timeout(bounds.step, connection.read_response())
             .await
             .map_err(|_elapsed| SessionError::Timeout)?
             .map_err(io_error)?
             .ok_or(SessionError::Closed)?;
         match response.parsed() {
-            Response::Done { tag, status, .. } if *tag == id => {
+            Response::Done {
+                tag: found, status, ..
+            } if found.0 == tag => {
                 return match status {
                     Status::Ok => Ok(()),
                     Status::No => Err(SessionError::Refused),
