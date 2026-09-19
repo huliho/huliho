@@ -21,15 +21,22 @@ credential or the server's own words. The session layer sits behind one
 narrow trait, so the client library can be swapped in one module.
 
 Every byte a server sends passes a guard before the client library
-parses it. The protocol parser recurses once per open parenthesis and
-the library buffers a response whole, so a response that opens more
-than 32 levels (`session::MAX_NESTING`) or takes more than 32 MiB
-(`session::MAX_RESPONSE_BYTES`) fails the connection with a fixed
-sentence, before STARTTLS as well as after it. The guard follows quoted
-strings and literals only on untagged data lines, the one place the
-parser does the same, so parentheses in a subject or a file name never
-count and nothing can hide depth behind a literal the parser reads as
-text.
+parses it. The protocol parser recurses once per open parenthesis,
+spends many times the bytes of a response on the heap outside its
+literals and the library buffers a response whole. So a response that
+opens more than 32 levels (`session::MAX_NESTING`), takes more than
+32 MiB (`session::MAX_RESPONSE_BYTES`) or takes more than 64 KiB
+outside its literals (`session::MAX_STRUCTURED_BYTES`) fails the
+connection with a fixed sentence, before STARTTLS as well as after it.
+The guard follows quoted strings and literals only on untagged data
+lines, so parentheses in a subject or a file name never count. On a
+status line, a tagged line and a continuation it counts every byte.
+The size marker of a literal fails the connection there, since some
+response codes let the parser take one and the two could then disagree
+on where a response ends. The bridge reads the answers to its
+own commands one response at a time. CAPABILITY is one of them and
+travels under a tag of the bridge's own, since the client library would
+hold every line nobody asked for until the tagged one.
 
 The read path begins with the mailbox list. `mailboxes::sync` runs
 LIST with the RETURN options the server's capabilities allow

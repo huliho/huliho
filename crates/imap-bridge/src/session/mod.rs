@@ -5,6 +5,7 @@
 //! The IMAP session layer: one narrow trait over the client library, so
 //! a swap costs one module. The causes below serve the SMTP check too.
 
+mod capability;
 mod guard;
 mod imap;
 mod read;
@@ -20,11 +21,13 @@ use thiserror::Error;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::pki_types::InvalidDnsNameError;
 
-pub use guard::{MAX_NESTING, MAX_RESPONSE_BYTES};
+pub use guard::{MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
 pub use imap::ImapSession;
 
-/// One connect attempt or one command gets this long; a server slower
-/// than that counts as unreachable.
+/// One connect attempt or one step of a command gets this long: the
+/// whole command where the client library runs it, each response where
+/// the bridge reads the answer itself. A slower server counts as
+/// unreachable.
 pub const STEP_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// How a connection is encrypted; plaintext is not an option.
@@ -68,14 +71,18 @@ impl Capabilities {
     }
 }
 
+impl Extend<String> for Capabilities {
+    fn extend<I: IntoIterator<Item = String>>(&mut self, names: I) {
+        self.names
+            .extend(names.into_iter().map(|name| name.to_ascii_uppercase()));
+    }
+}
+
 impl FromIterator<String> for Capabilities {
     fn from_iter<I: IntoIterator<Item = String>>(names: I) -> Self {
-        Self {
-            names: names
-                .into_iter()
-                .map(|name| name.to_ascii_uppercase())
-                .collect(),
-        }
+        let mut found = Self::default();
+        found.extend(names);
+        found
     }
 }
 
@@ -290,6 +297,14 @@ mod tests {
         for (limit, words) in [
             (guard::Limit::Nesting, "the answer nests too deep"),
             (guard::Limit::Size, "the answer passes the byte limit"),
+            (
+                guard::Limit::Structure,
+                "the answer passes the structure limit",
+            ),
+            (
+                guard::Limit::Literal,
+                "the answer holds a literal in free text",
+            ),
         ] {
             let error = io_error(limit.into());
             assert!(

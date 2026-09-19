@@ -11,8 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_imap::error::Error as ImapError;
-use async_imap::imap_proto::{Capability, Response, Status};
-use async_imap::types::UnsolicitedResponse;
+use async_imap::imap_proto::{Response, Status};
 use async_imap::{Authenticator, Client, Connection};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
@@ -22,6 +21,7 @@ use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::pki_types::ServerName;
 
+use super::capability::{Tags, capabilities_of};
 use super::guard::Guarded;
 use super::{
     Capabilities, ListReturn, Listing, Session, SessionError, StatusEntry, StatusItems, Target,
@@ -31,16 +31,12 @@ use super::{
 pub(super) type Stream = Guarded<TlsStream<TcpStream>>;
 type Attempt = Result<async_imap::Session<Stream>, (ImapError, Client<Stream>)>;
 
-/// The untagged lines one CAPABILITY answer may carry before its tagged
-/// OK; one is the norm, the rest is room for alerts.
-const CAPABILITY_LINES: usize = 8;
-
 /// The response code of a server whose sign-in backend is down (RFC 5530
 /// section 3); the client library folds it into the text of its error.
 const UNAVAILABLE_CODE: &str = "[UNAVAILABLE]";
 
 /// The stream types the client library accepts.
-trait Wire: AsyncRead + AsyncWrite + Unpin + Send + fmt::Debug {}
+pub(super) trait Wire: AsyncRead + AsyncWrite + Unpin + Send + fmt::Debug {}
 
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + fmt::Debug> Wire for T {}
 
@@ -56,6 +52,7 @@ pub struct ImapSession {
     step: Duration,
     /// What the server advertised over TLS before any sign-in.
     offered: Capabilities,
+    tags: Tags,
 }
 
 impl Session for ImapSession {
@@ -68,6 +65,7 @@ impl Session for ImapSession {
             ServerName::try_from(target.host.clone()).map_err(SessionError::ServerName)?;
         let connector = TlsConnector::from(tls);
         let tcp = connect_tcp(&target.addresses, step_timeout).await?;
+        let mut tags = Tags::default();
         let client = match target.tls {
             TlsMode::Implicit => {
                 let stream = handshake(&connector, server_name, tcp, step_timeout).await?;
@@ -78,10 +76,8 @@ impl Session for ImapSession {
             TlsMode::Starttls => {
                 let mut plain = Client::new(Guarded::new(tcp));
                 greeting(&mut plain, step_timeout).await?;
-                if !capabilities_of(&mut plain, step_timeout)
-                    .await?
-                    .has("STARTTLS")
-                {
+                let offered = capabilities_of(&mut plain, &mut tags, step_timeout).await?;
+                if !offered.has("STARTTLS") {
                     return Err(SessionError::StarttlsAbsent);
                 }
                 match run(&mut plain, "STARTTLS", step_timeout).await {
@@ -97,11 +93,12 @@ impl Session for ImapSession {
             }
         };
         let mut client = client;
-        let offered = capabilities_of(&mut client, step_timeout).await?;
+        let offered = capabilities_of(&mut client, &mut tags, step_timeout).await?;
         Ok(Self {
             state: State::Fresh(client),
             step: step_timeout,
             offered,
+            tags,
         })
     }
 
@@ -134,8 +131,8 @@ impl Session for ImapSession {
     async fn capabilities(&mut self) -> Result<Capabilities, SessionError> {
         let step = self.step;
         match &mut self.state {
-            State::Fresh(client) => capabilities_of(client, step).await,
-            State::SignedIn(session) => capabilities_of(session, step).await,
+            State::Fresh(client) => capabilities_of(client, &mut self.tags, step).await,
+            State::SignedIn(session) => capabilities_of(session, &mut self.tags, step).await,
             State::Gone => Err(SessionError::Closed),
         }
     }
@@ -285,42 +282,6 @@ async fn run<T: Wire>(
         .await
         .map_err(|_elapsed| SessionError::Timeout)?
         .map_err(command_error)
-}
-
-/// CAPABILITY in any state; the untagged data arrives on the channel the
-/// client hands responses it did not ask for.
-async fn capabilities_of<T: Wire>(
-    connection: &mut Connection<T>,
-    step: Duration,
-) -> Result<Capabilities, SessionError> {
-    let (sender, receiver) = async_channel::bounded(CAPABILITY_LINES);
-    timeout(
-        step,
-        connection.run_command_and_check_ok("CAPABILITY", Some(sender)),
-    )
-    .await
-    .map_err(|_elapsed| SessionError::Timeout)?
-    .map_err(command_error)?;
-    let mut names = Vec::new();
-    while let Ok(message) = receiver.try_recv() {
-        if let UnsolicitedResponse::Other(data) = message
-            && let Response::Capabilities(found) = data.parsed()
-        {
-            names.extend(found.iter().map(capability_name));
-        }
-    }
-    if names.is_empty() {
-        return Err(SessionError::Protocol("CAPABILITY answered without data"));
-    }
-    Ok(names.into_iter().collect())
-}
-
-fn capability_name(capability: &Capability<'_>) -> String {
-    match capability {
-        Capability::Imap4rev1 => "IMAP4rev1".to_owned(),
-        Capability::Auth(mechanism) => format!("AUTH={mechanism}"),
-        Capability::Atom(atom) => atom.to_string(),
-    }
 }
 
 /// A NO answers the credential, unless its code says the server could

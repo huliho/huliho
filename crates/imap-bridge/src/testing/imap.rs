@@ -40,9 +40,11 @@ pub struct Script {
     pub unavailable: bool,
     /// The folders the server lists and the extensions it honors.
     pub mailboxes: Mailboxes,
-    /// A FETCH line nobody asked for ahead of every CAPABILITY answer,
-    /// its deepest parenthesis this many levels in.
-    pub nested: Option<usize>,
+    /// Lines nobody asked for, sent ahead of every CAPABILITY answer.
+    pub ahead: String,
+    /// Every CAPABILITY line filled with one long atom to this many
+    /// bytes, its line break included.
+    pub capability_bytes: Option<usize>,
 }
 
 impl Script {
@@ -58,7 +60,8 @@ impl Script {
             user: USER,
             unavailable: false,
             mailboxes: Mailboxes::default(),
-            nested: None,
+            ahead: String::new(),
+            capability_bytes: None,
         }
     }
 
@@ -69,6 +72,18 @@ impl Script {
             listen: Listen::Plain(starttls),
             ..Self::tls()
         }
+    }
+
+    /// The untagged CAPABILITY line of a phase.
+    fn capability_line(&self, phase: Phase) -> String {
+        let mut line = format!("* CAPABILITY {}", self.capabilities(phase));
+        let line_break = "\r\n";
+        if let Some(bytes) = self.capability_bytes {
+            let atom = bytes.saturating_sub(line.len() + " ".len() + line_break.len());
+            line.push(' ');
+            line.push_str(&"A".repeat(atom));
+        }
+        line + line_break
     }
 
     fn capabilities(&self, phase: Phase) -> String {
@@ -129,9 +144,9 @@ impl Protocol for Script {
                 .to_ascii_uppercase();
             let reply = match verb.as_str() {
                 "CAPABILITY" => format!(
-                    "{}* CAPABILITY {}\r\n{tag} OK done\r\n",
-                    self.nested.map(nested_fetch).unwrap_or_default(),
-                    self.capabilities(phase)
+                    "{}{}{tag} OK done\r\n",
+                    self.ahead,
+                    self.capability_line(phase)
                 ),
                 "STARTTLS" if phase == Phase::Plain(Starttls::Offered) => {
                     writer

@@ -49,8 +49,8 @@ async fn a_rejected_password_is_credential_rejected_and_the_error_carries_no_sec
     assert_no_secret(&error, "wrong horse");
     let lines = fake.lines();
     assert_eq!(lines.len(), 3, "{lines:?}");
-    assert!(lines[1].starts_with("tls A0002 LOGIN "), "{lines:?}");
-    assert_eq!(lines[2], "tls A0003 LOGOUT");
+    assert!(lines[1].starts_with("tls A0001 LOGIN "), "{lines:?}");
+    assert_eq!(lines[2], "tls A0002 LOGOUT");
 }
 
 #[tokio::test]
@@ -64,11 +64,11 @@ async fn a_rejected_token_ends_in_the_empty_answer_and_is_credential_rejected() 
     assert_eq!(
         fake.lines(),
         [
-            "tls A0001 CAPABILITY",
-            "tls A0002 AUTHENTICATE XOAUTH2",
+            "tls C1 CAPABILITY",
+            "tls A0001 AUTHENTICATE XOAUTH2",
             "tls SASL user=sanne\u{1}auth=Bearer stale\u{1}\u{1}",
             "tls SASL \"\"",
-            "tls A0003 LOGOUT",
+            "tls A0002 LOGOUT",
         ]
     );
 }
@@ -117,7 +117,7 @@ async fn login_disabled_over_tls_is_unsupported_and_no_login_travels_rfc9051_7_2
         matches!(error, VerifyError::Unsupported(SessionError::Protocol(_))),
         "{error}"
     );
-    assert_eq!(fake.lines(), ["tls A0001 CAPABILITY", "tls A0002 LOGOUT"]);
+    assert_eq!(fake.lines(), ["tls C1 CAPABILITY", "tls A0001 LOGOUT"]);
 }
 
 #[tokio::test]
@@ -134,7 +134,7 @@ async fn a_server_without_xoauth2_is_unsupported_and_no_token_travels() {
         matches!(error, VerifyError::Unsupported(SessionError::Protocol(_))),
         "{error}"
     );
-    assert_eq!(fake.lines(), ["tls A0001 CAPABILITY", "tls A0002 LOGOUT"]);
+    assert_eq!(fake.lines(), ["tls C1 CAPABILITY", "tls A0001 LOGOUT"]);
 }
 
 #[tokio::test]
@@ -284,7 +284,7 @@ async fn starttls_not_advertised_is_insecure_and_no_credential_travels_rfc9051_6
         matches!(error, VerifyError::Insecure(SessionError::StarttlsAbsent)),
         "{error}"
     );
-    assert_eq!(fake.lines(), ["plain A0001 CAPABILITY"]);
+    assert_eq!(fake.lines(), ["plain C1 CAPABILITY"]);
 }
 
 #[tokio::test]
@@ -299,7 +299,7 @@ async fn starttls_refused_is_insecure() {
     );
     assert_eq!(
         fake.lines(),
-        ["plain A0001 CAPABILITY", "plain A0002 STARTTLS"]
+        ["plain C1 CAPABILITY", "plain A0001 STARTTLS"]
     );
 }
 
@@ -323,12 +323,12 @@ async fn starttls_upgrades_before_the_credential_travels_rfc9051_6_2_1() {
     assert_eq!(
         fake.lines(),
         [
-            "plain A0001 CAPABILITY".to_owned(),
-            "plain A0002 STARTTLS".to_owned(),
-            "tls A0001 CAPABILITY".to_owned(),
-            format!("tls A0002 LOGIN \"{USER}\" \"{PASSWORD}\""),
-            "tls A0003 CAPABILITY".to_owned(),
-            "tls A0004 LOGOUT".to_owned(),
+            "plain C1 CAPABILITY".to_owned(),
+            "plain A0001 STARTTLS".to_owned(),
+            "tls C2 CAPABILITY".to_owned(),
+            format!("tls A0001 LOGIN \"{USER}\" \"{PASSWORD}\""),
+            "tls C3 CAPABILITY".to_owned(),
+            "tls A0002 LOGOUT".to_owned(),
         ]
     );
 }
@@ -345,10 +345,10 @@ async fn a_password_signs_in_reads_capability_and_logs_out() {
     assert_eq!(
         fake.lines(),
         [
-            "tls A0001 CAPABILITY".to_owned(),
-            format!("tls A0002 LOGIN \"{USER}\" \"{PASSWORD}\""),
-            "tls A0003 CAPABILITY".to_owned(),
-            "tls A0004 LOGOUT".to_owned(),
+            "tls C1 CAPABILITY".to_owned(),
+            format!("tls A0001 LOGIN \"{USER}\" \"{PASSWORD}\""),
+            "tls C2 CAPABILITY".to_owned(),
+            "tls A0002 LOGOUT".to_owned(),
         ]
     );
 }
@@ -363,11 +363,11 @@ async fn a_token_signs_in_through_xoauth2() {
     assert_eq!(
         fake.lines(),
         [
-            "tls A0001 CAPABILITY".to_owned(),
-            "tls A0002 AUTHENTICATE XOAUTH2".to_owned(),
+            "tls C1 CAPABILITY".to_owned(),
+            "tls A0001 AUTHENTICATE XOAUTH2".to_owned(),
             format!("tls SASL user={USER}\u{1}auth=Bearer {TOKEN}\u{1}\u{1}"),
-            "tls A0003 CAPABILITY".to_owned(),
-            "tls A0004 LOGOUT".to_owned(),
+            "tls C2 CAPABILITY".to_owned(),
+            "tls A0002 LOGOUT".to_owned(),
         ]
     );
 }

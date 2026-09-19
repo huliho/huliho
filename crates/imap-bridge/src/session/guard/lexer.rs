@@ -7,7 +7,10 @@
 //! literal. A string is told apart only where the protocol parser does
 //! the same, on an untagged data line; everywhere else every
 //! parenthesis counts, so the lexer never sees less depth than the
-//! parser.
+//! parser. The bytes outside a literal are counted as well, since the
+//! parser pays for those many times over. Some response codes let the
+//! parser take a literal in free text, so a size marker there fails the
+//! read: past it the two could disagree on where the response ends.
 
 use super::Limit;
 
@@ -22,6 +25,12 @@ pub const MAX_NESTING: usize = 32;
 /// path asks for.
 pub const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 
+/// The bytes one response may take outside its literals. The costliest
+/// line of this size takes 13 MiB of the parser's heap, 210 times its
+/// bytes; the largest answer of that kind the read path asks for is a
+/// LIST line with a name of 8 KiB.
+pub const MAX_STRUCTURED_BYTES: usize = 64 * 1024;
+
 /// The words that open a line of free text (RFC 3501 section 7.1).
 const STATUS_WORDS: [&[u8]; 5] = [b"OK", b"NO", b"BAD", b"BYE", b"PREAUTH"];
 
@@ -29,13 +38,42 @@ const STATUS_WORDS: [&[u8]; 5] = [b"OK", b"NO", b"BAD", b"BYE", b"PREAUTH"];
 const WORD_BYTES: usize = 7;
 
 /// Where the lexer stands in the stream.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(super) struct Lexer {
     line: Line,
     depth: usize,
     bytes: usize,
+    /// The bytes of this response outside its literals.
+    structured: usize,
     /// Whether the last byte was a carriage return that may end a line.
     cr: bool,
+    marker: Marker,
+}
+
+/// How much of a literal's size marker free text has shown: `{`, digits,
+/// `}`, CR, LF (RFC 3501 section 4.3).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum Marker {
+    #[default]
+    Absent,
+    Open,
+    Digits,
+    Closed,
+    Cr,
+    Complete,
+}
+
+impl Marker {
+    fn after(self, byte: u8) -> Self {
+        match (self, byte) {
+            (_, b'{') => Self::Open,
+            (Self::Open | Self::Digits, b'0'..=b'9') => Self::Digits,
+            (Self::Digits, b'}') => Self::Closed,
+            (Self::Closed, b'\r') => Self::Cr,
+            (Self::Cr, b'\n') => Self::Complete,
+            _ => Self::Absent,
+        }
+    }
 }
 
 /// How far the current line is understood.
@@ -89,7 +127,7 @@ impl Lexer {
                 rest = &rest[skipped..];
                 continue;
             }
-            self.count(1)?;
+            self.count_structured()?;
             self.step(byte)?;
             rest = tail;
         }
@@ -104,11 +142,21 @@ impl Lexer {
         Ok(())
     }
 
+    /// One byte outside a literal. Where no literal is told apart that
+    /// is every byte.
+    fn count_structured(&mut self) -> Result<(), Limit> {
+        self.structured += 1;
+        if self.structured > MAX_STRUCTURED_BYTES {
+            return Err(Limit::Structure);
+        }
+        self.count(1)
+    }
+
     fn step(&mut self, byte: u8) -> Result<(), Limit> {
         match self.line {
             Line::Start => {
                 self.line = if byte == b'*' { Line::Star } else { Line::Text };
-                self.text(byte)
+                self.free_text(byte)
             }
             Line::Star => {
                 self.line = if byte == b' ' {
@@ -119,15 +167,25 @@ impl Lexer {
                 } else {
                     Line::Text
                 };
-                self.text(byte)
+                self.free_text(byte)
             }
             Line::Word { bytes, len } => {
                 self.line = word(bytes, len, byte);
-                self.text(byte)
+                self.free_text(byte)
             }
-            Line::Text => self.text(byte),
+            Line::Text => self.free_text(byte),
             Line::Data(mode) => self.data(mode, byte),
         }
+    }
+
+    /// A byte of a status line, a tagged line or a continuation, where a
+    /// complete size marker fails the read.
+    fn free_text(&mut self, byte: u8) -> Result<(), Limit> {
+        self.marker = self.marker.after(byte);
+        if self.marker == Marker::Complete {
+            return Err(Limit::Literal);
+        }
+        self.text(byte)
     }
 
     /// A byte where no string is told apart: every parenthesis counts
