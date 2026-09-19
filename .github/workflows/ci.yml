@@ -279,7 +279,7 @@ jobs:
       actions: read
       contents: read
       security-events: write
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
     with:
       # A fork pull request holds a read-only token, which cannot upload.
       upload-sarif: ${{ github.event.pull_request.head.repo.fork != true }}
@@ -379,6 +379,66 @@ jobs:
         run: |
           rm -rf negative-samples
           [ "$OUTCOME" = "failure" ] || { echo "reuse lint accepted a reference to an absent license"; exit 1; }
+      - name: lock sample with a vulnerable package in its second document
+        # pnpm writes its own packages as a first YAML document; the project's tree is the second.
+        run: |
+          mkdir -p negative-samples
+          cat > negative-samples/pnpm-lock.yaml <<'LOCK'
+          ---
+          lockfileVersion: '9.0'
+
+          importers:
+
+            .:
+              configDependencies: {}
+              packageManagerDependencies:
+                pnpm:
+                  specifier: 12.4.2
+                  version: 12.4.2
+
+          packages:
+
+            pnpm@12.4.2: {}
+
+          snapshots:
+
+            pnpm@12.4.2: {}
+
+          ---
+          lockfileVersion: '9.0'
+
+          importers:
+
+            .:
+              dependencies:
+                minimist:
+                  specifier: 1.2.0
+                  version: 1.2.0
+
+          packages:
+
+            minimist@1.2.0: {}
+
+          snapshots:
+
+            minimist@1.2.0: {}
+          LOCK
+      - name: osv scan of the sample
+        id: osv-sample
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+        with:
+          scan-args: |-
+            --format=json
+            --output-file=negative-samples/osv.json
+            --lockfile=negative-samples/pnpm-lock.yaml
+      - name: osv scan reads every lock document
+        env:
+          OUTCOME: ${{ steps.osv-sample.outcome }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "the osv scan accepted a vulnerable package in the second lock document"; exit 1; }
+          grep -q '"name": "minimist"' negative-samples/osv.json || { echo "the osv scan failed for another reason"; exit 1; }
+          rm -rf negative-samples
       - name: knip dead code
         run: |
           printf 'export const orphan = 1;\n' > packages/core/src/orphan.ts
