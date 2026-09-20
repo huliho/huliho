@@ -19,7 +19,7 @@ use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
 use common::{api_state, router_on, router_with};
 use fake_dns::FakeDns;
-use huliho_imap_bridge::testing::PASSWORD;
+use huliho_imap_bridge::testing::{CLOSED, PASSWORD};
 use huliho_server::api::ApiState;
 use huliho_server::config::UpstreamConfig;
 use huliho_server::upstream::Upstream;
@@ -30,7 +30,6 @@ use signin::{
     with_cookie,
 };
 use tls_server::TlsServer;
-use tokio::net::TcpListener;
 use tower::ServiceExt;
 
 const ROUTE: &str = "/api/accounts";
@@ -334,10 +333,8 @@ async fn a_certificate_outside_the_roots_is_insecure() {
 #[tokio::test]
 async fn a_closed_port_is_unreachable() {
     let server = TlsServer::start(routes(true)).await;
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let closed = listener.local_addr().unwrap().port();
-    drop(listener);
-    let (status, body) = refused(&server, &server.config(true), &session_url(closed)).await;
+    let url = session_url(CLOSED.port());
+    let (status, body) = refused(&server, &server.config(true), &url).await;
     assert_eq!(status, StatusCode::BAD_GATEWAY, "{body}");
     assert!(body.contains("upstream_unreachable"));
 }

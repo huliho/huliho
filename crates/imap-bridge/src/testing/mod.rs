@@ -13,7 +13,7 @@ pub mod smtp;
 
 use std::future::Future;
 use std::marker::PhantomData;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use base64::Engine as _;
@@ -42,6 +42,9 @@ pub const USER: &str = "sanne";
 pub const PASSWORD: &str = "correct horse";
 /// The OAuth token every script accepts.
 pub const TOKEN: &str = "ya29.token";
+/// A loopback address that refuses every connection: port 1 lies below
+/// the range a bind to port 0 draws from, so no listener lands on it.
+pub const CLOSED: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1);
 
 /// The challenge Google sends on a wrong token, before its refusal.
 const GOOGLE_ERROR: &str =

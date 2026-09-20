@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::StatusCode;
-use huliho_imap_bridge::testing::{PASSWORD, TOKEN};
+use huliho_imap_bridge::testing::{CLOSED, PASSWORD, TOKEN};
 use huliho_server::accounts::{self, Credential};
 use huliho_server::events::Actor;
 use huliho_server::gate::{MAX_REFUSED_RUN, RUN_WINDOW, Reconnect};
@@ -35,7 +35,6 @@ use proxy_rig::{Instance, Setup, query_request};
 use signin::LOGIN;
 use tls_server::TlsServer;
 use token_endpoint::{Answer, CLIENT_ID, CLIENT_SECRET, Forms, REFRESH_TOKEN, routes};
-use tokio::net::TcpListener;
 use tokio::task::JoinSet;
 
 /// The host the Google preset's token endpoint lives on.
@@ -126,12 +125,9 @@ fn account_scope(instance: &Instance, id: &str) -> Scope {
 }
 
 /// The echo script with its API endpoint on a port nothing listens on.
-async fn closed_endpoint(instance: &Instance) -> Script {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let closed = listener.local_addr().unwrap().port();
-    drop(listener);
+fn closed_endpoint(instance: &Instance) -> Script {
     Script {
-        api_url: format!("https://{HOST}:{closed}/jmap/api"),
+        api_url: format!("https://{HOST}:{}/jmap/api", CLOSED.port()),
         ..Script::echo(instance.upstream.port())
     }
 }
@@ -207,7 +203,7 @@ async fn a_burst_of_refused_connections_counts_once_and_the_account_runs_on() {
     let instance = Arc::new(instance(RUN_WINDOW).await);
     let id = instance.add_account(bearer());
     let cookie = instance.sign_in().await;
-    instance.upstream.set(closed_endpoint(&instance).await);
+    instance.upstream.set(closed_endpoint(&instance));
     // The endpoint check resolves the host, not the port, so the session
     // object passes and the closed port is met on the first request.
     let (status, body) = instance.session(&cookie, &id).await;
@@ -241,7 +237,7 @@ async fn failures_in_five_windows_stop_the_account_and_a_stopped_one_fetches_not
     let instance = instance(Duration::ZERO).await;
     let id = instance.add_account(bearer());
     let cookie = instance.sign_in().await;
-    instance.upstream.set(closed_endpoint(&instance).await);
+    instance.upstream.set(closed_endpoint(&instance));
     let (status, _) = instance.session(&cookie, &id).await;
     assert_eq!(status, StatusCode::OK);
     for attempt in 1..=MAX_REFUSED_RUN {
