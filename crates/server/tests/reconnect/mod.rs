@@ -15,9 +15,9 @@ use std::time::Duration;
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
-use huliho_imap_bridge::testing::USER;
 use huliho_imap_bridge::testing::imap::{self, FakeImap};
 use huliho_imap_bridge::testing::smtp::{self, FakeSmtp};
+use huliho_imap_bridge::testing::{CLOSED, USER};
 use huliho_server::accounts::{
     self, AccountSettings, Credential, Endpoint, NewAccount, Provider, TlsMode,
 };
@@ -32,7 +32,6 @@ use huliho_server::store::Store;
 use huliho_server::upstream::{Dns, Lookup, SrvTarget, Upstream};
 use serde_json::{Value, json};
 use tempfile::NamedTempFile;
-use tokio::net::TcpListener;
 use tower::ServiceExt;
 
 use crate::common::{api_state, router_on, router_with};
@@ -93,8 +92,6 @@ pub struct Instance {
     api: ApiState,
     dns: Arc<SwitchDns>,
     smtp: FakeSmtp,
-    /// A loopback port nothing listens on.
-    closed: SocketAddr,
     _ca_file: NamedTempFile,
 }
 
@@ -104,9 +101,6 @@ impl Instance {
     pub async fn start(script: imap::Script) -> Self {
         let imap = FakeImap::start(script).await;
         let smtp = FakeSmtp::start(smtp::Script::tls()).await;
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let closed = listener.local_addr().unwrap();
-        drop(listener);
         let mut ca_file = NamedTempFile::new().unwrap();
         write!(ca_file, "{}{}", imap.ca_pem(), smtp.ca_pem()).unwrap();
         let config = UpstreamConfig {
@@ -136,7 +130,6 @@ impl Instance {
             api,
             dns,
             smtp,
-            closed,
             _ca_file: ca_file,
         }
     }
@@ -148,7 +141,7 @@ impl Instance {
 
     /// The IMAP host resolves to a port nothing listens on.
     pub fn server_down(&self) {
-        self.dns.point(imap::HOST, self.closed);
+        self.dns.point(imap::HOST, CLOSED);
     }
 
     /// The wiring the binary hands the probe.

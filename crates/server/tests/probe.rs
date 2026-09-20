@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use fake_dns::FakeDns;
 use huliho_imap_bridge::testing::imap::{self, FakeImap};
 use huliho_imap_bridge::testing::smtp::{self, FakeSmtp};
-use huliho_imap_bridge::testing::{Greeting, PASSWORD, Starttls, TOKEN, USER};
+use huliho_imap_bridge::testing::{CLOSED, Greeting, PASSWORD, Starttls, TOKEN, USER};
 use huliho_server::accounts::{AccountSettings, Credential, Endpoint, TlsMode};
 use huliho_server::config::UpstreamConfig;
 use huliho_server::discovery::Address;
@@ -24,7 +24,6 @@ use huliho_server::probe::{Probe, ProbeError};
 use huliho_server::providers::OauthProvider;
 use huliho_server::upstream::Upstream;
 use tempfile::NamedTempFile;
-use tokio::net::TcpListener;
 
 const ADDRESS: &str = "sanne@example.test";
 
@@ -147,9 +146,6 @@ async fn a_rejected_imap_password_stops_before_smtp_and_names_no_secret() {
 #[tokio::test]
 async fn a_closed_imap_port_is_unreachable() {
     let servers = Servers::start(imap::Script::tls(), smtp::Script::tls()).await;
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let closed = listener.local_addr().unwrap().port();
-    drop(listener);
     let probe = servers.trusting_both();
     let AccountSettings::Imap {
         username,
@@ -159,7 +155,7 @@ async fn a_closed_imap_port_is_unreachable() {
     else {
         unreachable!()
     };
-    imap.port = closed;
+    imap.port = CLOSED.port();
     let target = AccountSettings::Imap {
         username,
         imap,

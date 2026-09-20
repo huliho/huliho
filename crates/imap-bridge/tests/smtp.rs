@@ -10,9 +10,8 @@ use std::time::Duration;
 use huliho_imap_bridge::session::{SessionError, Target, TlsMode};
 use huliho_imap_bridge::smtp::verify;
 use huliho_imap_bridge::testing::smtp::{FakeSmtp, HOST, Script};
-use huliho_imap_bridge::testing::{Greeting, PASSWORD, Starttls, TOKEN, password, token};
+use huliho_imap_bridge::testing::{CLOSED, Greeting, PASSWORD, Starttls, TOKEN, password, token};
 use huliho_imap_bridge::verify::{Credential, VerifyError};
-use tokio::net::TcpListener;
 
 /// Room for a loopback exchange; the hang tests wait this long once.
 const STEP: Duration = Duration::from_secs(1);
@@ -118,12 +117,9 @@ async fn a_server_offering_only_a_mechanism_this_cannot_answer_is_auth_unavailab
 // jscpd:ignore-start
 #[tokio::test]
 async fn a_closed_port_is_unreachable() {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    drop(listener);
     let target = Target {
         host: HOST.to_owned(),
-        addresses: vec![address],
+        addresses: vec![CLOSED],
         tls: TlsMode::Implicit,
     };
     let error = verify(FakeSmtp::distrusting(), &target, &password(PASSWORD), STEP)

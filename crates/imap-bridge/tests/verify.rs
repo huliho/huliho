@@ -9,7 +9,9 @@ use std::time::Duration;
 
 use huliho_imap_bridge::session::{Capabilities, SessionError, Target, TlsMode};
 use huliho_imap_bridge::testing::imap::{CAPABILITIES, FakeImap, HOST, Script};
-use huliho_imap_bridge::testing::{Greeting, PASSWORD, Starttls, TOKEN, USER, password, token};
+use huliho_imap_bridge::testing::{
+    CLOSED, Greeting, PASSWORD, Starttls, TOKEN, USER, password, token,
+};
 use huliho_imap_bridge::verify::{Credential, VerifyError, verify};
 use tokio::net::TcpListener;
 
@@ -139,12 +141,9 @@ async fn a_server_without_xoauth2_is_unsupported_and_no_token_travels() {
 
 #[tokio::test]
 async fn a_closed_port_is_unreachable() {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    drop(listener);
     let target = Target {
         host: HOST.to_owned(),
-        addresses: vec![address],
+        addresses: vec![CLOSED],
         tls: TlsMode::Implicit,
     };
     let error = verify(FakeImap::distrusting(), &target, &password(PASSWORD), STEP)
