@@ -166,7 +166,8 @@ fn thread_counts_follow_the_memberships_and_the_keyword_test_rfc8621_2() {
         Counts {
             total_threads: 3,
             unread_threads: 1,
-            synced_emails: 4
+            synced_emails: 4,
+            unread_emails: 1,
         }
     );
 }

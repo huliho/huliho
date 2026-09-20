@@ -71,6 +71,15 @@ async fn lines_nobody_asked_for_fit_the_answer_up_to_the_line_limit() {
 }
 
 #[tokio::test]
+async fn an_answer_without_a_capability_line_fails_the_check_rfc9051_6_1_1() {
+    let silent = Script {
+        capabilities: "",
+        ..Script::tls()
+    };
+    assert_unsupported(check(silent).await, "CAPABILITY answered without data");
+}
+
+#[tokio::test]
 async fn names_up_to_the_limit_are_kept_and_one_more_fails_the_check() {
     let inside = check(advertising(MAX_CAPABILITIES, true)).await.unwrap();
     assert_eq!(inside.iter().count(), MAX_CAPABILITIES);

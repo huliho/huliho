@@ -6,15 +6,17 @@
 //! the shapes the parser pays most for.
 
 use super::super::lexer::Lexer;
-use super::super::{Limit, MAX_STRUCTURED_BYTES};
+use super::super::{Limit, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
 use super::{LEAF, fed};
 
-/// A literal the size of a message body.
-const BODY_BYTES: usize = 8 * 1024 * 1024;
+/// A literal of half the byte bound, several times the structure bound.
+const BODY_BYTES: usize = MAX_RESPONSE_BYTES / 2;
 
-/// The shapes the parser pays most for, each as an opening, the unit it
-/// repeats and a closing.
-const COSTLY: [(&str, &str, &str); 8] = [
+/// The shapes the parser pays most for and a SEARCH line, the answer
+/// that grows with a folder; each as an opening, the unit it repeats and
+/// a closing.
+const COSTLY: [(&str, &str, &str); 9] = [
+    ("* SEARCH", " 1", "\r\n"),
     ("* 1 FETCH (BODYSTRUCTURE (", LEAF, " \"MIXED\"))\r\n"),
     ("* 1 FETCH (UID 1", " UID 1", ")\r\n"),
     ("* 1 FETCH (FLAGS (a", " a", "))\r\n"),

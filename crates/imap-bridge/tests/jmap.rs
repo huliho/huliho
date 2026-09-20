@@ -208,7 +208,7 @@ async fn core_echo_returns_its_arguments_rfc8620_4() {
 #[tokio::test]
 async fn a_request_that_cannot_run_answers_its_problem_rfc8620_3_6_1() {
     let rig = Rig::start().await;
-    let raw = |body: &[u8]| huliho_imap_bridge::jmap::handle(&rig.store, &key(), body);
+    let raw = |body: &[u8]| rig.raw(body);
     assert!(matches!(
         raw(b"not json").unwrap_err(),
         RequestError::NotJson
@@ -243,7 +243,7 @@ async fn created_ids_come_back_as_they_were_sent_rfc8620_3_4() {
     let rig = Rig::start().await;
     let body = json!({ "using": [], "methodCalls": [], "createdIds": { "a": "m1" } });
     let body = serde_json::to_vec(&body).unwrap();
-    let bytes = huliho_imap_bridge::jmap::handle(&rig.store, &key(), &body).unwrap();
+    let bytes = rig.raw(&body).unwrap();
     let response: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(response["createdIds"], json!({ "a": "m1" }));
 }
@@ -255,7 +255,7 @@ async fn a_method_that_cannot_run_answers_inside_the_response_rfc8620_3_6_2() {
         (&[CORE_CAPABILITY][..], mailbox_get("c1"), "unknownMethod"),
         (
             &[CORE_CAPABILITY, MAIL_CAPABILITY][..],
-            json!(["Email/get", { "accountId": ACCOUNT }, "c1"]),
+            json!(["Email/queryChanges", { "accountId": ACCOUNT }, "c1"]),
             "unknownMethod",
         ),
         (

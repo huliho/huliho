@@ -15,7 +15,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::time::timeout;
 
 use super::imap::Wire;
-use super::read::{Bounds, answer};
+use super::read::{Bounds, Count, answer};
 use super::{Capabilities, SessionError, io_error};
 
 /// The untagged lines one CAPABILITY answer may carry before its tagged
@@ -40,11 +40,13 @@ impl Tags {
 }
 
 /// Sends CAPABILITY (RFC 9051 section 6.1.1) and reads its answer under
-/// the line limit and the name limit.
+/// the line limit and the name limit. The count of a selected mailbox
+/// follows the answer like any other.
 pub(super) async fn capabilities_of<T: Wire>(
     connection: &mut Connection<T>,
     tags: &mut Tags,
     step: Duration,
+    mut count: Option<&mut Count>,
 ) -> Result<Capabilities, SessionError> {
     let tag = tags.next();
     let command = format!("{tag} CAPABILITY\r\n");
@@ -64,6 +66,9 @@ pub(super) async fn capabilities_of<T: Wire>(
         max_lines: CAPABILITY_LINES,
     };
     answer(connection, &tag, bounds, |response| {
+        if let Some(count) = count.as_deref_mut() {
+            count.note(response);
+        }
         if let Response::Capabilities(names) = response {
             advertised += names.len();
             if advertised > MAX_CAPABILITIES {

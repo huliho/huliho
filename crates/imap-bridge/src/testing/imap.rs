@@ -9,6 +9,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt};
 
+use super::messages::Conversation;
 use super::{
     Fake, GOOGLE_ERROR, Greeting, Lines, Listen, Mailboxes, PASSWORD, Phase, Protocol, Starttls,
     TOKEN, USER, decoded, open, read_line, record,
@@ -31,7 +32,8 @@ pub struct Script {
     pub greeting: Greeting,
     /// Whether commands after the greeting get an answer.
     pub answers: bool,
-    /// Advertised once TLS is on, the mailbox model's extensions after it.
+    /// Advertised once TLS is on, the mailbox model's extensions after
+    /// it. With no name at all the CAPABILITY line stays out.
     pub capabilities: &'static str,
     /// The one user the server signs in.
     pub user: &'static str,
@@ -76,7 +78,11 @@ impl Script {
 
     /// The untagged CAPABILITY line of a phase.
     fn capability_line(&self, phase: Phase) -> String {
-        let mut line = format!("* CAPABILITY {}", self.capabilities(phase));
+        let names = self.capabilities(phase);
+        if names.is_empty() {
+            return String::new();
+        }
+        let mut line = format!("* CAPABILITY {names}");
         let line_break = "\r\n";
         if let Some(bytes) = self.capability_bytes {
             let atom = bytes.saturating_sub(line.len() + " ".len() + line_break.len());
@@ -92,11 +98,11 @@ impl Script {
             Phase::Plain(_) => "IMAP4rev1 STARTTLS LOGINDISABLED".to_owned(),
             Phase::Tls | Phase::Upgraded => {
                 let extensions = self.mailboxes.capabilities();
-                if extensions.is_empty() {
-                    self.capabilities.to_owned()
-                } else {
-                    format!("{} {extensions}", self.capabilities)
-                }
+                [self.capabilities, extensions.as_str()]
+                    .into_iter()
+                    .filter(|words| !words.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ")
             }
         }
     }
@@ -133,6 +139,7 @@ impl Protocol for Script {
         stream: S,
     ) -> Option<S> {
         let (mut reader, mut writer) = open(self, phase, stream).await?;
+        let mut conversation = Conversation::default();
         loop {
             let line = read_line(&mut reader).await?;
             record(lines, phase, &line);
@@ -184,6 +191,9 @@ impl Protocol for Script {
                 }
                 "LIST" | "LSUB" | "STATUS" if phase.is_tls() => {
                     self.mailboxes.answer(&verb, command, tag)
+                }
+                "EXAMINE" | "UID" if phase.is_tls() => {
+                    conversation.answer(&self.mailboxes, command, tag)?
                 }
                 _ => format!("{tag} BAD unknown command\r\n"),
             };

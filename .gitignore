@@ -10,6 +10,8 @@ storybook-static/
 .lighthouseci/
 .pnpm-store/
 target/
+crates/imap-bridge/fuzz/corpus/
+crates/imap-bridge/fuzz/artifacts/
 *.tsbuildinfo
 .turbo/
 coverage/

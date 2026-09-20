@@ -24,8 +24,8 @@ use tokio_rustls::rustls::pki_types::ServerName;
 use super::capability::{Tags, capabilities_of};
 use super::guard::Guarded;
 use super::{
-    Capabilities, ListReturn, Listing, Session, SessionError, StatusEntry, StatusItems, Target,
-    TlsMode, io_error, read,
+    Capabilities, FetchedMessage, ListReturn, Listing, Selected, Session, SessionError,
+    StatusEntry, StatusItems, Target, TlsMode, UidRange, io_error, read,
 };
 
 pub(super) type Stream = Guarded<TlsStream<TcpStream>>;
@@ -53,6 +53,9 @@ pub struct ImapSession {
     /// What the server advertised over TLS before any sign-in.
     offered: Capabilities,
     tags: Tags,
+    /// The message count of the selected mailbox; while one is selected
+    /// other clients' lines ride along.
+    selected: Option<read::Count>,
 }
 
 impl Session for ImapSession {
@@ -76,7 +79,7 @@ impl Session for ImapSession {
             TlsMode::Starttls => {
                 let mut plain = Client::new(Guarded::new(tcp));
                 greeting(&mut plain, step_timeout).await?;
-                let offered = capabilities_of(&mut plain, &mut tags, step_timeout).await?;
+                let offered = capabilities_of(&mut plain, &mut tags, step_timeout, None).await?;
                 if !offered.has("STARTTLS") {
                     return Err(SessionError::StarttlsAbsent);
                 }
@@ -93,12 +96,13 @@ impl Session for ImapSession {
             }
         };
         let mut client = client;
-        let offered = capabilities_of(&mut client, &mut tags, step_timeout).await?;
+        let offered = capabilities_of(&mut client, &mut tags, step_timeout, None).await?;
         Ok(Self {
             state: State::Fresh(client),
             step: step_timeout,
             offered,
             tags,
+            selected: None,
         })
     }
 
@@ -131,20 +135,23 @@ impl Session for ImapSession {
     async fn capabilities(&mut self) -> Result<Capabilities, SessionError> {
         let step = self.step;
         match &mut self.state {
-            State::Fresh(client) => capabilities_of(client, &mut self.tags, step).await,
-            State::SignedIn(session) => capabilities_of(session, &mut self.tags, step).await,
+            State::Fresh(client) => capabilities_of(client, &mut self.tags, step, None).await,
+            State::SignedIn(session) => {
+                let count = self.selected.as_mut();
+                capabilities_of(session, &mut self.tags, step, count).await
+            }
             State::Gone => Err(SessionError::Closed),
         }
     }
 
     async fn list(&mut self, options: ListReturn) -> Result<Listing, SessionError> {
-        let step = self.step;
-        read::list(self.signed_in()?, options, step).await
+        let room = self.room();
+        read::list(&mut self.selection()?, options, room).await
     }
 
     async fn lsub(&mut self) -> Result<Vec<String>, SessionError> {
-        let step = self.step;
-        read::lsub(self.signed_in()?, step).await
+        let room = self.room();
+        read::lsub(&mut self.selection()?, room).await
     }
 
     async fn status(
@@ -152,8 +159,37 @@ impl Session for ImapSession {
         mailbox: &str,
         items: StatusItems,
     ) -> Result<StatusEntry, SessionError> {
-        let step = self.step;
-        read::status(self.signed_in()?, mailbox, items, step).await
+        let room = self.room();
+        read::status(&mut self.selection()?, mailbox, items, room).await
+    }
+
+    async fn examine(&mut self, mailbox: &str) -> Result<Selected, SessionError> {
+        // A server may select before it fails, so the room grows first.
+        self.selected = Some(read::Count::default());
+        let room = self.room();
+        let outcome = match self.selection() {
+            Ok(mut selection) => read::examine(&mut selection, mailbox, room).await,
+            Err(error) => Err(error),
+        };
+        // RFC 3501 section 6.3.1: after a failure no mailbox is selected.
+        if outcome.is_err() {
+            self.selected = None;
+        }
+        outcome
+    }
+
+    async fn uid_list(&mut self) -> Result<Vec<u32>, SessionError> {
+        let room = self.room();
+        read::uid_list(&mut self.selection()?, room).await
+    }
+
+    async fn uid_fetch(
+        &mut self,
+        range: UidRange,
+        structure: bool,
+    ) -> Result<Vec<FetchedMessage>, SessionError> {
+        let room = self.room();
+        read::uid_fetch(&mut self.selection()?, range, structure, room).await
     }
 
     async fn logout(self) -> Result<(), SessionError> {
@@ -179,10 +215,18 @@ impl ImapSession {
         }
     }
 
-    /// The signed-in session the read commands run on.
-    fn signed_in(&mut self) -> Result<&mut async_imap::Session<Stream>, SessionError> {
+    fn room(&self) -> read::Room {
+        read::Room::new(self.step, self.selected.is_some())
+    }
+
+    /// The signed-in session the read commands run on, with the count
+    /// of its selected mailbox.
+    fn selection(&mut self) -> Result<read::Selection<'_>, SessionError> {
         match &mut self.state {
-            State::SignedIn(session) => Ok(session),
+            State::SignedIn(session) => Ok(read::Selection {
+                session,
+                count: self.selected.as_mut(),
+            }),
             State::Fresh(_) => Err(SessionError::Protocol("not signed in")),
             State::Gone => Err(SessionError::Closed),
         }

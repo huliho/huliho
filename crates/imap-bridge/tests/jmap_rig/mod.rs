@@ -13,6 +13,7 @@ use huliho_imap_bridge::mailboxes::sync;
 use huliho_imap_bridge::session::{ImapSession, Session, TlsMode};
 use huliho_imap_bridge::store::{AccountKey, Store};
 use huliho_imap_bridge::testing::imap::{FakeImap, HOST, Script};
+use huliho_imap_bridge::testing::seal::TestSealer;
 use huliho_imap_bridge::testing::{Folder, Mailboxes, PASSWORD, USER};
 use serde_json::{Map, Value, json};
 
@@ -83,8 +84,13 @@ impl Rig {
         let mut body = Map::new();
         body.insert("using".to_owned(), json!(using));
         body.insert("methodCalls".to_owned(), calls);
-        let bytes = handle(&self.store, &key(), &serde_json::to_vec(&body).unwrap())?;
+        let bytes = self.raw(&serde_json::to_vec(&body).unwrap())?;
         Ok(serde_json::from_slice(&bytes).unwrap())
+    }
+
+    /// One request body as it arrived, the answer as bytes.
+    pub fn raw(&self, body: &[u8]) -> Result<Vec<u8>, RequestError> {
+        handle(&self.store, &TestSealer::default(), &key(), body)
     }
 
     /// A request under core and mail, which every method of this bridge

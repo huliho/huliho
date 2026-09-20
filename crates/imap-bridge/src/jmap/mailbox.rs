@@ -4,13 +4,13 @@
 
 //! `Mailbox/get` (RFC 8621 section 2.1) over the rows the pass wrote.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use super::{Context, MAX_OBJECTS_IN_GET, MethodError, arguments};
-use crate::store::{Counts, MailboxId, MailboxRow};
+use crate::store::{MailboxRow, MailboxSnapshot};
 
 /// The property the vendor capability adds: the emails the bridge holds
 /// for the mailbox, next to `totalEmails` from the server.
@@ -63,14 +63,14 @@ pub(super) fn get(
             snapshot
                 .rows
                 .iter()
-                .map(|row| object(row, &snapshot.counts, &wanted)),
+                .map(|row| object(row, &snapshot, &wanted)),
         ),
         Some(ids) => {
             // RFC 8620 section 5.1: an id sent more than once is answered once.
             let mut seen = HashSet::new();
             for id in ids.iter().filter(|id| seen.insert(id.as_str())) {
                 match snapshot.rows.iter().find(|row| row.id.as_str() == id) {
-                    Some(row) => list.push(object(row, &snapshot.counts, &wanted)),
+                    Some(row) => list.push(object(row, &snapshot, &wanted)),
                     None => not_found.push(id),
                 }
             }
@@ -113,18 +113,26 @@ fn properties(named: Option<&[String]>, huliho: bool) -> Result<Vec<&'static str
 }
 
 /// One Mailbox object (RFC 8621 section 2), cut to the wanted
-/// properties.
-fn object(row: &MailboxRow, counts: &HashMap<MailboxId, Counts>, wanted: &[&str]) -> Value {
+/// properties. The email counts are what STATUS said until the first
+/// sync of the folder is done and what the memberships say afterwards:
+/// STATUS counts a message flagged `\Deleted` and an unseen draft,
+/// which JMAP does not (RFC 8621 sections 2 and 4.1.1).
+fn object(row: &MailboxRow, snapshot: &MailboxSnapshot, wanted: &[&str]) -> Value {
     let facts = &row.facts;
-    let counted = counts.get(&row.id).copied().unwrap_or_default();
+    let counted = snapshot.counts.get(&row.id).copied().unwrap_or_default();
+    let (total_emails, unread_emails) = if snapshot.done.contains(&row.id) {
+        (counted.synced_emails, counted.unread_emails)
+    } else {
+        (facts.total_emails, facts.unread_emails)
+    };
     let pairs = [
         ("id", json!(row.id)),
         ("name", json!(facts.name)),
         ("parentId", json!(row.parent_id)),
         ("role", json!(facts.role)),
         ("sortOrder", json!(facts.sort_order)),
-        ("totalEmails", json!(facts.total_emails)),
-        ("unreadEmails", json!(facts.unread_emails)),
+        ("totalEmails", json!(total_emails)),
+        ("unreadEmails", json!(unread_emails)),
         ("totalThreads", json!(counted.total_threads)),
         ("unreadThreads", json!(counted.unread_threads)),
         ("myRights", rights(facts.selectable)),
@@ -157,8 +165,10 @@ fn rights(selectable: bool) -> Value {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
-    use crate::store::MailboxFacts;
+    use crate::store::{MailboxFacts, MailboxId};
 
     #[test]
     fn a_row_nothing_can_select_and_nobody_subscribed_reads_as_such_rfc8621_2() {
@@ -182,7 +192,13 @@ mod tests {
                 unread_emails: 0,
             },
         };
-        let rendered = object(&row, &HashMap::new(), &["myRights", "isSubscribed"]);
+        let snapshot = MailboxSnapshot {
+            state: 0,
+            rows: Vec::new(),
+            counts: HashMap::new(),
+            done: HashSet::new(),
+        };
+        let rendered = object(&row, &snapshot, &["myRights", "isSubscribed"]);
         assert_eq!(rendered["myRights"]["mayReadItems"], false);
         assert_eq!(rendered["isSubscribed"], false);
         assert_eq!(rendered.as_object().unwrap().len(), 2);

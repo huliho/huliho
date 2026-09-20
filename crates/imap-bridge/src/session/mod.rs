@@ -6,8 +6,11 @@
 //! a swap costs one module. The causes below serve the SMTP check too.
 
 mod capability;
+#[cfg(feature = "test-support")]
+pub mod fuzzing;
 mod guard;
 mod imap;
+mod message;
 mod read;
 
 use std::collections::BTreeSet;
@@ -23,6 +26,9 @@ use tokio_rustls::rustls::pki_types::InvalidDnsNameError;
 
 pub use guard::{MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
 pub use imap::ImapSession;
+pub use message::{
+    BodyPart, FetchedMessage, MAX_FETCH_MESSAGES, MAX_HEADER_BYTES, Selected, UidRange,
+};
 
 /// One connect attempt or one step of a command gets this long: the
 /// whole command where the client library runs it, each response where
@@ -261,6 +267,48 @@ pub trait Session: Sized + Send {
         mailbox: &str,
         items: StatusItems,
     ) -> impl Future<Output = Result<StatusEntry, SessionError>> + Send;
+
+    /// EXAMINE of one mailbox by its wire name (RFC 3501 section 6.3.2):
+    /// read-only, so nothing the read path does changes a flag. From
+    /// here on every answer has room for the lines other clients cause.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::status`]; `Protocol` as well when the answer lacks
+    /// EXISTS or UIDVALIDITY. A server whose NO carries bytes outside
+    /// ASCII fails the parse, which reads as `Protocol`.
+    fn examine(
+        &mut self,
+        mailbox: &str,
+    ) -> impl Future<Output = Result<Selected, SessionError>> + Send;
+
+    /// Every UID of the selected mailbox, highest first. It asks `UID
+    /// SEARCH` for one window of sequence numbers at a time (RFC 3501
+    /// section 6.4.4), so no answer grows with the folder.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`]; `Protocol` as well when no mailbox is
+    /// selected and past the UID limit of one folder.
+    fn uid_list(&mut self) -> impl Future<Output = Result<Vec<u32>, SessionError>> + Send;
+
+    /// `UID FETCH` of the header items for a range of the selected
+    /// mailbox, with BODYSTRUCTURE when `structure` is set; the messages
+    /// by UID. Lines for other UIDs and flag updates are skipped.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`]; `Protocol` as well for more than
+    /// `MAX_FETCH_MESSAGES` messages, a date the format refuses or no
+    /// `UTCDate` can render, a mod-sequence past 63 bits and a response
+    /// past a bound of the guard. After any of them the session must be
+    /// dropped. Before anything is sent, `Protocol` when no mailbox is
+    /// selected or the range runs backward.
+    fn uid_fetch(
+        &mut self,
+        range: UidRange,
+        structure: bool,
+    ) -> impl Future<Output = Result<Vec<FetchedMessage>, SessionError>> + Send;
 
     /// The LOGOUT command (RFC 9051 section 6.1.3); the connection is
     /// gone afterwards whatever the answer.

@@ -20,10 +20,11 @@ use super::Limit;
 /// many fit half the 2 MiB of a worker thread.
 pub const MAX_NESTING: usize = 32;
 
-/// The bytes one response may take, literals included: the UID list of
-/// a folder of some three million messages, the largest answer the read
-/// path asks for.
-pub const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
+/// The bytes one response may take, literals included. The largest
+/// answer the read path asks for is one FETCH line with the header
+/// fields of a message as its literal, of which 64 KiB are kept; this
+/// is sixteen times that.
+pub const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 
 /// The bytes one response may take outside its literals. The costliest
 /// line of this size takes 13 MiB of the parser's heap, 210 times its

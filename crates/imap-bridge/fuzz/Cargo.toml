@@ -1,0 +1,44 @@
+[package]
+name = "huliho-imap-bridge-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# The root workspace globs crates/*, so this package names its own.
+[workspace]
+
+[dependencies]
+huliho-imap-bridge = { path = "..", features = ["test-support"] }
+libfuzzer-sys = "0.4.13"
+
+[[bin]]
+name = "headers"
+path = "fuzz_targets/headers.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lexer"
+path = "fuzz_targets/lexer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "server_line"
+path = "fuzz_targets/server_line.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "utf7"
+path = "fuzz_targets/utf7.rs"
+test = false
+doc = false
+bench = false

@@ -6,6 +6,8 @@
 //! constants the host applies, one connection the bridge locks per call.
 
 mod changes;
+mod emails;
+mod folders;
 mod ids;
 mod mailboxes;
 
@@ -14,7 +16,11 @@ use std::sync::{Mutex, MutexGuard};
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use thiserror::Error;
 
+use crate::seal::SealError;
+
 pub use changes::{CHANGES_HORIZON, Change, ChangeKind, ChangesSince, ObjectType};
+pub use emails::{Address, Batch, EmailFacts, EmailRow, EmailSnapshot, Personal, Progress};
+pub use folders::REMATCH_LIMIT;
 pub use ids::{AccountKey, EmailId, MailboxId, ThreadId};
 pub use mailboxes::{Counts, MailboxFacts, MailboxRow, MailboxSnapshot};
 
@@ -29,6 +35,8 @@ pub enum StoreError {
     Database(#[from] rusqlite::Error),
     #[error("cannot encode a stored value: {0}")]
     Encoding(#[from] serde_json::Error),
+    #[error(transparent)]
+    Seal(#[from] SealError),
     #[error("the store lock was poisoned by an earlier panic")]
     Poisoned,
 }
