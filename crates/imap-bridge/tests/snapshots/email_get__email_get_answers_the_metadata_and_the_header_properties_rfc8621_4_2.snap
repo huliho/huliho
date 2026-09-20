@@ -1,0 +1,136 @@
+---
+source: crates/imap-bridge/tests/email_get.rs
+expression: "stable(&rig, &answer[\"list\"])"
+---
+[
+  {
+    "bcc": null,
+    "blobId": "e1",
+    "cc": null,
+    "from": [
+      {
+        "email": "sanne@example.test",
+        "name": "Sanne"
+      }
+    ],
+    "hasAttachment": false,
+    "id": "e1",
+    "inReplyTo": null,
+    "keywords": {
+      "$seen": true
+    },
+    "mailboxIds": {
+      "INBOX": true
+    },
+    "messageId": [
+      "m1@example.test"
+    ],
+    "receivedAt": "2026-01-01T00:00:01Z",
+    "references": null,
+    "replyTo": null,
+    "sender": null,
+    "sentAt": null,
+    "size": 1001,
+    "subject": "Message 1",
+    "threadId": "t1",
+    "to": [
+      {
+        "email": "mo@example.test",
+        "name": null
+      }
+    ]
+  },
+  {
+    "bcc": [
+      {
+        "email": "audit@example.test",
+        "name": null
+      }
+    ],
+    "blobId": "e2",
+    "cc": [
+      {
+        "email": "kim@example.test",
+        "name": null
+      }
+    ],
+    "from": [
+      {
+        "email": "sanne@example.test",
+        "name": "Visser, Sanne"
+      }
+    ],
+    "hasAttachment": true,
+    "id": "e2",
+    "inReplyTo": [
+      "m1@example.test"
+    ],
+    "keywords": {
+      "$answered": true,
+      "$forwarded": true
+    },
+    "mailboxIds": {
+      "INBOX": true
+    },
+    "messageId": [
+      "m2@example.test"
+    ],
+    "receivedAt": "2026-01-01T00:00:02Z",
+    "references": [
+      "m0@example.test",
+      "m1@example.test"
+    ],
+    "replyTo": [
+      {
+        "email": "replies@example.test",
+        "name": null
+      }
+    ],
+    "sender": [
+      {
+        "email": "desk@example.test",
+        "name": null
+      }
+    ],
+    "sentAt": "2026-09-01T07:30:00Z",
+    "size": 1002,
+    "subject": "Café om drie uur",
+    "threadId": "t2",
+    "to": [
+      {
+        "email": "mo@example.test",
+        "name": null
+      },
+      {
+        "email": "li@example.test",
+        "name": "Li"
+      }
+    ]
+  },
+  {
+    "bcc": null,
+    "blobId": "e3",
+    "cc": null,
+    "from": null,
+    "hasAttachment": false,
+    "id": "e3",
+    "inReplyTo": null,
+    "keywords": {
+      "$draft": true,
+      "$flagged": true
+    },
+    "mailboxIds": {
+      "INBOX": true
+    },
+    "messageId": null,
+    "receivedAt": "2026-01-01T00:00:03Z",
+    "references": null,
+    "replyTo": null,
+    "sender": null,
+    "sentAt": null,
+    "size": 1003,
+    "subject": null,
+    "threadId": "t3",
+    "to": null
+  }
+]

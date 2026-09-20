@@ -5,24 +5,21 @@
 //! LIST, LSUB and STATUS: the mailbox names with their attributes and
 //! counts, each answer read under its own line limit.
 
-use std::time::Duration;
-
 use async_imap::imap_proto::{MailboxDatum, NameAttribute, Response, StatusAttribute};
 
-use super::{Bounds, SPARE_LINES, Signed, collect, quoted, unescaped, wire_name};
+use super::{Room, Selection, modseq, quoted, unescaped, wire_name};
 use crate::session::{ListEntry, ListReturn, Listing, SessionError, StatusEntry, StatusItems};
 
 /// The mailboxes one account may list. A listing past it fails, since
 /// a cut listing would destroy the rows of the names it leaves out.
 const MAX_MAILBOXES: usize = 10_000;
 
-/// The lines one LIST or LSUB answer may carry: a LIST line and a STATUS
-/// line per mailbox (RFC 5819) plus the spare ones.
-const MAX_LIST_LINES: usize = 2 * MAX_MAILBOXES + SPARE_LINES;
+/// The lines of its own one LIST or LSUB answer may carry: a LIST line
+/// and a STATUS line per mailbox (RFC 5819).
+const MAX_LIST_LINES: usize = 2 * MAX_MAILBOXES;
 
-/// The lines one STATUS answer may carry: its one line plus the spare
-/// ones.
-const MAX_STATUS_LINES: usize = 1 + SPARE_LINES;
+/// The lines of its own one STATUS answer carries.
+const STATUS_LINES: usize = 1;
 
 /// The attribute words one LIST line keeps: the IANA registry of
 /// mailbox name attributes holds under twenty.
@@ -61,25 +58,23 @@ fn status_items(items: StatusItems) -> &'static str {
 /// The listing without the names that are not sendable; past
 /// `MAX_MAILBOXES` entries or STATUS lines it fails.
 pub(in crate::session) async fn list(
-    session: &mut Signed,
+    selection: &mut Selection<'_>,
     options: ListReturn,
-    step: Duration,
+    room: Room,
 ) -> Result<Listing, SessionError> {
-    let bounds = Bounds {
-        step,
-        max_lines: MAX_LIST_LINES,
-    };
+    let bounds = room.bounds(MAX_LIST_LINES);
     let mut listing = Listing::default();
-    collect(session, &list_command(options), bounds, |response| {
-        keep(&mut listing, response)
-    })
-    .await?;
+    selection
+        .collect(&list_command(options), bounds, |response| {
+            keep(&mut listing, response)
+        })
+        .await?;
     Ok(listing)
 }
 
 /// One line of a LIST answer into the listing: an entry, a STATUS line
 /// riding along (RFC 5819) or nothing.
-fn keep(listing: &mut Listing, response: &Response<'_>) -> Result<(), SessionError> {
+pub(super) fn keep(listing: &mut Listing, response: &Response<'_>) -> Result<(), SessionError> {
     match response {
         Response::MailboxData(MailboxDatum::List {
             name_attributes,
@@ -90,7 +85,7 @@ fn keep(listing: &mut Listing, response: &Response<'_>) -> Result<(), SessionErr
             entry(name_attributes, delimiter.as_deref(), name),
         ),
         Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-            hold(&mut listing.statuses, status_entry(mailbox, status))
+            hold(&mut listing.statuses, status_entry(mailbox, status)?)
         }
         _ => Ok(()),
     }
@@ -111,45 +106,41 @@ fn hold<T>(held: &mut Vec<T>, found: Option<T>) -> Result<(), SessionError> {
 /// The subscribed names that are sendable; past `MAX_MAILBOXES` of them
 /// it fails.
 pub(in crate::session) async fn lsub(
-    session: &mut Signed,
-    step: Duration,
+    selection: &mut Selection<'_>,
+    room: Room,
 ) -> Result<Vec<String>, SessionError> {
-    let bounds = Bounds {
-        step,
-        max_lines: MAX_LIST_LINES,
-    };
+    let bounds = room.bounds(MAX_LIST_LINES);
     let mut names = Vec::new();
-    collect(session, "LSUB \"\" \"*\"", bounds, |response| {
-        if let Response::MailboxData(MailboxDatum::List { name, .. }) = response {
-            return hold(&mut names, wire_name(name));
-        }
-        Ok(())
-    })
-    .await?;
+    selection
+        .collect("LSUB \"\" \"*\"", bounds, |response| {
+            if let Response::MailboxData(MailboxDatum::List { name, .. }) = response {
+                return hold(&mut names, wire_name(name));
+            }
+            Ok(())
+        })
+        .await?;
     Ok(names)
 }
 
 pub(in crate::session) async fn status(
-    session: &mut Signed,
+    selection: &mut Selection<'_>,
     mailbox: &str,
     items: StatusItems,
-    step: Duration,
+    room: Room,
 ) -> Result<StatusEntry, SessionError> {
     let command = format!("STATUS {} ({})", quoted(mailbox)?, status_items(items));
-    let bounds = Bounds {
-        step,
-        max_lines: MAX_STATUS_LINES,
-    };
     let mut found = None;
-    collect(session, &command, bounds, |response| {
+    let visit = |response: &Response<'_>| {
         if let Response::MailboxData(MailboxDatum::Status { mailbox, status }) = response
-            && let Some(entry) = status_entry(mailbox, status)
+            && let Some(entry) = status_entry(mailbox, status)?
         {
             found = Some(entry);
         }
         Ok(())
-    })
-    .await?;
+    };
+    selection
+        .collect(&command, room.bounds(STATUS_LINES), visit)
+        .await?;
     found.ok_or(SessionError::Protocol("STATUS answered without data"))
 }
 
@@ -196,10 +187,17 @@ fn attribute_name(attribute: &NameAttribute<'_>) -> Option<String> {
     Some(name.to_owned())
 }
 
-/// One STATUS line, `None` when its name is not sendable.
-fn status_entry(mailbox: &str, items: &[StatusAttribute]) -> Option<StatusEntry> {
+/// One STATUS line, `None` when its name is not sendable; a
+/// HIGHESTMODSEQ past 63 bits fails the answer (RFC 7162 section 3.1).
+fn status_entry(
+    mailbox: &str,
+    items: &[StatusAttribute],
+) -> Result<Option<StatusEntry>, SessionError> {
+    let Some(mailbox) = wire_name(mailbox) else {
+        return Ok(None);
+    };
     let mut entry = StatusEntry {
-        mailbox: wire_name(mailbox)?,
+        mailbox,
         ..StatusEntry::default()
     };
     for item in items {
@@ -208,11 +206,11 @@ fn status_entry(mailbox: &str, items: &[StatusAttribute]) -> Option<StatusEntry>
             StatusAttribute::Unseen(count) => entry.unseen = Some(*count),
             StatusAttribute::UidNext(uid) => entry.uid_next = Some(*uid),
             StatusAttribute::UidValidity(validity) => entry.uid_validity = Some(*validity),
-            StatusAttribute::HighestModSeq(modseq) => entry.highest_modseq = Some(*modseq),
+            StatusAttribute::HighestModSeq(value) => entry.highest_modseq = Some(modseq(*value)?),
             _ => {}
         }
     }
-    Some(entry)
+    Ok(Some(entry))
 }
 
 #[cfg(test)]
@@ -237,7 +235,7 @@ mod tests {
     fn counted(line: &[u8]) -> Option<StatusEntry> {
         match Response::from_bytes(line).unwrap().1 {
             Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-                status_entry(&mailbox, &status)
+                status_entry(&mailbox, &status).unwrap()
             }
             other => panic!("{other:?}"),
         }
@@ -372,5 +370,22 @@ mod tests {
         assert_eq!(partial.unseen, None);
         let escaped = counted(b"* STATUS \"a\\\"b\" (MESSAGES 1)\r\n").unwrap();
         assert_eq!(escaped.mailbox, "a\"b");
+    }
+
+    #[test]
+    fn a_highestmodseq_past_63_bits_fails_the_line_rfc7162_3_1() {
+        let line = |value: u64| format!("* STATUS INBOX (HIGHESTMODSEQ {value})\r\n");
+        let read = |line: String| match Response::from_bytes(line.as_bytes()).unwrap().1 {
+            Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
+                status_entry(&mailbox, &status)
+            }
+            other => panic!("{other:?}"),
+        };
+        let top = read(line(i64::MAX.unsigned_abs())).unwrap().unwrap();
+        assert_eq!(top.highest_modseq, Some(i64::MAX.unsigned_abs()));
+        assert!(matches!(
+            read(line(i64::MAX.unsigned_abs() + 1)),
+            Err(SessionError::Protocol("a mod-sequence passes 63 bits"))
+        ));
     }
 }

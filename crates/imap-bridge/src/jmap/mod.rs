@@ -7,6 +7,7 @@
 //! from the store.
 
 mod changes;
+mod email;
 mod mailbox;
 mod references;
 mod session;
@@ -18,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
 
+use crate::seal::Sealer;
 use crate::store::{AccountKey, Store, StoreError};
 
 pub use session::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, Urls, session_object};
@@ -123,6 +125,7 @@ fn using(names: &[String]) -> Result<Using, RequestError> {
 /// against and the budget of their result references.
 pub(crate) struct Context<'a> {
     store: &'a Store,
+    sealer: &'a dyn Sealer,
     key: &'a AccountKey,
     using: Using,
     budget: references::Budget,
@@ -179,13 +182,19 @@ impl From<StoreError> for MethodError {
 }
 
 /// Runs one Request object against the account's rows and answers the
-/// Response object as JSON.
+/// Response object as JSON; the sealer opens the personal fields of
+/// the emails it reads.
 ///
 /// # Errors
 ///
 /// Returns [`RequestError`] when the request cannot run at all; a
 /// method that fails answers inside the Response object instead.
-pub fn handle(store: &Store, key: &AccountKey, body: &[u8]) -> Result<Vec<u8>, RequestError> {
+pub fn handle(
+    store: &Store,
+    sealer: &dyn Sealer,
+    key: &AccountKey,
+    body: &[u8],
+) -> Result<Vec<u8>, RequestError> {
     if body.len() > MAX_SIZE_REQUEST {
         return Err(RequestError::Limit("maxSizeRequest"));
     }
@@ -198,6 +207,7 @@ pub fn handle(store: &Store, key: &AccountKey, body: &[u8]) -> Result<Vec<u8>, R
     let session_state = store.state(key)?.to_string();
     let context = Context {
         store,
+        sealer,
         key,
         using,
         budget: references::Budget::full(),
@@ -237,6 +247,7 @@ fn dispatch(
         "Core/echo" if context.using.core => Ok(arguments.clone()),
         "Mailbox/get" if context.using.mail => mailbox::get(context, arguments),
         "Mailbox/changes" if context.using.mail => changes::mailbox(context, arguments),
+        "Email/get" if context.using.mail => email::get(context, arguments),
         _ => Err(MethodError::UnknownMethod),
     }
 }
@@ -256,6 +267,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::testing::seal::TestSealer;
 
     #[test]
     fn using_reads_the_three_capabilities_and_refuses_a_fourth_rfc8620_3_6_1() {
@@ -322,7 +334,8 @@ mod tests {
     fn responses(store: &Store, calls: &[Value]) -> Vec<Invocation> {
         let body = json!({ "using": [CORE_CAPABILITY], "methodCalls": calls });
         let body = serde_json::to_vec(&body).unwrap();
-        let answer = handle(store, &AccountKey::new("a1"), &body).unwrap();
+        let sealer = TestSealer::default();
+        let answer = handle(store, &sealer, &AccountKey::new("a1"), &body).unwrap();
         let mut answer: Value = serde_json::from_slice(&answer).unwrap();
         serde_json::from_value(answer["methodResponses"].take()).unwrap()
     }

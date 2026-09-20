@@ -82,6 +82,15 @@ impl<T> Guarded<T> {
     }
 }
 
+/// Whether the lexer admits the bytes when they arrive as the chunks
+/// before and after `cut`.
+#[cfg(feature = "test-support")]
+pub(super) fn admits(bytes: &[u8], cut: usize) -> bool {
+    let (head, tail) = bytes.split_at(cut.min(bytes.len()));
+    let mut lexer = Lexer::default();
+    lexer.feed(head).and_then(|()| lexer.feed(tail)).is_ok()
+}
+
 impl<T: AsyncRead + Unpin> AsyncRead for Guarded<T> {
     fn poll_read(
         self: Pin<&mut Self>,

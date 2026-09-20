@@ -8,11 +8,12 @@
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::{Connection, Row, Transaction, params};
 
 use super::changes::{ChangeKind, ObjectType, log, next_sequence, prune, state_of};
+use super::folders::{self, FolderWrite};
 use super::{AccountKey, MailboxId, Store, StoreError};
 
 /// What one listing pass knows about a mailbox before the store names
@@ -45,13 +46,14 @@ pub struct MailboxRow {
 }
 
 /// What the memberships say about a mailbox (RFC 8621 section 2): the
-/// threads with an email in it, the threads with an unread one and the
-/// emails the bridge holds for it.
+/// threads with an email in it, the threads with an unread one, the
+/// emails the bridge holds for it and the unread ones among them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Counts {
     pub total_threads: u32,
     pub unread_threads: u32,
     pub synced_emails: u32,
+    pub unread_emails: u32,
 }
 
 /// Every mailbox of an account with its counts, read under one lock so
@@ -61,6 +63,9 @@ pub struct MailboxSnapshot {
     pub state: u64,
     pub rows: Vec<MailboxRow>,
     pub counts: HashMap<MailboxId, Counts>,
+    /// The folders whose first sync is done; their email counts come
+    /// from the memberships.
+    pub done: HashSet<MailboxId>,
 }
 
 const COLUMNS: &str = "id, parent_id, name, imap_name, role, sort_order, subscribed, selectable, \
@@ -70,10 +75,11 @@ const COLUMNS: &str = "id, parent_id, name, imap_name, role, sort_order, subscri
 impl Store {
     /// Replaces the account's mailbox rows with what a listing found: a
     /// new name is created, a changed row updated, a missing one
-    /// destroyed, every one written to the log under one new state.
-    /// Answers the account's state afterwards. `found` names each
-    /// mailbox once. A parent it does not hold leaves the mailbox at the
-    /// top.
+    /// destroyed with its emails, every one written to the log under one
+    /// new state. The emails of a folder whose UIDVALIDITY changed wait
+    /// for the fresh sync to match them. Answers the account's state
+    /// afterwards. `found` names each mailbox once. A parent it does not
+    /// hold leaves the mailbox at the top.
     ///
     /// # Errors
     ///
@@ -98,6 +104,7 @@ impl Store {
                 state: state_of(connection, key)?,
                 rows: read_rows(connection, key)?,
                 counts: read_counts(connection, key)?,
+                done: read_done(connection, key)?,
             })
         })
     }
@@ -123,9 +130,12 @@ fn apply(
         })
         .collect();
     let mut changes = Vec::new();
+    let mut renumbered = Vec::new();
     for facts in found {
+        let recorded = existing.get(&facts.imap_name);
         // The parent's wire name is not a column, so the row compares on
-        // the fourteen columns alone.
+        // the fourteen columns alone. A pass that learned no UIDVALIDITY
+        // keeps the one on record, so a later change still shows.
         let row = MailboxRow {
             id: ids[facts.imap_name.as_str()].clone(),
             parent_id: facts
@@ -134,12 +144,18 @@ fn apply(
                 .and_then(|parent| ids.get(parent).cloned()),
             facts: MailboxFacts {
                 parent_imap_name: None,
+                uid_validity: facts
+                    .uid_validity
+                    .or_else(|| recorded.and_then(|row| row.facts.uid_validity)),
                 ..facts.clone()
             },
         };
-        match existing.get(&facts.imap_name) {
+        match recorded {
             Some(current) if *current == row => {}
-            Some(_) => {
+            Some(current) => {
+                if was_renumbered(current, &row) {
+                    renumbered.push(row.id.clone());
+                }
                 upsert(transaction, key, &row)?;
                 changes.push((row.id, ChangeKind::Updated));
             }
@@ -149,19 +165,33 @@ fn apply(
             }
         }
     }
-    for (imap_name, row) in &existing {
-        if !ids.contains_key(imap_name.as_str()) {
-            transaction.execute(
-                "DELETE FROM bridge_mailboxes WHERE account_key = ?1 AND id = ?2",
-                params![key.as_str(), row.id],
-            )?;
-            changes.push((row.id.clone(), ChangeKind::Destroyed));
-        }
+    let vanished: Vec<&MailboxId> = existing
+        .iter()
+        .filter(|(imap_name, _)| !ids.contains_key(imap_name.as_str()))
+        .map(|(_, row)| &row.id)
+        .collect();
+    for id in &vanished {
+        transaction.execute(
+            "DELETE FROM bridge_mailboxes WHERE account_key = ?1 AND id = ?2",
+            params![key.as_str(), id],
+        )?;
+        changes.push(((*id).clone(), ChangeKind::Destroyed));
     }
     if changes.is_empty() {
         return state_of(transaction, key);
     }
     let sequence = next_sequence(transaction, key)?;
+    let write = |folder| FolderWrite {
+        key,
+        folder,
+        sequence,
+    };
+    for id in vanished {
+        folders::vanish(transaction, &write(id))?;
+    }
+    for id in &renumbered {
+        folders::renumber(transaction, &write(id))?;
+    }
     for (id, kind) in &changes {
         log(
             transaction,
@@ -172,6 +202,15 @@ fn apply(
     }
     prune(transaction, key)?;
     Ok(sequence)
+}
+
+/// A UIDVALIDITY that differs from the one on record: every UID the
+/// folder's rows hold names nothing anymore (RFC 3501 section 2.3.1.1).
+fn was_renumbered(current: &MailboxRow, found: &MailboxRow) -> bool {
+    matches!(
+        (current.facts.uid_validity, found.facts.uid_validity),
+        (Some(before), Some(now)) if before != now
+    )
 }
 
 fn upsert(
@@ -261,7 +300,11 @@ fn read_counts(
                 COUNT(DISTINCT CASE
                     WHEN json_extract(e.keywords, '$.\"$seen\"') IS NULL
                      AND json_extract(e.keywords, '$.\"$draft\"') IS NULL
-                    THEN e.thread_id END)
+                    THEN e.thread_id END),
+                COUNT(CASE
+                    WHEN json_extract(e.keywords, '$.\"$seen\"') IS NULL
+                     AND json_extract(e.keywords, '$.\"$draft\"') IS NULL
+                    THEN 1 END)
          FROM bridge_memberships m
          JOIN bridge_emails e ON e.account_key = m.account_key AND e.id = m.email_id
          WHERE m.account_key = ?1
@@ -275,9 +318,19 @@ fn read_counts(
                     synced_emails: row.get(1)?,
                     total_threads: row.get(2)?,
                     unread_threads: row.get(3)?,
+                    unread_emails: row.get(4)?,
                 },
             ))
         })?
         .collect::<Result<HashMap<_, _>, _>>()?;
     Ok(counts)
+}
+
+fn read_done(connection: &Connection, key: &AccountKey) -> Result<HashSet<MailboxId>, StoreError> {
+    let mut statement = connection
+        .prepare("SELECT folder_id FROM bridge_sync WHERE account_key = ?1 AND done = 1")?;
+    let done = statement
+        .query_map([key.as_str()], |row| row.get(0))?
+        .collect::<Result<HashSet<_>, _>>()?;
+    Ok(done)
 }

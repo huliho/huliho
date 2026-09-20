@@ -7,6 +7,8 @@
 
 pub mod imap;
 pub mod mailboxes;
+pub mod messages;
+pub mod seal;
 pub mod smtp;
 
 use std::future::Future;
@@ -31,6 +33,7 @@ use crate::verify::Credential;
 
 pub use imap::FakeImap;
 pub use mailboxes::{Extension, Folder, Mailboxes};
+pub use messages::{Behavior, Message};
 pub use smtp::FakeSmtp;
 
 /// The user every script signs in.

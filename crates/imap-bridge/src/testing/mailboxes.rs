@@ -9,6 +9,11 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use super::messages::{Behavior, Message};
+
+#[cfg(test)]
+mod tests;
+
 /// An extension the scripted server advertises and honors; a command
 /// that needs one it does not advertise gets a BAD.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -61,6 +66,9 @@ pub struct Folder {
     pub uid_next: u32,
     pub uid_validity: u32,
     pub highest_modseq: u64,
+    /// The mail EXAMINE, UID SEARCH and UID FETCH answer from; the
+    /// counts above are what STATUS says and may differ on purpose.
+    pub mail: Vec<Message>,
 }
 
 impl Folder {
@@ -78,6 +86,7 @@ impl Folder {
             uid_next: 1,
             uid_validity: 1,
             highest_modseq: 1,
+            mail: Vec::new(),
         }
     }
 
@@ -110,6 +119,24 @@ impl Folder {
         }
     }
 
+    /// The same folder holding this mail, the counts following it: a
+    /// message without `\Seen` is unseen.
+    #[must_use]
+    pub fn with_mail(self, mail: Vec<Message>) -> Self {
+        let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+        let unseen = mail
+            .iter()
+            .filter(|message| !message.flags.iter().any(|flag| flag == "\\Seen"))
+            .count();
+        Self {
+            messages: count(mail.len()),
+            unseen: count(unseen),
+            uid_next: mail.iter().map(|message| message.uid).max().unwrap_or(0) + 1,
+            mail,
+            ..self
+        }
+    }
+
     fn is_selectable(&self) -> bool {
         !self
             .attributes
@@ -130,6 +157,8 @@ pub struct Mailboxes {
     /// An `* OK [ALERT]` line after the first folder's lines of a LIST
     /// answer.
     pub chatter: bool,
+    /// How the server misbehaves on a selected mailbox.
+    pub behavior: Behavior,
 }
 
 /// Why a command was refused: BAD for a form outside the advertised
@@ -156,6 +185,7 @@ impl Mailboxes {
             delimiter: '/',
             extensions,
             chatter: false,
+            behavior: Behavior::default(),
         }
     }
 
@@ -189,6 +219,13 @@ impl Mailboxes {
     /// Removes the folder of that name, if any.
     pub fn remove(&self, name: &str) {
         self.lock().retain(|folder| folder.name != name);
+    }
+
+    /// Drops the lowest `count` messages of the folder of that name.
+    pub(super) fn expunge(&self, name: &str, count: usize) {
+        if let Some(folder) = self.lock().iter_mut().find(|folder| folder.name == name) {
+            folder.mail.drain(..count.min(folder.mail.len()));
+        }
     }
 
     /// The folders as they stand.
@@ -340,7 +377,7 @@ fn quote(name: &str) -> String {
 }
 
 /// Reads one quoted string off the front; the rest follows it.
-fn unquote(text: &str) -> Option<(String, &str)> {
+pub(super) fn unquote(text: &str) -> Option<(String, &str)> {
     let mut chars = text.strip_prefix('"')?.char_indices();
     let mut name = String::new();
     while let Some((index, c)) = chars.next() {
@@ -351,70 +388,4 @@ fn unquote(text: &str) -> Option<(String, &str)> {
         }
     }
     None
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_return_option_behind_an_absent_extension_is_bad_rfc5258() {
-        let plain = Mailboxes::default();
-        let bad = plain.answer("LIST", "LIST \"\" \"*\" RETURN (SUBSCRIBED)", "A1");
-        assert_eq!(bad, "A1 BAD not offered\r\n");
-        let extended = Mailboxes::new(
-            vec![Folder::new("INBOX")],
-            [Extension::ListExtended].into_iter().collect(),
-        );
-        let special = extended.answer("LIST", "LIST \"\" \"*\" RETURN (SPECIAL-USE)", "A1");
-        assert_eq!(special, "A1 BAD not offered\r\n");
-        let status = extended.answer("LIST", "LIST \"\" \"*\" RETURN (STATUS (MESSAGES))", "A1");
-        assert_eq!(status, "A1 BAD not offered\r\n");
-    }
-
-    #[test]
-    fn a_dovecot_shaped_list_carries_attributes_status_and_the_tagged_ok() {
-        let mailboxes = Mailboxes::dovecot();
-        let answer = mailboxes.answer(
-            "LIST",
-            "LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN))",
-            "A2",
-        );
-        assert!(
-            answer.starts_with("* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\"\r\n* STATUS \"INBOX\" (MESSAGES 17 UNSEEN 3)\r\n"),
-            "{answer}"
-        );
-        assert!(answer.contains("* LIST (\\HasNoChildren \\Subscribed \\Sent) \"/\" \"Sent\"\r\n"));
-        assert!(answer.ends_with("A2 OK done\r\n"));
-    }
-
-    #[test]
-    fn status_answers_no_for_a_missing_mailbox_and_quotes_specials() {
-        let mailboxes = Mailboxes::new(vec![Folder::new("Say \"hi\"")], BTreeSet::new());
-        let found = mailboxes.answer("STATUS", "STATUS \"Say \\\"hi\\\"\" (MESSAGES)", "A3");
-        assert_eq!(
-            found,
-            "* STATUS \"Say \\\"hi\\\"\" (MESSAGES 0)\r\nA3 OK done\r\n"
-        );
-        let missing = mailboxes.answer("STATUS", "STATUS \"Other\" (MESSAGES)", "A4");
-        assert_eq!(missing, "A4 NO refused\r\n");
-        let modseq = mailboxes.answer("STATUS", "STATUS \"Say \\\"hi\\\"\" (HIGHESTMODSEQ)", "A5");
-        assert_eq!(modseq, "A5 BAD not offered\r\n");
-    }
-
-    #[test]
-    fn a_folder_that_refuses_status_is_listed_as_selectable_and_answers_no() {
-        let shared = Folder {
-            refuses_status: true,
-            ..Folder::new("Shared")
-        };
-        let mailboxes = Mailboxes::new(vec![shared], BTreeSet::new());
-        let listed = mailboxes.answer("LIST", "LIST \"\" \"*\"", "A6");
-        assert_eq!(
-            listed,
-            "* LIST (\\HasNoChildren) \"/\" \"Shared\"\r\nA6 OK done\r\n"
-        );
-        let refused = mailboxes.answer("STATUS", "STATUS \"Shared\" (MESSAGES)", "A7");
-        assert_eq!(refused, "A7 NO refused\r\n");
-    }
 }
