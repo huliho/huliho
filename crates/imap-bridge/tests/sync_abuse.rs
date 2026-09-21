@@ -46,10 +46,12 @@ async fn one_message_past_a_bound_of_the_guard_costs_its_attachment_mark_and_not
         );
         // Five slices and the lone message fail, each on a session of its own.
         assert_eq!(sessions, 7);
-        let mailbox = rig.mailbox("INBOX");
+        let mailbox = rig.mailbox("INBOX").await;
         assert_eq!(mailbox["syncedEmails"], 40);
         assert_eq!(mailbox["totalEmails"], 40);
-        let emails = rig.emails(&rig.created(0), &["subject", "hasAttachment"]);
+        let emails = rig
+            .emails(&rig.created(0), &["subject", "hasAttachment"])
+            .await;
         assert_eq!(emails.len(), 40);
         for email in emails {
             let hostile = email["subject"] == format!("Message {HOSTILE}");
@@ -74,11 +76,12 @@ async fn a_message_the_server_cannot_describe_at_all_is_left_out_and_the_folder_
         let rig = Rig::start(inbox(messages)).await;
         let (step, _) = rig.sync("INBOX").await;
         assert_eq!(step, Step::Done);
-        let mailbox = rig.mailbox("INBOX");
+        let mailbox = rig.mailbox("INBOX").await;
         assert_eq!(mailbox["syncedEmails"], 8);
         assert_eq!(mailbox["totalEmails"], 8);
         let subjects: Vec<String> = rig
             .emails(&rig.created(0), &["subject"])
+            .await
             .iter()
             .map(|email| email["subject"].as_str().unwrap().to_owned())
             .collect();
@@ -98,7 +101,7 @@ async fn lines_nobody_asked_for_change_nothing_and_too_many_fail_the_answer_rfc3
     );
     let rig = Rig::start(noisy).await;
     assert_eq!(rig.sync("INBOX").await, (Step::Done, 1));
-    let emails = rig.emails(&rig.created(0), &["subject", "keywords"]);
+    let emails = rig.emails(&rig.created(0), &["subject", "keywords"]).await;
     assert_eq!(emails.len(), 3, "a message outside the range stays out");
     for email in emails {
         assert_eq!(email["keywords"], serde_json::json!({ "$seen": true }));
@@ -127,7 +130,7 @@ async fn lines_nobody_asked_for_change_nothing_and_too_many_fail_the_answer_rfc3
 }
 
 #[tokio::test]
-async fn a_mod_sequence_past_63_bits_is_a_protocol_failure_on_both_paths_rfc7162_3_1() {
+async fn a_mod_sequence_past_63_bits_is_a_protocol_failure_on_every_path_rfc7162_3_1() {
     let fetch = behaving(
         inbox(mail(2)),
         Behavior {
@@ -166,6 +169,14 @@ async fn a_mod_sequence_past_63_bits_is_a_protocol_failure_on_both_paths_rfc7162
         "{error}"
     );
     assert_eq!(rig.cache.store.state(&rig.cache.key).unwrap(), 0);
+    let error = rig.session().await.examine("INBOX").await.unwrap_err();
+    assert!(
+        matches!(
+            error,
+            SessionError::Protocol("a mod-sequence passes 63 bits")
+        ),
+        "{error}"
+    );
 }
 
 #[tokio::test]

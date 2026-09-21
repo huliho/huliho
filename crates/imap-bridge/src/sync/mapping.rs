@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 
-use super::headers;
+use super::{headers, preview};
 use crate::session::{BodyPart, FetchedMessage};
 use crate::store::EmailFacts;
 
@@ -29,13 +29,16 @@ const KEYWORD_FORBIDDEN: &[u8] = b"(){]%*\"\\";
 const MAX_KEYWORD_BYTES: usize = 255;
 
 /// The facts of one message; `None` for one flagged `\Deleted`, which
-/// JMAP never shows (RFC 8621 section 4.1.1).
+/// JMAP never shows (RFC 8621 section 4.1.1). The part its preview is
+/// read from is chosen here, while the structure is at hand.
 #[must_use]
 pub fn email(message: &FetchedMessage) -> Option<EmailFacts> {
-    if message.flags.iter().any(|flag| is(flag, "\\Deleted")) {
+    if is_deleted(&message.flags) {
         return None;
     }
     let headers = headers::parse(&message.header);
+    let mut personal = headers.personal;
+    personal.preview_part = message.structure.as_ref().and_then(preview::part);
     Some(EmailFacts {
         uid: message.uid,
         keywords: keywords(&message.flags),
@@ -43,8 +46,14 @@ pub fn email(message: &FetchedMessage) -> Option<EmailFacts> {
         received_at: message.received_at,
         sent_at: headers.sent_at,
         has_attachment: has_attachment(&message.flags, message.structure.as_ref()),
-        personal: headers.personal,
+        personal,
     })
+}
+
+/// Whether the flags hold `\Deleted` in any case.
+#[must_use]
+pub fn is_deleted(flags: &[String]) -> bool {
+    flags.iter().any(|flag| is(flag, "\\Deleted"))
 }
 
 fn is(flag: &str, name: &str) -> bool {

@@ -47,6 +47,7 @@ pub fn parse(bytes: &[u8]) -> Headers {
             message_id: ids(&message, HeaderName::MessageId),
             in_reply_to: ids(&message, HeaderName::InReplyTo),
             references: ids(&message, HeaderName::References),
+            ..Personal::default()
         },
         sent_at: message
             .date()

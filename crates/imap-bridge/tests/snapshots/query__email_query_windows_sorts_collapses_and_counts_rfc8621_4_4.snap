@@ -1,0 +1,108 @@
+---
+source: crates/imap-bridge/tests/query.rs
+expression: "Value::Object(answers)"
+---
+{
+  "a limit past the server's": {
+    "accountId": "a1",
+    "canCalculateChanges": false,
+    "ids": [
+      "e6",
+      "e5",
+      "e4",
+      "e3",
+      "e2",
+      "e1"
+    ],
+    "limit": 200,
+    "position": 0,
+    "queryState": "2"
+  },
+  "a window by anchor": {
+    "accountId": "a1",
+    "canCalculateChanges": false,
+    "ids": [
+      "e4",
+      "e3"
+    ],
+    "position": 2,
+    "queryState": "2"
+  },
+  "a window by position": {
+    "accountId": "a1",
+    "canCalculateChanges": false,
+    "ids": [
+      "e5",
+      "e4"
+    ],
+    "position": 1,
+    "queryState": "2"
+  },
+  "a window from the end": {
+    "accountId": "a1",
+    "canCalculateChanges": false,
+    "ids": [
+      "e2",
+      "e1"
+    ],
+    "limit": 200,
+    "position": 4,
+    "queryState": "2"
+  },
+  "newest first with the total": {
+    "accountId": "a1",
+    "canCalculateChanges": false,
+    "ids": [
+      "e6",
+      "e5",
+      "e4",
+      "e3",
+      "e2",
+      "e1"
+    ],
+    "limit": 200,
+    "position": 0,
+    "queryState": "2",
+    "total": 6
+  },
+  "oldest first": {
+    "accountId": "a1",
+    "canCalculateChanges": false,
+    "ids": [
+      "e1",
+      "e2",
+      "e3",
+      "e4",
+      "e5",
+      "e6"
+    ],
+    "limit": 200,
+    "position": 0,
+    "queryState": "2"
+  },
+  "one email per thread": {
+    "accountId": "a1",
+    "canCalculateChanges": false,
+    "ids": [
+      "e6",
+      "e5",
+      "e4"
+    ],
+    "limit": 200,
+    "position": 0,
+    "queryState": "2",
+    "total": 3
+  },
+  "one email per thread oldest first": {
+    "accountId": "a1",
+    "canCalculateChanges": false,
+    "ids": [
+      "e1",
+      "e3",
+      "e5"
+    ],
+    "limit": 200,
+    "position": 0,
+    "queryState": "2"
+  }
+}

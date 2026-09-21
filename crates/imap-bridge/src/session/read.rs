@@ -7,7 +7,9 @@
 //! server volunteers is lost.
 
 mod fetch;
+mod flags;
 mod list;
+mod preview;
 mod select;
 
 use std::time::Duration;
@@ -20,7 +22,9 @@ use super::imap::{Stream, Wire, command_error};
 use super::{SessionError, io_error};
 
 pub(super) use fetch::uid_fetch;
+pub(super) use flags::uid_flags;
 pub(super) use list::{list, lsub, status};
+pub(super) use preview::uid_previews;
 pub(super) use select::{examine, uid_list};
 
 type Signed = async_imap::Session<Stream>;
@@ -135,6 +139,12 @@ impl Selection<'_> {
             .map(|count| count.0)
             .ok_or(SessionError::Protocol("no mailbox is selected"))
     }
+}
+
+/// NOOP (RFC 3501 section 6.1.2): whether the connection still answers.
+/// On a selected mailbox the count follows what the answer carries.
+pub(super) async fn noop(selection: &mut Selection<'_>, room: Room) -> Result<(), SessionError> {
+    selection.collect("NOOP", room.bounds(0), |_| Ok(())).await
 }
 
 /// Runs `command` and hands every untagged answer to `visit` until the

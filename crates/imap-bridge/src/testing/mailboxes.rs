@@ -9,6 +9,7 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use super::folder::Folder;
 use super::messages::{Behavior, Message};
 
 #[cfg(test)]
@@ -45,103 +46,6 @@ impl Extension {
         ]
         .into_iter()
         .collect()
-    }
-}
-
-/// One folder the server lists.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Folder {
-    /// The name as the wire carries it, modified UTF-7 included.
-    pub name: String,
-    /// The attributes beyond the special-use one, as written.
-    pub attributes: Vec<&'static str>,
-    /// The special-use attribute, sent only while SPECIAL-USE is on.
-    pub special_use: Option<&'static str>,
-    pub subscribed: bool,
-    /// STATUS answers NO for this folder and a LIST-STATUS answer leaves
-    /// its line out, while LIST shows it selectable.
-    pub refuses_status: bool,
-    pub messages: u32,
-    pub unseen: u32,
-    pub uid_next: u32,
-    pub uid_validity: u32,
-    pub highest_modseq: u64,
-    /// The mail EXAMINE, UID SEARCH and UID FETCH answer from; the
-    /// counts above are what STATUS says and may differ on purpose.
-    pub mail: Vec<Message>,
-}
-
-impl Folder {
-    /// A selectable, subscribed, empty folder.
-    #[must_use]
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_owned(),
-            attributes: vec!["\\HasNoChildren"],
-            special_use: None,
-            subscribed: true,
-            refuses_status: false,
-            messages: 0,
-            unseen: 0,
-            uid_next: 1,
-            uid_validity: 1,
-            highest_modseq: 1,
-            mail: Vec::new(),
-        }
-    }
-
-    /// A folder with a special-use attribute such as `\Sent`.
-    #[must_use]
-    pub fn special(name: &str, attribute: &'static str) -> Self {
-        Self {
-            special_use: Some(attribute),
-            ..Self::new(name)
-        }
-    }
-
-    /// A hierarchy placeholder nothing can select.
-    #[must_use]
-    pub fn noselect(name: &str) -> Self {
-        Self {
-            attributes: vec!["\\Noselect", "\\HasChildren"],
-            ..Self::new(name)
-        }
-    }
-
-    /// The same folder holding `messages` of which `unseen` are unread.
-    #[must_use]
-    pub fn with_counts(self, messages: u32, unseen: u32) -> Self {
-        Self {
-            messages,
-            unseen,
-            uid_next: messages + 1,
-            ..self
-        }
-    }
-
-    /// The same folder holding this mail, the counts following it: a
-    /// message without `\Seen` is unseen.
-    #[must_use]
-    pub fn with_mail(self, mail: Vec<Message>) -> Self {
-        let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
-        let unseen = mail
-            .iter()
-            .filter(|message| !message.flags.iter().any(|flag| flag == "\\Seen"))
-            .count();
-        Self {
-            messages: count(mail.len()),
-            unseen: count(unseen),
-            uid_next: mail.iter().map(|message| message.uid).max().unwrap_or(0) + 1,
-            mail,
-            ..self
-        }
-    }
-
-    fn is_selectable(&self) -> bool {
-        !self
-            .attributes
-            .iter()
-            .any(|attribute| attribute.eq_ignore_ascii_case("\\Noselect"))
     }
 }
 
@@ -223,8 +127,57 @@ impl Mailboxes {
 
     /// Drops the lowest `count` messages of the folder of that name.
     pub(super) fn expunge(&self, name: &str, count: usize) {
-        if let Some(folder) = self.lock().iter_mut().find(|folder| folder.name == name) {
+        self.edit(name, |folder| {
             folder.mail.drain(..count.min(folder.mail.len()));
+        });
+    }
+
+    /// Delivers a message to the folder of that name, as another client
+    /// would: the counts, UIDNEXT and the mod-sequence follow.
+    pub fn append(&self, name: &str, message: Message) {
+        self.edit(name, |folder| {
+            let modseq = folder.highest_modseq + 1;
+            folder.mail.push(Message { modseq, ..message });
+        });
+    }
+
+    /// Removes the message of that UID from the folder of that name.
+    pub fn expunge_uid(&self, name: &str, uid: u32) {
+        self.edit(name, |folder| {
+            folder.mail.retain(|message| message.uid != uid);
+        });
+    }
+
+    /// Replaces the flags of the message of that UID; its mod-sequence
+    /// moves past the folder's (RFC 7162 section 3.1.2).
+    pub fn store_flags(&self, name: &str, uid: u32, flags: &[&str]) {
+        self.edit(name, |folder| {
+            let modseq = folder.highest_modseq + 1;
+            if let Some(message) = folder.mail.iter_mut().find(|message| message.uid == uid) {
+                message.flags = flags.iter().map(|flag| (*flag).to_owned()).collect();
+                message.modseq = modseq;
+            }
+        });
+    }
+
+    /// Replaces the flags of every message of the folder of that name,
+    /// as a client that marks a folder read does; every mod-sequence
+    /// moves past the folder's.
+    pub fn mark_all(&self, name: &str, flags: &[&str]) {
+        self.edit(name, |folder| {
+            let modseq = folder.highest_modseq + 1;
+            for message in &mut folder.mail {
+                message.flags = flags.iter().map(|flag| (*flag).to_owned()).collect();
+                message.modseq = modseq;
+            }
+        });
+    }
+
+    /// One edit of a folder with its counts brought up to date.
+    fn edit(&self, name: &str, change: impl FnOnce(&mut Folder)) {
+        if let Some(folder) = self.lock().iter_mut().find(|folder| folder.name == name) {
+            change(folder);
+            folder.recount();
         }
     }
 
@@ -238,7 +191,7 @@ impl Mailboxes {
         self.folders.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn has(&self, extension: Extension) -> bool {
+    pub(super) fn has(&self, extension: Extension) -> bool {
         self.extensions.contains(&extension)
     }
 

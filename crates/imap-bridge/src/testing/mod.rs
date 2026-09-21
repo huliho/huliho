@@ -5,6 +5,9 @@
 //! Scripted IMAP and SMTP servers for tests: a fresh certificate per
 //! server, one answer per command and a record of every line received.
 
+pub mod connector;
+mod fetch;
+pub mod folder;
 pub mod imap;
 pub mod mailboxes;
 pub mod messages;
@@ -31,8 +34,10 @@ use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
 use crate::session::{Target, TlsMode};
 use crate::verify::Credential;
 
+pub use connector::TestConnector;
+pub use folder::Folder;
 pub use imap::FakeImap;
-pub use mailboxes::{Extension, Folder, Mailboxes};
+pub use mailboxes::{Extension, Mailboxes};
 pub use messages::{Behavior, Message};
 pub use smtp::FakeSmtp;
 

@@ -34,6 +34,22 @@ pub(super) fn mailbox(
     Ok(answer)
 }
 
+/// `Email/changes` (RFC 8621 section 4.3).
+pub(super) fn email(
+    context: &Context<'_>,
+    raw: &Map<String, Value>,
+) -> Result<Map<String, Value>, MethodError> {
+    changes(context, raw, ObjectType::Email)
+}
+
+/// `Thread/changes` (RFC 8621 section 3.2).
+pub(super) fn thread(
+    context: &Context<'_>,
+    raw: &Map<String, Value>,
+) -> Result<Map<String, Value>, MethodError> {
+    changes(context, raw, ObjectType::Thread)
+}
+
 /// The `/changes` answer for one object type.
 fn changes(
     context: &Context<'_>,

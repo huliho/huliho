@@ -18,6 +18,9 @@ const SYSTEM: [(&str, &str); 4] = [
     ("\\Draft", "$draft"),
 ];
 
+/// The size every leaf of these trees claims.
+const PART_BYTES: u32 = 120;
+
 /// The text with each letter's case picked by one bit of `mask`.
 fn recased(text: &str, mask: u32) -> String {
     text.chars()
@@ -42,9 +45,15 @@ fn is_keyword(text: &str) -> bool {
 }
 
 fn leaf(media_type: &str, attachment: bool) -> BodyPart {
+    typed(media_type, "plain", attachment)
+}
+
+fn typed(media_type: &str, subtype: &str, attachment: bool) -> BodyPart {
     BodyPart::Leaf {
         media_type: media_type.to_owned(),
+        subtype: subtype.to_owned(),
         attachment,
+        bytes: PART_BYTES,
     }
 }
 

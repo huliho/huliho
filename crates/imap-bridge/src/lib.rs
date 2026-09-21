@@ -8,6 +8,7 @@
 mod dates;
 pub mod jmap;
 pub mod mailboxes;
+pub mod runtime;
 pub mod seal;
 pub mod session;
 pub mod smtp;

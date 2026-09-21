@@ -6,10 +6,15 @@
 //! and a vanished folder do to the rows.
 
 use super::*;
-use crate::store::{ChangesSince, MailboxFacts, REMATCH_LIMIT};
+use crate::store::{ChangesSince, MailboxFacts, REMATCH_LIMIT, Synced};
 use crate::testing::seal::TestSealer;
 
 const SEALER: TestSealer = TestSealer { locked: false };
+
+/// The HIGHESTMODSEQ and the UIDNEXT every first sync of these tests
+/// opened under.
+const OPENED_AT_MODSEQ: u64 = 40;
+const NEXT_AT_OPEN: u32 = 50;
 
 fn key() -> AccountKey {
     AccountKey::new("a1")
@@ -65,8 +70,15 @@ fn batch<'a>(folder: &'a MailboxId, emails: &'a [EmailFacts], done: bool) -> Bat
         folder,
         uid_validity: 1,
         emails,
-        lowest_uid: emails.iter().map(|email| email.uid).min(),
-        done,
+        advance: Advance::Down {
+            lowest_uid: emails.iter().map(|email| email.uid).min(),
+            done,
+            synced: Synced {
+                uid_next: Some(NEXT_AT_OPEN),
+                highest_modseq: Some(OPENED_AT_MODSEQ),
+                messages: u32::try_from(emails.len()).ok(),
+            },
+        },
     }
 }
 
@@ -121,7 +133,7 @@ fn a_message_the_folder_holds_is_skipped_and_a_batch_without_news_is_no_state() 
 }
 
 #[test]
-fn the_finish_of_a_folder_is_logged_once() {
+fn the_finish_of_a_folder_is_logged_once_and_records_where_the_server_stood() {
     let (store, inbox) = listed();
     let done = store
         .apply_batch(&key(), &batch(&inbox, &[], true), &SEALER)
@@ -137,6 +149,106 @@ fn the_finish_of_a_folder_is_logged_once() {
             .unwrap()
             .done
             .contains(&inbox)
+    );
+    let progress = store.sync_progress(&key(), &inbox).unwrap();
+    assert_eq!(
+        progress.synced,
+        Synced {
+            uid_next: Some(NEXT_AT_OPEN),
+            highest_modseq: Some(OPENED_AT_MODSEQ),
+            messages: Some(0),
+        }
+    );
+}
+
+#[test]
+fn a_walk_upward_moves_the_recorded_uidnext_and_never_back() {
+    let (store, inbox) = listed();
+    store
+        .apply_batch(&key(), &batch(&inbox, &[], true), &SEALER)
+        .unwrap();
+    let emails = [facts(60, None), facts(61, None)];
+    let upward = |uid_next, arrived| Batch {
+        folder: &inbox,
+        uid_validity: 1,
+        emails: &emails,
+        advance: Advance::Up { uid_next, arrived },
+    };
+    store.apply_batch(&key(), &upward(62, 2), &SEALER).unwrap();
+    let synced = store.sync_progress(&key(), &inbox).unwrap().synced;
+    assert_eq!((synced.uid_next, synced.messages), (Some(62), Some(2)));
+    store.apply_batch(&key(), &upward(55, 0), &SEALER).unwrap();
+    let progress = store.sync_progress(&key(), &inbox).unwrap();
+    assert_eq!(progress.synced.uid_next, Some(62));
+    assert!(progress.done, "a walk upward leaves the first sync done");
+    assert_eq!(logged(&store, ObjectType::Email, 2).len(), 2);
+}
+
+#[test]
+fn a_count_never_learned_stays_unknown_under_a_walk_upward() {
+    let (store, inbox) = listed();
+    let opened = Batch {
+        folder: &inbox,
+        uid_validity: 1,
+        emails: &[],
+        advance: Advance::Down {
+            lowest_uid: None,
+            done: true,
+            synced: Synced::default(),
+        },
+    };
+    store.apply_batch(&key(), &opened, &SEALER).unwrap();
+    let emails = [facts(60, None)];
+    let upward = Batch {
+        folder: &inbox,
+        uid_validity: 1,
+        emails: &emails,
+        advance: Advance::Up {
+            uid_next: 61,
+            arrived: 1,
+        },
+    };
+    store.apply_batch(&key(), &upward, &SEALER).unwrap();
+    let synced = store.sync_progress(&key(), &inbox).unwrap().synced;
+    assert_eq!((synced.uid_next, synced.messages), (Some(61), None));
+}
+
+#[test]
+fn advance_keeps_a_value_it_did_not_learn_and_writes_nothing_for_a_renumbered_folder() {
+    let (store, inbox) = listed();
+    store
+        .apply_batch(&key(), &batch(&inbox, &[], true), &SEALER)
+        .unwrap();
+    let standing = Standing {
+        folder: &inbox,
+        uid_validity: 1,
+    };
+    let learned = Synced {
+        uid_next: Some(70),
+        highest_modseq: None,
+        messages: Some(9),
+    };
+    store.advance(&key(), &standing, learned).unwrap();
+    assert_eq!(
+        store.sync_progress(&key(), &inbox).unwrap().synced,
+        Synced {
+            uid_next: Some(70),
+            highest_modseq: Some(OPENED_AT_MODSEQ),
+            messages: Some(9),
+        }
+    );
+    let stale = Standing {
+        folder: &inbox,
+        uid_validity: 2,
+    };
+    let later = Synced {
+        uid_next: Some(80),
+        ..learned
+    };
+    store.advance(&key(), &stale, later).unwrap();
+    assert_eq!(
+        store.sync_progress(&key(), &inbox).unwrap().synced.uid_next,
+        Some(70)
     );
 }
 

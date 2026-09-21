@@ -12,13 +12,16 @@ mod live_rig;
 use std::sync::Arc;
 
 use huliho_imap_bridge::mailboxes::sync;
+use huliho_imap_bridge::runtime::Link;
 use huliho_imap_bridge::session::{STEP_TIMEOUT, Session, SessionError, TlsMode};
 use huliho_imap_bridge::smtp;
-use huliho_imap_bridge::store::{AccountKey, Store};
+use huliho_imap_bridge::sync::Cache;
+use huliho_imap_bridge::testing::TestConnector;
 use huliho_imap_bridge::utf7;
 use huliho_imap_bridge::verify::{Credential, VerifyError, verify};
 use live_rig::{
-    IMAPS_PORT, PASSWORD, USER, answer, bridge_session, dovecot, editor, mailbox_list, tls, within,
+    IMAPS_PORT, PASSWORD, USER, answer, bridge_session, cache, dovecot, editor, link, mailbox_list,
+    tls, within,
 };
 use serde_json::{Value, json};
 
@@ -45,13 +48,13 @@ async fn clear(wire: &str) {
     }
 }
 
-fn changes_since(store: &Store, key: &AccountKey, since: &str) -> Value {
+async fn changes_since(cache: &Cache, link: &Link<TestConnector>, since: &str) -> Value {
     let call = json!([
         "Mailbox/changes",
-        { "accountId": key.as_str(), "sinceState": since },
+        { "accountId": cache.key.as_str(), "sinceState": since },
         "c1"
     ]);
-    answer(store, key, &call)
+    answer(cache, link, &call).await
 }
 
 #[tokio::test]
@@ -117,16 +120,16 @@ async fn dovecot_lists_its_mailboxes_and_a_created_one_travels_through_changes()
     let wire = utf7::encode(CREATED_NAME);
     clear(&wire).await;
     let mut editor = editor().await;
-    let store = Arc::new(Store::in_memory().unwrap());
-    let key = AccountKey::new("live");
+    let cache = cache("live");
+    let link = link();
     let mut session = bridge_session().await;
     assert_eq!(
-        sync(&mut session, Arc::clone(&store), key.clone())
+        sync(&mut session, Arc::clone(&cache.store), cache.key.clone())
             .await
             .unwrap(),
         1
     );
-    let list = mailbox_list(&store, &key);
+    let list = mailbox_list(&cache, &link).await;
     assert!(
         list.iter().any(|mailbox| mailbox["role"] == "inbox"),
         "{list:?}"
@@ -137,17 +140,18 @@ async fn dovecot_lists_its_mailboxes_and_a_created_one_travels_through_changes()
     );
     within(editor.create(&wire)).await.unwrap();
     assert_eq!(
-        sync(&mut session, Arc::clone(&store), key.clone())
+        sync(&mut session, Arc::clone(&cache.store), cache.key.clone())
             .await
             .unwrap(),
         2
     );
-    let created = changes_since(&store, &key, "1");
+    let created = changes_since(&cache, &link, "1").await;
     assert_eq!(created["created"].as_array().unwrap().len(), 1, "{created}");
     assert_eq!(created["destroyed"], json!([]));
     assert_eq!(created["newState"], "2");
     let id = &created["created"][0];
-    let mailbox = mailbox_list(&store, &key)
+    let mailbox = mailbox_list(&cache, &link)
+        .await
         .into_iter()
         .find(|mailbox| mailbox["id"] == *id)
         .unwrap();
@@ -155,12 +159,12 @@ async fn dovecot_lists_its_mailboxes_and_a_created_one_travels_through_changes()
     assert_eq!(mailbox["myRights"]["mayReadItems"], true);
     within(editor.delete(&wire)).await.unwrap();
     assert_eq!(
-        sync(&mut session, Arc::clone(&store), key.clone())
+        sync(&mut session, Arc::clone(&cache.store), cache.key.clone())
             .await
             .unwrap(),
         3
     );
-    let gone = changes_since(&store, &key, "2");
+    let gone = changes_since(&cache, &link, "2").await;
     assert_eq!(gone["destroyed"], created["created"]);
     assert_eq!(gone["created"], json!([]));
     assert_eq!(gone["newState"], "3");

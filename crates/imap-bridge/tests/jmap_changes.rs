@@ -28,7 +28,7 @@ async fn mailbox_changes_reads_the_log_and_folds_it_rfc8620_5_2() {
     let rig = Rig::start().await;
     rig.edit();
     assert_eq!(rig.pass().await, 2);
-    let since_one = rig.mail(json!([changes("1", None)]));
+    let since_one = rig.mail(json!([changes("1", None)])).await;
     let answer = &first(&since_one)[1];
     assert_eq!(
         (&answer["oldState"], &answer["newState"]),
@@ -40,9 +40,9 @@ async fn mailbox_changes_reads_the_log_and_folds_it_rfc8620_5_2() {
     assert_eq!(answer["created"][0], rig.id_of("Work"));
     assert_eq!(answer["updated"][0], rig.id_of("INBOX"));
     assert_eq!(since_one["sessionState"], "2");
-    let since_zero = rig.mail(json!([changes("0", None)]));
+    let since_zero = rig.mail(json!([changes("0", None)])).await;
     assert_eq!(lengths(&first(&since_zero)[1]), (6, 0, 0));
-    let current = rig.mail(json!([changes("2", None)]));
+    let current = rig.mail(json!([changes("2", None)])).await;
     assert_eq!(lengths(&first(&current)[1]), (0, 0, 0));
 }
 
@@ -52,21 +52,21 @@ async fn max_changes_is_never_exceeded_and_a_first_sequence_past_it_cannot_calcu
     rig.edit();
     rig.pass().await;
     for (since, max) in [("0", 1), ("0", 5), ("1", 2)] {
-        let capped = rig.mail(json!([changes(since, Some(max))]));
+        let capped = rig.mail(json!([changes(since, Some(max))])).await;
         assert_eq!(
             error_type(first(&capped)),
             Some("cannotCalculateChanges"),
             "{since} {max}"
         );
     }
-    let exact = rig.mail(json!([changes("0", Some(6))]));
+    let exact = rig.mail(json!([changes("0", Some(6))])).await;
     let answer = &first(&exact)[1];
     assert_eq!(lengths(answer), (6, 0, 0));
     assert_eq!(
         (&answer["newState"], &answer["hasMoreChanges"]),
         (&json!("2"), &json!(false))
     );
-    let rest = rig.mail(json!([changes("1", Some(3))]));
+    let rest = rig.mail(json!([changes("1", Some(3))])).await;
     let answer = &first(&rest)[1];
     assert_eq!(lengths(answer), (1, 1, 1));
     assert_eq!(
@@ -79,14 +79,14 @@ async fn max_changes_is_never_exceeded_and_a_first_sequence_past_it_cannot_calcu
 async fn a_state_the_log_cannot_calculate_from_says_so() {
     let rig = Rig::start().await;
     for since in ["9", "abc", "-1", "+1", "01", "007", "18446744073709551615"] {
-        let response = rig.mail(json!([changes(since, None)]));
+        let response = rig.mail(json!([changes(since, None)])).await;
         assert_eq!(
             error_type(first(&response)),
             Some("cannotCalculateChanges"),
             "{since}"
         );
     }
-    let zero = rig.mail(json!([changes("1", Some(0))]));
+    let zero = rig.mail(json!([changes("1", Some(0))])).await;
     assert_eq!(error_type(first(&zero)), Some("invalidArguments"));
 }
 
@@ -95,55 +95,61 @@ async fn a_reference_chains_changes_into_get_and_a_broken_one_is_refused_rfc8620
     let rig = Rig::start().await;
     rig.edit();
     rig.pass().await;
-    let chained = rig.mail(json!([
-        changes("1", None),
-        [
-            "Mailbox/get",
-            {
-                "accountId": ACCOUNT,
-                "#ids": { "resultOf": "c1", "name": "Mailbox/changes", "path": "/created" },
-                "properties": ["name"]
-            },
-            "c2"
-        ]
-    ]));
+    let chained = rig
+        .mail(json!([
+            changes("1", None),
+            [
+                "Mailbox/get",
+                {
+                    "accountId": ACCOUNT,
+                    "#ids": { "resultOf": "c1", "name": "Mailbox/changes", "path": "/created" },
+                    "properties": ["name"]
+                },
+                "c2"
+            ]
+        ]))
+        .await;
     let got = &chained["methodResponses"][1];
     assert_eq!(got[0], "Mailbox/get");
     assert_eq!(
         got[1]["list"],
         json!([{ "id": rig.id_of("Work"), "name": "Work" }])
     );
-    let broken = rig.mail(json!([
-        changes("1", None),
-        [
-            "Mailbox/get",
-            {
-                "accountId": ACCOUNT,
-                "#ids": { "resultOf": "c1", "name": "Mailbox/changes", "path": "/nope" }
-            },
-            "c2"
-        ]
-    ]));
+    let broken = rig
+        .mail(json!([
+            changes("1", None),
+            [
+                "Mailbox/get",
+                {
+                    "accountId": ACCOUNT,
+                    "#ids": { "resultOf": "c1", "name": "Mailbox/changes", "path": "/nope" }
+                },
+                "c2"
+            ]
+        ]))
+        .await;
     assert_eq!(
         error_type(&broken["methodResponses"][1]),
         Some("invalidResultReference")
     );
-    let both = rig.mail(json!([
-        changes("1", None),
-        [
-            "Mailbox/get",
-            {
-                "accountId": ACCOUNT,
-                "ids": [],
-                "#ids": { "resultOf": "c1", "name": "Mailbox/changes", "path": "/created" }
-            },
-            "c2"
-        ]
-    ]));
+    let both = rig
+        .mail(json!([
+            changes("1", None),
+            [
+                "Mailbox/get",
+                {
+                    "accountId": ACCOUNT,
+                    "ids": [],
+                    "#ids": { "resultOf": "c1", "name": "Mailbox/changes", "path": "/created" }
+                },
+                "c2"
+            ]
+        ]))
+        .await;
     assert_eq!(
         error_type(&both["methodResponses"][1]),
         Some("invalidArguments")
     );
-    let plain = rig.mail(json!([mailbox_get("c1")]));
+    let plain = rig.mail(json!([mailbox_get("c1")])).await;
     assert_eq!(first(&plain)[1]["list"].as_array().unwrap().len(), 6);
 }

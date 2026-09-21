@@ -3,7 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 //! The IMAP script: CAPABILITY, STARTTLS, LOGIN, AUTHENTICATE with
-//! XOAUTH2, LOGOUT.
+//! XOAUTH2, LOGOUT, then the mailbox and message models behind them.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -192,7 +192,7 @@ impl Protocol for Script {
                 "LIST" | "LSUB" | "STATUS" if phase.is_tls() => {
                     self.mailboxes.answer(&verb, command, tag)
                 }
-                "EXAMINE" | "UID" if phase.is_tls() => {
+                "EXAMINE" | "UID" | "NOOP" if phase.is_tls() => {
                     conversation.answer(&self.mailboxes, command, tag)?
                 }
                 _ => format!("{tag} BAD unknown command\r\n"),
