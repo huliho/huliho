@@ -33,7 +33,7 @@ async fn every_batch_is_one_state_newest_first_with_progress_in_synced_emails() 
         sync.batch(&mut session, &rig.cache).await.unwrap(),
         Step::More
     );
-    let mailbox = rig.mailbox("INBOX");
+    let mailbox = rig.mailbox("INBOX").await;
     assert_eq!(mailbox["syncedEmails"], SYNC_BATCH);
     assert_eq!(mailbox["totalEmails"], LARGE);
     assert_eq!(rig.cache.store.state(&rig.cache.key).unwrap(), 2);
@@ -51,7 +51,7 @@ async fn every_batch_is_one_state_newest_first_with_progress_in_synced_emails() 
     );
     assert_eq!(rig.fetched(), ["601:1100", "101:600", "1:100"]);
     assert_eq!(rig.cache.store.state(&rig.cache.key).unwrap(), 4);
-    assert_eq!(rig.mailbox("INBOX")["syncedEmails"], LARGE);
+    assert_eq!(rig.mailbox("INBOX").await["syncedEmails"], LARGE);
     let (_, again) = rig.open("INBOX").await;
     assert!(again.is_none(), "a folder that is done opens no sync");
 }
@@ -77,7 +77,7 @@ async fn a_sync_cut_after_one_batch_resumes_below_the_last_uid_it_wrote() {
             matches!(error, SyncError::Session(SessionError::Closed)),
             "{error}"
         );
-        assert_eq!(rig.mailbox("INBOX")["syncedEmails"], expected);
+        assert_eq!(rig.mailbox("INBOX").await["syncedEmails"], expected);
     }
     let (mut session, sync) = rig.open("INBOX").await;
     let step = sync.unwrap().finish(&mut session, &rig.cache).await;
@@ -99,12 +99,12 @@ async fn the_counts_follow_status_until_the_folder_is_done_and_the_memberships_a
         Message::new(5).flagged(&["\\Seen", "\\Deleted"]),
     ];
     let rig = Rig::start(inbox(messages)).await;
-    let before = rig.mailbox("INBOX");
+    let before = rig.mailbox("INBOX").await;
     assert_eq!(before["totalEmails"], 5);
     assert_eq!(before["unreadEmails"], 3);
     assert_eq!(before["syncedEmails"], 0);
     assert_eq!(rig.sync("INBOX").await, (Step::Done, 1));
-    let after = rig.mailbox("INBOX");
+    let after = rig.mailbox("INBOX").await;
     assert_eq!(after["syncedEmails"], 3, "a deleted message never arrives");
     assert_eq!(after["totalEmails"], 3);
     assert_eq!(after["unreadEmails"], 1, "an unseen draft is not unread");
@@ -118,7 +118,21 @@ async fn an_empty_folder_is_done_after_one_write() {
     assert_eq!(rig.sync("INBOX").await, (Step::Done, 1));
     assert_eq!(rig.fetched(), Vec::<String>::new());
     assert_eq!(rig.cache.store.state(&rig.cache.key).unwrap(), 2);
-    assert_eq!(rig.mailbox("INBOX")["totalEmails"], 0);
+    assert_eq!(rig.mailbox("INBOX").await["totalEmails"], 0);
+}
+
+/// The subject of each email with its id.
+async fn subject_of(rig: &Rig, ids: &[String]) -> Vec<(String, String)> {
+    rig.emails(ids, &["subject"])
+        .await
+        .iter()
+        .map(|email| {
+            (
+                email["subject"].as_str().unwrap().to_owned(),
+                email["id"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
 }
 
 /// The INBOX after the server renumbered it: message 2 gone, message 6
@@ -143,21 +157,14 @@ async fn a_renumbered_folder_keeps_the_ids_of_the_messages_it_still_holds_rfc350
     let model = inbox(mail(5));
     let rig = Rig::start(model.clone()).await;
     rig.sync("INBOX").await;
-    let subject_of = |rig: &Rig, ids: &[String]| -> Vec<(String, String)> {
-        rig.emails(ids, &["subject"])
-            .iter()
-            .map(|email| {
-                (
-                    email["subject"].as_str().unwrap().to_owned(),
-                    email["id"].as_str().unwrap().to_owned(),
-                )
-            })
-            .collect()
-    };
-    let before = subject_of(&rig, &rig.created(0));
+    let before = subject_of(&rig, &rig.created(0)).await;
     model.set(vec![renumbered()]);
     let passed = rig.pass().await.unwrap();
-    assert_eq!(rig.mailbox("INBOX")["syncedEmails"], 5, "the rows wait");
+    assert_eq!(
+        rig.mailbox("INBOX").await["syncedEmails"],
+        5,
+        "the rows wait"
+    );
     assert_eq!(rig.sync("INBOX").await, (Step::Done, 1));
     let changes = rig.changes(ObjectType::Email, passed);
     let kinds = |kind| changes.iter().filter(|(_, found)| *found == kind).count();
@@ -169,7 +176,7 @@ async fn a_renumbered_folder_keeps_the_ids_of_the_messages_it_still_holds_rfc350
         .filter(|(_, kind)| *kind == ChangeKind::Updated)
         .map(|(id, _)| id.clone())
         .collect();
-    for pair in subject_of(&rig, &kept) {
+    for pair in subject_of(&rig, &kept).await {
         assert!(before.contains(&pair), "{pair:?}");
     }
     let gone = &before
@@ -178,7 +185,7 @@ async fn a_renumbered_folder_keeps_the_ids_of_the_messages_it_still_holds_rfc350
         .unwrap()
         .1;
     assert!(changes.contains(&(gone.clone(), ChangeKind::Destroyed)));
-    assert_eq!(rig.mailbox("INBOX")["totalEmails"], 5);
+    assert_eq!(rig.mailbox("INBOX").await["totalEmails"], 5);
 }
 
 #[tokio::test]
@@ -186,7 +193,9 @@ async fn a_vanished_mailbox_takes_its_emails_and_threads_along_in_the_state_of_t
     let model = Mailboxes::new(
         vec![
             Folder::new("INBOX").with_mail(mail(2)),
-            Folder::new("Work").with_mail(mail(3)),
+            // Ids of their own: a copy of an INBOX message would share
+            // its thread, which then outlives the folder.
+            Folder::new("Work").with_mail((11..=13).map(Message::new).collect()),
         ],
         Extension::all(),
     );
@@ -210,11 +219,13 @@ async fn a_vanished_mailbox_takes_its_emails_and_threads_along_in_the_state_of_t
                 .all(|(_, kind)| *kind == ChangeKind::Destroyed)
         );
     }
-    let left = rig.call(&json!([
-        "Email/get",
-        { "accountId": sync_rig::ACCOUNT, "ids": rig.created(0), "properties": ["id"] },
-        "c1"
-    ]));
+    let left = rig
+        .call(&json!([
+            "Email/get",
+            { "accountId": sync_rig::ACCOUNT, "ids": rig.created(0), "properties": ["id"] },
+            "c1"
+        ]))
+        .await;
     assert_eq!(left["list"].as_array().unwrap().len(), 2);
     assert_eq!(left["notFound"].as_array().unwrap().len(), 3);
 }

@@ -4,14 +4,22 @@
 
 //! The JMAP side of the bridge: one Request object in, one Response
 //! object out (RFC 8620 sections 3.3 and 3.4), the methods answered
-//! from the store.
+//! from the store. A `/changes` call refreshes the account first when a
+//! refresh is due; an `Email/get` that asks for previews the rows lack
+//! fetches them and answers again.
 
 mod changes;
 mod email;
+mod get;
 mod mailbox;
+mod previews;
+mod query;
 mod references;
+mod request;
 mod session;
+mod thread;
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use serde::de::DeserializeOwned;
@@ -20,8 +28,11 @@ use serde_json::{Map, Value};
 use thiserror::Error;
 
 use crate::seal::Sealer;
-use crate::store::{AccountKey, Store, StoreError};
+use crate::store::{AccountKey, EmailId, MailboxId, Store, StoreError};
 
+pub use previews::PREVIEW_BATCH;
+pub use query::QUERY_LIMIT;
+pub use request::handle;
 pub use session::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, Urls, session_object};
 
 /// A Request object of one MiB at most, room for an `Email/set` with a
@@ -38,7 +49,8 @@ pub const MAX_CALLS_IN_REQUEST: usize = 16;
 pub const MAX_OBJECTS_IN_GET: usize = 500;
 
 /// Why a request was not run (RFC 8620 section 3.6.1); the host answers
-/// a problem details object with status 400, or 500 for the store.
+/// a problem details object with status 400, or 500 for the store and
+/// the task.
 #[derive(Debug, Error)]
 pub enum RequestError {
     #[error("a capability in `using` is not carried")]
@@ -51,11 +63,13 @@ pub enum RequestError {
     Limit(&'static str),
     #[error(transparent)]
     Store(#[from] StoreError),
+    #[error("the task answering the request ended early")]
+    Task,
 }
 
 impl RequestError {
-    /// The problem type of RFC 8620 section 3.6.1; the store's failure
-    /// has none.
+    /// The problem type of RFC 8620 section 3.6.1; the store's and the
+    /// task's failures have none.
     #[must_use]
     pub fn problem_type(&self) -> Option<&'static str> {
         Some(match self {
@@ -63,7 +77,7 @@ impl RequestError {
             Self::NotJson => "urn:ietf:params:jmap:error:notJSON",
             Self::NotRequest => "urn:ietf:params:jmap:error:notRequest",
             Self::Limit(_) => "urn:ietf:params:jmap:error:limit",
-            Self::Store(_) => return None,
+            Self::Store(_) | Self::Task => return None,
         })
     }
 
@@ -122,13 +136,19 @@ fn using(names: &[String]) -> Result<Using, RequestError> {
 }
 
 /// What the calls of one request share: the rows every method runs
-/// against and the budget of their result references.
+/// against, the budget of their result references and what the calls
+/// leave for the request to act on.
 pub(crate) struct Context<'a> {
     store: &'a Store,
     sealer: &'a dyn Sealer,
     key: &'a AccountKey,
     using: Using,
     budget: references::Budget,
+    /// The mailbox the last query ranged over.
+    viewed: RefCell<Option<MailboxId>>,
+    /// The emails an `Email/get` wanted a preview for that the rows do
+    /// not hold yet.
+    missing_previews: RefCell<Vec<EmailId>>,
 }
 
 impl Context<'_> {
@@ -142,8 +162,8 @@ impl Context<'_> {
     }
 }
 
-/// A method-level error (RFC 8620 section 3.6.2); the store's failure
-/// reads as `serverFail`.
+/// A method-level error (RFC 8620 section 3.6.2, RFC 8621 section 4.4);
+/// the store's failure reads as `serverFail`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MethodError {
     UnknownMethod,
@@ -152,6 +172,9 @@ pub(crate) enum MethodError {
     AccountNotFound,
     RequestTooLarge,
     CannotCalculateChanges,
+    UnsupportedFilter,
+    UnsupportedSort,
+    AnchorNotFound,
     ServerFail,
 }
 
@@ -164,6 +187,9 @@ impl MethodError {
             Self::AccountNotFound => "accountNotFound",
             Self::RequestTooLarge => "requestTooLarge",
             Self::CannotCalculateChanges => "cannotCalculateChanges",
+            Self::UnsupportedFilter => "unsupportedFilter",
+            Self::UnsupportedSort => "unsupportedSort",
+            Self::AnchorNotFound => "anchorNotFound",
             Self::ServerFail => "serverFail",
         };
         let mut object = Map::new();
@@ -179,50 +205,6 @@ impl From<StoreError> for MethodError {
     fn from(_error: StoreError) -> Self {
         Self::ServerFail
     }
-}
-
-/// Runs one Request object against the account's rows and answers the
-/// Response object as JSON; the sealer opens the personal fields of
-/// the emails it reads.
-///
-/// # Errors
-///
-/// Returns [`RequestError`] when the request cannot run at all; a
-/// method that fails answers inside the Response object instead.
-pub fn handle(
-    store: &Store,
-    sealer: &dyn Sealer,
-    key: &AccountKey,
-    body: &[u8],
-) -> Result<Vec<u8>, RequestError> {
-    if body.len() > MAX_SIZE_REQUEST {
-        return Err(RequestError::Limit("maxSizeRequest"));
-    }
-    let value: Value = serde_json::from_slice(body).map_err(|_| RequestError::NotJson)?;
-    let request: Request = serde_json::from_value(value).map_err(|_| RequestError::NotRequest)?;
-    let using = using(&request.using)?;
-    if request.method_calls.len() > MAX_CALLS_IN_REQUEST {
-        return Err(RequestError::Limit("maxCallsInRequest"));
-    }
-    let session_state = store.state(key)?.to_string();
-    let context = Context {
-        store,
-        sealer,
-        key,
-        using,
-        budget: references::Budget::full(),
-    };
-    let mut responses = Vec::with_capacity(request.method_calls.len());
-    for call in &request.method_calls {
-        let response = run(&context, call, &responses);
-        responses.push(response);
-    }
-    let response = Response {
-        method_responses: responses,
-        created_ids: request.created_ids,
-        session_state,
-    };
-    serde_json::to_vec(&response).map_err(|error| RequestError::Store(StoreError::Encoding(error)))
 }
 
 /// One call: the references resolved, the method run, a failure folded
@@ -248,6 +230,10 @@ fn dispatch(
         "Mailbox/get" if context.using.mail => mailbox::get(context, arguments),
         "Mailbox/changes" if context.using.mail => changes::mailbox(context, arguments),
         "Email/get" if context.using.mail => email::get(context, arguments),
+        "Email/query" if context.using.mail => query::email(context, arguments),
+        "Email/changes" if context.using.mail => changes::email(context, arguments),
+        "Thread/get" if context.using.mail => thread::get(context, arguments),
+        "Thread/changes" if context.using.mail => changes::thread(context, arguments),
         _ => Err(MethodError::UnknownMethod),
     }
 }
@@ -264,10 +250,7 @@ pub(crate) fn arguments<T: DeserializeOwned>(
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
-    use crate::testing::seal::TestSealer;
 
     #[test]
     fn using_reads_the_three_capabilities_and_refuses_a_fourth_rfc8620_3_6_1() {
@@ -303,6 +286,7 @@ mod tests {
             RequestError::Store(StoreError::Poisoned).problem_type(),
             None
         );
+        assert_eq!(RequestError::Task.problem_type(), None);
     }
 
     #[test]
@@ -313,73 +297,12 @@ mod tests {
         let described = MethodError::InvalidArguments("why").object();
         assert_eq!(described["type"], "invalidArguments");
         assert_eq!(described["description"], "why");
-    }
-
-    /// `Core/echo` calls: the first echoes 64 KiB of text, every later
-    /// one echoes the call before it twice through the path `""`.
-    fn doubling(calls: usize) -> Vec<Value> {
-        let mut out = vec![json!(["Core/echo", { "text": "x".repeat(64 * 1024) }, "c0"])];
-        for call in 1..calls {
-            let before = json!({
-                "resultOf": format!("c{}", call - 1),
-                "name": "Core/echo",
-                "path": ""
-            });
-            let twice = json!({ "#a": before, "#b": before });
-            out.push(json!(["Core/echo", twice, format!("c{call}")]));
-        }
-        out
-    }
-
-    fn responses(store: &Store, calls: &[Value]) -> Vec<Invocation> {
-        let body = json!({ "using": [CORE_CAPABILITY], "methodCalls": calls });
-        let body = serde_json::to_vec(&body).unwrap();
-        let sealer = TestSealer::default();
-        let answer = handle(store, &sealer, &AccountKey::new("a1"), &body).unwrap();
-        let mut answer: Value = serde_json::from_slice(&answer).unwrap();
-        serde_json::from_value(answer["methodResponses"].take()).unwrap()
-    }
-
-    #[test]
-    fn references_past_the_budget_fail_their_call_alone_rfc8620_3_6_2() {
-        let store = Store::in_memory().unwrap();
-        let mut calls = doubling(5);
-        calls.push(json!(["Core/echo", { "after": true }, "c5"]));
-        let responses = responses(&store, &calls);
-        for Invocation(name, _, _) in &responses[..4] {
-            assert_eq!(name, "Core/echo");
-        }
-        let Invocation(name, error, id) = &responses[4];
-        assert_eq!((name.as_str(), id.as_str()), ("error", "c4"));
-        assert_eq!(error["type"], "invalidResultReference");
-        assert!(error["description"].is_string());
-        let Invocation(name, after, id) = &responses[5];
-        assert_eq!((name.as_str(), id.as_str()), ("Core/echo", "c5"));
-        assert_eq!(after["after"], true);
-    }
-
-    #[test]
-    fn a_chain_of_references_inside_the_budget_resolves_rfc8620_3_7() {
-        let store = Store::in_memory().unwrap();
-        let ids = |call: &str| json!({ "resultOf": call, "name": "Core/echo", "path": "/ids" });
-        let calls = [
-            json!(["Core/echo", { "ids": ["e1", "e2"] }, "c0"]),
-            json!(["Core/echo", { "#ids": ids("c0") }, "c1"]),
-            json!(["Core/echo", { "#ids": ids("c1") }, "c2"]),
-        ];
-        for Invocation(name, arguments, _) in responses(&store, &calls) {
-            assert_eq!(name, "Core/echo");
-            assert_eq!(arguments["ids"], json!(["e1", "e2"]));
-        }
-    }
-
-    #[test]
-    fn every_request_starts_with_a_full_budget() {
-        let store = Store::in_memory().unwrap();
-        for _ in 0..2 {
-            for Invocation(name, _, _) in responses(&store, &doubling(4)) {
-                assert_eq!(name, "Core/echo");
-            }
+        for (error, kind) in [
+            (MethodError::UnsupportedFilter, "unsupportedFilter"),
+            (MethodError::UnsupportedSort, "unsupportedSort"),
+            (MethodError::AnchorNotFound, "anchorNotFound"),
+        ] {
+            assert_eq!(error.object()["type"], kind);
         }
     }
 }

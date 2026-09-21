@@ -90,7 +90,7 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
 #[tokio::test]
 async fn mailbox_get_answers_every_mailbox_with_its_rights_and_counts_rfc8621_2() {
     let rig = Rig::start().await;
-    let response = rig.mail(json!([mailbox_get("c1")]));
+    let response = rig.mail(json!([mailbox_get("c1")])).await;
     assert_eq!(response["sessionState"], "1");
     let answer = first(&response);
     assert_eq!(answer[0], "Mailbox/get");
@@ -127,15 +127,17 @@ async fn mailbox_get_with_ids_answers_each_id_once_and_cuts_to_the_properties_rf
     let rig = Rig::start().await;
     let sent = rig.id_of("Sent");
     let inbox = rig.id_of("INBOX");
-    let response = rig.mail(json!([[
-        "Mailbox/get",
-        {
-            "accountId": ACCOUNT,
-            "ids": [sent, "mnope", inbox, sent, "mnope", "mother"],
-            "properties": ["name", "role"]
-        },
-        "c1"
-    ]]));
+    let response = rig
+        .mail(json!([[
+            "Mailbox/get",
+            {
+                "accountId": ACCOUNT,
+                "ids": [sent, "mnope", inbox, sent, "mnope", "mother"],
+                "properties": ["name", "role"]
+            },
+            "c1"
+        ]]))
+        .await;
     let answer = &first(&response)[1];
     assert_eq!(answer["notFound"], json!(["mnope", "mother"]));
     assert_eq!(
@@ -145,17 +147,21 @@ async fn mailbox_get_with_ids_answers_each_id_once_and_cuts_to_the_properties_rf
             { "id": inbox, "name": "INBOX", "role": "inbox" }
         ])
     );
-    let unknown = rig.mail(json!([[
-        "Mailbox/get",
-        { "accountId": ACCOUNT, "ids": null, "properties": ["flavor"] },
-        "c2"
-    ]]));
+    let unknown = rig
+        .mail(json!([[
+            "Mailbox/get",
+            { "accountId": ACCOUNT, "ids": null, "properties": ["flavor"] },
+            "c2"
+        ]]))
+        .await;
     assert_eq!(error_type(first(&unknown)), Some("invalidArguments"));
-    let none = rig.mail(json!([[
-        "Mailbox/get",
-        { "accountId": ACCOUNT, "ids": [] },
-        "c3"
-    ]]));
+    let none = rig
+        .mail(json!([[
+            "Mailbox/get",
+            { "accountId": ACCOUNT, "ids": [] },
+            "c3"
+        ]]))
+        .await;
     let answer = &first(&none)[1];
     assert_eq!(
         (&answer["list"], &answer["notFound"]),
@@ -171,6 +177,7 @@ async fn synced_emails_exists_only_under_the_vendor_capability_rfc8620_1_8() {
             &[CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY],
             json!([mailbox_get("c1")]),
         )
+        .await
         .unwrap();
     assert_eq!(first(&with)[1]["list"][0]["syncedEmails"], 0);
     let named = json!([[
@@ -183,41 +190,47 @@ async fn synced_emails_exists_only_under_the_vendor_capability_rfc8620_1_8() {
             &[CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY],
             named.clone(),
         )
+        .await
         .unwrap();
     assert_eq!(keys(&first(&asked)[1]["list"][0]), ["id", "syncedEmails"]);
-    let without = rig.mail(named);
+    let without = rig.mail(named).await;
     assert_eq!(error_type(first(&without)), Some("invalidArguments"));
 }
 
 #[tokio::test]
 async fn core_echo_returns_its_arguments_rfc8620_4() {
     let rig = Rig::start().await;
-    let response = rig.request(
-        &[CORE_CAPABILITY],
-        json!([["Core/echo", { "hello": "world", "n": 1 }, "c1"]]),
-    );
+    let response = rig
+        .request(
+            &[CORE_CAPABILITY],
+            json!([["Core/echo", { "hello": "world", "n": 1 }, "c1"]]),
+        )
+        .await;
     let response = response.unwrap();
     assert_eq!(
         first(&response),
         &json!(["Core/echo", { "hello": "world", "n": 1 }, "c1"])
     );
-    let unnamed = rig.request(&[MAIL_CAPABILITY], json!([["Core/echo", {}, "c1"]]));
+    let unnamed = rig
+        .request(&[MAIL_CAPABILITY], json!([["Core/echo", {}, "c1"]]))
+        .await;
     assert_eq!(error_type(first(&unnamed.unwrap())), Some("unknownMethod"));
 }
 
 #[tokio::test]
 async fn a_request_that_cannot_run_answers_its_problem_rfc8620_3_6_1() {
     let rig = Rig::start().await;
-    let raw = |body: &[u8]| rig.raw(body);
     assert!(matches!(
-        raw(b"not json").unwrap_err(),
+        rig.raw(b"not json").await.unwrap_err(),
         RequestError::NotJson
     ));
     assert!(matches!(
-        raw(br#"{"using": []}"#).unwrap_err(),
+        rig.raw(br#"{"using": []}"#).await.unwrap_err(),
         RequestError::NotRequest
     ));
-    let websocket = rig.request(&["urn:ietf:params:jmap:websocket"], json!([]));
+    let websocket = rig
+        .request(&["urn:ietf:params:jmap:websocket"], json!([]))
+        .await;
     assert!(matches!(
         websocket.unwrap_err(),
         RequestError::UnknownCapability
@@ -225,15 +238,17 @@ async fn a_request_that_cannot_run_answers_its_problem_rfc8620_3_6_1() {
     let calls: Vec<Value> = (0..=MAX_CALLS_IN_REQUEST)
         .map(|index| json!(["Core/echo", {}, index.to_string()]))
         .collect();
-    let many = rig.request(&[CORE_CAPABILITY], Value::Array(calls));
+    let many = rig.request(&[CORE_CAPABILITY], Value::Array(calls)).await;
     assert_eq!(many.unwrap_err().limit(), Some("maxCallsInRequest"));
     let filler = "x".repeat(MAX_SIZE_REQUEST);
-    let large = rig.request(
-        &[CORE_CAPABILITY],
-        json!([["Core/echo", { "f": filler }, "c1"]]),
-    );
+    let large = rig
+        .request(
+            &[CORE_CAPABILITY],
+            json!([["Core/echo", { "f": filler }, "c1"]]),
+        )
+        .await;
     assert_eq!(large.unwrap_err().limit(), Some("maxSizeRequest"));
-    let empty = rig.request(&[], json!([])).unwrap();
+    let empty = rig.request(&[], json!([])).await.unwrap();
     assert_eq!(empty["methodResponses"], json!([]));
     assert_eq!(empty.get("createdIds"), None);
 }
@@ -243,7 +258,7 @@ async fn created_ids_come_back_as_they_were_sent_rfc8620_3_4() {
     let rig = Rig::start().await;
     let body = json!({ "using": [], "methodCalls": [], "createdIds": { "a": "m1" } });
     let body = serde_json::to_vec(&body).unwrap();
-    let bytes = rig.raw(&body).unwrap();
+    let bytes = rig.raw(&body).await.unwrap();
     let response: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(response["createdIds"], json!({ "a": "m1" }));
 }
@@ -275,7 +290,7 @@ async fn a_method_that_cannot_run_answers_inside_the_response_rfc8620_3_6_2() {
         ),
     ];
     for (using, call, expected) in cases {
-        let response = rig.request(using, json!([call])).unwrap();
+        let response = rig.request(using, json!([call])).await.unwrap();
         assert_eq!(error_type(first(&response)), Some(expected), "{expected}");
         assert_eq!(first(&response)[2], "c1");
     }

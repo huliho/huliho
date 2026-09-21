@@ -17,7 +17,8 @@ use time::macros::format_description;
 use super::{Room, Selection, modseq};
 use crate::dates::utc_date;
 use crate::session::{
-    BodyPart, FetchedMessage, MAX_FETCH_MESSAGES, MAX_HEADER_BYTES, SessionError, UidRange,
+    BodyPart, FetchedMessage, MAX_FETCH_MESSAGES, MAX_HEADER_BYTES, MESSAGE_LIMIT, SessionError,
+    UidRange,
 };
 
 /// The header fields the Email object is built from (RFC 8621 section
@@ -76,9 +77,7 @@ pub(in crate::session) async fn uid_fetch(
             && !messages.contains_key(&message.uid)
         {
             if messages.len() == MAX_FETCH_MESSAGES {
-                return Err(SessionError::Protocol(
-                    "the answer passes the message limit",
-                ));
+                return Err(SessionError::Protocol(MESSAGE_LIMIT));
             }
             messages.insert(message.uid, message);
         }
@@ -135,7 +134,7 @@ fn cut(header: &[u8]) -> Vec<u8> {
     header[..header.len().min(MAX_HEADER_BYTES)].to_vec()
 }
 
-fn kept_flags<T: AsRef<str>>(flags: &[T]) -> Vec<String> {
+pub(super) fn kept_flags<T: AsRef<str>>(flags: &[T]) -> Vec<String> {
     flags
         .iter()
         .map(AsRef::as_ref)
@@ -175,19 +174,21 @@ fn part(body: &BodyStructure<'_>, room: &mut usize) -> Option<BodyPart> {
                 .map(|body| part(body, room))
                 .collect::<Option<_>>()?,
         },
-        BodyStructure::Basic { common, .. }
-        | BodyStructure::Text { common, .. }
-        | BodyStructure::Message { common, .. } => leaf(common),
+        BodyStructure::Basic { common, other, .. }
+        | BodyStructure::Text { common, other, .. }
+        | BodyStructure::Message { common, other, .. } => leaf(common, other.octets),
     })
 }
 
-fn leaf(common: &BodyContentCommon<'_>) -> BodyPart {
+fn leaf(common: &BodyContentCommon<'_>, bytes: u32) -> BodyPart {
     BodyPart::Leaf {
         media_type: word(&common.ty.ty),
+        subtype: word(&common.ty.subtype),
         attachment: common
             .disposition
             .as_ref()
             .is_some_and(|disposition| disposition.ty.eq_ignore_ascii_case("attachment")),
+        bytes,
     }
 }
 
@@ -241,11 +242,15 @@ mod tests {
                 parts: vec![
                     BodyPart::Leaf {
                         media_type: "text".to_owned(),
-                        attachment: false
+                        subtype: "plain".to_owned(),
+                        attachment: false,
+                        bytes: 1,
                     },
                     BodyPart::Leaf {
                         media_type: "application".to_owned(),
-                        attachment: true
+                        subtype: "pdf".to_owned(),
+                        attachment: true,
+                        bytes: 9,
                     },
                 ],
             })

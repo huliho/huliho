@@ -11,8 +11,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use huliho_imap_bridge::jmap::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, handle};
+use huliho_imap_bridge::runtime::Link;
 use huliho_imap_bridge::session::{ImapSession, STEP_TIMEOUT, Session, Target, TlsMode};
 use huliho_imap_bridge::store::{AccountKey, Store};
+use huliho_imap_bridge::sync::Cache;
+use huliho_imap_bridge::testing::TestConnector;
 use huliho_imap_bridge::testing::seal::TestSealer;
 use serde_json::{Value, json};
 use tokio::net::TcpStream;
@@ -98,24 +101,43 @@ pub async fn editor() -> Editor {
         .unwrap()
 }
 
+/// A cache over a fresh store under the test sealer.
+pub fn cache(key: &str) -> Cache {
+    Cache {
+        store: Arc::new(Store::in_memory().unwrap()),
+        sealer: Arc::new(TestSealer::default()),
+        key: AccountKey::new(key),
+    }
+}
+
+/// A link to the compose Dovecot that refreshes on every `/changes`
+/// call.
+pub fn link() -> Link<TestConnector> {
+    let connector = TestConnector::Server {
+        tls: tls(true),
+        target: dovecot(IMAPS_PORT, TlsMode::Implicit),
+        step: STEP_TIMEOUT,
+        user: USER,
+        password: PASSWORD,
+    };
+    Link::with_interval(connector, std::time::Duration::ZERO)
+}
+
 /// The arguments of the first response to one call.
-pub fn answer(store: &Store, key: &AccountKey, call: &Value) -> Value {
+pub async fn answer(cache: &Cache, link: &Link<TestConnector>, call: &Value) -> Value {
     let using = [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY];
     let body = json!({ "using": using, "methodCalls": [call] });
-    let bytes = handle(
-        store,
-        &TestSealer::default(),
-        key,
-        &serde_json::to_vec(&body).unwrap(),
-    )
-    .unwrap();
+    let bytes = handle(cache, link, &serde_json::to_vec(&body).unwrap())
+        .await
+        .unwrap();
     let response: Value = serde_json::from_slice(&bytes).unwrap();
     response["methodResponses"][0][1].clone()
 }
 
-pub fn mailbox_list(store: &Store, key: &AccountKey) -> Vec<Value> {
-    let call = json!(["Mailbox/get", { "accountId": key.as_str(), "ids": null }, "c1"]);
-    answer(store, key, &call)["list"]
+pub async fn mailbox_list(cache: &Cache, link: &Link<TestConnector>) -> Vec<Value> {
+    let key = cache.key.as_str();
+    let call = json!(["Mailbox/get", { "accountId": key, "ids": null }, "c1"]);
+    answer(cache, link, &call).await["list"]
         .as_array()
         .unwrap()
         .clone()

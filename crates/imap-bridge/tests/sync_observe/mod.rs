@@ -23,20 +23,20 @@ pub fn mail(count: u32) -> Vec<Message> {
 
 impl Rig {
     /// The Mailbox object of the folder with that wire name.
-    pub fn mailbox(&self, imap_name: &str) -> Value {
+    pub async fn mailbox(&self, imap_name: &str) -> Value {
         let id = self.folder(imap_name).id;
         let call = json!(["Mailbox/get", { "accountId": ACCOUNT, "ids": [id] }, "c1"]);
-        self.call(&call)["list"][0].take()
+        self.call(&call).await["list"][0].take()
     }
 
     /// `Email/get` for the ids with the named properties.
-    pub fn emails(&self, ids: &[String], properties: &[&str]) -> Vec<Value> {
+    pub async fn emails(&self, ids: &[String], properties: &[&str]) -> Vec<Value> {
         let call = json!([
             "Email/get",
             { "accountId": ACCOUNT, "ids": ids, "properties": properties },
             "c1"
         ]);
-        self.call(&call)["list"].as_array().unwrap().clone()
+        self.call(&call).await["list"].as_array().unwrap().clone()
     }
 
     /// The UID FETCH ranges the server received, in order.

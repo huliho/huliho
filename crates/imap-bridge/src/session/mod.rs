@@ -27,7 +27,9 @@ use tokio_rustls::rustls::pki_types::InvalidDnsNameError;
 pub use guard::{MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
 pub use imap::ImapSession;
 pub use message::{
-    BodyPart, FetchedMessage, MAX_FETCH_MESSAGES, MAX_HEADER_BYTES, Selected, UidRange,
+    BodyPart, FetchedMessage, FlagFetch, Flagged, MAX_FETCH_MESSAGES, MAX_FLAGGED,
+    MAX_HEADER_BYTES, MAX_PREVIEW_TEXT_BYTES, MAX_PREVIEWS, MESSAGE_LIMIT, PREVIEW_HEADER_BYTES,
+    PreviewAsk, PreviewBytes, Selected, UidRange,
 };
 
 /// One connect attempt or one step of a command gets this long: the
@@ -309,6 +311,41 @@ pub trait Session: Sized + Send {
         range: UidRange,
         structure: bool,
     ) -> impl Future<Output = Result<Vec<FetchedMessage>, SessionError>> + Send;
+
+    /// `UID FETCH` of the flags alone: what changed since a
+    /// mod-sequence, which needs CONDSTORE (RFC 7162 section 3.1.4.1),
+    /// or every message of a range. The messages by UID.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::uid_fetch`], the limit being `MAX_FLAGGED`.
+    fn uid_flags(
+        &mut self,
+        fetch: FlagFetch,
+    ) -> impl Future<Output = Result<Vec<Flagged>, SessionError>> + Send;
+
+    /// `UID FETCH` of the start of one text part for several messages,
+    /// every item a partial fetch (RFC 3501 section 6.4.5). A message
+    /// that did not answer is left out.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`]; `Protocol` as well, before anything is
+    /// sent, when no mailbox is selected, the ask names no message or
+    /// more than `MAX_PREVIEWS` or its part number holds other bytes
+    /// than digits and dots.
+    fn uid_previews(
+        &mut self,
+        ask: &PreviewAsk<'_>,
+    ) -> impl Future<Output = Result<Vec<PreviewBytes>, SessionError>> + Send;
+
+    /// NOOP (RFC 3501 section 6.1.2): whether a connection kept from an
+    /// earlier use still answers.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`].
+    fn noop(&mut self) -> impl Future<Output = Result<(), SessionError>> + Send;
 
     /// The LOGOUT command (RFC 9051 section 6.1.3); the connection is
     /// gone afterwards whatever the answer.

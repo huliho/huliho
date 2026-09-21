@@ -3,18 +3,20 @@
 // Additional terms apply, see NOTICE.
 
 //! A store the mailbox pass filled from the Dovecot-shaped script, and
-//! one request against it.
+//! one request against it over a link to the same server.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use huliho_imap_bridge::jmap::{CORE_CAPABILITY, MAIL_CAPABILITY, RequestError, handle};
 use huliho_imap_bridge::mailboxes::sync;
+use huliho_imap_bridge::runtime::Link;
 use huliho_imap_bridge::session::{ImapSession, Session, TlsMode};
 use huliho_imap_bridge::store::{AccountKey, Store};
+use huliho_imap_bridge::sync::Cache;
 use huliho_imap_bridge::testing::imap::{FakeImap, HOST, Script};
 use huliho_imap_bridge::testing::seal::TestSealer;
-use huliho_imap_bridge::testing::{Folder, Mailboxes, PASSWORD, USER};
+use huliho_imap_bridge::testing::{Folder, Mailboxes, PASSWORD, TestConnector, USER};
 use serde_json::{Map, Value, json};
 
 /// Room for a loopback exchange.
@@ -28,10 +30,13 @@ pub fn key() -> AccountKey {
     AccountKey::new(ACCOUNT)
 }
 
-/// The scripted server, its mailbox model and the store the pass fills.
+/// The scripted server, its mailbox model, the store the pass fills
+/// and the link a request reaches the server through.
 pub struct Rig {
     /// The store the pass fills.
     pub store: Arc<Store>,
+    cache: Cache,
+    link: Link<TestConnector>,
     fake: FakeImap,
     mailboxes: Mailboxes,
 }
@@ -45,8 +50,17 @@ impl Rig {
             ..Script::tls()
         })
         .await;
+        let store = Arc::new(Store::in_memory().unwrap());
+        let connector =
+            TestConnector::scripted(fake.trusting(), fake.target(HOST, TlsMode::Implicit), STEP);
         let rig = Self {
-            store: Arc::new(Store::in_memory().unwrap()),
+            store: Arc::clone(&store),
+            cache: Cache {
+                store,
+                sealer: Arc::new(TestSealer::default()),
+                key: key(),
+            },
+            link: Link::with_interval(connector, Duration::ZERO),
             fake,
             mailboxes,
         };
@@ -80,23 +94,24 @@ impl Rig {
 
     /// One request with the given capabilities and calls, the Response
     /// object parsed.
-    pub fn request(&self, using: &[&str], calls: Value) -> Result<Value, RequestError> {
+    pub async fn request(&self, using: &[&str], calls: Value) -> Result<Value, RequestError> {
         let mut body = Map::new();
         body.insert("using".to_owned(), json!(using));
         body.insert("methodCalls".to_owned(), calls);
-        let bytes = self.raw(&serde_json::to_vec(&body).unwrap())?;
+        let bytes = self.raw(&serde_json::to_vec(&body).unwrap()).await?;
         Ok(serde_json::from_slice(&bytes).unwrap())
     }
 
     /// One request body as it arrived, the answer as bytes.
-    pub fn raw(&self, body: &[u8]) -> Result<Vec<u8>, RequestError> {
-        handle(&self.store, &TestSealer::default(), &key(), body)
+    pub async fn raw(&self, body: &[u8]) -> Result<Vec<u8>, RequestError> {
+        handle(&self.cache, &self.link, body).await
     }
 
     /// A request under core and mail, which every method of this bridge
     /// runs under.
-    pub fn mail(&self, calls: Value) -> Value {
+    pub async fn mail(&self, calls: Value) -> Value {
         self.request(&[CORE_CAPABILITY, MAIL_CAPABILITY], calls)
+            .await
             .unwrap()
     }
 

@@ -11,35 +11,15 @@ mod tests;
 use std::collections::BTreeMap;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
-use serde::{Deserialize, Serialize};
 
 use super::changes::{ChangeKind, ObjectType, log, next_sequence, prune, state_of};
-use super::folders::{self, FolderWrite, Leaving};
+use super::folders::{self, FolderWrite, Leaving, Standing};
+use super::ledger::Ledger;
+use super::personal::Personal;
+use super::progress::{self, Advance};
+use super::threads;
 use super::{AccountKey, EmailId, MailboxId, Store, StoreError, ThreadId};
 use crate::seal::Sealer;
-
-/// One address as `Email/get` renders it (RFC 8621 section 4.1.2.3).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Address {
-    pub name: Option<String>,
-    pub email: String,
-}
-
-/// The personal fields of an email, the JSON inside the sealed blob.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Personal {
-    pub from: Option<Vec<Address>>,
-    pub to: Option<Vec<Address>>,
-    pub cc: Option<Vec<Address>>,
-    pub bcc: Option<Vec<Address>>,
-    pub reply_to: Option<Vec<Address>>,
-    pub sender: Option<Vec<Address>>,
-    pub subject: Option<String>,
-    pub message_id: Option<Vec<String>>,
-    pub in_reply_to: Option<Vec<String>>,
-    pub references: Option<Vec<String>>,
-}
 
 /// What the sync knows about one message before the store names it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,17 +41,7 @@ pub struct Batch<'a> {
     /// The UIDVALIDITY the messages were fetched under.
     pub uid_validity: u32,
     pub emails: &'a [EmailFacts],
-    /// The lowest UID the sync has passed; `None` for an empty folder.
-    pub lowest_uid: Option<u32>,
-    /// Whether the folder holds nothing below `lowest_uid`.
-    pub done: bool,
-}
-
-/// How far a folder's first sync stands.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Progress {
-    pub lowest_synced_uid: Option<u32>,
-    pub done: bool,
+    pub advance: Advance,
 }
 
 /// An email as the tables hold it, the blob still sealed.
@@ -117,34 +87,6 @@ impl Store {
         self.write(|transaction| write_batch(transaction, key, batch, sealer))
     }
 
-    /// How far the first sync of a folder stands.
-    ///
-    /// # Errors
-    ///
-    /// Returns the database error.
-    pub fn sync_progress(
-        &self,
-        key: &AccountKey,
-        folder: &MailboxId,
-    ) -> Result<Progress, StoreError> {
-        self.read(|connection| {
-            let progress = connection
-                .query_row(
-                    "SELECT lowest_synced_uid, done FROM bridge_sync
-                     WHERE account_key = ?1 AND folder_id = ?2",
-                    params![key.as_str(), folder],
-                    |row| {
-                        Ok(Progress {
-                            lowest_synced_uid: row.get(0)?,
-                            done: row.get(1)?,
-                        })
-                    },
-                )
-                .optional()?;
-            Ok(progress.unwrap_or_default())
-        })
-    }
-
     /// The emails among `ids` the account holds, in the order asked.
     ///
     /// # Errors
@@ -171,11 +113,15 @@ fn write_batch(
     batch: &Batch<'_>,
     sealer: &dyn Sealer,
 ) -> Result<Option<u64>, StoreError> {
-    if !folder_stands(transaction, key, batch)? {
+    let standing = Standing {
+        folder: batch.folder,
+        uid_validity: batch.uid_validity,
+    };
+    if !folders::stands(transaction, key, &standing)? {
         return Ok(None);
     }
     let mut waiting = folders::unmatched(transaction, key, batch.folder)?;
-    let mut entries = Vec::new();
+    let mut ledger = Ledger::default();
     for facts in batch.emails {
         if holds(transaction, key, batch.folder, facts.uid)? {
             continue;
@@ -200,18 +146,30 @@ fn write_batch(
             sealed: &sealer.seal(key, &id, &plain)?,
         };
         if kind == ChangeKind::Created {
-            let thread = insert(transaction, key, facts, &row)?;
-            entries.push((ObjectType::Thread, thread.to_string(), kind));
+            let mut named: Vec<Vec<u8>> = Vec::new();
+            for hash in facts
+                .personal
+                .named_ids()
+                .map(|id| sealer.keyed_hash(id.as_bytes()))
+            {
+                if !named.contains(&hash) {
+                    named.push(hash);
+                }
+            }
+            let thread = threads::join(transaction, key, &named, &mut ledger)?;
+            insert(transaction, key, facts, (&row, &thread))?;
         } else {
             rewrite(transaction, key, facts, &row)?;
         }
-        entries.push((ObjectType::Email, id.to_string(), kind));
+        ledger.note(ObjectType::Email, id.as_str(), kind);
     }
-    let finished = save_progress(transaction, key, batch)?;
-    if entries.is_empty() && !finished {
+    let finished = progress::save(transaction, key, batch)?;
+    if ledger.is_empty() && !finished {
         return state_of(transaction, key).map(Some);
     }
     let sequence = next_sequence(transaction, key)?;
+    // The ledger first: what leaves below folds onto its rows.
+    ledger.write(transaction, key, sequence)?;
     if finished {
         let write = FolderWrite {
             key,
@@ -220,31 +178,10 @@ fn write_batch(
         };
         folders::leave(transaction, &write, Leaving::Unmatched)?;
     }
-    for (object, id, kind) in &entries {
-        log(transaction, key, (sequence, *object), (id, *kind))?;
-    }
     let mailbox = (batch.folder.as_str(), ChangeKind::Updated);
     log(transaction, key, (sequence, ObjectType::Mailbox), mailbox)?;
     prune(transaction, key)?;
     Ok(Some(sequence))
-}
-
-/// Whether the folder row exists under the UIDVALIDITY of the batch,
-/// which covers a removed account, a vanished mailbox and a
-/// renumbering since the fetch.
-fn folder_stands(
-    transaction: &Transaction<'_>,
-    key: &AccountKey,
-    batch: &Batch<'_>,
-) -> Result<bool, StoreError> {
-    let uid_validity: Option<Option<u32>> = transaction
-        .query_row(
-            "SELECT uid_validity FROM bridge_mailboxes WHERE account_key = ?1 AND id = ?2",
-            params![key.as_str(), batch.folder],
-            |row| row.get(0),
-        )
-        .optional()?;
-    Ok(uid_validity == Some(Some(batch.uid_validity)))
 }
 
 fn holds(
@@ -269,14 +206,14 @@ struct Written<'a> {
     sealed: &'a [u8],
 }
 
-/// A new row in a thread of its own; the thread it made.
+/// A new row in the thread its header names, with its one membership.
 fn insert(
     transaction: &Transaction<'_>,
     key: &AccountKey,
     facts: &EmailFacts,
-    row: &Written<'_>,
-) -> Result<ThreadId, StoreError> {
-    let (folder, thread) = (row.folder, ThreadId::generate());
+    (row, thread): (&Written<'_>, &ThreadId),
+) -> Result<(), StoreError> {
+    let folder = row.folder;
     transaction.execute(
         "INSERT INTO bridge_emails
          (account_key, id, folder_id, uid, thread_id, keywords, size, received_at, sent_at,
@@ -302,7 +239,7 @@ fn insert(
          VALUES (?1, ?2, ?3, ?4)",
         params![key.as_str(), row.id, folder, facts.received_at],
     )?;
-    Ok(thread)
+    Ok(())
 }
 
 /// A waiting row under its new UID; the id, the thread and the
@@ -328,31 +265,6 @@ fn rewrite(
         ],
     )?;
     Ok(())
-}
-
-/// Writes how far the folder stands; whether this write is the one
-/// that finishes it, which moves its counts to the memberships.
-fn save_progress(
-    transaction: &Transaction<'_>,
-    key: &AccountKey,
-    batch: &Batch<'_>,
-) -> Result<bool, StoreError> {
-    let was_done: Option<bool> = transaction
-        .query_row(
-            "SELECT done FROM bridge_sync WHERE account_key = ?1 AND folder_id = ?2",
-            params![key.as_str(), batch.folder],
-            |row| row.get(0),
-        )
-        .optional()?;
-    transaction.execute(
-        "INSERT INTO bridge_sync (account_key, folder_id, lowest_synced_uid, done)
-         VALUES (?1, ?2, ?3, ?4)
-         ON CONFLICT (account_key, folder_id) DO UPDATE SET
-           lowest_synced_uid = COALESCE(excluded.lowest_synced_uid, lowest_synced_uid),
-           done = excluded.done",
-        params![key.as_str(), batch.folder, batch.lowest_uid, batch.done],
-    )?;
-    Ok(batch.done && was_done != Some(true))
 }
 
 fn read_email(

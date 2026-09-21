@@ -9,7 +9,14 @@ mod changes;
 mod emails;
 mod folders;
 mod ids;
+mod ledger;
 mod mailboxes;
+mod personal;
+mod previews;
+mod progress;
+mod query;
+mod refresh;
+mod threads;
 
 use std::sync::{Mutex, MutexGuard};
 
@@ -19,14 +26,26 @@ use thiserror::Error;
 use crate::seal::SealError;
 
 pub use changes::{CHANGES_HORIZON, Change, ChangeKind, ChangesSince, ObjectType};
-pub use emails::{Address, Batch, EmailFacts, EmailRow, EmailSnapshot, Personal, Progress};
-pub use folders::REMATCH_LIMIT;
+pub use emails::{Batch, EmailFacts, EmailRow, EmailSnapshot};
+pub use folders::{REMATCH_LIMIT, Standing};
 pub use ids::{AccountKey, EmailId, MailboxId, ThreadId};
 pub use mailboxes::{Counts, MailboxFacts, MailboxRow, MailboxSnapshot};
+pub use personal::{Address, Personal, PreviewPart};
+pub use previews::Located;
+pub use progress::{Advance, Progress};
+pub use query::{Queried, Query, Start, Window};
+pub use refresh::{FlagChange, Synced};
+pub use threads::ThreadSnapshot;
 
 /// The schema, one entry per migration; the host's migration list
-/// applies them in order under its own version counter.
-pub const MIGRATIONS: &[&str] = &[include_str!("schema.sql")];
+/// applies them in order under its own version counter. The second
+/// entry indexes the message ids by thread, which a merge of two
+/// threads and the end of one search by, and gives the progress row of
+/// a folder the values the refresh stands at.
+pub const MIGRATIONS: &[&str] = &[
+    include_str!("schema.sql"),
+    include_str!("refresh_progress.sql"),
+];
 
 /// Why the store could not answer.
 #[derive(Debug, Error)]

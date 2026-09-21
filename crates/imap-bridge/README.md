@@ -85,25 +85,96 @@ Message-ID, INTERNALDATE and size, up to a hundred thousand rows
 (`store::REMATCH_LIMIT`); a mailbox that vanished takes its emails along
 in the state of the pass.
 
+Threads are computed as the rows arrive. `bridge_message_ids` is a
+union-find over the keyed hashes of the message ids a header names
+(Message-ID, In-Reply-To and References, the REFERENCES algorithm of
+RFC 5256 without its subject step): every id points at one thread, a
+message joins the thread its ids name and a message that names two
+threads merges them. The thread that holds more emails survives, the
+smaller id on a tie, so a merge moves the fewer rows; the thread that
+loses is destroyed and its emails read as updated. A thread leaves with
+its last email. `Thread/get` answers the emails of a thread by
+`receivedAt`, oldest first, ties by id.
+
+The connection comes from the host through the `runtime::Connector`
+trait: `connect(key)` answers a signed-in session or a typed failure,
+so the bridge never sees a credential and never resolves a host.
+`runtime::Link` keeps one conversation per account between requests
+behind a lock, checks a kept session with NOOP before it is used again
+and drops it after a failure. Only a refresh and a preview fetch take
+the conversation; a request that reads the cache never waits on IMAP,
+and a server that is down costs nothing but the refresh: the cache
+answers as it stands.
+
+Change detection is on demand until the server pushes. A `/changes`
+call refreshes the account at most once per thirty seconds
+(`runtime::REFRESH_INTERVAL`): one mailbox pass, then per folder whose
+first sync is done the new mail above the recorded UIDNEXT, fetched
+oldest first in the batches and under the narrowing of the first sync,
+the flags that changed and the messages that left. Where the server
+advertises CONDSTORE the flags come as one
+`UID FETCH 1:* (UID FLAGS) (CHANGEDSINCE n)` from the mod-sequence the
+folder stood at; a folder whose answer passes ten thousand messages
+(`session::MAX_FLAGGED`) takes a scan of its stored UIDs range by range
+from then on, which is also what the mailbox the client looked at last
+gets on a server without CONDSTORE. A stored message that gained
+`\Deleted` leaves. An expunge shows in the count: when MESSAGES falls
+short of the count on record plus the messages the refresh fetched, the
+UID list comes in the windows of the first sync and the stored UIDs it
+lacks leave. A folder whose UIDNEXT, HIGHESTMODSEQ and MESSAGES stand
+as the cache last saw them costs no command; the one exception is the
+mailbox the client looks at on a server without CONDSTORE, since a flag
+change shows in no STATUS item there. The row of a folder in
+`bridge_sync` says how far it is
+synced (UIDNEXT, HIGHESTMODSEQ and MESSAGES as the server had them),
+moved inside the transaction that writes the work it stands for, so a
+refresh cut short by a lost connection claims nothing it did not write
+and the next one carries the walk on. Every write is one state in
+transactions of at most a batch.
+
+`preview` is fetched on demand. The part it is read from is chosen when
+the header sync reads the structure: the first `text/plain` leaf, else
+the first `text/html` leaf and never an attachment. It travels in the
+sealed blob with its size. An `Email/get` that asks for previews the
+rows lack fetches them, one hundred at most (`jmap::PREVIEW_BATCH`), in
+one `UID FETCH` per folder, part and length the messages share, every
+item a partial fetch (RFC 3501 section 6.4.5): the MIME header of the
+part to 4 KiB (`session::PREVIEW_HEADER_BYTES`), a plain part to 2 KiB
+(`sync::preview::PREVIEW_PLAIN_FETCH_BYTES`), an HTML part under 64 KiB
+(`PREVIEW_HTML_PART_BYTES`) to that bound and a larger one to 16 KiB
+(`PREVIEW_HTML_FETCH_BYTES`), so what a sender wrote arrives inside
+literals the ask bounds and a size a server claimed is never trusted.
+mail-parser decodes the pair as a message, HTML becomes text and the
+first 256 characters (`PREVIEW_CHARS`) are kept in the blob as one
+state, each email logged as updated. A message stored without its
+structure serves an empty preview and asks for nothing.
+
 The rows live in `bridge_` tables inside the host's database.
 `store::MIGRATIONS` carries their schema for the host's migration list
-and every row carries the host's opaque account key. Ids are a type
-letter in front of UUID text. The state string is a per-account
-counter; every change writes a row to a log that `Mailbox/changes`
-reads, kept for the newest ten thousand rows. `jmap::handle` runs a
-Request object (RFC 8620 section 3.3) against those rows and answers
-`Mailbox/get`, `Mailbox/changes`, `Email/get` and `Core/echo`.
-`Email/get` serves the metadata and the header properties; a body
-property is an unknown one until bodies arrive. Result references
+as two migrations, the tables and then the index on the message ids by
+thread with the progress columns of the refresh; every row carries the
+host's opaque account key. Ids are a type letter in front of UUID text.
+The state string is a per-account counter; every change writes a row
+to a log that the three `/changes` methods read, kept for the newest
+ten thousand rows. `jmap::handle` runs a Request object (RFC 8620
+section 3.3) against those rows and answers `Mailbox/get`,
+`Mailbox/changes`, `Email/get`, `Email/query`, `Email/changes`,
+`Thread/get`, `Thread/changes` and `Core/echo`. `Email/get` serves the
+metadata, the header properties and the preview; a body property is an
+unknown one until bodies arrive. `Email/query` serves the filter
+`inMailbox`, the sort `receivedAt` either way, a window by position or
+by anchor, the total on request and one email per thread on request,
+two hundred ids at most (`jmap::QUERY_LIMIT`); any other filter or sort
+answers `unsupportedFilter` or `unsupportedSort`. Result references
 resolve under a budget of one MiB per request, measured as the memory
 a copy of the resolved values takes; a reference past it answers
 `invalidResultReference`. `jmap::session_object` renders the session
 object with the core and mail capabilities and the vendor capability
 `https://huliho.com/jmap`, which carries the Mailbox property
 `syncedEmails` and is followed only when a request names it. The host
-supplies the connection and the URLs. `Sealer` is the trait behind
-which the host keeps its cryptography for the personal fields of an
-email row; the sync and `jmap::handle` take it as an argument.
+supplies the URLs. `Sealer` is the trait behind which the host keeps
+its cryptography for the personal fields of an email row; the sync and
+`jmap::handle` reach it through `sync::Cache`.
 
 Other software reuses the bridge by running it as its own process and
 speaking JMAP to it. Linking the crate into a program instead creates a
@@ -117,12 +188,18 @@ The `test-support` feature exposes `testing`, the scripted IMAP and
 SMTP servers the tests run against: a fresh certificate per server, one
 answer per command and a record of every line received. Its IMAP script
 carries a mailbox model with LIST-EXTENDED, LIST-STATUS, SPECIAL-USE
-and CONDSTORE as switches and a message model behind EXAMINE, UID
-SEARCH and UID FETCH whose misbehavior is a switch as well: volunteered
-lines, a connection that drops, a MODSEQ item, a NO in raw UTF-8,
-messages that leave between two searches plus an EXAMINE answer without
-EXISTS. `testing::seal::TestSealer` binds a blob to its row without a
-cipher. `session::fuzzing` is what the fuzz targets in `fuzz/` call.
+and CONDSTORE as switches and a message model behind EXAMINE, NOOP,
+UID SEARCH and UID FETCH, the flags alone with CHANGEDSINCE and the
+two sections of a preview cut as the partial fetch asks included, whose
+misbehavior is a switch as well: volunteered lines, a connection that
+drops, a MODSEQ item, a NO in raw UTF-8, messages that leave between
+two searches plus an EXAMINE answer without EXISTS. Its `Mailboxes`
+stand in for a second client between two passes: a message appended,
+one expunged by UID, the flags of one replaced, the counts and the
+mod-sequences following. `testing::TestConnector` signs the fixture
+user in on such a server or refuses every connection.
+`testing::seal::TestSealer` binds a blob to its row without a cipher.
+`session::fuzzing` is what the fuzz targets in `fuzz/` call.
 Build them with
 `cargo build --manifest-path crates/imap-bridge/fuzz/Cargo.toml` and run
 one with cargo-fuzz on a nightly toolchain.

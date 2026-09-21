@@ -25,6 +25,7 @@ expression: "stable(&rig, &answer[\"list\"])"
     "messageId": [
       "m1@example.test"
     ],
+    "preview": "Body of message 1.",
     "receivedAt": "2026-01-01T00:00:01Z",
     "references": null,
     "replyTo": null,
@@ -75,6 +76,7 @@ expression: "stable(&rig, &answer[\"list\"])"
     "messageId": [
       "m2@example.test"
     ],
+    "preview": "Body of message 2.",
     "receivedAt": "2026-01-01T00:00:02Z",
     "references": [
       "m0@example.test",
@@ -95,7 +97,7 @@ expression: "stable(&rig, &answer[\"list\"])"
     "sentAt": "2026-09-01T07:30:00Z",
     "size": 1002,
     "subject": "Café om drie uur",
-    "threadId": "t2",
+    "threadId": "t1",
     "to": [
       {
         "email": "mo@example.test",
@@ -123,6 +125,7 @@ expression: "stable(&rig, &answer[\"list\"])"
       "INBOX": true
     },
     "messageId": null,
+    "preview": "Body of message 3.",
     "receivedAt": "2026-01-01T00:00:03Z",
     "references": null,
     "replyTo": null,

@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use super::{AccountKey, EmailId, MailboxId, StoreError};
 
@@ -20,6 +20,32 @@ pub const REMATCH_LIMIT: u32 = 100_000;
 /// What names a message across a renumbering where the server has no id
 /// of its own: the keyed hash of its Message-ID, INTERNALDATE and size.
 pub(super) type Identity = (Option<Vec<u8>>, i64, u32);
+
+/// A folder as a fetch saw it. What the fetch found is written only
+/// while the row stands under this UIDVALIDITY.
+#[derive(Debug, Clone, Copy)]
+pub struct Standing<'a> {
+    pub folder: &'a MailboxId,
+    pub uid_validity: u32,
+}
+
+/// Whether the folder row exists under the UIDVALIDITY the fetch ran
+/// under, which covers a removed account, a vanished mailbox and a
+/// renumbering since the fetch.
+pub(super) fn stands(
+    connection: &Connection,
+    key: &AccountKey,
+    standing: &Standing<'_>,
+) -> Result<bool, StoreError> {
+    let uid_validity: Option<Option<u32>> = connection
+        .query_row(
+            "SELECT uid_validity FROM bridge_mailboxes WHERE account_key = ?1 AND id = ?2",
+            params![key.as_str(), standing.folder],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(uid_validity == Some(Some(standing.uid_validity)))
+}
 
 /// One folder inside a write, with the sequence its log rows go under.
 pub(super) struct FolderWrite<'a> {
@@ -49,8 +75,9 @@ impl Leaving {
 }
 
 /// Destroys the leaving rows with their memberships under the write's
-/// sequence. A thread is destroyed when its last email leaves and
-/// updated otherwise.
+/// sequence. A thread is destroyed with its hashes when its last email
+/// leaves and updated otherwise. A row the same write logged folds: a
+/// thread it created stays created and an email it updated is destroyed.
 pub(super) fn leave(
     transaction: &Transaction<'_>,
     write: &FolderWrite<'_>,
@@ -73,13 +100,16 @@ pub(super) fn leave(
          FROM bridge_emails e
          WHERE e.account_key = ?1 AND e.folder_id = ?3 AND e.uid < ?4
          GROUP BY e.thread_id
-         ON CONFLICT (account_key, sequence, type, id) DO UPDATE SET kind = excluded.kind",
+         ON CONFLICT (account_key, sequence, type, id) DO UPDATE SET kind = CASE
+             WHEN kind = 'created' AND excluded.kind = 'updated' THEN 'created'
+             ELSE excluded.kind END",
         scope,
     )?;
     transaction.execute(
         "INSERT INTO bridge_changes (account_key, sequence, type, id, kind)
          SELECT account_key, ?2, 'Email', id, 'destroyed' FROM bridge_emails
-         WHERE account_key = ?1 AND folder_id = ?3 AND uid < ?4",
+         WHERE account_key = ?1 AND folder_id = ?3 AND uid < ?4
+         ON CONFLICT (account_key, sequence, type, id) DO UPDATE SET kind = excluded.kind",
         scope,
     )?;
     let rows = params![write.key.as_str(), write.folder, leaving.below()];
@@ -92,6 +122,13 @@ pub(super) fn leave(
     transaction.execute(
         "DELETE FROM bridge_emails WHERE account_key = ?1 AND folder_id = ?2 AND uid < ?3",
         rows,
+    )?;
+    transaction.execute(
+        "DELETE FROM bridge_message_ids WHERE account_key = ?1 AND thread_id IN (
+             SELECT id FROM bridge_changes
+             WHERE account_key = ?1 AND sequence = ?2 AND type = 'Thread'
+               AND kind = 'destroyed')",
+        params![write.key.as_str(), write.sequence],
     )?;
     Ok(())
 }

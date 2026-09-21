@@ -4,17 +4,22 @@
 
 //! The header sync of one folder: newest first, one fetch and one
 //! committed state per batch, the progress on record so a restart
-//! carries on where the last batch ended.
+//! carries on where the last batch ended. The new mail of a folder that
+//! is done takes the same walk upward.
 
 pub mod headers;
 pub mod mapping;
+pub mod preview;
+pub mod refresh;
+#[cfg(test)]
+mod tests;
 
 use std::sync::Arc;
 
 use crate::mailboxes::SyncError;
 use crate::seal::Sealer;
 use crate::session::{FetchedMessage, MAX_FETCH_MESSAGES, Session, SessionError, UidRange};
-use crate::store::{AccountKey, Batch, EmailFacts, MailboxId, MailboxRow, Store};
+use crate::store::{AccountKey, Advance, Batch, EmailFacts, MailboxId, MailboxRow, Store, Synced};
 
 /// The messages of one batch: one fetch, one transaction, one state.
 pub const SYNC_BATCH: usize = MAX_FETCH_MESSAGES;
@@ -24,6 +29,11 @@ pub const SYNC_BATCH: usize = MAX_FETCH_MESSAGES;
 /// lone fetch with its structure. A run so passes six such messages;
 /// the next run starts below them with a fresh budget.
 pub const NARROWING_BUDGET: usize = 64;
+
+/// The UIDs between the recorded UIDNEXT and the server's that a walk
+/// upward asks for range by range; a wider gap takes the UID list, so a
+/// server that jumps its UIDs buys no commands.
+pub const REFRESH_GAP: u32 = 10_000;
 
 /// Where a sync writes: the store, the host's sealer and the account.
 #[derive(Clone)]
@@ -45,8 +55,19 @@ pub enum Step {
     Stale,
 }
 
-/// UIDs that follow each other in the folder's list, lowest first, so
-/// the range from the first to the last names exactly them.
+/// Which way a sync walks the UIDs of its folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Walk {
+    /// The first sync, newest first, with the server's values of the
+    /// opening.
+    Down { synced: Synced },
+    /// The new mail of a folder that is done, oldest first, so every
+    /// batch moves the recorded UIDNEXT.
+    Up,
+}
+
+/// UIDs lowest first, so the range from the first to the last names
+/// them and nothing a batch before it took.
 struct Slice {
     uids: Vec<u32>,
     structure: bool,
@@ -61,18 +82,22 @@ impl Slice {
     }
 }
 
-/// The first sync of one folder between its opening and its last
-/// batch. It outlives a session: after a failure the caller connects
-/// again, calls [`FolderSync::resume`] and goes on.
+/// The sync of one folder between its opening and its last batch. It
+/// outlives a session: after a failure the caller connects again, calls
+/// [`FolderSync::resume`] and goes on.
 pub struct FolderSync {
     folder: MailboxId,
     imap_name: String,
     uid_validity: u32,
-    /// The UIDs no batch has taken yet, lowest first.
+    walk: Walk,
+    /// The UIDs no batch has taken yet, the next ones last.
     remaining: Vec<u32>,
-    /// What a failed fetch was narrowed to, the highest UIDs last.
+    /// What a failed fetch was narrowed to, the next slice last.
     narrowed: Vec<Slice>,
     budget: usize,
+    /// The highest UID a walk upward covers.
+    top: u32,
+    answered: u32,
 }
 
 impl FolderSync {
@@ -90,11 +115,12 @@ impl FolderSync {
         cache: &Cache,
         folder: &MailboxRow,
     ) -> Result<Option<Self>, SyncError> {
-        let facts = &folder.facts;
-        let Some(uid_validity) = facts
-            .uid_validity
-            .filter(|_| facts.selectable && facts.store)
-        else {
+        let Some(mut sync) = Self::of(
+            folder,
+            Walk::Down {
+                synced: Synced::default(),
+            },
+        ) else {
             return Ok(None);
         };
         let (store, key, id) = (
@@ -106,17 +132,18 @@ impl FolderSync {
         if progress.done {
             return Ok(None);
         }
-        let mut sync = Self {
-            folder: folder.id.clone(),
-            imap_name: facts.imap_name.clone(),
-            uid_validity,
-            remaining: Vec::new(),
-            narrowed: Vec::new(),
-            budget: NARROWING_BUDGET,
+        let selected = match session.examine(&sync.imap_name).await {
+            Ok(selected) if selected.uid_validity == sync.uid_validity => selected,
+            Ok(_) | Err(SessionError::Refused) => return Ok(None),
+            Err(other) => return Err(other.into()),
         };
-        if !sync.resume(session).await? {
-            return Ok(None);
-        }
+        sync.walk = Walk::Down {
+            synced: Synced {
+                uid_next: selected.uid_next,
+                highest_modseq: selected.highest_modseq,
+                messages: Some(selected.messages),
+            },
+        };
         let mut uids = session.uid_list().await?;
         if let Some(lowest) = progress.lowest_synced_uid {
             uids.retain(|uid| *uid < lowest);
@@ -124,6 +151,66 @@ impl FolderSync {
         uids.reverse();
         sync.remaining = uids;
         Ok(Some(sync))
+    }
+
+    /// The new mail of a folder that is done, on a session with the
+    /// folder selected: the UIDs `from` up to and including `through`.
+    /// `None` when nothing lies in between or the folder is no store.
+    ///
+    /// # Errors
+    ///
+    /// As [`FolderSync::open`].
+    pub async fn above<S: Session>(
+        session: &mut S,
+        folder: &MailboxRow,
+        (from, through): (u32, u32),
+    ) -> Result<Option<Self>, SyncError> {
+        let from = from.max(1);
+        let Some(mut sync) = Self::of(folder, Walk::Up).filter(|_| from <= through) else {
+            return Ok(None);
+        };
+        sync.top = through;
+        sync.remaining = if through - from < REFRESH_GAP {
+            (from..=through).rev().collect()
+        } else {
+            let mut uids = session.uid_list().await?;
+            uids.retain(|uid| (from..=through).contains(uid));
+            uids
+        };
+        Ok(Some(sync))
+    }
+
+    /// Widens a walk upward to `through`. `false` when the gap is wider
+    /// than a walk asks for range by range, so the caller starts afresh.
+    pub fn extend_to(&mut self, through: u32) -> bool {
+        if self.walk != Walk::Up || through <= self.top {
+            return true;
+        }
+        if through - self.top >= REFRESH_GAP {
+            return false;
+        }
+        let more: Vec<u32> = (self.top + 1..=through).rev().collect();
+        self.remaining.splice(0..0, more);
+        self.top = through;
+        true
+    }
+
+    fn of(folder: &MailboxRow, walk: Walk) -> Option<Self> {
+        let facts = &folder.facts;
+        let uid_validity = facts
+            .uid_validity
+            .filter(|_| facts.selectable && facts.store)?;
+        Some(Self {
+            folder: folder.id.clone(),
+            imap_name: facts.imap_name.clone(),
+            uid_validity,
+            walk,
+            remaining: Vec::new(),
+            narrowed: Vec::new(),
+            budget: NARROWING_BUDGET,
+            top: 0,
+            answered: 0,
+        })
     }
 
     /// Selects the folder on a fresh session. `false` when the server
@@ -138,6 +225,13 @@ impl FolderSync {
             Err(SessionError::Refused) => Ok(false),
             Err(other) => Err(other.into()),
         }
+    }
+
+    /// The messages the server answered so far, the ones flagged
+    /// `\Deleted` included, which no row stands for.
+    #[must_use]
+    pub fn answered(&self) -> u32 {
+        self.answered
     }
 
     /// Fetches the next batch and writes it as one state.
@@ -164,9 +258,17 @@ impl FolderSync {
             return Ok(Step::More);
         };
         match session.uid_fetch(range, slice.structure).await {
-            Ok(messages) => self.write(cache, messages, Some(range.low)).await,
+            Ok(messages) => {
+                let count = u32::try_from(messages.len()).unwrap_or(u32::MAX);
+                self.answered = self.answered.saturating_add(count);
+                self.write(cache, messages, Some(range)).await
+            }
             Err(error @ SessionError::Protocol(_)) => {
-                if let Some(left_out) = self.narrow(slice) {
+                if let Some(uid) = self.narrow(slice) {
+                    let left_out = UidRange {
+                        low: uid,
+                        high: uid,
+                    };
                     self.write(cache, Vec::new(), Some(left_out)).await?;
                 }
                 Err(error.into())
@@ -196,8 +298,8 @@ impl FolderSync {
         }
     }
 
-    /// The narrowed slice with the highest UIDs, else the top of what
-    /// remains.
+    /// The narrowed slice that goes next, else the next `SYNC_BATCH`
+    /// UIDs of what remains.
     fn next_slice(&mut self) -> Option<Slice> {
         if let Some(slice) = self.narrowed.pop() {
             return Some(slice);
@@ -206,17 +308,21 @@ impl FolderSync {
             return None;
         }
         let from = self.remaining.len().saturating_sub(SYNC_BATCH);
+        let mut uids = self.remaining.split_off(from);
+        if self.walk == Walk::Up {
+            uids.reverse();
+        }
         Some(Slice {
-            uids: self.remaining.split_off(from),
+            uids,
             structure: true,
         })
     }
 
-    /// Puts back what a failed slice narrows to, the upper half last so
-    /// it goes first and the progress stays one line from the top.
-    /// Answers the UID of a message that is left out. With the budget
-    /// spent the slice goes back whole and the failures repeat, which
-    /// the caller's own retry bound ends.
+    /// Puts back what a failed slice narrows to. The half the walk
+    /// reaches first goes last, so it is fetched first and the progress
+    /// stays one line. Answers the UID of a message that is left out.
+    /// With the budget spent the slice goes back whole and the failures
+    /// repeat, which the caller's own retry bound ends.
     fn narrow(&mut self, mut slice: Slice) -> Option<u32> {
         let Some(budget) = self.budget.checked_sub(1) else {
             self.narrowed.push(slice);
@@ -224,13 +330,17 @@ impl FolderSync {
         };
         self.budget = budget;
         if slice.uids.len() > 1 {
-            let upper = slice.uids.split_off(slice.uids.len() / 2);
             let structure = slice.structure;
-            self.narrowed.push(slice);
-            self.narrowed.push(Slice {
-                uids: upper,
+            let upper = Slice {
+                uids: slice.uids.split_off(slice.uids.len() / 2),
                 structure,
-            });
+            };
+            let (first, second) = match self.walk {
+                Walk::Down { .. } => (upper, slice),
+                Walk::Up => (slice, upper),
+            };
+            self.narrowed.push(second);
+            self.narrowed.push(first);
             return None;
         }
         if slice.structure {
@@ -241,15 +351,28 @@ impl FolderSync {
         slice.uids.first().copied()
     }
 
-    /// Maps and writes off the runtime; the folder is done once nothing
-    /// waits.
+    /// Maps and writes off the runtime. A walk down is done once
+    /// nothing waits, which one last write without messages records; a
+    /// walk up has nothing to record then.
     async fn write(
         &self,
         cache: &Cache,
         messages: Vec<FetchedMessage>,
-        lowest_uid: Option<u32>,
+        passed: Option<UidRange>,
     ) -> Result<Step, SyncError> {
         let done = self.narrowed.is_empty() && self.remaining.is_empty();
+        let advance = match (self.walk, passed) {
+            (Walk::Down { synced }, passed) => Advance::Down {
+                lowest_uid: passed.map(|range| range.low),
+                done,
+                synced,
+            },
+            (Walk::Up, Some(range)) => Advance::Up {
+                uid_next: range.high.saturating_add(1),
+                arrived: u32::try_from(messages.len()).unwrap_or(u32::MAX),
+            },
+            (Walk::Up, None) => return Ok(Step::Done),
+        };
         let (cache, folder, uid_validity) = (cache.clone(), self.folder.clone(), self.uid_validity);
         let state = blocking(move || {
             let emails: Vec<EmailFacts> = messages.iter().filter_map(mapping::email).collect();
@@ -257,8 +380,7 @@ impl FolderSync {
                 folder: &folder,
                 uid_validity,
                 emails: &emails,
-                lowest_uid,
-                done,
+                advance,
             };
             cache
                 .store
@@ -274,92 +396,11 @@ impl FolderSync {
 }
 
 /// Runs a store call off the runtime.
-async fn blocking<T: Send + 'static>(
+pub(crate) async fn blocking<T: Send + 'static>(
     call: impl FnOnce() -> Result<T, crate::store::StoreError> + Send + 'static,
 ) -> Result<T, SyncError> {
     tokio::task::spawn_blocking(call)
         .await
         .map_err(|_join| SyncError::Task)?
         .map_err(SyncError::from)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sync(remaining: Vec<u32>) -> FolderSync {
-        FolderSync {
-            folder: MailboxId::generate(),
-            imap_name: "INBOX".to_owned(),
-            uid_validity: 1,
-            remaining,
-            narrowed: Vec::new(),
-            budget: NARROWING_BUDGET,
-        }
-    }
-
-    fn uids(slice: &Slice) -> (Vec<u32>, bool) {
-        (slice.uids.clone(), slice.structure)
-    }
-
-    #[test]
-    fn a_batch_is_the_top_of_what_remains() {
-        let count = u32::try_from(SYNC_BATCH).unwrap();
-        let mut sync = sync((1..=count + 3).collect());
-        let first = sync.next_slice().unwrap();
-        assert_eq!(
-            first.range(),
-            Some(UidRange {
-                low: 4,
-                high: count + 3
-            })
-        );
-        assert_eq!(first.uids.len(), SYNC_BATCH);
-        let rest = sync.next_slice().unwrap();
-        assert_eq!(rest.range(), Some(UidRange { low: 1, high: 3 }));
-        assert!(sync.next_slice().is_none());
-    }
-
-    #[test]
-    fn a_failed_slice_halves_with_the_upper_half_first_down_to_one_message() {
-        let mut sync = sync(vec![1, 2, 3, 4, 5]);
-        let whole = sync.next_slice().unwrap();
-        assert_eq!(sync.narrow(whole), None);
-        let upper = sync.next_slice().unwrap();
-        assert_eq!(uids(&upper), (vec![3, 4, 5], true));
-        assert_eq!(sync.narrow(upper), None);
-        let top = sync.next_slice().unwrap();
-        assert_eq!(uids(&top), (vec![4, 5], true));
-        assert_eq!(sync.narrow(top), None);
-        let lone = sync.next_slice().unwrap();
-        assert_eq!(uids(&lone), (vec![5], true));
-        assert_eq!(sync.narrow(lone), None);
-        let bare = sync.next_slice().unwrap();
-        assert_eq!(uids(&bare), (vec![5], false));
-        assert_eq!(sync.narrow(bare), Some(5));
-        let waiting: Vec<_> = sync.narrowed.iter().map(uids).collect();
-        assert_eq!(
-            waiting,
-            [(vec![1, 2], true), (vec![3], true), (vec![4], true)]
-        );
-    }
-
-    #[test]
-    fn past_the_budget_a_slice_goes_back_whole() {
-        let mut sync = sync(vec![1, 2, 3, 4]);
-        sync.budget = 1;
-        let whole = sync.next_slice().unwrap();
-        assert_eq!(sync.narrow(whole), None);
-        let upper = sync.next_slice().unwrap();
-        assert_eq!(sync.narrow(upper), None);
-        assert_eq!(uids(&sync.next_slice().unwrap()), (vec![3, 4], true));
-        assert_eq!(sync.budget, 0);
-    }
-
-    #[test]
-    fn the_budget_passes_six_hostile_messages_in_one_batch() {
-        let per_message = SYNC_BATCH.ilog2() as usize + 2;
-        assert!(6 * per_message <= NARROWING_BUDGET);
-        assert!(7 * per_message > NARROWING_BUDGET);
-    }
 }

@@ -8,7 +8,7 @@
 
 use async_imap::imap_proto::{MailboxDatum, Response, ResponseCode, Status};
 
-use super::{Room, Selection, quoted};
+use super::{Room, Selection, modseq, quoted};
 use crate::session::{Selected, SessionError};
 
 /// The lines of its own an EXAMINE answer carries: FLAGS, EXISTS,
@@ -38,28 +38,37 @@ pub(in crate::session) async fn examine(
     room: Room,
 ) -> Result<Selected, SessionError> {
     let command = format!("EXAMINE {}", quoted(mailbox)?);
-    let (mut uid_validity, mut counted) = (None, false);
+    let (mut uid_validity, mut highest_modseq, mut uid_next, mut messages) =
+        (None, None, None, None);
     let bounds = room.bounds(EXAMINE_LINES);
     let visit = |response: &Response<'_>| {
         match response {
             Response::Data {
                 status: Status::Ok,
-                code: Some(ResponseCode::UidValidity(value)),
+                code: Some(code),
                 ..
-            } => uid_validity = Some(*value),
-            Response::MailboxData(MailboxDatum::Exists(_)) => counted = true,
+            } => match code {
+                ResponseCode::UidValidity(value) => uid_validity = Some(*value),
+                ResponseCode::UidNext(value) => uid_next = Some(*value),
+                ResponseCode::HighestModSeq(value) => highest_modseq = Some(modseq(*value)?),
+                _ => {}
+            },
+            Response::MailboxData(MailboxDatum::Exists(count)) => messages = Some(*count),
             _ => {}
         }
         Ok(())
     };
     selection.collect(&command, bounds, visit).await?;
-    if !counted {
-        return Err(SessionError::Protocol("EXAMINE answered without EXISTS"));
-    }
+    let messages = messages.ok_or(SessionError::Protocol("EXAMINE answered without EXISTS"))?;
     let uid_validity = uid_validity.ok_or(SessionError::Protocol(
         "EXAMINE answered without UIDVALIDITY",
     ))?;
-    Ok(Selected { uid_validity })
+    Ok(Selected {
+        uid_validity,
+        highest_modseq,
+        uid_next,
+        messages,
+    })
 }
 
 /// Every UID of the selected mailbox, highest first, each once: one

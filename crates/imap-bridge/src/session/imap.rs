@@ -24,8 +24,9 @@ use tokio_rustls::rustls::pki_types::ServerName;
 use super::capability::{Tags, capabilities_of};
 use super::guard::Guarded;
 use super::{
-    Capabilities, FetchedMessage, ListReturn, Listing, Selected, Session, SessionError,
-    StatusEntry, StatusItems, Target, TlsMode, UidRange, io_error, read,
+    Capabilities, FetchedMessage, FlagFetch, Flagged, ListReturn, Listing, PreviewAsk,
+    PreviewBytes, Selected, Session, SessionError, StatusEntry, StatusItems, Target, TlsMode,
+    UidRange, io_error, read,
 };
 
 pub(super) type Stream = Guarded<TlsStream<TcpStream>>;
@@ -190,6 +191,24 @@ impl Session for ImapSession {
     ) -> Result<Vec<FetchedMessage>, SessionError> {
         let room = self.room();
         read::uid_fetch(&mut self.selection()?, range, structure, room).await
+    }
+
+    async fn uid_flags(&mut self, fetch: FlagFetch) -> Result<Vec<Flagged>, SessionError> {
+        let room = self.room();
+        read::uid_flags(&mut self.selection()?, fetch, room).await
+    }
+
+    async fn uid_previews(
+        &mut self,
+        ask: &PreviewAsk<'_>,
+    ) -> Result<Vec<PreviewBytes>, SessionError> {
+        let room = self.room();
+        read::uid_previews(&mut self.selection()?, ask, room).await
+    }
+
+    async fn noop(&mut self) -> Result<(), SessionError> {
+        let room = self.room();
+        read::noop(&mut self.selection()?, room).await
     }
 
     async fn logout(self) -> Result<(), SessionError> {

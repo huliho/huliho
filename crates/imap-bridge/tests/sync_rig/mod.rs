@@ -3,19 +3,23 @@
 // Additional terms apply, see NOTICE.
 
 //! A scripted server with mail in its folders, a cache the sync writes
-//! to and the driver a host runs: a fresh session after every failure.
+//! to, the link a request reaches the server through and the driver a
+//! host runs: a fresh session after every failure.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use huliho_imap_bridge::jmap::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, handle};
 use huliho_imap_bridge::mailboxes::{self, SyncError};
+use huliho_imap_bridge::runtime::Link;
 use huliho_imap_bridge::session::{ImapSession, Session, TlsMode};
 use huliho_imap_bridge::store::{AccountKey, ChangeKind, MailboxRow, ObjectType, Store};
 use huliho_imap_bridge::sync::{Cache, FolderSync, Step};
 use huliho_imap_bridge::testing::imap::{FakeImap, HOST, Script};
 use huliho_imap_bridge::testing::seal::TestSealer;
-use huliho_imap_bridge::testing::{Extension, Folder, Mailboxes, Message, PASSWORD, USER};
+use huliho_imap_bridge::testing::{
+    Extension, Folder, Mailboxes, Message, PASSWORD, TestConnector, USER,
+};
 use serde_json::{Value, json};
 
 /// Room for a loopback exchange.
@@ -27,11 +31,13 @@ const MAX_SESSIONS: usize = 200;
 /// The one account of the rig.
 pub const ACCOUNT: &str = "a1";
 
-/// The server and the cache. A test keeps the model it started the
-/// server over and edits the folders through it.
+/// The server, the cache and the link. A test keeps the model it
+/// started the server over and edits the folders through it. The link
+/// refreshes on every `/changes` call, so a test never waits.
 pub struct Rig {
     pub cache: Cache,
     pub fake: FakeImap,
+    pub link: Link<TestConnector>,
 }
 
 /// An INBOX holding this mail behind every extension.
@@ -54,6 +60,8 @@ impl Rig {
             ..Script::tls()
         })
         .await;
+        let connector =
+            TestConnector::scripted(fake.trusting(), fake.target(HOST, TlsMode::Implicit), STEP);
         Self {
             cache: Cache {
                 store: Arc::new(Store::in_memory().unwrap()),
@@ -61,6 +69,7 @@ impl Rig {
                 key: AccountKey::new(ACCOUNT),
             },
             fake,
+            link: Link::with_interval(connector, Duration::ZERO),
         }
     }
 
@@ -124,20 +133,20 @@ impl Rig {
 
     /// The arguments of the first response to one call under every
     /// capability.
-    pub fn call(&self, call: &Value) -> Value {
+    pub async fn call(&self, call: &Value) -> Value {
+        self.calls(std::slice::from_ref(call)).await["methodResponses"][0][1].take()
+    }
+
+    /// The Response object to these calls under every capability.
+    pub async fn calls(&self, calls: &[Value]) -> Value {
         let body = json!({
             "using": [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY],
-            "methodCalls": [call],
+            "methodCalls": calls,
         });
-        let bytes = handle(
-            &self.cache.store,
-            self.cache.sealer.as_ref(),
-            &self.cache.key,
-            &serde_json::to_vec(&body).unwrap(),
-        )
-        .unwrap();
-        let mut response: Value = serde_json::from_slice(&bytes).unwrap();
-        response["methodResponses"][0][1].take()
+        let bytes = handle(&self.cache, &self.link, &serde_json::to_vec(&body).unwrap())
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
     }
 
     /// Every change of a type after a state, as id and kind.

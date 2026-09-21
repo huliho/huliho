@@ -55,7 +55,9 @@ pub async fn sync<S: Session>(
 /// The listing in the form the capabilities allow, then STATUS per
 /// selectable mailbox where the listing did not carry it, mapped to
 /// facts.
-async fn observe<S: Session>(session: &mut S) -> Result<Vec<MailboxFacts>, SessionError> {
+pub(crate) async fn observe<S: Session>(
+    session: &mut S,
+) -> Result<Vec<MailboxFacts>, SessionError> {
     let capabilities = session.capabilities().await?;
     let options = list_return(&capabilities);
     let mut listing = session.list(options).await?;
