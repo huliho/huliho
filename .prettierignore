@@ -1,1 +1,3 @@
 pnpm-lock.yaml
+# Recorded transcripts are written by the recorder and read back as written.
+crates/imap-bridge/tests/transcripts/

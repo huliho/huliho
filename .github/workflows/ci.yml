@@ -1,5 +1,6 @@
-# Every quality gate runs here on pull requests and main. Actions are
-# pinned to commit SHAs and every job runs with a least-privilege token.
+# Every quality gate runs here on pull requests and main, the nightly
+# checks on the schedule. Actions are pinned to commit SHAs and every job
+# runs with a least-privilege token.
 
 name: ci
 
@@ -573,3 +574,28 @@ jobs:
         with:
           tool: cargo-audit
       - run: cargo audit
+
+  gmail-live:
+    name: gmail live
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # The secrets context cannot gate a job, so every step reads the two
+    # values from the job's environment and stands down when one is empty.
+    env:
+      HULIHO_LIVE_GMAIL_ADDRESS: ${{ secrets.HULIHO_LIVE_GMAIL_ADDRESS }}
+      HULIHO_LIVE_GMAIL_APP_PASSWORD: ${{ secrets.HULIHO_LIVE_GMAIL_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.HULIHO_LIVE_GMAIL_ADDRESS != '' && env.HULIHO_LIVE_GMAIL_APP_PASSWORD != ''
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: env.HULIHO_LIVE_GMAIL_ADDRESS != '' && env.HULIHO_LIVE_GMAIL_APP_PASSWORD != ''
+      - name: install the pinned toolchain
+        if: env.HULIHO_LIVE_GMAIL_ADDRESS != '' && env.HULIHO_LIVE_GMAIL_APP_PASSWORD != ''
+        run: rustup toolchain install
+      - name: the scenario suite against the test account
+        if: env.HULIHO_LIVE_GMAIL_ADDRESS != '' && env.HULIHO_LIVE_GMAIL_APP_PASSWORD != ''
+        run: cargo test -p huliho-imap-bridge --test gmail_transcript the_gmail_account

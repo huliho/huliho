@@ -11,8 +11,8 @@ use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use super::messages::Conversation;
 use super::{
-    Fake, GOOGLE_ERROR, Greeting, Lines, Listen, Mailboxes, PASSWORD, Phase, Protocol, Starttls,
-    TOKEN, USER, decoded, open, read_line, record,
+    Fake, GOOGLE_ERROR, Greeting, Lines, Listen, Mailboxes, Opening, PASSWORD, Phase, Protocol,
+    Starttls, TOKEN, USER, decoded, open, read_line, record,
 };
 
 /// The name the certificate carries.
@@ -76,6 +76,14 @@ impl Script {
         }
     }
 
+    fn opening(&self) -> Opening {
+        Opening {
+            greeting: self.greeting,
+            words: words(self.greeting),
+            answers: self.answers,
+        }
+    }
+
     /// The untagged CAPABILITY line of a phase.
     fn capability_line(&self, phase: Phase) -> String {
         let names = self.capabilities(phase);
@@ -108,28 +116,21 @@ impl Script {
     }
 }
 
+/// The greeting line for a kind that says something.
+fn words(greeting: Greeting) -> &'static str {
+    match greeting {
+        Greeting::Ok => "* OK ready\r\n",
+        Greeting::Bye => "* BYE not now\r\n",
+        Greeting::Garbage => "220 mail.example.test ESMTP\r\n",
+        Greeting::Silence => "",
+    }
+}
+
 impl Protocol for Script {
     const HOST: &'static str = HOST;
 
     fn listen(&self) -> Listen {
         self.listen
-    }
-
-    fn greeting(&self) -> Greeting {
-        self.greeting
-    }
-
-    fn answers(&self) -> bool {
-        self.answers
-    }
-
-    fn words(greeting: Greeting) -> &'static str {
-        match greeting {
-            Greeting::Ok => "* OK ready\r\n",
-            Greeting::Bye => "* BYE not now\r\n",
-            Greeting::Garbage => "220 mail.example.test ESMTP\r\n",
-            Greeting::Silence => "",
-        }
     }
 
     async fn converse<S: AsyncRead + AsyncWrite + Unpin + Send>(
@@ -138,7 +139,7 @@ impl Protocol for Script {
         lines: &Lines,
         stream: S,
     ) -> Option<S> {
-        let (mut reader, mut writer) = open(self, phase, stream).await?;
+        let (mut reader, mut writer) = open(self.opening(), phase, stream).await?;
         let mut conversation = Conversation::default();
         loop {
             let line = read_line(&mut reader).await?;

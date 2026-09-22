@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! A connector for the tests: it signs the fixture user in on the
-//! scripted server, or refuses every connection as a server that is
-//! down does.
+//! A connector for the tests: it signs a user in on a server with
+//! LOGIN, or refuses every connection as a server that is down does.
 
 use std::io;
 use std::sync::Arc;
@@ -26,8 +25,8 @@ pub enum TestConnector {
         tls: Arc<ClientConfig>,
         target: Target,
         step: Duration,
-        user: &'static str,
-        password: &'static str,
+        user: String,
+        password: String,
     },
     /// Every connect is refused.
     Refusing,
@@ -41,8 +40,8 @@ impl TestConnector {
             tls,
             target,
             step,
-            user: USER,
-            password: PASSWORD,
+            user: USER.to_owned(),
+            password: PASSWORD.to_owned(),
         }
     }
 }
