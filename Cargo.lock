@@ -1167,6 +1167,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "uuid",
+ "webpki-roots",
 ]
 
 [[package]]

@@ -236,10 +236,34 @@ mod-sequences following. Its Gmail mode
 Gmail items where asked and BAD where the extension is off, counts a
 label folder from the labels of All Mail's messages and lets a test
 relabel a message or move it between stores as a second client would.
-`testing::TestConnector` signs the fixture
+`testing::TestConnector` signs a
 user in on such a server or refuses every connection.
 `testing::seal::TestSealer` binds a blob to its row without a cipher.
 `session::fuzzing` is what the fuzz targets in `fuzz/` call.
 Build them with
 `cargo build --manifest-path crates/imap-bridge/fuzz/Cargo.toml` and run
 one with cargo-fuzz on a nightly toolchain.
+
+The transcript suite replays what a provider said. `testing::record` is
+a server on a loopback port that hands one conversation on to a live
+server and writes both sides down. When the recording ends it replaces
+every address, subject, message id and Gmail id with a fixed value, the
+same one wherever it recurs, turns every body text into filler of its
+length and every greeting into `ready`, then scans the result and hands
+it over only when nothing of the live session remains; a value that
+already has a fixed shape stays as it is. What the pass does not name,
+a file name in a BODYSTRUCTURE or a label name for one, stays as the
+server sent it, which is why a fresh recording is read whole before it
+is checked in. `testing::replay` is the
+scripted server driven by such a transcript: every command gets what the
+live server answered, under the client's own tag, the connection closes
+where the live one closed and a command the transcript does not hold is
+a mismatch the test reads. Gmail's transcript is
+`tests/transcripts/gmail.json`, replayed by the scenario suite in
+`tests/gmail_transcript.rs` in every test run; the same suite runs
+against the scripted server's Gmail mode through the recorder and back
+through the replayer, and against a live test account when
+`HULIHO_LIVE_GMAIL_ADDRESS` and `HULIHO_LIVE_GMAIL_APP_PASSWORD` are
+set, writing the transcript to the path in `HULIHO_RECORD_TRANSCRIPT`
+when that is set as well. `tests/transcripts.rs` scans every checked-in
+transcript.

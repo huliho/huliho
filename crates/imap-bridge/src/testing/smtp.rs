@@ -10,8 +10,8 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use super::{
-    Fake, GOOGLE_ERROR, Greeting, Lines, Listen, PASSWORD, Phase, Protocol, Starttls, TOKEN, USER,
-    decoded, open, read_line, record,
+    Fake, GOOGLE_ERROR, Greeting, Lines, Listen, Opening, PASSWORD, Phase, Protocol, Starttls,
+    TOKEN, USER, decoded, open, read_line, record,
 };
 
 /// The name the certificate carries.
@@ -94,6 +94,24 @@ impl Script {
             REJECTED.to_owned()
         }
     }
+
+    fn opening(self) -> Opening {
+        Opening {
+            greeting: self.greeting,
+            words: words(self.greeting),
+            answers: self.answers,
+        }
+    }
+}
+
+/// The greeting line for a kind that says something.
+fn words(greeting: Greeting) -> &'static str {
+    match greeting {
+        Greeting::Ok => "220 smtp.example.test ESMTP ready\r\n",
+        Greeting::Bye => "421 4.3.2 not now\r\n",
+        Greeting::Garbage => "* OK IMAP4rev2 ready\r\n",
+        Greeting::Silence => "",
+    }
 }
 
 // The same trait as the IMAP script, so the accessors and the loop's opening
@@ -106,30 +124,13 @@ impl Protocol for Script {
         self.listen
     }
 
-    fn greeting(&self) -> Greeting {
-        self.greeting
-    }
-
-    fn answers(&self) -> bool {
-        self.answers
-    }
-
-    fn words(greeting: Greeting) -> &'static str {
-        match greeting {
-            Greeting::Ok => "220 smtp.example.test ESMTP ready\r\n",
-            Greeting::Bye => "421 4.3.2 not now\r\n",
-            Greeting::Garbage => "* OK IMAP4rev2 ready\r\n",
-            Greeting::Silence => "",
-        }
-    }
-
     async fn converse<S: AsyncRead + AsyncWrite + Unpin + Send>(
         &self,
         phase: Phase,
         lines: &Lines,
         stream: S,
     ) -> Option<S> {
-        let (mut reader, mut writer) = open(self, phase, stream).await?;
+        let (mut reader, mut writer) = open(self.opening(), phase, stream).await?;
         loop {
             let line = read_line(&mut reader).await?;
             record(lines, phase, &line);

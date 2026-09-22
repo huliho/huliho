@@ -4,6 +4,7 @@
 
 //! Scripted IMAP and SMTP servers for tests: a fresh certificate per
 //! server, one answer per command and a record of every line received.
+//! The recorder and the replayer stand on the same listener.
 
 pub mod connector;
 mod fetch;
@@ -11,11 +12,13 @@ pub mod folder;
 pub mod imap;
 pub mod mailboxes;
 pub mod messages;
+pub mod record;
+pub mod replay;
 pub mod seal;
 pub mod smtp;
+pub mod transcript;
 
 use std::future::Future;
-use std::marker::PhantomData;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -39,7 +42,10 @@ pub use folder::Folder;
 pub use imap::FakeImap;
 pub use mailboxes::{Extension, Mailboxes};
 pub use messages::{Behavior, Message};
+pub use record::Recorder;
+pub use replay::Replayer;
 pub use smtp::FakeSmtp;
+pub use transcript::Transcript;
 
 /// The user every script signs in.
 pub const USER: &str = "sanne";
@@ -163,15 +169,6 @@ pub trait Protocol: Clone + Send + Sync + 'static {
     /// TLS from the first byte or plaintext with or without STARTTLS.
     fn listen(&self) -> Listen;
 
-    /// What the server says first.
-    fn greeting(&self) -> Greeting;
-
-    /// Whether commands after the greeting get an answer.
-    fn answers(&self) -> bool;
-
-    /// The greeting line for a kind that says something.
-    fn words(greeting: Greeting) -> &'static str;
-
     /// Answers commands until the client leaves; hands the stream back
     /// only when STARTTLS was accepted, so the caller can upgrade it.
     fn converse<S: AsyncRead + AsyncWrite + Unpin + Send>(
@@ -182,26 +179,36 @@ pub trait Protocol: Clone + Send + Sync + 'static {
     ) -> impl Future<Output = Option<S>> + Send;
 }
 
+/// How a script opens a conversation of its own words.
+#[derive(Debug, Clone, Copy)]
+pub struct Opening {
+    /// What the server says first.
+    pub greeting: Greeting,
+    /// The greeting line for a kind that says something.
+    pub words: &'static str,
+    /// Whether commands after the greeting get an answer.
+    pub answers: bool,
+}
+
 /// Splits the stream and opens the conversation: the greeting unless
 /// the connection was just upgraded, then a hold when the script never
 /// answers. `None` when the greeting ends the conversation.
-pub(crate) async fn open<P: Protocol, S: AsyncRead + AsyncWrite>(
-    script: &P,
+pub(crate) async fn open<S: AsyncRead + AsyncWrite>(
+    opening: Opening,
     phase: Phase,
     stream: S,
 ) -> Option<(BufReader<ReadHalf<S>>, WriteHalf<S>)> {
     let (reader, mut writer) = tokio::io::split(stream);
     if phase != Phase::Upgraded {
-        let greeting = script.greeting();
-        if matches!(greeting, Greeting::Silence) {
+        if matches!(opening.greeting, Greeting::Silence) {
             std::future::pending::<()>().await;
         }
-        writer.write_all(P::words(greeting).as_bytes()).await.ok()?;
-        if !matches!(greeting, Greeting::Ok) {
+        writer.write_all(opening.words.as_bytes()).await.ok()?;
+        if !matches!(opening.greeting, Greeting::Ok) {
             return None;
         }
     }
-    if !script.answers() {
+    if !opening.answers {
         std::future::pending::<()>().await;
     }
     Some((BufReader::new(reader), writer))
@@ -214,7 +221,7 @@ pub struct Fake<P> {
     ca: CertificateDer<'static>,
     ca_pem: String,
     lines: Lines,
-    script: PhantomData<P>,
+    script: P,
 }
 
 impl<P: Protocol> Fake<P> {
@@ -246,10 +253,11 @@ impl<P: Protocol> Fake<P> {
             .expect("a bound listener has an address");
         let lines = Lines::default();
         let recorded = Arc::clone(&lines);
+        let served = script.clone();
         tokio::spawn(async move {
             while let Ok((tcp, _)) = listener.accept().await {
                 tokio::spawn(serve(
-                    script.clone(),
+                    served.clone(),
                     acceptor.clone(),
                     Arc::clone(&recorded),
                     tcp,
@@ -261,8 +269,14 @@ impl<P: Protocol> Fake<P> {
             ca: certificates.ca,
             ca_pem: certificates.ca_pem,
             lines,
-            script: PhantomData,
+            script,
         }
+    }
+
+    /// The script the server follows, for what it noted along the way.
+    #[must_use]
+    pub fn script(&self) -> &P {
+        &self.script
     }
 
     /// A client that trusts this server's CA and nothing else.

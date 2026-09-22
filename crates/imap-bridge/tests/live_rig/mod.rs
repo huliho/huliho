@@ -118,8 +118,8 @@ pub fn link() -> Link<TestConnector> {
         tls: tls(true),
         target: dovecot(IMAPS_PORT, TlsMode::Implicit),
         step: STEP_TIMEOUT,
-        user: USER,
-        password: PASSWORD,
+        user: USER.to_owned(),
+        password: PASSWORD.to_owned(),
     };
     Link::with_interval(connector, std::time::Duration::ZERO)
 }
