@@ -6,15 +6,19 @@
 //! folder that is done the new mail above its recorded UIDNEXT, the
 //! flags that changed and the messages that left. Every write is one
 //! state and goes through only while the folder stands as the refresh
-//! read it.
+//! read it. On Gmail a row whose UID left waits for the pass to find it
+//! in another store; what the pass does not find leaves at its end.
+
+mod folder;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use super::{Cache, FolderSync, SYNC_BATCH, Step, blocking, mapping};
+use self::folder::Refreshing;
+use super::{Cache, FolderSync, Step, blocking};
 use crate::mailboxes::{self, SyncError};
-use crate::session::{FlagFetch, Flagged, MESSAGE_LIMIT, Session, SessionError, UidRange};
-use crate::store::{FlagChange, MailboxId, MailboxRow, Progress, Standing, Synced};
+use crate::session::{Session, SessionError};
+use crate::store::{MailboxId, MailboxRow, Progress, Synced};
 
 /// What one refresh is given beyond the account.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +26,10 @@ pub struct Given<'a> {
     /// Whether CONDSTORE is advertised, so the flags of a folder come as
     /// one CHANGEDSINCE answer.
     pub condstore: bool,
+    /// Whether the account is a Gmail account on a server that says so:
+    /// the labels ride every fetch and a row whose UID left waits for
+    /// the pass.
+    pub gmail: bool,
     /// The mailbox the client looked at last; without CONDSTORE only its
     /// flags are scanned.
     pub viewed: Option<&'a MailboxId>,
@@ -29,9 +37,9 @@ pub struct Given<'a> {
 
 /// One refresh: where it writes and what it knows.
 #[derive(Clone, Copy)]
-struct Run<'a> {
-    cache: &'a Cache,
-    given: Given<'a>,
+pub(super) struct Run<'a> {
+    pub(super) cache: &'a Cache,
+    pub(super) given: Given<'a>,
 }
 
 /// What the refreshes of one account carry from one to the next.
@@ -64,7 +72,7 @@ impl Refresher {
         cache: &Cache,
         given: Given<'_>,
     ) -> Result<bool, SyncError> {
-        let found = match mailboxes::observe(session).await {
+        let found = match mailboxes::observe(session, given.gmail).await {
             Ok(found) => found,
             Err(error) => return Ok(stands(&error)),
         };
@@ -72,10 +80,11 @@ impl Refresher {
         blocking(move || store.apply_mailboxes(&key, &found)).await?;
         let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
         let snapshot = blocking(move || store.mailbox_snapshot(&key)).await?;
+        // A label mailbox is done with its store and has no UIDs of its own.
         let mut rows: Vec<&MailboxRow> = snapshot
             .rows
             .iter()
-            .filter(|row| snapshot.done.contains(&row.id))
+            .filter(|row| row.facts.store && snapshot.done.contains(&row.id))
             .collect();
         if let Some(first) = self.first.take()
             && let Some(index) = rows.iter().position(|row| row.id == first)
@@ -92,6 +101,10 @@ impl Refresher {
                 }
                 Err(other) => return Err(other),
             }
+        }
+        if given.gmail {
+            let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
+            blocking(move || store.sweep_parked(&key)).await?;
         }
         Ok(true)
     }
@@ -127,6 +140,7 @@ impl Refresher {
             uid_validity,
             progress,
             server_next,
+            gmail: run.given.gmail,
         };
         let Some(arrived) = self.new_mail(session, run, &refreshing).await? else {
             return Ok(());
@@ -194,7 +208,8 @@ impl Refresher {
                     .last()
                     .map_or(1, |uid| uid + 1),
             };
-            let opened = FolderSync::above(session, refreshing.row, (from, through)).await?;
+            let range = (from, through);
+            let opened = FolderSync::above(session, refreshing.row, range, run.given.gmail).await?;
             let Some(sync) = opened else {
                 return Ok(Some(0));
             };
@@ -219,196 +234,10 @@ fn stands(error: &SessionError) -> bool {
     matches!(error, SessionError::Refused)
 }
 
-/// One folder inside a refresh, as the pass and the store had it.
-#[derive(Clone, Copy)]
-struct Refreshing<'a> {
-    row: &'a MailboxRow,
-    uid_validity: u32,
-    progress: Progress,
-    /// UIDNEXT as the pass of this refresh read it.
-    server_next: u32,
-}
-
-impl Refreshing<'_> {
-    /// The folder and the UIDVALIDITY as owned values, for a store call
-    /// off the runtime.
-    fn owned(&self) -> (MailboxId, u32) {
-        (self.row.id.clone(), self.uid_validity)
-    }
-
-    async fn stored(&self, cache: &Cache) -> Result<Vec<u32>, SyncError> {
-        let (store, key, (folder, uid_validity)) =
-            (Arc::clone(&cache.store), cache.key.clone(), self.owned());
-        blocking(move || {
-            let standing = Standing {
-                folder: &folder,
-                uid_validity,
-            };
-            store.stored_uids(&key, &standing)
-        })
-        .await
-    }
-
-    /// The flags that changed: one CHANGEDSINCE answer where CONDSTORE
-    /// is advertised, a scan of the stored UIDs range by range for the
-    /// viewed folder without it and for a folder whose CHANGEDSINCE
-    /// answer passed its bound.
-    async fn flags<S: Session>(
-        &self,
-        session: &mut S,
-        run: Run<'_>,
-        scanned: &mut HashSet<MailboxId>,
-    ) -> Result<(), SyncError> {
-        let id = &self.row.id;
-        let scan = scanned.contains(id) || (!run.given.condstore && run.given.viewed == Some(id));
-        if scan {
-            return self.scan(session, run.cache).await;
-        }
-        let since = self.progress.synced.highest_modseq;
-        let Some(since) = since.filter(|_| run.given.condstore) else {
-            return Ok(());
-        };
-        match session.uid_flags(FlagFetch::ChangedSince(since)).await {
-            Ok(flagged) => self.apply(run.cache, &flagged).await,
-            Err(error @ SessionError::Protocol(words)) => {
-                if words == MESSAGE_LIMIT {
-                    scanned.insert(id.clone());
-                }
-                Err(error.into())
-            }
-            Err(other) => Err(other.into()),
-        }
-    }
-
-    /// The stored UIDs in ranges of `SYNC_BATCH`, each asked for its
-    /// flags.
-    async fn scan<S: Session>(&self, session: &mut S, cache: &Cache) -> Result<(), SyncError> {
-        for range in ranges(&self.stored(cache).await?) {
-            let flagged = session.uid_flags(FlagFetch::Range(range)).await?;
-            self.apply(cache, &flagged).await?;
-        }
-        Ok(())
-    }
-
-    /// Writes what the flags say in transactions of `SYNC_BATCH`: a
-    /// message that gained `\Deleted` leaves, the keywords of the rest
-    /// are compared to the rows.
-    async fn apply(&self, cache: &Cache, flagged: &[Flagged]) -> Result<(), SyncError> {
-        let deleted: Vec<u32> = flagged
-            .iter()
-            .filter(|found| mapping::is_deleted(&found.flags))
-            .map(|found| found.uid)
-            .collect();
-        for uids in deleted.chunks(SYNC_BATCH) {
-            self.write(cache, Write::Remove(uids.to_vec())).await?;
-        }
-        let changes: Vec<FlagChange> = flagged
-            .iter()
-            .filter(|found| !mapping::is_deleted(&found.flags))
-            .map(|found| FlagChange {
-                uid: found.uid,
-                keywords: mapping::keywords(&found.flags),
-            })
-            .collect();
-        for batch in changes.chunks(SYNC_BATCH) {
-            self.write(cache, Write::Flags(batch.to_vec())).await?;
-        }
-        Ok(())
-    }
-
-    /// MESSAGES fell short of what the cache knows plus what arrived:
-    /// the UID list names what is left and the stored UIDs it lacks
-    /// leave.
-    async fn expunged<S: Session>(&self, session: &mut S, cache: &Cache) -> Result<(), SyncError> {
-        let present: HashSet<u32> = session.uid_list().await?.into_iter().collect();
-        let gone: Vec<u32> = self
-            .stored(cache)
-            .await?
-            .into_iter()
-            .filter(|uid| !present.contains(uid))
-            .collect();
-        for uids in gone.chunks(SYNC_BATCH) {
-            self.write(cache, Write::Remove(uids.to_vec())).await?;
-        }
-        Ok(())
-    }
-
-    async fn advance(&self, cache: &Cache, synced: Synced) -> Result<(), SyncError> {
-        let (store, key, (folder, uid_validity)) =
-            (Arc::clone(&cache.store), cache.key.clone(), self.owned());
-        blocking(move || {
-            let standing = Standing {
-                folder: &folder,
-                uid_validity,
-            };
-            store.advance(&key, &standing, synced)
-        })
-        .await
-    }
-
-    async fn write(&self, cache: &Cache, write: Write) -> Result<(), SyncError> {
-        let (store, key, (folder, uid_validity)) =
-            (Arc::clone(&cache.store), cache.key.clone(), self.owned());
-        blocking(move || {
-            let standing = Standing {
-                folder: &folder,
-                uid_validity,
-            };
-            match write {
-                Write::Remove(uids) => store.remove_uids(&key, &standing, &uids),
-                Write::Flags(changes) => store.apply_flags(&key, &standing, &changes),
-            }
-        })
-        .await
-        .map(|_state| ())
-    }
-}
-
-/// One write of the refresh, moved to the blocking thread whole.
-enum Write {
-    Remove(Vec<u32>),
-    Flags(Vec<FlagChange>),
-}
-
-/// Sorted UIDs as ranges of `SYNC_BATCH` messages at most, each range
-/// ending on stored UIDs.
-fn ranges(uids: &[u32]) -> Vec<UidRange> {
-    uids.chunks(SYNC_BATCH)
-        .filter_map(|chunk| {
-            Some(UidRange {
-                low: *chunk.first()?,
-                high: *chunk.last()?,
-            })
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn stored_uids_are_asked_in_ranges_of_one_batch() {
-        let count = u32::try_from(SYNC_BATCH).unwrap();
-        let uids: Vec<u32> = (1..=count + 2).map(|uid| uid * 2).collect();
-        let found = ranges(&uids);
-        assert_eq!(found.len(), 2);
-        assert_eq!(
-            found[0],
-            UidRange {
-                low: 2,
-                high: count * 2
-            }
-        );
-        assert_eq!(
-            found[1],
-            UidRange {
-                low: (count + 1) * 2,
-                high: (count + 2) * 2
-            }
-        );
-        assert!(ranges(&[]).is_empty());
-    }
+    use crate::session::MESSAGE_LIMIT;
 
     #[test]
     fn a_refusal_keeps_the_session_and_any_other_failure_ends_it() {

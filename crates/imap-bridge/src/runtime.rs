@@ -11,6 +11,7 @@ use std::future::Future;
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use crate::gmail;
 use crate::mailboxes::SyncError;
 use crate::session::{Session, SessionError};
 use crate::store::{AccountKey, MailboxId};
@@ -20,6 +21,11 @@ use crate::sync::refresh::{Given, Refresher};
 /// A `/changes` call refreshes its account at most this often; until
 /// the server pushes, a client polls about twice as slowly.
 pub const REFRESH_INTERVAL: Duration = Duration::from_secs(30);
+
+/// The connections one Gmail account may hold at once, far under
+/// Gmail's own cap of fifteen; the host's runtime enforces it, since
+/// the bridge opens no connection itself.
+pub const GMAIL_CONNECTIONS: usize = 2;
 
 /// Where connections come from: the host signs in with the credential
 /// it keeps and reports every outcome wherever it counts them.
@@ -53,6 +59,9 @@ pub struct Wire<C: Connector> {
     session: Option<C::Session>,
     /// Whether the server advertises CONDSTORE, read once per session.
     condstore: bool,
+    /// Whether the host's word that the account is a Gmail account holds
+    /// on this server, read with it.
+    gmail: bool,
     interval: Duration,
     refreshed: Option<Instant>,
     refresher: Refresher,
@@ -71,6 +80,7 @@ impl<C: Connector> Link<C> {
                 connector,
                 session: None,
                 condstore: false,
+                gmail: false,
                 interval,
                 refreshed: None,
                 refresher: Refresher::default(),
@@ -105,11 +115,12 @@ impl<C: Connector> Link<C> {
         if !wire.due() {
             return Ok(());
         }
-        if wire.session(&cache.key).await.is_err() {
+        if wire.session(cache).await.is_err() {
             return Ok(());
         }
         let given = Given {
             condstore: wire.condstore,
+            gmail: wire.gmail,
             viewed: viewed.as_ref(),
         };
         let Wire {
@@ -133,10 +144,7 @@ impl<C: Connector> Wire<C> {
     ///
     /// Returns the connector's failure or the failure of the first read
     /// on a fresh session.
-    pub(crate) async fn session(
-        &mut self,
-        key: &AccountKey,
-    ) -> Result<&mut C::Session, SessionError> {
+    pub(crate) async fn session(&mut self, cache: &Cache) -> Result<&mut C::Session, SessionError> {
         let mut kept = self.session.take();
         if let Some(session) = kept.as_mut()
             && session.noop().await.is_err()
@@ -146,8 +154,10 @@ impl<C: Connector> Wire<C> {
         let session = if let Some(kept) = kept {
             kept
         } else {
-            let mut fresh = self.connector.connect(key).await?;
-            self.condstore = fresh.capabilities().await?.has("CONDSTORE");
+            let mut fresh = self.connector.connect(&cache.key).await?;
+            let capabilities = fresh.capabilities().await?;
+            self.condstore = capabilities.has("CONDSTORE");
+            self.gmail = gmail::confirmed(cache.gmail, &capabilities);
             fresh
         };
         Ok(self.session.insert(session))

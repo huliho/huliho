@@ -11,7 +11,8 @@ mod sync_rig;
 
 use huliho_imap_bridge::mailboxes::SyncError;
 use huliho_imap_bridge::session::{
-    MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES, Session, SessionError, UidRange,
+    FetchItems, MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES, Session, SessionError,
+    UidRange,
 };
 use huliho_imap_bridge::store::ObjectType;
 use huliho_imap_bridge::sync::{FolderSync, Step};
@@ -21,6 +22,12 @@ use sync_rig::{Rig, inbox};
 
 /// The UID of the message a sender built to hurt.
 const HOSTILE: u32 = 17;
+
+/// The header fetch with the structure, as the first sync asks it.
+const STRUCTURED: FetchItems = FetchItems {
+    structure: true,
+    gmail: false,
+};
 
 #[tokio::test]
 async fn one_message_past_a_bound_of_the_guard_costs_its_attachment_mark_and_nothing_else() {
@@ -117,7 +124,7 @@ async fn lines_nobody_asked_for_change_nothing_and_too_many_fail_the_answer_rfc3
     let mut session = rig.session().await;
     session.examine("INBOX").await.unwrap();
     let error = session
-        .uid_fetch(UidRange { low: 1, high: 3 }, true)
+        .uid_fetch(UidRange { low: 1, high: 3 }, STRUCTURED)
         .await
         .unwrap_err();
     assert!(
@@ -142,7 +149,7 @@ async fn a_mod_sequence_past_63_bits_is_a_protocol_failure_on_every_path_rfc7162
     let mut session = rig.session().await;
     session.examine("INBOX").await.unwrap();
     let error = session
-        .uid_fetch(UidRange { low: 1, high: 2 }, true)
+        .uid_fetch(UidRange { low: 1, high: 2 }, STRUCTURED)
         .await
         .unwrap_err();
     assert!(
@@ -258,7 +265,7 @@ async fn a_range_that_runs_backward_is_refused_before_anything_is_sent() {
     let mut session = rig.session().await;
     session.examine("INBOX").await.unwrap();
     let error = session
-        .uid_fetch(UidRange { low: 3, high: 1 }, true)
+        .uid_fetch(UidRange { low: 3, high: 1 }, STRUCTURED)
         .await
         .unwrap_err();
     assert!(

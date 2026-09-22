@@ -12,7 +12,8 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use super::{MAX_CALLS_IN_REQUEST, MAX_CONCURRENT_REQUESTS, MAX_OBJECTS_IN_GET, MAX_SIZE_REQUEST};
-use crate::store::{AccountKey, Store, StoreError};
+use crate::store::StoreError;
+use crate::sync::Cache;
 
 /// The core capability (RFC 8620 section 2).
 pub const CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
@@ -38,7 +39,8 @@ const MAX_OBJECTS_IN_SET: u32 = 0;
 /// The one collation RFC 8620 section 2 requires of every server.
 const COLLATION: &str = "i;unicode-casemap";
 
-/// One folder per email outside Gmail: a copy is a second email.
+/// One folder per email outside Gmail, where a copy is a second email;
+/// on Gmail a message sits under any number of labels.
 const MAX_MAILBOXES_PER_EMAIL: u32 = 1;
 
 /// No submission exists, so attachments read as zero.
@@ -88,15 +90,11 @@ struct AccountObject {
 ///
 /// Returns the store's failure when the state cannot be read or the
 /// object cannot be encoded.
-pub fn session_object(
-    store: &Store,
-    key: &AccountKey,
-    address: &str,
-    urls: &Urls,
-) -> Result<Vec<u8>, StoreError> {
-    let state = store.state(key)?.to_string();
+pub fn session_object(cache: &Cache, address: &str, urls: &Urls) -> Result<Vec<u8>, StoreError> {
+    let key = &cache.key;
+    let state = cache.store.state(key)?.to_string();
     let account_capabilities: BTreeMap<&'static str, Value> = [
-        (MAIL_CAPABILITY, mail_capability()),
+        (MAIL_CAPABILITY, mail_capability(cache.gmail)),
         (HULIHO_CAPABILITY, Value::Object(Map::new())),
     ]
     .into_iter()
@@ -147,9 +145,11 @@ fn core_capability() -> Value {
     })
 }
 
-fn mail_capability() -> Value {
+fn mail_capability(gmail: bool) -> Value {
+    // RFC 8621 section 1.3.1: null means no limit.
+    let per_email = (!gmail).then_some(MAX_MAILBOXES_PER_EMAIL);
     json!({
-        "maxMailboxesPerEmail": MAX_MAILBOXES_PER_EMAIL,
+        "maxMailboxesPerEmail": per_email,
         "maxMailboxDepth": null,
         "maxSizeMailboxName": MAX_MAILBOX_NAME_BYTES,
         "maxSizeAttachmentsPerEmail": MAX_SIZE_ATTACHMENTS_PER_EMAIL,

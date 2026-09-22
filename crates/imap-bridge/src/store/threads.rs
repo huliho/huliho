@@ -106,6 +106,23 @@ pub(super) fn join(
     Ok(thread)
 }
 
+/// The thread a server names for a row about to be written: it reads
+/// as created while no row holds it and as updated otherwise.
+pub(super) fn claim(
+    transaction: &Transaction<'_>,
+    key: &AccountKey,
+    thread: &ThreadId,
+    ledger: &mut Ledger,
+) -> Result<(), StoreError> {
+    let kind = if size(transaction, key, thread)? == 0 {
+        ChangeKind::Created
+    } else {
+        ChangeKind::Updated
+    };
+    ledger.note(ObjectType::Thread, thread.as_str(), kind);
+    Ok(())
+}
+
 fn thread_of(
     connection: &Connection,
     key: &AccountKey,

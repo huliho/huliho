@@ -25,7 +25,7 @@ fn entry(name: &str, attributes: &[&str]) -> ListEntry {
 }
 
 fn mapped(entries: &[ListEntry]) -> Vec<MailboxFacts> {
-    map(entries, &[], &Subscriptions::Attributes)
+    map(entries, &[], &Subscriptions::Attributes, false)
 }
 
 fn role_of<'a>(facts: &'a [MailboxFacts], imap_name: &str) -> Option<&'a str> {
@@ -107,6 +107,7 @@ fn a_parent_the_server_did_not_list_leaves_the_mailbox_at_the_top() {
         }],
         &[],
         &Subscriptions::Attributes,
+        false,
     );
     assert_eq!(flat[0].name, "a/b");
 }
@@ -145,6 +146,7 @@ fn counts_follow_status_and_a_missing_line_reads_zero() {
         &[entry("INBOX", &[]), entry("Work", &[])],
         &statuses,
         &Subscriptions::Attributes,
+        false,
     );
     assert_eq!((facts[0].total_emails, facts[0].unread_emails), (17, 3));
     assert_eq!(
@@ -168,13 +170,13 @@ fn counts_follow_status_and_a_missing_line_reads_zero() {
 #[test]
 fn subscriptions_come_from_the_attribute_or_from_lsub_rfc5258_3_1() {
     let entries = [entry("INBOX", &["\\SUBSCRIBED"]), entry("Work", &[])];
-    let by_attribute = map(&entries, &[], &Subscriptions::Attributes);
+    let by_attribute = map(&entries, &[], &Subscriptions::Attributes, false);
     assert_eq!(
         (by_attribute[0].subscribed, by_attribute[1].subscribed),
         (true, false)
     );
     let lsub: HashSet<String> = ["Work".to_owned()].into_iter().collect();
-    let by_lsub = map(&entries, &[], &Subscriptions::Lsub(lsub));
+    let by_lsub = map(&entries, &[], &Subscriptions::Lsub(lsub), false);
     assert_eq!(
         (by_lsub[0].subscribed, by_lsub[1].subscribed),
         (false, true)
@@ -206,7 +208,7 @@ proptest! {
                 attributes: Vec::new(),
             })
             .collect();
-        let facts = map(&entries, &[], &Subscriptions::Attributes);
+        let facts = map(&entries, &[], &Subscriptions::Attributes, false);
         let last = facts.last().unwrap();
         prop_assert_eq!(&last.imap_name, &segments.join(&joiner));
         prop_assert_eq!(&last.name, segments.last().unwrap());
@@ -227,7 +229,7 @@ proptest! {
         ),
     ) {
         let entries: Vec<ListEntry> = names.iter().map(|name| entry(name, &[])).collect();
-        let facts = map(&entries, &[], &Subscriptions::Attributes);
+        let facts = map(&entries, &[], &Subscriptions::Attributes, false);
         let roles: Vec<&str> = facts.iter().filter_map(|facts| facts.role.as_deref()).collect();
         let distinct: HashSet<&str> = roles.iter().copied().collect();
         prop_assert_eq!(roles.len(), distinct.len());

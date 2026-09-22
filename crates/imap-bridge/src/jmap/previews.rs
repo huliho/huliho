@@ -46,7 +46,7 @@ pub(super) async fn fill<C: Connector>(
         return Ok(());
     }
     let mut wire = link.wire.lock().await;
-    let Ok(session) = wire.session(&cache.key).await else {
+    let Ok(session) = wire.session(cache).await else {
         return Ok(());
     };
     let (fetched, stands) = fetch(session, &groups, &rows).await;

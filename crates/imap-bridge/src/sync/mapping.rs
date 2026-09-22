@@ -10,8 +10,9 @@
 use std::collections::BTreeMap;
 
 use super::{headers, preview};
-use crate::session::{BodyPart, FetchedMessage};
-use crate::store::EmailFacts;
+use crate::gmail;
+use crate::session::{BodyPart, FetchedMessage, GmailItems};
+use crate::store::{EmailFacts, GmailFacts};
 
 /// The four system flags with a keyword of their own.
 const SYSTEM_KEYWORDS: [(&str, &str); 4] = [
@@ -46,8 +47,30 @@ pub fn email(message: &FetchedMessage) -> Option<EmailFacts> {
         received_at: message.received_at,
         sent_at: headers.sent_at,
         has_attachment: has_attachment(&message.flags, message.structure.as_ref()),
+        gmail: message.gmail.as_ref().map(gmail_facts),
         personal,
     })
+}
+
+/// The Gmail items in the bridge's spelling, each label once.
+fn gmail_facts(items: &GmailItems) -> GmailFacts {
+    GmailFacts {
+        labels: labels(&items.labels),
+        msgid: items.msgid,
+        thrid: items.thrid,
+    }
+}
+
+/// The labels of one message in the bridge's spelling, each once.
+#[must_use]
+pub fn labels(found: &[String]) -> Vec<String> {
+    let mut labels: Vec<String> = Vec::new();
+    for label in found.iter().map(|label| gmail::canonical(label)) {
+        if !labels.contains(&label) {
+            labels.push(label);
+        }
+    }
+    labels
 }
 
 /// Whether the flags hold `\Deleted` in any case.

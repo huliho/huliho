@@ -6,6 +6,7 @@
 //! (RFC 3501) with its extensions and SMTP submission (RFC 6409).
 
 mod dates;
+pub mod gmail;
 pub mod jmap;
 pub mod mailboxes;
 pub mod runtime;

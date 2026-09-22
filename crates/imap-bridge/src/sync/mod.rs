@@ -16,9 +16,12 @@ mod tests;
 
 use std::sync::Arc;
 
+use crate::gmail;
 use crate::mailboxes::SyncError;
 use crate::seal::Sealer;
-use crate::session::{FetchedMessage, MAX_FETCH_MESSAGES, Session, SessionError, UidRange};
+use crate::session::{
+    FetchItems, FetchedMessage, MAX_FETCH_MESSAGES, Session, SessionError, UidRange,
+};
 use crate::store::{AccountKey, Advance, Batch, EmailFacts, MailboxId, MailboxRow, Store, Synced};
 
 /// The messages of one batch: one fetch, one transaction, one state.
@@ -41,6 +44,9 @@ pub struct Cache {
     pub store: Arc<Store>,
     pub sealer: Arc<dyn Sealer>,
     pub key: AccountKey,
+    /// The host's word that the account is a Gmail account; it holds
+    /// once the server advertises `X-GM-EXT-1`.
+    pub gmail: bool,
 }
 
 /// How a folder stands after one batch.
@@ -90,6 +96,8 @@ pub struct FolderSync {
     imap_name: String,
     uid_validity: u32,
     walk: Walk,
+    /// Whether the Gmail items ride every fetch.
+    gmail: bool,
     /// The UIDs no batch has taken yet, the next ones last.
     remaining: Vec<u32>,
     /// What a failed fetch was narrowed to, the next slice last.
@@ -132,6 +140,9 @@ impl FolderSync {
         if progress.done {
             return Ok(None);
         }
+        if cache.gmail {
+            sync.gmail = gmail::confirmed(true, &session.capabilities().await?);
+        }
         let selected = match session.examine(&sync.imap_name).await {
             Ok(selected) if selected.uid_validity == sync.uid_validity => selected,
             Ok(_) | Err(SessionError::Refused) => return Ok(None),
@@ -154,8 +165,9 @@ impl FolderSync {
     }
 
     /// The new mail of a folder that is done, on a session with the
-    /// folder selected: the UIDs `from` up to and including `through`.
-    /// `None` when nothing lies in between or the folder is no store.
+    /// folder selected: the UIDs `from` up to and including `through`,
+    /// the Gmail items asked when `gmail` holds for the session. `None`
+    /// when nothing lies in between or the folder is no store.
     ///
     /// # Errors
     ///
@@ -164,11 +176,13 @@ impl FolderSync {
         session: &mut S,
         folder: &MailboxRow,
         (from, through): (u32, u32),
+        gmail: bool,
     ) -> Result<Option<Self>, SyncError> {
         let from = from.max(1);
         let Some(mut sync) = Self::of(folder, Walk::Up).filter(|_| from <= through) else {
             return Ok(None);
         };
+        sync.gmail = gmail;
         sync.top = through;
         sync.remaining = if through - from < REFRESH_GAP {
             (from..=through).rev().collect()
@@ -205,6 +219,7 @@ impl FolderSync {
             imap_name: facts.imap_name.clone(),
             uid_validity,
             walk,
+            gmail: false,
             remaining: Vec::new(),
             narrowed: Vec::new(),
             budget: NARROWING_BUDGET,
@@ -257,7 +272,11 @@ impl FolderSync {
         let Some(range) = slice.range() else {
             return Ok(Step::More);
         };
-        match session.uid_fetch(range, slice.structure).await {
+        let items = FetchItems {
+            structure: slice.structure,
+            gmail: self.gmail,
+        };
+        match session.uid_fetch(range, items).await {
             Ok(messages) => {
                 let count = u32::try_from(messages.len()).unwrap_or(u32::MAX);
                 self.answered = self.answered.saturating_add(count);

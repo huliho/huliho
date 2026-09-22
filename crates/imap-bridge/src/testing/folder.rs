@@ -20,6 +20,9 @@ pub struct Folder {
     /// STATUS answers NO for this folder and a LIST-STATUS answer leaves
     /// its line out, while LIST shows it selectable.
     pub refuses_status: bool,
+    /// The label the folder shows on a Gmail account; its STATUS counts
+    /// then follow the messages of All Mail that carry it.
+    pub label: Option<String>,
     pub messages: u32,
     pub unseen: u32,
     pub uid_next: u32,
@@ -40,6 +43,7 @@ impl Folder {
             special_use: None,
             subscribed: true,
             refuses_status: false,
+            label: None,
             messages: 0,
             unseen: 0,
             uid_next: 1,
@@ -54,6 +58,16 @@ impl Folder {
     pub fn special(name: &str, attribute: &'static str) -> Self {
         Self {
             special_use: Some(attribute),
+            ..Self::new(name)
+        }
+    }
+
+    /// A label folder of a Gmail account: no mail of its own, the counts
+    /// from the messages of All Mail under the label.
+    #[must_use]
+    pub fn labeled(name: &str, label: &str) -> Self {
+        Self {
+            label: Some(label.to_owned()),
             ..Self::new(name)
         }
     }

@@ -57,6 +57,7 @@ fn facts(uid: u32, message_id: Option<&str>) -> EmailFacts {
         received_at: 1_000,
         sent_at: Some(900),
         has_attachment: false,
+        gmail: None,
         personal: Personal {
             subject: Some(format!("Message {uid}")),
             message_id: message_id.map(|id| vec![id.to_owned()]),

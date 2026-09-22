@@ -39,6 +39,27 @@ pub struct UidRange {
     pub high: u32,
 }
 
+/// The items of one header fetch beyond the fixed ones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FetchItems {
+    /// BODYSTRUCTURE.
+    pub structure: bool,
+    /// X-GM-LABELS, X-GM-MSGID and X-GM-THRID, which a Gmail account
+    /// carries.
+    pub gmail: bool,
+}
+
+/// The three items of one message on a Gmail account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GmailItems {
+    /// X-GM-LABELS as the server spells them.
+    pub labels: Vec<String>,
+    /// X-GM-MSGID.
+    pub msgid: u64,
+    /// X-GM-THRID.
+    pub thrid: u64,
+}
+
 /// One message as a UID FETCH answered it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FetchedMessage {
@@ -54,6 +75,9 @@ pub struct FetchedMessage {
     /// BODYSTRUCTURE; `None` when it was not asked for, did not arrive
     /// or holds more parts than the bridge keeps.
     pub structure: Option<BodyPart>,
+    /// The Gmail items; `None` when they were not asked for or the line
+    /// lacks one of the three.
+    pub gmail: Option<GmailItems>,
 }
 
 /// What the attachment test and the choice of a preview part need of a
@@ -107,6 +131,8 @@ pub enum FlagFetch {
 pub struct Flagged {
     pub uid: u32,
     pub flags: Vec<String>,
+    /// X-GM-LABELS where they were asked for and the line carried them.
+    pub labels: Option<Vec<String>>,
 }
 
 /// One text part of several messages, asked for a preview.

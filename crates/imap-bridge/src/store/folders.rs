@@ -76,8 +76,10 @@ impl Leaving {
 
 /// Destroys the leaving rows with their memberships under the write's
 /// sequence. A thread is destroyed with its hashes when its last email
-/// leaves and updated otherwise. A row the same write logged folds: a
-/// thread it created stays created and an email it updated is destroyed.
+/// leaves and updated otherwise; a mailbox the rows were members of
+/// beyond the folder reads as updated, since its counts moved. A row
+/// the same write logged folds: a thread it created stays created and
+/// an email it updated is destroyed.
 pub(super) fn leave(
     transaction: &Transaction<'_>,
     write: &FolderWrite<'_>,
@@ -89,6 +91,15 @@ pub(super) fn leave(
         write.folder,
         leaving.below()
     ];
+    transaction.execute(
+        "INSERT INTO bridge_changes (account_key, sequence, type, id, kind)
+         SELECT DISTINCT m.account_key, ?2, 'Mailbox', m.mailbox_id, 'updated'
+         FROM bridge_memberships m
+         JOIN bridge_emails e ON e.account_key = m.account_key AND e.id = m.email_id
+         WHERE m.account_key = ?1 AND e.folder_id = ?3 AND e.uid < ?4 AND m.mailbox_id <> ?3
+         ON CONFLICT (account_key, sequence, type, id) DO NOTHING",
+        scope,
+    )?;
     transaction.execute(
         "INSERT INTO bridge_changes (account_key, sequence, type, id, kind)
          SELECT e.account_key, ?2, 'Thread', e.thread_id,
@@ -133,12 +144,26 @@ pub(super) fn leave(
     Ok(())
 }
 
-/// The folder vanished: its rows leave and its progress with them.
+/// The folder vanished: its rows leave and its progress with them. A
+/// label mailbox holds rows of another folder as members; they lose the
+/// membership and read as updated.
 pub(super) fn vanish(
     transaction: &Transaction<'_>,
     write: &FolderWrite<'_>,
 ) -> Result<(), StoreError> {
     leave(transaction, write, Leaving::All)?;
+    let scope = params![write.key.as_str(), write.sequence, write.folder];
+    transaction.execute(
+        "INSERT INTO bridge_changes (account_key, sequence, type, id, kind)
+         SELECT account_key, ?2, 'Email', email_id, 'updated' FROM bridge_memberships
+         WHERE account_key = ?1 AND mailbox_id = ?3
+         ON CONFLICT (account_key, sequence, type, id) DO NOTHING",
+        scope,
+    )?;
+    transaction.execute(
+        "DELETE FROM bridge_memberships WHERE account_key = ?1 AND mailbox_id = ?2",
+        params![write.key.as_str(), write.folder],
+    )?;
     forget_progress(transaction, write)
 }
 

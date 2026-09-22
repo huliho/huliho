@@ -27,9 +27,9 @@ use tokio_rustls::rustls::pki_types::InvalidDnsNameError;
 pub use guard::{MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
 pub use imap::ImapSession;
 pub use message::{
-    BodyPart, FetchedMessage, FlagFetch, Flagged, MAX_FETCH_MESSAGES, MAX_FLAGGED,
-    MAX_HEADER_BYTES, MAX_PREVIEW_TEXT_BYTES, MAX_PREVIEWS, MESSAGE_LIMIT, PREVIEW_HEADER_BYTES,
-    PreviewAsk, PreviewBytes, Selected, UidRange,
+    BodyPart, FetchItems, FetchedMessage, FlagFetch, Flagged, GmailItems, MAX_FETCH_MESSAGES,
+    MAX_FLAGGED, MAX_HEADER_BYTES, MAX_PREVIEW_TEXT_BYTES, MAX_PREVIEWS, MESSAGE_LIMIT,
+    PREVIEW_HEADER_BYTES, PreviewAsk, PreviewBytes, Selected, UidRange,
 };
 
 /// One connect attempt or one step of a command gets this long: the
@@ -295,8 +295,9 @@ pub trait Session: Sized + Send {
     fn uid_list(&mut self) -> impl Future<Output = Result<Vec<u32>, SessionError>> + Send;
 
     /// `UID FETCH` of the header items for a range of the selected
-    /// mailbox, with BODYSTRUCTURE when `structure` is set; the messages
-    /// by UID. Lines for other UIDs and flag updates are skipped.
+    /// mailbox, with BODYSTRUCTURE and the Gmail items as `items` asks;
+    /// the messages by UID. Lines for other UIDs and flag updates are
+    /// skipped.
     ///
     /// # Errors
     ///
@@ -309,12 +310,13 @@ pub trait Session: Sized + Send {
     fn uid_fetch(
         &mut self,
         range: UidRange,
-        structure: bool,
+        items: FetchItems,
     ) -> impl Future<Output = Result<Vec<FetchedMessage>, SessionError>> + Send;
 
-    /// `UID FETCH` of the flags alone: what changed since a
-    /// mod-sequence, which needs CONDSTORE (RFC 7162 section 3.1.4.1),
-    /// or every message of a range. The messages by UID.
+    /// `UID FETCH` of the flags alone, X-GM-LABELS next to them when
+    /// `labels` is set: what changed since a mod-sequence (CONDSTORE,
+    /// RFC 7162 section 3.1.4.1) or every message of a range. The
+    /// messages by UID.
     ///
     /// # Errors
     ///
@@ -322,6 +324,7 @@ pub trait Session: Sized + Send {
     fn uid_flags(
         &mut self,
         fetch: FlagFetch,
+        labels: bool,
     ) -> impl Future<Output = Result<Vec<Flagged>, SessionError>> + Send;
 
     /// `UID FETCH` of the start of one text part for several messages,
