@@ -12,10 +12,12 @@ use std::sync::Arc;
 
 use thiserror::Error;
 
+use crate::gmail;
 use crate::session::{
     Capabilities, ListEntry, ListReturn, Session, SessionError, StatusEntry, StatusItems,
 };
-use crate::store::{AccountKey, MailboxFacts, Store, StoreError};
+use crate::store::{MailboxFacts, StoreError};
+use crate::sync::Cache;
 
 pub use mapping::{ROLES, Subscriptions, map};
 
@@ -40,12 +42,9 @@ pub enum SyncError {
 /// that fails and `Task` when the blocking task that writes the store
 /// ends early. A STATUS that one mailbox answers with NO is no failure:
 /// that mailbox goes without counts.
-pub async fn sync<S: Session>(
-    session: &mut S,
-    store: Arc<Store>,
-    key: AccountKey,
-) -> Result<u64, SyncError> {
-    let found = observe(session).await?;
+pub async fn sync<S: Session>(session: &mut S, cache: &Cache) -> Result<u64, SyncError> {
+    let found = observe(session, cache.gmail).await?;
+    let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
     tokio::task::spawn_blocking(move || store.apply_mailboxes(&key, &found))
         .await
         .map_err(|_join| SyncError::Task)?
@@ -54,11 +53,14 @@ pub async fn sync<S: Session>(
 
 /// The listing in the form the capabilities allow, then STATUS per
 /// selectable mailbox where the listing did not carry it, mapped to
-/// facts.
+/// facts. `gmail` is the host's word on the account, which holds once
+/// the server confirms it.
 pub(crate) async fn observe<S: Session>(
     session: &mut S,
+    gmail: bool,
 ) -> Result<Vec<MailboxFacts>, SessionError> {
     let capabilities = session.capabilities().await?;
+    let gmail = gmail::confirmed(gmail, &capabilities);
     let options = list_return(&capabilities);
     let mut listing = session.list(options).await?;
     listing.entries = distinct(listing.entries);
@@ -75,7 +77,12 @@ pub(crate) async fn observe<S: Session>(
     } else {
         Subscriptions::Lsub(session.lsub().await?.into_iter().collect())
     };
-    Ok(map(&listing.entries, &listing.statuses, &subscriptions))
+    Ok(map(
+        &listing.entries,
+        &listing.statuses,
+        &subscriptions,
+        gmail,
+    ))
 }
 
 /// STATUS for every selectable entry. A mailbox that answers NO goes

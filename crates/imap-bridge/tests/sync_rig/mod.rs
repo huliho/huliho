@@ -53,7 +53,8 @@ impl Rig {
         rig
     }
 
-    /// The server over the model with an empty cache.
+    /// The server over the model with an empty cache, as a folder
+    /// account; a test that needs a Gmail account sets `cache.gmail`.
     pub async fn over(mailboxes: Mailboxes) -> Self {
         let fake = FakeImap::start(Script {
             mailboxes,
@@ -67,6 +68,7 @@ impl Rig {
                 store: Arc::new(Store::in_memory().unwrap()),
                 sealer: Arc::new(TestSealer::default()),
                 key: AccountKey::new(ACCOUNT),
+                gmail: false,
             },
             fake,
             link: Link::with_interval(connector, Duration::ZERO),
@@ -86,8 +88,7 @@ impl Rig {
     /// One mailbox pass on a session of its own.
     pub async fn pass(&self) -> Result<u64, SyncError> {
         let mut session = self.session().await;
-        let store = Arc::clone(&self.cache.store);
-        mailboxes::sync(&mut session, store, self.cache.key.clone()).await
+        mailboxes::sync(&mut session, &self.cache).await
     }
 
     /// The row of the folder with that wire name.

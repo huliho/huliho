@@ -101,6 +101,7 @@ fn facts(letters: &[Letter], index: usize) -> EmailFacts {
         received_at: 1_000,
         sent_at: None,
         has_attachment: false,
+        gmail: None,
         personal: Personal {
             message_id: letter.has_id.then(|| vec![own_id(index)]),
             references: (!references.is_empty()).then_some(references),

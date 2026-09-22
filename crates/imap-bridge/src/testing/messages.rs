@@ -10,7 +10,10 @@ use std::fmt::Write as _;
 
 use super::fetch;
 use super::folder::Folder;
-use super::mailboxes::{Extension, Mailboxes, unquote};
+use super::mailboxes::{Mailboxes, Refusal, unquote};
+
+/// Where the scripted Gmail ids start, so no UID reads as one.
+const GMAIL_ID_BASE: u64 = 1_000_000_000_000;
 
 /// One message a folder holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +35,13 @@ pub struct Message {
     pub transfer_encoding: Option<String>,
     /// The mod-sequence of the message (RFC 7162 section 3.1.2).
     pub modseq: u64,
+    /// X-GM-LABELS as the wire spells them: an atom for a system label,
+    /// a name for a user label.
+    pub labels: Vec<String>,
+    /// X-GM-MSGID.
+    pub msgid: u64,
+    /// X-GM-THRID; a message is its own thread unless a test says so.
+    pub thrid: u64,
 }
 
 /// A text/plain body.
@@ -64,6 +74,9 @@ impl Message {
             content_type: "text/plain; charset=utf-8".to_owned(),
             transfer_encoding: None,
             modseq: 1,
+            labels: vec!["\\Inbox".to_owned()],
+            msgid: GMAIL_ID_BASE + u64::from(uid),
+            thrid: GMAIL_ID_BASE + u64::from(uid),
         }
     }
 
@@ -74,6 +87,21 @@ impl Message {
             flags: flags.iter().map(|flag| (*flag).to_owned()).collect(),
             ..self
         }
+    }
+
+    /// The same message under these labels.
+    #[must_use]
+    pub fn labeled(self, labels: &[&str]) -> Self {
+        Self {
+            labels: labels.iter().map(|label| (*label).to_owned()).collect(),
+            ..self
+        }
+    }
+
+    /// The same message in the thread of that id.
+    #[must_use]
+    pub fn in_thread(self, thrid: u64) -> Self {
+        Self { thrid, ..self }
     }
 
     /// The same message with a PDF attached; its text is part 1.
@@ -162,6 +190,9 @@ pub struct Behavior {
     pub expunges: usize,
     /// EXAMINE answers without its EXISTS line.
     pub no_exists: bool,
+    /// The three Gmail items on every header line and the labels on
+    /// every flag line, asked for or not.
+    pub gmail_items: bool,
 }
 
 /// What one connection remembers between commands.
@@ -196,9 +227,15 @@ impl Conversation {
                 return None;
             }
             self.fetches += 1;
-            let condstore = mailboxes.has(Extension::Condstore);
-            self.folder(mailboxes)
-                .and_then(|folder| fetch::answer(&folder, rest, behavior, condstore))
+            let answered = self
+                .folder(mailboxes)
+                .ok_or(Refusal::No)
+                .and_then(|folder| fetch::answer(&folder, rest, mailboxes));
+            match answered {
+                Ok(lines) => Some(lines),
+                Err(Refusal::Bad) => return Some(format!("{tag} BAD not offered\r\n")),
+                Err(Refusal::No) => None,
+            }
         } else {
             None
         };
@@ -221,7 +258,7 @@ impl Conversation {
         } else {
             format!("* {} EXISTS\r\n", folder.mail.len())
         };
-        let modseq = if mailboxes.has(Extension::Condstore) {
+        let modseq = if mailboxes.has(super::mailboxes::Extension::Condstore) {
             format!("* OK [HIGHESTMODSEQ {}] Highest\r\n", folder.highest_modseq)
         } else {
             String::new()

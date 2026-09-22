@@ -8,6 +8,7 @@
 mod changes;
 mod emails;
 mod folders;
+mod gmail;
 mod ids;
 mod ledger;
 mod mailboxes;
@@ -28,6 +29,7 @@ use crate::seal::SealError;
 pub use changes::{CHANGES_HORIZON, Change, ChangeKind, ChangesSince, ObjectType};
 pub use emails::{Batch, EmailFacts, EmailRow, EmailSnapshot};
 pub use folders::{REMATCH_LIMIT, Standing};
+pub use gmail::GmailFacts;
 pub use ids::{AccountKey, EmailId, MailboxId, ThreadId};
 pub use mailboxes::{Counts, MailboxFacts, MailboxRow, MailboxSnapshot};
 pub use personal::{Address, Personal, PreviewPart};

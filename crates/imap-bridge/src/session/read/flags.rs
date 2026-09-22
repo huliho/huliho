@@ -3,51 +3,58 @@
 // Additional terms apply, see NOTICE.
 
 //! UID FETCH of the flags alone: what changed since a mod-sequence (RFC
-//! 7162 section 3.1.4.1) or every message of a range.
+//! 7162 section 3.1.4.1) or every message of a range, the labels of a
+//! Gmail account next to them.
 
 use std::collections::BTreeMap;
 
 use async_imap::imap_proto::{AttributeValue, Response};
 
-use super::fetch::kept_flags;
+use super::fetch::{kept_flags, kept_labels};
 use super::{Room, Selection, modseq};
 use crate::session::{FlagFetch, Flagged, MAX_FLAGGED, MESSAGE_LIMIT, SessionError};
 
-fn command(fetch: FlagFetch) -> Result<String, SessionError> {
+fn command((fetch, labels): (FlagFetch, bool)) -> Result<String, SessionError> {
+    let items = if labels {
+        "UID FLAGS X-GM-LABELS"
+    } else {
+        "UID FLAGS"
+    };
     match fetch {
         FlagFetch::ChangedSince(since) => Ok(format!(
-            "UID FETCH 1:* (UID FLAGS) (CHANGEDSINCE {})",
+            "UID FETCH 1:* ({items}) (CHANGEDSINCE {})",
             modseq(since)?.max(1)
         )),
         // IMAP reads `5:3` as `3:5`, which the caller does not mean.
         FlagFetch::Range(range) if range.low > range.high => {
             Err(SessionError::Protocol("the UID range runs backward"))
         }
-        FlagFetch::Range(range) => Ok(format!(
-            "UID FETCH {}:{} (UID FLAGS)",
-            range.low, range.high
-        )),
+        FlagFetch::Range(range) => Ok(format!("UID FETCH {}:{} ({items})", range.low, range.high)),
     }
 }
 
 /// The flags by UID, each message once with the last line the server
-/// sent for it; more than `MAX_FLAGGED` messages fail the answer. A
-/// server sends a mod-sequence of zero for none, so the command asks
-/// from one at least.
+/// sent for it; labels the command did not ask for are dropped; more
+/// than `MAX_FLAGGED` messages fail the answer. A server sends a
+/// mod-sequence of zero for none, so the command asks from one at least.
 pub(in crate::session) async fn uid_flags(
     selection: &mut Selection<'_>,
-    fetch: FlagFetch,
+    fetch: (FlagFetch, bool),
     room: Room,
 ) -> Result<Vec<Flagged>, SessionError> {
     selection.messages()?;
     let command = command(fetch)?;
+    let (_, labels) = fetch;
     let mut flagged = BTreeMap::new();
     let visit = |response: &Response<'_>| {
         if let Response::Fetch(_, attributes) = response
-            && let Some(found) = line(attributes)?
+            && let Some(mut found) = line(attributes)?
         {
             if flagged.len() == MAX_FLAGGED && !flagged.contains_key(&found.uid) {
                 return Err(SessionError::Protocol(MESSAGE_LIMIT));
+            }
+            if !labels {
+                found.labels = None;
             }
             flagged.insert(found.uid, found);
         }
@@ -61,18 +68,21 @@ pub(in crate::session) async fn uid_flags(
 
 /// One FETCH line; `None` without a UID or without flags.
 fn line(attributes: &[AttributeValue<'_>]) -> Result<Option<Flagged>, SessionError> {
-    let (mut uid, mut flags) = (None, None);
+    let (mut uid, mut flags, mut labels) = (None, None, None);
     for attribute in attributes {
         match attribute {
             AttributeValue::Uid(value) => uid = Some(*value),
             AttributeValue::Flags(found) => flags = Some(kept_flags(found)),
+            AttributeValue::GmailLabels(found) => labels = Some(kept_labels(found)),
             AttributeValue::ModSeq(value) => {
                 modseq(*value)?;
             }
             _ => {}
         }
     }
-    Ok(uid.zip(flags).map(|(uid, flags)| Flagged { uid, flags }))
+    Ok(uid
+        .zip(flags)
+        .map(|(uid, flags)| Flagged { uid, flags, labels }))
 }
 
 #[cfg(test)]
@@ -90,21 +100,39 @@ mod tests {
     #[test]
     fn the_two_commands_ask_for_the_flags_alone_rfc7162_3_1_4_1() {
         assert_eq!(
-            command(FlagFetch::ChangedSince(41)).unwrap(),
+            command((FlagFetch::ChangedSince(41), false)).unwrap(),
             "UID FETCH 1:* (UID FLAGS) (CHANGEDSINCE 41)"
         );
         assert_eq!(
-            command(FlagFetch::ChangedSince(0)).unwrap(),
+            command((FlagFetch::ChangedSince(0), false)).unwrap(),
             "UID FETCH 1:* (UID FLAGS) (CHANGEDSINCE 1)"
         );
         let range = UidRange { low: 3, high: 9 };
         assert_eq!(
-            command(FlagFetch::Range(range)).unwrap(),
+            command((FlagFetch::Range(range), false)).unwrap(),
             "UID FETCH 3:9 (UID FLAGS)"
         );
         let backward = UidRange { low: 9, high: 3 };
-        assert!(command(FlagFetch::Range(backward)).is_err());
-        assert!(command(FlagFetch::ChangedSince(u64::MAX)).is_err());
+        assert!(command((FlagFetch::Range(backward), false)).is_err());
+        assert!(command((FlagFetch::ChangedSince(u64::MAX), false)).is_err());
+    }
+
+    #[test]
+    fn on_gmail_the_labels_ride_next_to_the_flags() {
+        assert_eq!(
+            command((FlagFetch::ChangedSince(41), true)).unwrap(),
+            "UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 41)"
+        );
+        let range = UidRange { low: 3, high: 9 };
+        assert_eq!(
+            command((FlagFetch::Range(range), true)).unwrap(),
+            "UID FETCH 3:9 (UID FLAGS X-GM-LABELS)"
+        );
+        let found = read("* 2 FETCH (UID 7 FLAGS (\\Seen) X-GM-LABELS (\\Inbox \"Work\"))\r\n");
+        assert_eq!(
+            found.unwrap().unwrap().labels,
+            Some(vec!["\\Inbox".to_owned(), "Work".to_owned()])
+        );
     }
 
     #[test]
@@ -114,7 +142,8 @@ mod tests {
             found.unwrap(),
             Some(Flagged {
                 uid: 7,
-                flags: vec!["\\Seen".to_owned(), "$Junk".to_owned()]
+                flags: vec!["\\Seen".to_owned(), "$Junk".to_owned()],
+                labels: None,
             })
         );
         assert_eq!(read("* 2 FETCH (FLAGS (\\Seen))\r\n").unwrap(), None);

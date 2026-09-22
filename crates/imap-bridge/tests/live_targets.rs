@@ -9,8 +9,6 @@
 
 mod live_rig;
 
-use std::sync::Arc;
-
 use huliho_imap_bridge::mailboxes::sync;
 use huliho_imap_bridge::runtime::Link;
 use huliho_imap_bridge::session::{STEP_TIMEOUT, Session, SessionError, TlsMode};
@@ -123,12 +121,7 @@ async fn dovecot_lists_its_mailboxes_and_a_created_one_travels_through_changes()
     let cache = cache("live");
     let link = link();
     let mut session = bridge_session().await;
-    assert_eq!(
-        sync(&mut session, Arc::clone(&cache.store), cache.key.clone())
-            .await
-            .unwrap(),
-        1
-    );
+    assert_eq!(sync(&mut session, &cache).await.unwrap(), 1);
     let list = mailbox_list(&cache, &link).await;
     assert!(
         list.iter().any(|mailbox| mailbox["role"] == "inbox"),
@@ -139,12 +132,7 @@ async fn dovecot_lists_its_mailboxes_and_a_created_one_travels_through_changes()
         "{list:?}"
     );
     within(editor.create(&wire)).await.unwrap();
-    assert_eq!(
-        sync(&mut session, Arc::clone(&cache.store), cache.key.clone())
-            .await
-            .unwrap(),
-        2
-    );
+    assert_eq!(sync(&mut session, &cache).await.unwrap(), 2);
     let created = changes_since(&cache, &link, "1").await;
     assert_eq!(created["created"].as_array().unwrap().len(), 1, "{created}");
     assert_eq!(created["destroyed"], json!([]));
@@ -158,12 +146,7 @@ async fn dovecot_lists_its_mailboxes_and_a_created_one_travels_through_changes()
     assert_eq!(mailbox["name"], CREATED_NAME);
     assert_eq!(mailbox["myRights"]["mayReadItems"], true);
     within(editor.delete(&wire)).await.unwrap();
-    assert_eq!(
-        sync(&mut session, Arc::clone(&cache.store), cache.key.clone())
-            .await
-            .unwrap(),
-        3
-    );
+    assert_eq!(sync(&mut session, &cache).await.unwrap(), 3);
     let gone = changes_since(&cache, &link, "2").await;
     assert_eq!(gone["destroyed"], created["created"]);
     assert_eq!(gone["created"], json!([]));

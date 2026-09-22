@@ -13,7 +13,6 @@
 mod live_rig;
 
 use std::fmt::Write as _;
-use std::sync::Arc;
 
 use huliho_imap_bridge::mailboxes::{SyncError, sync};
 use huliho_imap_bridge::runtime::Link;
@@ -137,9 +136,7 @@ async fn dovecot_syncs_its_inbox_in_batches_with_progress_in_synced_emails() {
     let cache = cache("live-sync");
     let link = link();
     let mut session = bridge_session().await;
-    sync(&mut session, Arc::clone(&cache.store), cache.key.clone())
-        .await
-        .unwrap();
+    sync(&mut session, &cache).await.unwrap();
     let rows = cache.store.mailbox_snapshot(&cache.key).unwrap().rows;
     let inbox = rows
         .iter()
@@ -310,9 +307,7 @@ async fn dovecot_changes_from_a_second_connection_reach_the_cache_through_a_refr
     let cache = cache("live-refresh");
     let link = link();
     let mut session = bridge_session().await;
-    sync(&mut session, Arc::clone(&cache.store), cache.key.clone())
-        .await
-        .unwrap();
+    sync(&mut session, &cache).await.unwrap();
     let rows = cache.store.mailbox_snapshot(&cache.key).unwrap().rows;
     let folder = rows
         .iter()

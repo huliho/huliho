@@ -3,10 +3,12 @@
 // Additional terms apply, see NOTICE.
 
 //! From LIST and STATUS lines to mailbox facts: roles, names, the
-//! hierarchy and the sort order, without a connection.
+//! hierarchy and the sort order, without a connection. On Gmail three
+//! folders are stores and every other one shows a label.
 
 use std::collections::{HashMap, HashSet};
 
+use crate::gmail;
 use crate::session::{ListEntry, StatusEntry};
 use crate::store::MailboxFacts;
 use crate::utf7;
@@ -80,12 +82,15 @@ pub enum Subscriptions {
 
 /// Turns a listing into mailbox facts: one role per mailbox and one
 /// mailbox per role, the hierarchy from the delimiter, the counts from
-/// STATUS. The answer keeps the order of the listing.
+/// STATUS. On a Gmail account only the three stores keep messages of
+/// their own; every other selectable entry shows a label. The answer
+/// keeps the order of the listing.
 #[must_use]
 pub fn map(
     entries: &[ListEntry],
     statuses: &[StatusEntry],
     subscriptions: &Subscriptions,
+    gmail: bool,
 ) -> Vec<MailboxFacts> {
     let context = Context {
         statuses: statuses
@@ -93,8 +98,9 @@ pub fn map(
             .map(|status| (status.mailbox.as_str(), status))
             .collect(),
         names: entries.iter().map(|entry| entry.name.as_str()).collect(),
-        roles: assign_roles(entries),
+        roles: assign_roles(entries, gmail),
         subscriptions,
+        gmail,
     };
     entries.iter().map(|entry| facts(entry, &context)).collect()
 }
@@ -104,10 +110,13 @@ struct Context<'a> {
     names: HashSet<&'a str>,
     roles: HashMap<&'a str, &'static str>,
     subscriptions: &'a Subscriptions,
+    gmail: bool,
 }
 
 fn facts(entry: &ListEntry, context: &Context<'_>) -> MailboxFacts {
     let selectable = is_selectable(&entry.attributes);
+    let store = selectable && (!context.gmail || gmail::is_store(&entry.attributes));
+    let gmail_label = (selectable && !store).then(|| gmail::label_of(entry));
     let status = context.statuses.get(entry.name.as_str());
     let subscribed = match context.subscriptions {
         Subscriptions::Attributes => entry
@@ -128,8 +137,8 @@ fn facts(entry: &ListEntry, context: &Context<'_>) -> MailboxFacts {
         sort_order: sort_order(role),
         subscribed,
         selectable,
-        store: selectable,
-        gmail_label: None,
+        store,
+        gmail_label,
         uid_validity: status.and_then(|status| status.uid_validity),
         uid_next: status.and_then(|status| status.uid_next),
         highest_modseq: status.and_then(|status| status.highest_modseq),
@@ -176,8 +185,11 @@ struct Claim<'a> {
 }
 
 /// One role per mailbox and one mailbox per role.
-fn assign_roles(entries: &[ListEntry]) -> HashMap<&str, &'static str> {
-    let mut claims: Vec<Claim<'_>> = entries.iter().filter_map(claim).collect();
+fn assign_roles(entries: &[ListEntry], gmail: bool) -> HashMap<&str, &'static str> {
+    let mut claims: Vec<Claim<'_>> = entries
+        .iter()
+        .filter_map(|entry| claim(entry, gmail))
+        .collect();
     claims.sort();
     let mut taken = HashSet::new();
     let mut assigned = HashMap::new();
@@ -191,8 +203,9 @@ fn assign_roles(entries: &[ListEntry]) -> HashMap<&str, &'static str> {
 
 /// The role an entry claims: INBOX by its full name, then the
 /// attributes in their fixed order, then the name table on the leaf. A
-/// mailbox nothing can select claims nothing.
-fn claim(entry: &ListEntry) -> Option<Claim<'_>> {
+/// mailbox nothing can select claims nothing; on Gmail the `\All`
+/// folder claims the archive.
+fn claim(entry: &ListEntry, gmail: bool) -> Option<Claim<'_>> {
     if !is_selectable(&entry.attributes) {
         return None;
     }
@@ -204,7 +217,7 @@ fn claim(entry: &ListEntry) -> Option<Claim<'_>> {
     let (role, by_name) = if entry.name.eq_ignore_ascii_case(INBOX) {
         ("inbox", false)
     } else if let Some((_, role)) = by_attribute {
-        (*role, false)
+        (if gmail { gmail::role(role) } else { role }, false)
     } else {
         let (_, role) = NAMED_ROLES
             .iter()
@@ -263,9 +276,34 @@ mod tests {
                 attributes: vec!["\\SENT".to_owned()],
             },
         ];
-        let mut claims: Vec<Claim<'_>> = entries.iter().filter_map(claim).collect();
+        let mut claims: Vec<Claim<'_>> = entries
+            .iter()
+            .filter_map(|entry| claim(entry, false))
+            .collect();
         claims.sort();
         let names: Vec<&str> = claims.iter().map(|claim| claim.name).collect();
         assert_eq!(names, ["Outbox", "Sent Messages", "INBOX/Sent"]);
+    }
+
+    #[test]
+    fn on_gmail_all_mail_takes_the_archive_role_ahead_of_a_label_of_that_name() {
+        let entries = [
+            ListEntry {
+                name: "Archive".to_owned(),
+                delimiter: Some('/'),
+                attributes: Vec::new(),
+            },
+            ListEntry {
+                name: "[Gmail]/All Mail".to_owned(),
+                delimiter: Some('/'),
+                attributes: vec!["\\ALL".to_owned()],
+            },
+        ];
+        let gmail = assign_roles(&entries, true);
+        assert_eq!(gmail.get("[Gmail]/All Mail"), Some(&"archive"));
+        assert_eq!(gmail.get("Archive"), None);
+        let folders = assign_roles(&entries, false);
+        assert_eq!(folders.get("[Gmail]/All Mail"), Some(&"all"));
+        assert_eq!(folders.get("Archive"), Some(&"archive"));
     }
 }

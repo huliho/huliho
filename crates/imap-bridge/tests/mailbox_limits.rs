@@ -15,7 +15,7 @@ use huliho_imap_bridge::session::{Session, SessionError, StatusItems};
 use huliho_imap_bridge::store::Store;
 use huliho_imap_bridge::testing::imap::FakeImap;
 use huliho_imap_bridge::testing::{Extension, Folder, Mailboxes};
-use mailboxes_rig::{commands, key, pass, script, signed_in};
+use mailboxes_rig::{cache, commands, key, pass, script, signed_in};
 
 /// The mailboxes one account may list.
 const MAILBOX_LIMIT: usize = 10_000;
@@ -39,9 +39,7 @@ async fn a_listing_past_the_mailbox_limit_fails_the_pass_and_writes_nothing() {
     let fake = FakeImap::start(script(mailboxes.clone())).await;
     let store = Arc::new(Store::in_memory().unwrap());
     let mut session = signed_in(&fake).await;
-    let error = sync(&mut session, Arc::clone(&store), key())
-        .await
-        .unwrap_err();
+    let error = sync(&mut session, &cache(&store)).await.unwrap_err();
     assert!(
         matches!(
             error,

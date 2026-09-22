@@ -12,8 +12,11 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use super::folder::Folder;
 use super::messages::{Behavior, Message};
 
+mod gmail;
 #[cfg(test)]
 mod tests;
+
+pub use gmail::{ALL_MAIL, SPAM, TRASH};
 
 /// An extension the scripted server advertises and honors; a command
 /// that needs one it does not advertise gets a BAD.
@@ -23,6 +26,8 @@ pub enum Extension {
     ListStatus,
     SpecialUse,
     Condstore,
+    /// The three Gmail FETCH items.
+    Gmail,
 }
 
 impl Extension {
@@ -32,6 +37,7 @@ impl Extension {
             Self::ListStatus => "LIST-STATUS",
             Self::SpecialUse => "SPECIAL-USE",
             Self::Condstore => "CONDSTORE",
+            Self::Gmail => "X-GM-EXT-1",
         }
     }
 
@@ -66,8 +72,8 @@ pub struct Mailboxes {
 }
 
 /// Why a command was refused: BAD for a form outside the advertised
-/// extensions, NO for a mailbox STATUS has no answer for.
-enum Refusal {
+/// extensions, NO for a mailbox the command has no answer for.
+pub(super) enum Refusal {
     Bad,
     No,
 }
@@ -297,13 +303,17 @@ impl Mailboxes {
     }
 
     /// The STATUS line for the items asked, in the order asked;
-    /// HIGHESTMODSEQ needs CONDSTORE (RFC 7162 section 3.1.7).
+    /// HIGHESTMODSEQ needs CONDSTORE (RFC 7162 section 3.1.7). A label
+    /// folder counts the messages of All Mail under its label.
     fn status_line(&self, folder: &Folder, items: &str) -> Result<String, Refusal> {
+        let (messages, unseen) = self
+            .label_counts(folder)
+            .unwrap_or((folder.messages, folder.unseen));
         let mut pairs = Vec::new();
         for item in items.split_whitespace() {
             let value = match item {
-                "MESSAGES" => u64::from(folder.messages),
-                "UNSEEN" => u64::from(folder.unseen),
+                "MESSAGES" => u64::from(messages),
+                "UNSEEN" => u64::from(unseen),
                 "UIDNEXT" => u64::from(folder.uid_next),
                 "UIDVALIDITY" => u64::from(folder.uid_validity),
                 "HIGHESTMODSEQ" if self.has(Extension::Condstore) => folder.highest_modseq,
@@ -321,7 +331,7 @@ impl Mailboxes {
 
 /// A quoted string with `\` and `"` escaped (RFC 9051 section 4.3); a
 /// name holding a line break travels as a literal.
-fn quote(name: &str) -> String {
+pub(super) fn quote(name: &str) -> String {
     if name.contains(['\r', '\n']) {
         return format!("{{{}}}\r\n{name}", name.len());
     }

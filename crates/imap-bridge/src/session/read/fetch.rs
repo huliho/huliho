@@ -14,11 +14,11 @@ use time::OffsetDateTime;
 use time::format_description::FormatItem;
 use time::macros::format_description;
 
-use super::{Room, Selection, modseq};
+use super::{Room, Selection, modseq, wire_name};
 use crate::dates::utc_date;
 use crate::session::{
-    BodyPart, FetchedMessage, MAX_FETCH_MESSAGES, MAX_HEADER_BYTES, MESSAGE_LIMIT, SessionError,
-    UidRange,
+    BodyPart, FetchItems, FetchedMessage, GmailItems, MAX_FETCH_MESSAGES, MAX_HEADER_BYTES,
+    MESSAGE_LIMIT, SessionError, UidRange,
 };
 
 /// The header fields the Email object is built from (RFC 8621 section
@@ -26,9 +26,15 @@ use crate::session::{
 const HEADER_FIELDS: &str =
     "FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES";
 
+/// The three items a Gmail account carries.
+const GMAIL_ITEMS: &str = "X-GM-LABELS X-GM-MSGID X-GM-THRID";
+
 /// The flags kept per message; a server allows a few dozen keywords per
 /// mailbox.
 const MAX_FLAGS: usize = 64;
+
+/// The labels kept per message; a person makes a few dozen labels.
+const MAX_LABELS: usize = 64;
 
 /// The longest flag kept, the keyword length of RFC 8621 section 4.1.1.
 const MAX_FLAG_BYTES: usize = 255;
@@ -46,21 +52,31 @@ const INTERNAL_DATE: &[FormatItem<'static>] = format_description!(
     "[day padding:space]-[month repr:short]-[year] [hour]:[minute]:[second] [offset_hour sign:mandatory][offset_minute]"
 );
 
-fn command(range: UidRange, structure: bool) -> String {
-    let structure = if structure { " BODYSTRUCTURE" } else { "" };
+fn command(range: UidRange, items: FetchItems) -> String {
+    let structure = if items.structure {
+        " BODYSTRUCTURE"
+    } else {
+        ""
+    };
+    let gmail = if items.gmail {
+        format!(" {GMAIL_ITEMS}")
+    } else {
+        String::new()
+    };
     format!(
-        "UID FETCH {}:{} (UID FLAGS INTERNALDATE RFC822.SIZE{structure} BODY.PEEK[HEADER.FIELDS ({HEADER_FIELDS})])",
+        "UID FETCH {}:{} (UID FLAGS INTERNALDATE RFC822.SIZE{structure}{gmail} BODY.PEEK[HEADER.FIELDS ({HEADER_FIELDS})])",
         range.low, range.high
     )
 }
 
 /// The messages of the range by UID, each once. A FETCH line without
 /// the items asked for is a flag update another client caused and is
-/// skipped; more than `MAX_FETCH_MESSAGES` messages fail the answer.
+/// skipped; Gmail items the command did not ask for are dropped; more
+/// than `MAX_FETCH_MESSAGES` messages fail the answer.
 pub(in crate::session) async fn uid_fetch(
     selection: &mut Selection<'_>,
     range: UidRange,
-    structure: bool,
+    items: FetchItems,
     room: Room,
 ) -> Result<Vec<FetchedMessage>, SessionError> {
     selection.messages()?;
@@ -72,19 +88,22 @@ pub(in crate::session) async fn uid_fetch(
     let mut messages = BTreeMap::new();
     let visit = |response: &Response<'_>| {
         if let Response::Fetch(_, attributes) = response
-            && let Some(message) = message(attributes)?
+            && let Some(mut message) = message(attributes)?
             && (range.low..=range.high).contains(&message.uid)
             && !messages.contains_key(&message.uid)
         {
             if messages.len() == MAX_FETCH_MESSAGES {
                 return Err(SessionError::Protocol(MESSAGE_LIMIT));
             }
+            if !items.gmail {
+                message.gmail = None;
+            }
             messages.insert(message.uid, message);
         }
         Ok(())
     };
     selection
-        .collect(&command(range, structure), bounds, visit)
+        .collect(&command(range, items), bounds, visit)
         .await?;
     Ok(messages.into_values().collect())
 }
@@ -97,6 +116,7 @@ pub(super) fn message(
     let (mut uid, mut received_at, mut size, mut header) = (None, None, None, None);
     let mut flags = Vec::new();
     let mut structure = None;
+    let (mut labels, mut msgid, mut thrid) = (None, None, None);
     for attribute in attributes {
         match attribute {
             AttributeValue::Uid(value) => uid = Some(*value),
@@ -109,6 +129,9 @@ pub(super) fn message(
                 data,
                 ..
             } => header = Some(cut(data.as_deref().unwrap_or_default())),
+            AttributeValue::GmailLabels(found) => labels = Some(kept_labels(found)),
+            AttributeValue::GmailMsgId(value) => msgid = Some(*value),
+            AttributeValue::GmailThrId(value) => thrid = Some(*value),
             // No value is kept yet; the bound holds for every one that arrives.
             AttributeValue::ModSeq(value) => {
                 modseq(*value)?;
@@ -127,7 +150,17 @@ pub(super) fn message(
         size,
         header,
         structure,
+        gmail: gmail_items(labels, (msgid, thrid)),
     }))
+}
+
+/// The three Gmail items, `None` unless the line carries all of them.
+fn gmail_items(labels: Option<Vec<String>>, ids: (Option<u64>, Option<u64>)) -> Option<GmailItems> {
+    Some(GmailItems {
+        labels: labels?,
+        msgid: ids.0?,
+        thrid: ids.1?,
+    })
 }
 
 fn cut(header: &[u8]) -> Vec<u8> {
@@ -141,6 +174,17 @@ pub(super) fn kept_flags<T: AsRef<str>>(flags: &[T]) -> Vec<String> {
         .filter(|flag| flag.len() <= MAX_FLAG_BYTES)
         .take(MAX_FLAGS)
         .map(str::to_owned)
+        .collect()
+}
+
+/// The labels of one line as the wire spells them, escapes folded as a
+/// LIST name's are. One that is not sendable can name no mailbox and is
+/// dropped; the first `MAX_LABELS` count.
+pub(super) fn kept_labels<T: AsRef<str>>(labels: &[T]) -> Vec<String> {
+    labels
+        .iter()
+        .filter_map(|label| wire_name(label.as_ref()))
+        .take(MAX_LABELS)
         .collect()
 }
 
@@ -261,6 +305,52 @@ mod tests {
     fn a_flag_update_another_client_caused_is_no_message() {
         assert_eq!(read("* 3 FETCH (UID 7 FLAGS (\\Seen))\r\n").unwrap(), None);
         assert_eq!(read("* 3 FETCH (FLAGS (\\Seen))\r\n").unwrap(), None);
+    }
+
+    #[test]
+    fn the_gmail_items_ride_along_whole_or_not_at_all() {
+        let items = format!(
+            "{ITEMS} X-GM-LABELS (\\Inbox \\Sent Important \"Muy Importante\" \"a\\\"b\") X-GM-MSGID 1278455344230334865 X-GM-THRID 1266894439832287888"
+        );
+        let message = read(&line(&items)).unwrap().unwrap();
+        assert_eq!(
+            message.gmail,
+            Some(GmailItems {
+                labels: ["\\Inbox", "\\Sent", "Important", "Muy Importante", "a\"b"]
+                    .map(str::to_owned)
+                    .to_vec(),
+                msgid: 1_278_455_344_230_334_865,
+                thrid: 1_266_894_439_832_287_888,
+            })
+        );
+        let half = read(&line(&format!("{ITEMS} X-GM-LABELS () X-GM-MSGID 5")))
+            .unwrap()
+            .unwrap();
+        assert_eq!(half.gmail, None);
+        assert_eq!(read(&line(ITEMS)).unwrap().unwrap().gmail, None);
+        let empty = read(&line(&format!(
+            "{ITEMS} X-GM-LABELS () X-GM-MSGID 5 X-GM-THRID 6"
+        )))
+        .unwrap()
+        .unwrap();
+        assert_eq!(empty.gmail.unwrap().labels, Vec::<String>::new());
+        let command = command(
+            UidRange { low: 1, high: 2 },
+            FetchItems {
+                structure: false,
+                gmail: true,
+            },
+        );
+        assert!(command.contains(" RFC822.SIZE X-GM-LABELS X-GM-MSGID X-GM-THRID BODY.PEEK["));
+    }
+
+    #[test]
+    fn a_label_that_cannot_name_a_mailbox_is_dropped_and_the_rest_are_cut() {
+        let mut labels: Vec<String> = (0..MAX_LABELS + 3).map(|n| format!("l{n}")).collect();
+        labels[1] = "a\nb".to_owned();
+        let kept = kept_labels(&labels);
+        assert_eq!(kept.len(), MAX_LABELS);
+        assert_eq!(kept[1], "l2");
     }
 
     #[test]

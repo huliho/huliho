@@ -63,8 +63,9 @@ pub struct MailboxSnapshot {
     pub state: u64,
     pub rows: Vec<MailboxRow>,
     pub counts: HashMap<MailboxId, Counts>,
-    /// The folders whose first sync is done; their email counts come
-    /// from the memberships.
+    /// The mailboxes whose email counts come from the memberships: a
+    /// folder whose first sync is done and, on Gmail, a label mailbox
+    /// once the All Mail store is.
     pub done: HashSet<MailboxId>,
 }
 
@@ -326,11 +327,23 @@ fn read_counts(
     Ok(counts)
 }
 
+/// The folders that are done and, once the store with the archive role
+/// is among them, every label mailbox, whose rows live in that store.
 fn read_done(connection: &Connection, key: &AccountKey) -> Result<HashSet<MailboxId>, StoreError> {
-    let mut statement = connection
-        .prepare("SELECT folder_id FROM bridge_sync WHERE account_key = ?1 AND done = 1")?;
+    let mut statement = connection.prepare(
+        "SELECT folder_id FROM bridge_sync WHERE account_key = ?1 AND done = 1
+         UNION
+         SELECT l.id FROM bridge_mailboxes l
+         WHERE l.account_key = ?1 AND l.store = 0 AND l.gmail_label IS NOT NULL
+           AND EXISTS (
+               SELECT 1 FROM bridge_mailboxes a
+               JOIN bridge_sync s ON s.account_key = a.account_key AND s.folder_id = a.id
+               WHERE a.account_key = ?1 AND a.store = 1 AND a.role = ?2 AND s.done = 1)",
+    )?;
     let done = statement
-        .query_map([key.as_str()], |row| row.get(0))?
+        .query_map(params![key.as_str(), crate::gmail::ALL_MAIL_ROLE], |row| {
+            row.get(0)
+        })?
         .collect::<Result<HashSet<_>, _>>()?;
     Ok(done)
 }

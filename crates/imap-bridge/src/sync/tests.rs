@@ -14,6 +14,7 @@ fn sync(walk: Walk, remaining: Vec<u32>) -> FolderSync {
         imap_name: "INBOX".to_owned(),
         uid_validity: 1,
         walk,
+        gmail: false,
         remaining,
         narrowed: Vec::new(),
         budget: NARROWING_BUDGET,

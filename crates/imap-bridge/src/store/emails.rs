@@ -14,6 +14,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use super::changes::{ChangeKind, ObjectType, log, next_sequence, prune, state_of};
 use super::folders::{self, FolderWrite, Leaving, Standing};
+use super::gmail::{self, GmailFacts};
 use super::ledger::Ledger;
 use super::personal::Personal;
 use super::progress::{self, Advance};
@@ -30,6 +31,9 @@ pub struct EmailFacts {
     pub received_at: i64,
     pub sent_at: Option<i64>,
     pub has_attachment: bool,
+    /// The Gmail items where the server gave them; a message without
+    /// them is stored the way a folder account stores every message.
+    pub gmail: Option<GmailFacts>,
     pub personal: Personal,
 }
 
@@ -73,7 +77,8 @@ impl Store {
     /// written. A message the folder already holds is skipped. After a
     /// renumbering a message keeps the id of the waiting row that
     /// matches it; what still waits once the folder is done is
-    /// destroyed.
+    /// destroyed. A message with its Gmail items keeps the row that
+    /// holds its id wherever that row lies.
     ///
     /// # Errors
     ///
@@ -121,6 +126,7 @@ fn write_batch(
         return Ok(None);
     }
     let mut waiting = folders::unmatched(transaction, key, batch.folder)?;
+    let labels = gmail::Labels::read(transaction, key, batch.folder)?;
     let mut ledger = Ledger::default();
     for facts in batch.emails {
         if holds(transaction, key, batch.folder, facts.uid)? {
@@ -132,6 +138,20 @@ fn write_batch(
             .as_deref()
             .and_then(<[String]>::first)
             .map(|id| sealer.keyed_hash(id.as_bytes()));
+        if let Some(items) = &facts.gmail {
+            let arrival = gmail::Arrival {
+                key,
+                folder: batch.folder,
+                facts,
+                gmail: items,
+                hash: hash.as_deref(),
+                labels: &labels,
+            };
+            if let Some((id, kind)) = arrival.write(transaction, sealer, &mut ledger)? {
+                ledger.note(ObjectType::Email, id.as_str(), kind);
+            }
+            continue;
+        }
         let identity = (hash, facts.received_at, facts.size);
         let matched = waiting.get_mut(&identity).and_then(Vec::pop);
         let (id, kind) = match matched {

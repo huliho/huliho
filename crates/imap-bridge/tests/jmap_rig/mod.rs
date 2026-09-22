@@ -35,7 +35,7 @@ pub fn key() -> AccountKey {
 pub struct Rig {
     /// The store the pass fills.
     pub store: Arc<Store>,
-    cache: Cache,
+    pub cache: Cache,
     link: Link<TestConnector>,
     fake: FakeImap,
     mailboxes: Mailboxes,
@@ -59,6 +59,7 @@ impl Rig {
                 store,
                 sealer: Arc::new(TestSealer::default()),
                 key: key(),
+                gmail: false,
             },
             link: Link::with_interval(connector, Duration::ZERO),
             fake,
@@ -75,9 +76,7 @@ impl Rig {
             .await
             .unwrap();
         session.login(USER, PASSWORD).await.unwrap();
-        let state = sync(&mut session, Arc::clone(&self.store), key())
-            .await
-            .unwrap();
+        let state = sync(&mut session, &self.cache).await.unwrap();
         session.logout().await.unwrap();
         state
     }

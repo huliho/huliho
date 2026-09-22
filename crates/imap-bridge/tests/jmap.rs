@@ -11,7 +11,7 @@ use huliho_imap_bridge::jmap::{
     CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, MAX_CALLS_IN_REQUEST, MAX_OBJECTS_IN_GET,
     MAX_SIZE_REQUEST, RequestError, Urls, session_object,
 };
-use jmap_rig::{ACCOUNT, Rig, error_type, first, key, mailbox_get};
+use jmap_rig::{ACCOUNT, Rig, error_type, first, mailbox_get};
 use serde_json::{Value, json};
 
 const ADDRESS: &str = "sanne@example.test";
@@ -40,7 +40,7 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
     let rig = Rig::start().await;
     rig.edit();
     assert_eq!(rig.pass().await, 2);
-    let bytes = session_object(&rig.store, &key(), ADDRESS, &urls()).unwrap();
+    let bytes = session_object(&rig.cache, ADDRESS, &urls()).unwrap();
     let session: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(session["state"], "2");
     assert_eq!(session["username"], ADDRESS);

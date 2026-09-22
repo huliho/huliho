@@ -13,15 +13,18 @@ use rusqlite::{OptionalExtension, Transaction, params};
 
 use super::changes::{ChangeKind, ObjectType, log, next_sequence, prune};
 use super::folders::{self, Standing};
+use super::gmail;
 use super::ledger::Ledger;
 use super::threads;
 use super::{AccountKey, EmailId, Store, StoreError, ThreadId};
 
-/// The keywords one message carries now.
+/// The keywords one message carries now, and its labels where the
+/// server gave them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlagChange {
     pub uid: u32,
     pub keywords: BTreeMap<String, bool>,
+    pub labels: Option<Vec<String>>,
 }
 
 /// The values of the server a folder's cache answers for: every UID
@@ -60,9 +63,10 @@ impl Store {
         })
     }
 
-    /// Writes the keywords that differ from the rows as one state; a UID
-    /// the folder does not hold is skipped. `None` when the folder does
-    /// not stand anymore; the state as it was when nothing differs.
+    /// Writes the keywords that differ from the rows as one state, and
+    /// the memberships where the labels say otherwise; a UID the folder
+    /// does not hold is skipped. `None` when the folder does not stand
+    /// anymore; the state as it was when nothing differs.
     ///
     /// # Errors
     ///
@@ -78,6 +82,7 @@ impl Store {
             if !folders::stands(transaction, key, standing)? {
                 return Ok(None);
             }
+            let labels = gmail::Labels::read(transaction, key, standing.folder)?;
             for change in changes {
                 let keywords = serde_json::to_string(&change.keywords)?;
                 let updated: Option<EmailId> = transaction
@@ -92,6 +97,18 @@ impl Store {
                     .optional()?;
                 if let Some(id) = updated {
                     ledger.note(ObjectType::Email, id.as_str(), ChangeKind::Updated);
+                }
+                if let Some(found) = &change.labels
+                    && let Some((id, received_at)) =
+                        gmail::row_at(transaction, key, standing.folder, change.uid)?
+                {
+                    let row = gmail::Labeled {
+                        id: &id,
+                        folder: standing.folder,
+                        labels: found,
+                        received_at,
+                    };
+                    labels.relabel(transaction, &row, &mut ledger)?;
                 }
             }
             close(transaction, key, standing, &ledger).map(Some)

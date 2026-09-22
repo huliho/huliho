@@ -199,6 +199,7 @@ mod tests {
             store: Arc::new(Store::in_memory().unwrap()),
             sealer: Arc::new(TestSealer::default()),
             key: AccountKey::new("a1"),
+            gmail: false,
         }
     }
 

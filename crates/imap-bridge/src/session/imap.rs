@@ -24,7 +24,7 @@ use tokio_rustls::rustls::pki_types::ServerName;
 use super::capability::{Tags, capabilities_of};
 use super::guard::Guarded;
 use super::{
-    Capabilities, FetchedMessage, FlagFetch, Flagged, ListReturn, Listing, PreviewAsk,
+    Capabilities, FetchItems, FetchedMessage, FlagFetch, Flagged, ListReturn, Listing, PreviewAsk,
     PreviewBytes, Selected, Session, SessionError, StatusEntry, StatusItems, Target, TlsMode,
     UidRange, io_error, read,
 };
@@ -187,15 +187,19 @@ impl Session for ImapSession {
     async fn uid_fetch(
         &mut self,
         range: UidRange,
-        structure: bool,
+        items: FetchItems,
     ) -> Result<Vec<FetchedMessage>, SessionError> {
         let room = self.room();
-        read::uid_fetch(&mut self.selection()?, range, structure, room).await
+        read::uid_fetch(&mut self.selection()?, range, items, room).await
     }
 
-    async fn uid_flags(&mut self, fetch: FlagFetch) -> Result<Vec<Flagged>, SessionError> {
+    async fn uid_flags(
+        &mut self,
+        fetch: FlagFetch,
+        labels: bool,
+    ) -> Result<Vec<Flagged>, SessionError> {
         let room = self.room();
-        read::uid_flags(&mut self.selection()?, fetch, room).await
+        read::uid_flags(&mut self.selection()?, (fetch, labels), room).await
     }
 
     async fn uid_previews(

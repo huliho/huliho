@@ -96,6 +96,40 @@ loses is destroyed and its emails read as updated. A thread leaves with
 its last email. `Thread/get` answers the emails of a thread by
 `receivedAt`, oldest first, ties by id.
 
+A Gmail account keeps its mail in three folders and shows it under
+labels. The host names the account a Gmail account
+(`sync::Cache::gmail`) and the server confirms it with the `X-GM-EXT-1`
+capability; without the capability the account runs as folders. With
+it, the `\All`, `\Junk` and `\Trash` folders are the stores the sync
+reads (All Mail with the archive role) and every other selectable
+folder is a label mailbox without rows of its own; the `gmail` module
+holds those rules and `mailboxes::mapping` writes them into the columns
+`store` and `gmail_label`. The header fetch on such an account asks
+`X-GM-LABELS`, `X-GM-MSGID` and `X-GM-THRID` next to its items and both
+flag fetches ask `X-GM-LABELS` next to the flags; the first 64 labels
+of a message that can go on a command line are kept and an item the
+command did not ask for is dropped. A row of All Mail is a
+member of All Mail and of every label mailbox its labels name; a row of
+Spam or Trash is a member of that store alone. INBOX and the folders
+with the `\Sent`, `\Drafts`, `\Flagged` and `\Important` attributes
+show their system labels; a user label shows in the folder of its name;
+`\Draft` and `\Starred` read as `\Drafts` and `\Flagged`. One message
+is one row, told by X-GM-MSGID across the stores: a message that turns
+up in another store moves its row there and keeps its id and its
+thread; a second live UID of one folder under the same id is left out.
+A row whose UID left a store waits for the pass with its UID negated
+and leaves at the end of the pass when no store claims it, so a move
+keeps its id whichever store the pass reaches first. Threads are the
+server's: `t` followed by the X-GM-THRID in decimal; no hash enters
+`bridge_message_ids`. A message whose line lacks one of the three items
+is stored as a folder account stores every message. A label mailbox's
+counts come from STATUS until All Mail is done and from the memberships
+afterwards; the refresh visits the stores alone and a vanished label
+mailbox drops its memberships. The session object says
+`maxMailboxesPerEmail` is null on such an account.
+`runtime::GMAIL_CONNECTIONS` names the two connections one Gmail
+account may hold at once, which the host's runtime enforces.
+
 The connection comes from the host through the `runtime::Connector`
 trait: `connect(key)` answers a signed-in session or a typed failure,
 so the bridge never sees a credential and never resolves a host.
@@ -193,10 +227,16 @@ UID SEARCH and UID FETCH, the flags alone with CHANGEDSINCE and the
 two sections of a preview cut as the partial fetch asks included, whose
 misbehavior is a switch as well: volunteered lines, a connection that
 drops, a MODSEQ item, a NO in raw UTF-8, messages that leave between
-two searches plus an EXAMINE answer without EXISTS. Its `Mailboxes`
+two searches, the Gmail items volunteered unasked plus an EXAMINE answer
+without EXISTS. Its `Mailboxes`
 stand in for a second client between two passes: a message appended,
 one expunged by UID, the flags of one replaced, the counts and the
-mod-sequences following. `testing::TestConnector` signs the fixture
+mod-sequences following. Its Gmail mode
+(`Mailboxes::gmail`) lists the folders as Gmail does, answers the three
+Gmail items where asked and BAD where the extension is off, counts a
+label folder from the labels of All Mail's messages and lets a test
+relabel a message or move it between stores as a second client would.
+`testing::TestConnector` signs the fixture
 user in on such a server or refuses every connection.
 `testing::seal::TestSealer` binds a blob to its row without a cipher.
 `session::fuzzing` is what the fuzz targets in `fuzz/` call.

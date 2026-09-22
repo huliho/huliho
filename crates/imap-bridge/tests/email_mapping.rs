@@ -87,6 +87,7 @@ fn message(flags: Vec<String>, header: Vec<u8>) -> FetchedMessage {
         size: 0,
         header,
         structure: None,
+        gmail: None,
     }
 }
 
