@@ -21,8 +21,15 @@ object type), written in batches that land whole; `MemoryMailStore` is
 the one that keeps everything in memory. On top of both, `syncMailboxes`
 brings the mailbox tree up to date, `queryWindow` serves a page of a
 list and fetches it when the store lacks it, `applyChanges` follows the
-change logs of every type and `revealNewMail` lands the new mail a poll
-held back for the user.
+change logs of every type, `revealNewMail` lands the new mail a poll
+held back for the user and `readThread` answers a thread with the
+headers the store holds. `MailCache` is what an adapter offers the
+query hooks: the tree, a page, a thread and the reveal, each answered
+from the cache. A store that keeps rows on disk checks them against
+the row schemas when they come back.
+
+`@huliho/core/testing` exports the JMAP server the cache tests run
+against, so an adapter's tests can drive the same reconciliation.
 
 `pnpm build` at the repo root compiles it; unit tests run with
 `pnpm test`.

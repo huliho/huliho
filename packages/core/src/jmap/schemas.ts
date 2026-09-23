@@ -47,10 +47,10 @@ export const STATE_PROPERTIES = ["id", "threadId", "mailboxIds", "keywords"] as 
 // object to one, so a call never leaves the instance.
 const SAME_ORIGIN_PATH = /^\/(?![/\\])/;
 
-const idSchema = z.string().min(1);
-const countSchema = z.number().int().nonnegative();
+export const idSchema = z.string().min(1);
+export const countSchema = z.number().int().nonnegative();
 // A set of ids or keywords as JMAP writes it: every value true.
-const setSchema = z.record(z.string(), z.literal(true));
+export const setSchema = z.record(z.string(), z.literal(true));
 // RFC 8620 section 1.4: a UTCDate ends in Z, a Date may carry an offset.
 const utcDateSchema = z.iso.datetime();
 const dateSchema = z.iso.datetime({ offset: true });
