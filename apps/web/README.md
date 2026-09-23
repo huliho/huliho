@@ -58,6 +58,26 @@ out at once and reaches the server when its undo toast has run out,
 through the same deferred mutation as a revoke. A connect from the
 card lands here with its toast.
 
+The mail cache runs in a worker under `src/cache`: a shared worker
+(one per origin) or a dedicated worker per tab where the browser has
+none. It keeps the mailbox tree, the headers, the threads and the
+pages of each list in IndexedDB through Dexie: one database per origin
+with every row under its account id. Each account reconciles under a
+Web Lock, so two workers on one database never interleave. The shell
+tells the worker which accounts the session holds and which mailbox
+the tab is looking at, renewed every thirty seconds while the tab
+lives; the newest list wins, so a tab that is behind never undoes
+one. The worker fetches the tree when an account arrives, asks for
+changes every minute and when a tab comes back into view and tells
+every tab over a broadcast channel what changed, which invalidates
+the queries by their keys. The window asks the browser for persistent
+storage once per page and the worker holds every write until that
+request has an answer. A failure crosses the worker boundary as a
+result with its code and cause, so the shell can tell a stopped
+account from a server that did not answer. Sign-out deletes the
+database; every other tab of the session hears it and shows the
+sign-in screen with a word about it.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component

@@ -6,6 +6,7 @@ import { localeEndonym, PSEUDO_LOCALE } from "@huliho/i18n";
 import { useEffect, useState } from "react";
 
 import styles from "./app.module.css";
+import { useMailCache } from "./cache/use-mail-cache";
 import { m } from "./paraglide/messages.js";
 import { getLocale, isLocale, locales, setLocale } from "./paraglide/runtime.js";
 import type { Locale } from "./paraglide/runtime.js";
@@ -24,6 +25,7 @@ function listedLocales(current: Locale): Locale[] {
 export function App() {
   const [locale, setActiveLocale] = useState<Locale>(getLocale());
   const [now] = useState(() => new Date());
+  useMailCache(null);
 
   useEffect(() => {
     document.documentElement.lang = locale;

@@ -4,6 +4,8 @@
 
 import type { Page, Route } from "@playwright/test";
 
+import { mockEmptyMail } from "./mail-mocks";
+
 const SESSION_ROUTE = "**/api/session";
 const SESSIONS_ROUTE = "**/api/sessions";
 const SESSION_ROW_ROUTE = "**/api/sessions/*";
@@ -41,7 +43,10 @@ const ACCOUNT_LIST_BODY = {
   probeIntervalMinutes: 15,
 };
 
+// The account's mail is empty, so the cache worker behind the shell
+// has an answer to its poll.
 async function mockOneAccount(page: Page): Promise<void> {
+  await mockEmptyMail(page);
   await page.route(ACCOUNTS_ROUTE, (route) =>
     route.request().method() === "GET"
       ? route.fulfill({ json: ACCOUNT_LIST_BODY })

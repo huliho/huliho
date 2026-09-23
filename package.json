@@ -141,8 +141,17 @@
   "size-limit": [
     {
       "name": "initial JS",
-      "path": "apps/web/dist/assets/*.js",
+      "path": [
+        "apps/web/dist/assets/*.js",
+        "!apps/web/dist/assets/worker-*.js"
+      ],
       "limit": "250 kB",
+      "gzip": true
+    },
+    {
+      "name": "cache worker",
+      "path": "apps/web/dist/assets/worker-*.js",
+      "limit": "100 kB",
       "gzip": true
     }
   ]
