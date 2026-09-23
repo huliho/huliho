@@ -34,8 +34,30 @@ export type {
   TlsMode,
 } from "./accounts";
 export { fitsAddress, fitsHostName } from "./address";
+export { CHANGES_ROUNDS_MAX, WINDOW_SIZE } from "./cache/limits";
+export { syncMailboxes } from "./cache/mailboxes";
+export { MemoryMailStore } from "./cache/memory";
+export { applyChanges } from "./cache/poll";
+export type { AppliedChanges } from "./cache/poll";
+export type {
+  Batch,
+  FreshPage,
+  MailStore,
+  MemberState,
+  Page,
+  QueryRow,
+  StoreArea,
+  ThreadRow,
+} from "./cache/store";
+export { queryWindow, revealNewMail } from "./cache/window";
+export type { WindowPage } from "./cache/window";
 export { CredentialError } from "./credentials";
 export type { CredentialFailureCode } from "./credentials";
+export type { ObjectType } from "./jmap/calls";
+export { JmapClient, JmapError, MethodFailure } from "./jmap/client";
+export type { JmapFailureCode, JmapSession } from "./jmap/client";
+export { HULIHO_CAPABILITY } from "./jmap/schemas";
+export type { EmailHeader, EmailState, Mailbox, Thread } from "./jmap/schemas";
 export {
   PASSWORD_MAX_CHARS,
   PASSWORD_MIN_CHARS,
