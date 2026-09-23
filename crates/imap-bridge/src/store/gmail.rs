@@ -328,7 +328,7 @@ impl Store {
         standing: &Standing<'_>,
         uids: &[u32],
     ) -> Result<Option<()>, StoreError> {
-        self.write(|transaction| {
+        self.write(key, |transaction| {
             if !folders::stands(transaction, key, standing)? {
                 return Ok(None);
             }
@@ -352,7 +352,7 @@ impl Store {
     ///
     /// Returns the database error.
     pub fn sweep_parked(&self, key: &AccountKey) -> Result<u64, StoreError> {
-        self.write(|transaction| {
+        self.write(key, |transaction| {
             let mut statement = transaction.prepare(
                 "SELECT s.folder_id FROM bridge_sync s
                  WHERE s.account_key = ?1 AND s.done = 1 AND EXISTS (

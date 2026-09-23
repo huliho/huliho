@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use hkdf::Hkdf;
+use hmac::Hmac;
 use sha2::Sha256;
 use thiserror::Error;
 
@@ -25,8 +26,10 @@ const GROUP_WORLD_BITS: u32 = 0o077;
 const SESSION_KEY_INFO: &[u8] = b"huliho session store v1";
 const CREDENTIAL_KEY_INFO: &[u8] = b"huliho account credentials v1";
 const PROVIDER_KEY_INFO: &[u8] = b"huliho provider secrets v1";
+const BRIDGE_CACHE_KEY_INFO: &[u8] = b"huliho bridge cache v1";
+const MESSAGE_ID_KEY_INFO: &[u8] = b"huliho bridge message ids v1";
 
-/// AEAD key size for XChaCha20-Poly1305.
+/// AEAD key size for XChaCha20-Poly1305 and the HMAC key size alike.
 const KEY_BYTES: usize = 32;
 
 #[derive(Debug, Error)]
@@ -103,6 +106,8 @@ pub struct Keys {
     sessions: XChaCha20Poly1305,
     credentials: XChaCha20Poly1305,
     providers: XChaCha20Poly1305,
+    bridge_cache: XChaCha20Poly1305,
+    message_ids: Hmac<Sha256>,
 }
 
 impl Keys {
@@ -110,8 +115,8 @@ impl Keys {
     ///
     /// # Panics
     ///
-    /// Only if the fixed key length fell outside the HKDF output bound,
-    /// which it does not.
+    /// Only if the fixed key length fell outside the HKDF output bound
+    /// or HMAC refused a key of that length, neither of which happens.
     #[must_use]
     pub fn derive(secret: &InstanceSecret) -> Self {
         let hkdf = Hkdf::<Sha256>::new(None, &secret.0);
@@ -119,6 +124,8 @@ impl Keys {
             sessions: cipher(&hkdf, SESSION_KEY_INFO),
             credentials: cipher(&hkdf, CREDENTIAL_KEY_INFO),
             providers: cipher(&hkdf, PROVIDER_KEY_INFO),
+            bridge_cache: cipher(&hkdf, BRIDGE_CACHE_KEY_INFO),
+            message_ids: mac(&hkdf, MESSAGE_ID_KEY_INFO),
         }
     }
 
@@ -136,13 +143,31 @@ impl Keys {
     pub(crate) fn providers(&self) -> &XChaCha20Poly1305 {
         &self.providers
     }
+
+    /// The key for the personal fields of the bridge's email rows.
+    pub(crate) fn bridge_cache(&self) -> &XChaCha20Poly1305 {
+        &self.bridge_cache
+    }
+
+    /// The keyed hash a Message-ID is stored as for threading.
+    pub(crate) fn message_ids(&self) -> &Hmac<Sha256> {
+        &self.message_ids
+    }
 }
 
-fn cipher(hkdf: &Hkdf<Sha256>, info: &[u8]) -> XChaCha20Poly1305 {
+fn expand(hkdf: &Hkdf<Sha256>, info: &[u8]) -> [u8; KEY_BYTES] {
     let mut key = [0u8; KEY_BYTES];
     hkdf.expand(info, &mut key)
         .expect("the fixed key length is within the HKDF output bound");
-    XChaCha20Poly1305::new(&Key::from(key))
+    key
+}
+
+fn cipher(hkdf: &Hkdf<Sha256>, info: &[u8]) -> XChaCha20Poly1305 {
+    XChaCha20Poly1305::new(&Key::from(expand(hkdf, info)))
+}
+
+fn mac(hkdf: &Hkdf<Sha256>, info: &[u8]) -> Hmac<Sha256> {
+    Hmac::<Sha256>::new_from_slice(&expand(hkdf, info)).expect("HMAC takes a key of any length")
 }
 
 #[cfg(unix)]
@@ -203,5 +228,21 @@ mod tests {
             InstanceSecret::from_bytes(Vec::new()),
             Err(SecretError::TooShort)
         ));
+    }
+
+    #[test]
+    fn every_label_derives_a_key_of_its_own() {
+        let hkdf = Hkdf::<Sha256>::new(None, TEST_SECRET);
+        let labels = [
+            SESSION_KEY_INFO,
+            CREDENTIAL_KEY_INFO,
+            PROVIDER_KEY_INFO,
+            BRIDGE_CACHE_KEY_INFO,
+            MESSAGE_ID_KEY_INFO,
+        ];
+        let keys: Vec<[u8; KEY_BYTES]> = labels.iter().map(|info| expand(&hkdf, info)).collect();
+        for (index, key) in keys.iter().enumerate() {
+            assert!(keys.iter().skip(index + 1).all(|other| other != key));
+        }
     }
 }

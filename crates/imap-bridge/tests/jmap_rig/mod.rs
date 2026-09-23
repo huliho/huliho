@@ -25,6 +25,9 @@ const STEP: Duration = Duration::from_secs(1);
 /// The one account of the rig.
 pub const ACCOUNT: &str = "a1";
 
+/// The session state the host hands the rig.
+pub const SESSION_STATE: &str = "host-state-1";
+
 /// The key of that account.
 pub fn key() -> AccountKey {
     AccountKey::new(ACCOUNT)
@@ -103,7 +106,7 @@ impl Rig {
 
     /// One request body as it arrived, the answer as bytes.
     pub async fn raw(&self, body: &[u8]) -> Result<Vec<u8>, RequestError> {
-        handle(&self.cache, &self.link, body).await
+        handle(&self.cache, &self.link, body, SESSION_STATE).await
     }
 
     /// A request under core and mail, which every method of this bridge

@@ -144,9 +144,14 @@ impl Rig {
             "using": [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY],
             "methodCalls": calls,
         });
-        let bytes = handle(&self.cache, &self.link, &serde_json::to_vec(&body).unwrap())
-            .await
-            .unwrap();
+        let bytes = handle(
+            &self.cache,
+            &self.link,
+            &serde_json::to_vec(&body).unwrap(),
+            ACCOUNT,
+        )
+        .await
+        .unwrap();
         serde_json::from_slice(&bytes).unwrap()
     }
 

@@ -210,9 +210,14 @@ impl Suite {
             "using": [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY],
             "methodCalls": [call],
         });
-        let bytes = handle(&self.cache, &self.link, &serde_json::to_vec(&body).unwrap())
-            .await
-            .unwrap();
+        let bytes = handle(
+            &self.cache,
+            &self.link,
+            &serde_json::to_vec(&body).unwrap(),
+            ACCOUNT,
+        )
+        .await
+        .unwrap();
         let mut response: Value = serde_json::from_slice(&bytes).unwrap();
         response["methodResponses"][0][1].take()
     }

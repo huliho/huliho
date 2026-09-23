@@ -6,12 +6,15 @@
 //! credential sealed beside it and the settings it connects with.
 
 mod credentials;
+mod instance;
 mod settings;
 mod stopping;
 
+use huliho_imap_bridge::store::AccountKey;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 pub use credentials::Credential;
+pub use instance::{imap_accounts, owner_scope};
 pub use settings::{AccountSettings, Endpoint, TlsMode};
 pub(crate) use stopping::stopped_on_connection;
 pub use stopping::{Resumed, resume, stop};
@@ -319,7 +322,8 @@ pub fn update_credential(
 }
 
 /// Removes the account the scope was resolved for; the sealed credential
-/// leaves with the row and the snooze rows cascade.
+/// leaves with the row, the snooze rows cascade and the bridge's rows
+/// for the account leave in the same transaction.
 ///
 /// # Errors
 ///
@@ -339,6 +343,7 @@ pub fn remove(store: &Store, scope: &Scope) -> Result<(), StoreError> {
         if removed == 0 {
             return Err(StoreError::NotFound);
         }
+        huliho_imap_bridge::store::remove_rows(transaction, &AccountKey::new(account_id.as_str()))?;
         let event = DomainEvent::AccountRemoved {
             account_id: account_id.clone(),
         };

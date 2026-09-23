@@ -2,21 +2,27 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! The JMAP proxy routes: an account's session object and its API
-//! endpoint, both answered from the upstream with the account's
-//! credential added here.
+//! The JMAP routes: an account's session object and its API endpoint.
+//! A native account is answered from the upstream with the account's
+//! credential added here; an IMAP account by the in-process bridge, so
+//! the browser sees one surface.
+
+use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::extract::{FromRequest, Path, Request, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use huliho_imap_bridge::jmap::{RequestError, session_object};
 use serde::Serialize;
 
 use super::reconnect::scoped;
-use super::{ApiError, ApiState, Caller};
-use crate::events::Actor;
+use super::{ApiError, ApiState, Caller, internal};
+use crate::accounts::{self, Account, AccountKind};
+use crate::bridge;
 use crate::ids::AccountId;
 use crate::jmap::{JSON, Proxy, is_json};
+use crate::scope::Scope;
 
 /// The media type of a problem details object (RFC 7807), the shape
 /// RFC 8620 section 3.6.1 gives a request-level error.
@@ -46,15 +52,16 @@ impl FromRequest<ApiState> for JmapBody {
     }
 }
 
-/// A problem details object for the one request-level error the proxy
-/// raises itself.
+/// A problem details object for a request that was not run (RFC 8620
+/// section 3.6.1).
 #[derive(Serialize)]
 struct Problem {
     #[serde(rename = "type")]
     kind: &'static str,
     status: u16,
-    limit: &'static str,
-    detail: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit: Option<&'static str>,
+    detail: String,
 }
 
 pub(super) async fn session(
@@ -63,9 +70,17 @@ pub(super) async fn session(
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
     let account_id = AccountId::from(id);
-    let actor = Actor::User(caller.session.user_id.clone());
     let scope = scoped(&state, caller, &account_id).await?;
-    let body = Proxy::from(&state).session(&scope, &actor).await?;
+    let account = running(&state, &scope).await?;
+    let body = match account.kind {
+        AccountKind::Jmap => Proxy::from(&state).session(account, &scope).await?,
+        AccountKind::Imap => {
+            let registration = bridge::registration(&account);
+            state.bridge().start(&registration);
+            session_object(&registration, &account.address, &bridge::urls(&account_id))
+                .map_err(internal)?
+        }
+    };
     Ok(json(body))
 }
 
@@ -76,27 +91,48 @@ pub(super) async fn request(
     JmapBody(body): JmapBody,
 ) -> Result<Response, ApiError> {
     let account_id = AccountId::from(id);
-    let actor = Actor::User(caller.session.user_id.clone());
     let scope = scoped(&state, caller, &account_id).await?;
     let Some(_permit) = state.endpoints.enter(&account_id) else {
         return Ok(over_the_cap());
     };
-    let answer = Proxy::from(&state).forward(&scope, &actor, body).await?;
+    let account = running(&state, &scope).await?;
+    let answer = match account.kind {
+        AccountKind::Jmap => Proxy::from(&state).forward(account, &scope, body).await?,
+        AccountKind::Imap => {
+            let registration = bridge::registration(&account);
+            match state.bridge().handle(&registration, &body).await {
+                Ok(answer) => answer,
+                Err(error) => return Ok(not_run(error)),
+            }
+        }
+    };
     Ok(json(answer))
+}
+
+/// The row as it stands; a stopped account answers 409 with its cause
+/// before anything connects, whatever its kind.
+async fn running(state: &ApiState, scope: &Scope) -> Result<Account, ApiError> {
+    let (store, scope) = (Arc::clone(&state.store), scope.clone());
+    let account = tokio::task::spawn_blocking(move || accounts::get(&store, &scope))
+        .await
+        .map_err(internal)??;
+    match account.stopped_cause {
+        Some(cause) => Err(ApiError::StillStopped { cause }),
+        None => Ok(account),
+    }
 }
 
 fn json(body: Vec<u8>) -> Response {
     ([(header::CONTENT_TYPE, JSON)], body).into_response()
 }
 
-/// The `limit` error of RFC 8620 section 3.6.1: the request was not
-/// run, the cap is named and nothing queues.
-fn over_the_cap() -> Response {
+/// A problem details object with status 400.
+fn problem(kind: &'static str, limit: Option<&'static str>, detail: String) -> Response {
     let problem = Problem {
-        kind: LIMIT_PROBLEM,
+        kind,
         status: StatusCode::BAD_REQUEST.as_u16(),
-        limit: CONCURRENCY_LIMIT,
-        detail: "Too many requests are in flight on this account; send this one again once one of them answered.",
+        limit,
+        detail,
     };
     match serde_json::to_vec(&problem) {
         Ok(body) => (
@@ -106,6 +142,25 @@ fn over_the_cap() -> Response {
         )
             .into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+/// The `limit` error of RFC 8620 section 3.6.1: the request was not
+/// run, the cap is named and nothing queues.
+fn over_the_cap() -> Response {
+    problem(
+        LIMIT_PROBLEM,
+        Some(CONCURRENCY_LIMIT),
+        "Too many requests are in flight on this account; send this one again once one of them answered.".to_owned(),
+    )
+}
+
+/// A request the bridge did not run: the problem it names, or 500 when
+/// the store or its task failed.
+fn not_run(error: RequestError) -> Response {
+    match error.problem_type() {
+        Some(kind) => problem(kind, error.limit(), error.to_string()),
+        None => internal(error).into_response(),
     }
 }
 
@@ -121,5 +176,17 @@ mod tests {
             response.headers().get(header::CONTENT_TYPE).unwrap(),
             PROBLEM_JSON
         );
+    }
+
+    #[test]
+    fn a_request_the_bridge_did_not_run_answers_its_problem_or_500() {
+        let named = not_run(RequestError::Limit("maxCallsInRequest"));
+        assert_eq!(named.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            named.headers().get(header::CONTENT_TYPE).unwrap(),
+            PROBLEM_JSON
+        );
+        let failed = not_run(RequestError::Task);
+        assert_eq!(failed.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

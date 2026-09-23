@@ -334,7 +334,7 @@ fn a_match_across_a_renumbering_needs_the_hash_the_date_and_the_size() {
 /// take minutes to write them.
 fn fill(store: &Store, folder: &MailboxId, count: u32) {
     store
-        .write(|transaction| {
+        .write(&key(), |transaction| {
             transaction.execute(
                 "WITH RECURSIVE n(uid) AS (SELECT 1 UNION ALL SELECT uid + 1 FROM n WHERE uid < ?3)
                  INSERT INTO bridge_emails
@@ -372,7 +372,7 @@ fn a_thread_that_keeps_an_email_elsewhere_is_updated_when_a_folder_vanishes() {
     let (inbox, work) = (rows[0].id.clone(), rows[1].id.clone());
     fill(&store, &inbox, 1);
     store
-        .write(|transaction| {
+        .write(&key(), |transaction| {
             transaction.execute(
                 "INSERT INTO bridge_emails
                  (account_key, id, folder_id, uid, thread_id, keywords, size, received_at,

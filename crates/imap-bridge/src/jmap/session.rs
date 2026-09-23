@@ -4,7 +4,7 @@
 
 //! The session object of one bridge account (RFC 8620 section 2): the
 //! core and mail capabilities with the bridge's limits, the vendor
-//! capability and the state.
+//! capability and the state the host derived.
 
 use std::collections::BTreeMap;
 
@@ -12,8 +12,8 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use super::{MAX_CALLS_IN_REQUEST, MAX_CONCURRENT_REQUESTS, MAX_OBJECTS_IN_GET, MAX_SIZE_REQUEST};
+use crate::runtime::Registration;
 use crate::store::StoreError;
-use crate::sync::Cache;
 
 /// The core capability (RFC 8620 section 2).
 pub const CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
@@ -83,18 +83,22 @@ struct AccountObject {
 }
 
 /// The session object for one account as JSON: read-only until a write
-/// method exists, the vendor capability on the account, the state from
-/// the counter.
+/// method exists, the vendor capability on the account, the state as
+/// the host derived it from what the object is built from. Nothing here
+/// touches the store, so the object never moves with the cache.
 ///
 /// # Errors
 ///
-/// Returns the store's failure when the state cannot be read or the
-/// object cannot be encoded.
-pub fn session_object(cache: &Cache, address: &str, urls: &Urls) -> Result<Vec<u8>, StoreError> {
-    let key = &cache.key;
-    let state = cache.store.state(key)?.to_string();
+/// Returns the store's encoding failure when the object cannot be
+/// encoded.
+pub fn session_object(
+    registration: &Registration,
+    address: &str,
+    urls: &Urls,
+) -> Result<Vec<u8>, StoreError> {
+    let key = &registration.key;
     let account_capabilities: BTreeMap<&'static str, Value> = [
-        (MAIL_CAPABILITY, mail_capability(cache.gmail)),
+        (MAIL_CAPABILITY, mail_capability(registration.gmail)),
         (HULIHO_CAPABILITY, Value::Object(Map::new())),
     ]
     .into_iter()
@@ -127,7 +131,7 @@ pub fn session_object(cache: &Cache, address: &str, urls: &Urls) -> Result<Vec<u
         download_url: &urls.download,
         upload_url: &urls.upload,
         event_source_url: &urls.event_source,
-        state,
+        state: registration.session_state.clone(),
     };
     Ok(serde_json::to_vec(&object)?)
 }

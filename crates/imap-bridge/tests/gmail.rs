@@ -11,8 +11,9 @@ mod sync_rig;
 use std::collections::{BTreeSet, HashMap};
 
 use huliho_imap_bridge::jmap::{MAIL_CAPABILITY, Urls, session_object};
+use huliho_imap_bridge::runtime::Registration;
 use huliho_imap_bridge::session::{FetchItems, FlagFetch, Session, UidRange};
-use huliho_imap_bridge::store::{ChangeKind, MailboxRow, ObjectType};
+use huliho_imap_bridge::store::{AccountKey, ChangeKind, MailboxRow, ObjectType};
 use huliho_imap_bridge::sync::Step;
 use huliho_imap_bridge::testing::mailboxes::{ALL_MAIL, SPAM, TRASH};
 use huliho_imap_bridge::testing::{Extension, Mailboxes, Message};
@@ -417,7 +418,12 @@ async fn the_session_object_says_no_limit_on_mailboxes_per_email_for_a_gmail_acc
         upload: "/api/jmap/a1/upload".to_owned(),
         event_source: "/api/jmap/a1/events".to_owned(),
     };
-    let bytes = session_object(&rig.cache, "sanne@example.test", &urls).unwrap();
+    let registration = Registration {
+        key: AccountKey::new(rig.cache.key.as_str()),
+        gmail: true,
+        session_state: "s1".to_owned(),
+    };
+    let bytes = session_object(&registration, "sanne@example.test", &urls).unwrap();
     let session: Value = serde_json::from_slice(&bytes).unwrap();
     let mail = &session["accounts"][ACCOUNT]["accountCapabilities"][MAIL_CAPABILITY];
     assert_eq!(mail["maxMailboxesPerEmail"], Value::Null);

@@ -3,16 +3,18 @@
 // Additional terms apply, see NOTICE.
 
 //! A connector for the tests: it signs a user in on a server with
-//! LOGIN, or refuses every connection as a server that is down does.
+//! LOGIN, refuses every connection as a server that is down does or
+//! holds the account back as a host does for a stopped account.
 
 use std::io;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tokio_rustls::rustls::ClientConfig;
 
 use super::{PASSWORD, USER};
-use crate::runtime::Connector;
+use crate::runtime::{ConnectError, Connector};
 use crate::session::{ImapSession, Session, SessionError, Target};
 use crate::store::AccountKey;
 
@@ -30,6 +32,8 @@ pub enum TestConnector {
     },
     /// Every connect is refused.
     Refusing,
+    /// The host holds the account back; nothing is tried.
+    Holding,
 }
 
 impl TestConnector {
@@ -49,11 +53,12 @@ impl TestConnector {
 impl Connector for TestConnector {
     type Session = ImapSession;
 
-    async fn connect(&self, _key: &AccountKey) -> Result<ImapSession, SessionError> {
+    async fn connect(&self, _key: &AccountKey) -> Result<ImapSession, ConnectError> {
         match self {
-            Self::Refusing => Err(SessionError::Connect(io::Error::from(
-                io::ErrorKind::ConnectionRefused,
-            ))),
+            Self::Refusing => {
+                Err(SessionError::Connect(io::Error::from(io::ErrorKind::ConnectionRefused)).into())
+            }
+            Self::Holding => Err(ConnectError::Held),
             Self::Server {
                 tls,
                 target,
@@ -66,5 +71,37 @@ impl Connector for TestConnector {
                 Ok(session)
             }
         }
+    }
+}
+
+/// A connector that counts how often it was asked for a session, so a
+/// test can tell how many connections an account opened.
+pub struct Counting {
+    inner: TestConnector,
+    connects: Arc<AtomicUsize>,
+}
+
+impl Counting {
+    /// Counts the connects of `inner`; the count is shared with the
+    /// caller.
+    #[must_use]
+    pub fn new(inner: TestConnector) -> (Self, Arc<AtomicUsize>) {
+        let connects = Arc::new(AtomicUsize::new(0));
+        (
+            Self {
+                inner,
+                connects: Arc::clone(&connects),
+            },
+            connects,
+        )
+    }
+}
+
+impl Connector for Counting {
+    type Session = ImapSession;
+
+    async fn connect(&self, key: &AccountKey) -> Result<ImapSession, ConnectError> {
+        self.connects.fetch_add(1, Ordering::SeqCst);
+        self.inner.connect(key).await
     }
 }

@@ -21,11 +21,12 @@ use crate::accounts::{
     self, Account, AccountKind, AccountSettings, AuthMethod, Credential, Endpoint, NewAccount,
     Provider, StopCause,
 };
+use crate::bridge;
 use crate::discovery::{Address, MAX_ADDRESS_BYTES, named_host};
 use crate::ids::AccountId;
 use crate::presets;
 use crate::probe::Probe;
-use crate::scope;
+use crate::scope::{self, Scope};
 use crate::session;
 use crate::store::now_ms;
 
@@ -130,6 +131,10 @@ pub(super) async fn add_account(
     })
     .await
     .map_err(internal)??;
+    // The first sync starts as soon as the account exists.
+    if account.kind == AccountKind::Imap {
+        state.bridge().start(&bridge::registration(&account));
+    }
     Ok((StatusCode::CREATED, Json(AccountView::from(account))))
 }
 
@@ -139,13 +144,23 @@ pub(super) async fn remove_account(
     auth: Full,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
+    let account_id = AccountId::from(id);
     let store = Arc::clone(&state.store);
+    let scope = {
+        let (store, account_id) = (Arc::clone(&store), account_id.clone());
+        tokio::task::spawn_blocking(move || -> Result<Scope, ApiError> {
+            let scope = scope::resolve(&store, &auth.session.user_id, Some(&account_id))?;
+            session::touch(&store, &scope, &auth.session, client.address)?;
+            Ok(scope)
+        })
+        .await
+        .map_err(internal)??
+    };
+    // The runtime stops first, so nothing lands after the rows leave.
+    state.bridge().forget(&bridge::key_of(&account_id)).await;
     let gate = state.gate.clone();
     let endpoints = Arc::clone(&state.endpoints);
     tokio::task::spawn_blocking(move || -> Result<(), ApiError> {
-        let account_id = AccountId::from(id);
-        let scope = scope::resolve(&store, &auth.session.user_id, Some(&account_id))?;
-        session::touch(&store, &scope, &auth.session, client.address)?;
         accounts::remove(&store, &scope)?;
         gate.forget(&account_id);
         endpoints.forget(&account_id);

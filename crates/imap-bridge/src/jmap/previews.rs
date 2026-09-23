@@ -10,6 +10,8 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+use tokio::time::timeout;
+
 use crate::mailboxes::SyncError;
 use crate::runtime::{Connector, Link};
 use crate::session::{MAX_PREVIEWS, PreviewAsk, PreviewBytes, Session, SessionError};
@@ -29,9 +31,10 @@ struct Group {
 /// One folder, one part number, one length of text.
 type Shared = (MailboxId, String, u32);
 
-/// Fetches and keeps the previews of `ids`, `PREVIEW_BATCH` at most. An
-/// email without a text part or one that left is skipped; a failure of
-/// the session ends the fetch and drops the session.
+/// Fetches and keeps the previews of `ids`, `PREVIEW_BATCH` at most,
+/// within the deadline of the conversation. An email without a text
+/// part or one that left is skipped; a failure of the session or the
+/// deadline ends the fetch and drops the session.
 ///
 /// # Errors
 ///
@@ -46,10 +49,14 @@ pub(super) async fn fill<C: Connector>(
         return Ok(());
     }
     let mut wire = link.wire.lock().await;
+    let deadline = wire.deadline();
     let Ok(session) = wire.session(cache).await else {
         return Ok(());
     };
-    let (fetched, stands) = fetch(session, &groups, &rows).await;
+    // A deadline that fires reads as a session that does not stand.
+    let (fetched, stands) = timeout(deadline, fetch(session, &groups, &rows))
+        .await
+        .unwrap_or_default();
     if !stands {
         wire.drop_session();
     }

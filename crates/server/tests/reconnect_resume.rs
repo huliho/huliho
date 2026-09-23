@@ -5,6 +5,7 @@
 //! How a stopped account comes back: the probe once the server answers
 //! again, the loop that runs it and a replaced credential.
 
+mod answers;
 mod common;
 mod readers;
 mod reconnect;

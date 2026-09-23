@@ -71,6 +71,8 @@ pub enum StoreError {
 /// Handle to the embedded database; all access goes through it.
 pub struct Store {
     connection: Mutex<Connection>,
+    /// The file behind the connection; none for a database in memory.
+    path: Option<PathBuf>,
 }
 
 impl Store {
@@ -86,7 +88,8 @@ impl Store {
             path: data_dir.to_owned(),
             source,
         })?;
-        Self::initialize(Connection::open(data_dir.join(DATABASE_FILE))?)
+        let path = data_dir.join(DATABASE_FILE);
+        Self::initialize(Connection::open(&path)?, Some(path))
     }
 
     /// Opens a fresh in-memory database, migrated to the latest schema.
@@ -96,17 +99,40 @@ impl Store {
     /// Returns an error when the database cannot be opened or a
     /// migration fails.
     pub fn in_memory() -> Result<Self, StoreError> {
-        Self::initialize(Connection::open_in_memory()?)
+        Self::initialize(Connection::open_in_memory()?, None)
     }
 
-    fn initialize(mut connection: Connection) -> Result<Self, StoreError> {
-        connection.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
-        connection.pragma_update(None, "foreign_keys", true)?;
-        connection.busy_timeout(BUSY_TIMEOUT)?;
+    fn initialize(mut connection: Connection, path: Option<PathBuf>) -> Result<Self, StoreError> {
+        pragmas(&connection)?;
         migrations().to_latest(&mut connection)?;
         Ok(Self {
             connection: Mutex::new(connection),
+            path,
         })
+    }
+
+    /// A store of the bridge's own on this database: a second connection
+    /// to the file on the same pragmas, or a fresh in-memory database
+    /// with the bridge's schema where this store is one, since memory is
+    /// not shared between connections.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the connection cannot be opened or the
+    /// schema cannot be applied.
+    pub fn bridge_store(&self) -> Result<huliho_imap_bridge::store::Store, StoreError> {
+        let connection = if let Some(path) = &self.path {
+            let connection = Connection::open(path)?;
+            pragmas(&connection)?;
+            connection
+        } else {
+            let connection = Connection::open_in_memory()?;
+            for sql in huliho_imap_bridge::store::MIGRATIONS {
+                connection.execute_batch(sql)?;
+            }
+            connection
+        };
+        Ok(huliho_imap_bridge::store::Store::new(connection))
     }
 
     pub(crate) fn read<T>(
@@ -131,6 +157,15 @@ impl Store {
     fn lock(&self) -> Result<MutexGuard<'_, Connection>, StoreError> {
         self.connection.lock().map_err(|_| StoreError::Poisoned)
     }
+}
+
+/// Every connection to the database runs on these: WAL, foreign keys
+/// and the busy timeout.
+fn pragmas(connection: &Connection) -> Result<(), StoreError> {
+    connection.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
+    connection.pragma_update(None, "foreign_keys", true)?;
+    connection.busy_timeout(BUSY_TIMEOUT)?;
+    Ok(())
 }
 
 fn migrations() -> Migrations<'static> {

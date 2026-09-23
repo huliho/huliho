@@ -40,7 +40,7 @@ pub use session::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, Urls, ses
 pub const MAX_SIZE_REQUEST: usize = 1024 * 1024;
 
 /// Requests in flight per account; the host's semaphore enforces it.
-pub const MAX_CONCURRENT_REQUESTS: u32 = 4;
+pub const MAX_CONCURRENT_REQUESTS: usize = 4;
 
 /// Method calls in one request.
 pub const MAX_CALLS_IN_REQUEST: usize = 16;

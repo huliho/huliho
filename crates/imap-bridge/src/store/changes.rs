@@ -215,7 +215,7 @@ mod tests {
     /// One state with `count` mailbox rows created under it.
     fn batch(store: &Store, count: u64) -> u64 {
         store
-            .write(|transaction| {
+            .write(&key(), |transaction| {
                 let sequence = next_sequence(transaction, &key())?;
                 for index in 0..count {
                     let id = format!("m{sequence}-{index}");

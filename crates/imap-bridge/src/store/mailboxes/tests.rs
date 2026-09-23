@@ -127,7 +127,7 @@ fn email(store: &Store, row: (&str, &str, &str), mailbox: &MailboxId) {
     let (id, thread, keywords) = row;
     let uid: u32 = id[1..].parse().unwrap();
     store
-        .write(|transaction| {
+        .write(&key(), |transaction| {
             transaction.execute(
                 "INSERT INTO bridge_emails
                  (account_key, id, folder_id, uid, thread_id, keywords, size,

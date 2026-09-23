@@ -69,7 +69,7 @@ impl Store {
         sealer: &dyn Sealer,
         previews: &[(EmailId, String)],
     ) -> Result<u64, StoreError> {
-        self.write(|transaction| {
+        self.write(key, |transaction| {
             let mut ledger = Ledger::default();
             for (id, preview) in previews {
                 let blob: Option<Vec<u8>> = transaction

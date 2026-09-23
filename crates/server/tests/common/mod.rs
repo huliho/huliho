@@ -5,7 +5,7 @@
 //! Shared fixtures for the HTTP integration tests.
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use axum::Router;
 
@@ -33,6 +33,8 @@ fn keys() -> Keys {
 pub fn api_state(store: Arc<Store>) -> ApiState {
     ApiState {
         gate: Gate::new(Arc::clone(&store)),
+        bridge_store: Arc::new(store.bridge_store().unwrap()),
+        bridge: Arc::new(OnceLock::new()),
         store,
         keys: Arc::new(keys()),
         timeouts: SessionTimeouts::from(&AuthConfig::default()),

@@ -6,6 +6,7 @@
 //! credential kept out of every log line, the window and the refresh
 //! under the account lock.
 
+mod answers;
 mod common;
 mod fake_dns;
 mod jmap_upstream;

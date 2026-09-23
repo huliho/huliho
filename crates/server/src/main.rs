@@ -7,7 +7,7 @@
 use std::net::SocketAddr;
 use std::path::Path;
 use std::process::ExitCode;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use tokio::signal::unix::{SignalKind, signal};
@@ -18,6 +18,7 @@ use tracing_subscriber::util::SubscriberInitExt as _;
 use tracing_subscriber::{EnvFilter, Layer as _};
 
 use huliho_server::api::{ApiState, MAX_CONCURRENT_VERIFICATIONS};
+use huliho_server::bridge;
 use huliho_server::cli::{self, Command};
 use huliho_server::config::{CONFIG_PATH_VAR, Config, ConfigError, DEFAULT_CONFIG_PATH};
 use huliho_server::gate::{Gate, Reconnect};
@@ -28,7 +29,7 @@ use huliho_server::secrets::{InstanceSecret, Keys};
 use huliho_server::session::SessionTimeouts;
 use huliho_server::store::Store;
 use huliho_server::upstream::Upstream;
-use huliho_server::{events, session};
+use huliho_server::{accounts, events, session};
 
 /// Request logs without debug noise; override via `RUST_LOG`.
 const DEFAULT_LOG_FILTER: &str = "info";
@@ -85,6 +86,8 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     ));
     tokio::spawn(session::prune_periodically(Arc::clone(&store), timeouts));
 
+    let bridge_store = Arc::new(store.bridge_store()?);
+    let imap_accounts = accounts::imap_accounts(&store)?;
     let api = ApiState {
         gate: Gate::new(Arc::clone(&store)),
         store,
@@ -97,10 +100,18 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         upstream,
         consents: Arc::new(Consents::default()),
         endpoints: Arc::new(Endpoints::default()),
+        bridge_store,
+        bridge: Arc::new(OnceLock::new()),
     };
     let probe_interval =
         Duration::from_mins(u64::from(config.upstream.probe_interval_minutes.get()));
     tokio::spawn(Reconnect::from(&api).probe_periodically(probe_interval));
+    tracing::info!(
+        accounts = imap_accounts.len(),
+        "the bridge resumes its accounts"
+    );
+    api.bridge()
+        .resume(imap_accounts.iter().map(bridge::registration));
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
     tracing::info!(listen = %config.listen, "listening");
     axum::serve(

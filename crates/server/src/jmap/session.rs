@@ -28,12 +28,12 @@ const ENFORCED: [(&str, usize); 2] = [
     ("maxConcurrentRequests", MAX_CONCURRENT_REQUESTS),
 ];
 
-/// Rewrites `session` for the browser and answers the API endpoint the
-/// upstream named; `None` when the object names none.
-pub(super) fn rewrite(session: &mut Map<String, Value>, account_id: &AccountId) -> Option<String> {
-    let api_url = session.get("apiUrl")?.as_str()?.to_owned();
+/// The four URLs of an account's endpoint on this instance, relative to
+/// it, by the name the session object gives each: `apiUrl` here, the
+/// other three on the routes later features add.
+pub(crate) fn urls(account_id: &AccountId) -> [(&'static str, String); 4] {
     let id = account_id.as_str();
-    let urls = [
+    [
         ("apiUrl", format!("/api/jmap/{id}")),
         (
             "downloadUrl",
@@ -46,8 +46,14 @@ pub(super) fn rewrite(session: &mut Map<String, Value>, account_id: &AccountId) 
                 "/api/jmap/{id}/events?types={{types}}&closeafter={{closeafter}}&ping={{ping}}"
             ),
         ),
-    ];
-    for (name, url) in urls {
+    ]
+}
+
+/// Rewrites `session` for the browser and answers the API endpoint the
+/// upstream named; `None` when the object names none.
+pub(super) fn rewrite(session: &mut Map<String, Value>, account_id: &AccountId) -> Option<String> {
+    let api_url = session.get("apiUrl")?.as_str()?.to_owned();
+    for (name, url) in urls(account_id) {
         session.insert(name.to_owned(), Value::String(url));
     }
     carried_only(session.get_mut("capabilities"));

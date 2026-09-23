@@ -194,6 +194,9 @@ impl Protocol for Script {
                     self.mailboxes.answer(&verb, command, tag)
                 }
                 "EXAMINE" | "UID" | "NOOP" if phase.is_tls() => {
+                    if conversation.stalls(command, self.mailboxes.behavior) {
+                        std::future::pending::<()>().await;
+                    }
                     conversation.answer(&self.mailboxes, command, tag)?
                 }
                 _ => format!("{tag} BAD unknown command\r\n"),

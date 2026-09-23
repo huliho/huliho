@@ -5,6 +5,7 @@
 //! The proxy routes over HTTP: who reaches them, what the session
 //! object looks like from the browser and where the limits sit.
 
+mod answers;
 mod common;
 mod fake_dns;
 mod jmap_upstream;
@@ -19,9 +20,7 @@ use std::time::Duration;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
 use huliho_imap_bridge::testing::{PASSWORD, TOKEN};
-use huliho_server::accounts::{
-    self, AccountSettings, Credential, Endpoint, NewAccount, Provider, StopCause, TlsMode,
-};
+use huliho_server::accounts::{self, Credential, StopCause};
 use huliho_server::events::Actor;
 use huliho_server::gate::RUN_WINDOW;
 use huliho_server::jmap::{JMAP_REQUEST_LIMIT, MAX_CONCURRENT_REQUESTS};
@@ -140,41 +139,6 @@ async fn both_routes_need_a_session_and_the_request_route_the_header() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert!(text.contains("missing_csrf_header"), "{text}");
     assert!(instance.upstream.lines().is_empty());
-}
-
-#[tokio::test]
-async fn an_imap_account_is_unsupported_without_a_connection() {
-    let instance = instance().await;
-    let endpoint = |port| Endpoint {
-        host: HOST.to_owned(),
-        port,
-        tls: TlsMode::Implicit,
-    };
-    let new = NewAccount {
-        address: jmap_upstream::ADDRESS.to_owned(),
-        name: "Work".to_owned(),
-        provider: Provider::Generic,
-        settings: AccountSettings::Imap {
-            username: "sanne".to_owned(),
-            imap: endpoint(993),
-            smtp: endpoint(465),
-        },
-        credential: password(),
-    };
-    let scope = scope::resolve(&instance.store, &instance.user_id(), None).unwrap();
-    let id = accounts::add(&instance.store, &instance.api.keys, &scope, &new).unwrap();
-    let cookie = instance.sign_in().await;
-    for (status, body) in [
-        instance.session(&cookie, id.id.as_str()).await,
-        instance
-            .request(&cookie, id.id.as_str(), &query_request())
-            .await,
-    ] {
-        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-        assert_eq!(body["error"], "upstream_unsupported");
-    }
-    assert!(instance.upstream.lines().is_empty());
-    assert_eq!(instance.stopped_cause(id.id.as_str()), None);
 }
 
 #[tokio::test]

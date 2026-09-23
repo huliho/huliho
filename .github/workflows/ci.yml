@@ -599,3 +599,6 @@ jobs:
       - name: the scenario suite against the test account
         if: env.HULIHO_LIVE_GMAIL_ADDRESS != '' && env.HULIHO_LIVE_GMAIL_APP_PASSWORD != ''
         run: cargo test -p huliho-imap-bridge --test gmail_transcript the_gmail_account
+      - name: the account through the server's routes
+        if: env.HULIHO_LIVE_GMAIL_ADDRESS != '' && env.HULIHO_LIVE_GMAIL_APP_PASSWORD != ''
+        run: cargo test -p huliho-server --features live-targets --test live_suite a_gmail_account
