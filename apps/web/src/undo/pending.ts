@@ -25,17 +25,18 @@ function reapplyPending(): void {
   }
 }
 
+function flushPending(): void {
+  for (const entry of pending) {
+    entry.flush(true);
+  }
+  pending.clear();
+}
+
 // A removal waiting behind its undo toast must not die with the page.
 export function flushPendingOnPageHide(target: Window = window): () => void {
-  const onPageHide = (): void => {
-    for (const entry of pending) {
-      entry.flush(true);
-    }
-    pending.clear();
-  };
-  target.addEventListener("pagehide", onPageHide);
+  target.addEventListener("pagehide", flushPending);
   return () => {
-    target.removeEventListener("pagehide", onPageHide);
+    target.removeEventListener("pagehide", flushPending);
   };
 }
 
