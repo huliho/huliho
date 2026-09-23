@@ -1,0 +1,82 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--hh-bg);
+  opacity: var(--hhx-scrim-opacity);
+  transition: opacity var(--hhx-duration-overlay) var(--hhx-ease);
+}
+
+.popup {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: min(var(--hhx-measure-narrow), calc(100% - var(--hhx-space-6)));
+  overflow: auto;
+  border-inline-end: var(--hhx-border-width) solid var(--hh-border);
+  background: var(--hh-surface);
+  box-shadow: 0 0 0 var(--hhx-halo-width) var(--hh-accent-tint);
+  color: var(--hh-text);
+  outline: none;
+  transition: translate var(--hhx-duration-overlay) var(--hhx-ease);
+}
+
+.bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--hhx-space-2) var(--hhx-space-2) 0;
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  inline-size: var(--hhx-hit-target);
+  block-size: var(--hhx-hit-target);
+  padding: 0;
+  border: none;
+  border-radius: var(--hhx-radius-field);
+  background: none;
+  color: var(--hh-text);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--hh-hover);
+}
+
+.icon {
+  inline-size: var(--hhx-icon-header);
+  block-size: var(--hhx-icon-header);
+  stroke-width: var(--hhx-icon-stroke);
+}
+
+.backdrop[data-starting-style],
+.backdrop[data-ending-style] {
+  opacity: 0;
+}
+
+.popup[data-starting-style],
+.popup[data-ending-style] {
+  translate: -100% 0;
+}
+
+.popup:dir(rtl)[data-starting-style],
+.popup:dir(rtl)[data-ending-style] {
+  translate: 100% 0;
+}
+
+/* Under reduced motion the panel fades in place instead of sliding. */
+@media (prefers-reduced-motion: reduce) {
+  .popup {
+    transition-property: opacity;
+  }
+
+  .popup[data-starting-style],
+  .popup[data-ending-style] {
+    opacity: 0;
+    translate: 0 0;
+  }
+}

@@ -1,0 +1,26 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* The list keeps the width the frame hands it, the device's choice or the
+   design's default, clamped so the reading pane keeps at least 320 pixels.
+   The width declared here is that default. */
+.main {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  inline-size: var(--hhx-mail-list-width);
+  min-inline-size: 0;
+  background: var(--hh-surface);
+}
+
+.main[data-layout="phone"] {
+  flex: 1;
+  inline-size: auto;
+}
+
+.body {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+}

@@ -97,7 +97,8 @@
           ],
           "media-feature-name-value-allowed-list": {
             "min-width": [
-              "720px"
+              "720px",
+              "1200px"
             ]
           },
           "color-no-hex": true,
@@ -143,9 +144,16 @@
       "name": "initial JS",
       "path": [
         "apps/web/dist/assets/*.js",
-        "!apps/web/dist/assets/worker-*.js"
+        "!apps/web/dist/assets/worker-*.js",
+        "!apps/web/dist/assets/pages-*.js"
       ],
       "limit": "250 kB",
+      "gzip": true
+    },
+    {
+      "name": "settings chunk",
+      "path": "apps/web/dist/assets/pages-*.js",
+      "limit": "100 kB",
       "gzip": true
     },
     {

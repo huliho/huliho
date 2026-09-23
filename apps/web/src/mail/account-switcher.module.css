@@ -1,0 +1,70 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-2);
+  inline-size: 100%;
+  min-block-size: var(--hhx-hit-target);
+  padding: var(--hhx-space-2);
+  border: var(--hhx-border-width) solid transparent;
+  border-radius: var(--hhx-radius-field);
+  background: var(--hh-accent-tint);
+  color: var(--hh-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.trigger:hover,
+.trigger[data-popup-open] {
+  border-color: var(--hh-border-strong);
+}
+
+.avatarTrigger {
+  display: grid;
+  place-items: center;
+  min-inline-size: var(--hhx-toolbar-height);
+  min-block-size: var(--hhx-toolbar-height);
+  padding: 0;
+  border: none;
+  border-radius: var(--hhx-radius-field);
+  background: none;
+  cursor: pointer;
+}
+
+.avatarTrigger:hover,
+.avatarTrigger[data-popup-open] {
+  background: var(--hh-hover);
+}
+
+.facts {
+  flex: 1;
+  min-inline-size: 0;
+  display: grid;
+}
+
+.name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.address {
+  overflow: hidden;
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
+  color: var(--hh-text-muted);
+}

@@ -1,7 +1,4 @@
 {
-  "app_tagline": "Je mail, waar die ook staat.",
-  "demo_today": "Vandaag is het {today}.",
-  "demo_mailbox": "Dit demopostvak bevat {count, plural, one {{count, number} bericht} other {{count, number} berichten}}.",
   "locale_label": "Taal",
   "signin_name_label": "Naam",
   "signin_password_label": "Wachtwoord",
@@ -197,5 +194,22 @@
   "appearance_reading_pane_off": "Uit",
   "appearance_reading_pane_hint": "Waar een gesprek opent: naast de lijst, eronder of op een eigen scherm. Op een telefoon opent het altijd op een eigen scherm.",
   "appearance_error": "Je instellingen konden niet worden geladen.",
-  "appearance_save_failed": "Die instelling opslaan is niet gelukt. Probeer het opnieuw."
+  "appearance_save_failed": "Die instelling opslaan is niet gelukt. Probeer het opnieuw.",
+  "mail_sidebar": "Mailboxen en accounts",
+  "sheet_close": "Sluiten",
+  "mail_mailboxes": "Mailboxen",
+  "mail_account_menu": "Accountmenu",
+  "mail_all_mailboxes": "Alle mailboxen",
+  "mail_resize_list": "Lijstbreedte aanpassen",
+  "mail_error": "Je mail kon niet worden geladen. De server antwoordde niet. Je mail is veilig; er ging niets verloren.",
+  "mail_empty_inbox": "Inbox is leeg. Niets vraagt nu je aandacht.",
+  "mail_open_archive": "Archief openen",
+  "mail_empty_mailbox": "{mailbox} is leeg.",
+  "mail_open_inbox": "Inbox openen",
+  "mail_no_mailboxes": "Dit account heeft nog geen mailboxen om te tonen.",
+  "tree_folders": "Mappen",
+  "tree_row_unread": "{name}, {unread, number} ongelezen",
+  "tree_row_drafts": "{name}, {count, plural, one {{count, number} concept} other {{count, number} concepten}}",
+  "thread_pane": "Gesprek",
+  "thread_none_open": "Kies een gesprek."
 }

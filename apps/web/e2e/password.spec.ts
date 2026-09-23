@@ -119,7 +119,7 @@ test("a one-time password lands on the forced step from every route", async ({ p
   await expect(page.locator("html")).toHaveAttribute("data-theme", "system");
   await fillNewPassword(page);
   await page.getByRole("button", { name: "Save and continue" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Huliho" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
   await expect(page).not.toHaveURL(/choose-password/);
   await expect(page.getByText(CHANGED_TOAST)).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -138,7 +138,7 @@ test("the forced step can still sign out", async ({ page }) => {
 test("an ordinary session and a missing one never see the forced step", async ({ page }) => {
   await mockSessions(page, sessionRows(FIXED_NOW));
   await page.goto("/choose-password");
-  await expect(page.getByRole("heading", { level: 1, name: "Huliho" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
   await expect(page).not.toHaveURL(/choose-password/);
   await mockSignedOut(page);
   await page.goto("/choose-password");

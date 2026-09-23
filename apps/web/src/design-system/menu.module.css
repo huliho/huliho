@@ -1,0 +1,58 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.popup {
+  min-inline-size: var(--anchor-width);
+  padding: var(--hhx-space-1);
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-overlay);
+  background: var(--hh-surface);
+  box-shadow: 0 0 0 var(--hhx-halo-width) var(--hh-accent-tint);
+  color: var(--hh-text);
+  outline: none;
+  transition: opacity var(--hhx-duration-overlay) var(--hhx-ease);
+}
+
+.popup[data-starting-style],
+.popup[data-ending-style] {
+  opacity: 0;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-3);
+  min-block-size: var(--hhx-hit-target);
+  padding: var(--hhx-space-2) var(--hhx-space-3);
+  border-radius: var(--hhx-radius-field);
+  color: var(--hh-text);
+  text-decoration: none;
+  cursor: default;
+}
+
+.item[data-highlighted] {
+  background: var(--hh-hover);
+}
+
+/* The chosen item carries weight and a mark as well as color. */
+.item[data-checked] {
+  color: var(--hh-accent);
+  font-weight: 600;
+}
+
+.indicator {
+  display: grid;
+  margin-inline-start: auto;
+}
+
+.check {
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
+}
+
+.separator {
+  margin-block: var(--hhx-space-1);
+  border-block-start: var(--hhx-border-width) solid var(--hh-border);
+}

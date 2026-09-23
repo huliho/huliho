@@ -1,0 +1,63 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.groupLabel {
+  display: block;
+  margin-block-start: var(--hhx-space-3);
+  padding: var(--hhx-space-1) var(--hhx-space-3);
+  font-size: var(--hhx-type-1);
+  letter-spacing: var(--hhx-tracking-caps);
+  text-transform: uppercase;
+  color: var(--hh-text-muted);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-2);
+  min-block-size: var(--hhx-hit-target);
+  padding: var(--hhx-space-1) var(--hhx-space-3);
+  border: var(--hhx-border-width) solid transparent;
+  border-radius: var(--hhx-radius-field);
+  color: var(--hh-text);
+  text-decoration: none;
+}
+
+.row:hover {
+  background: var(--hh-hover);
+}
+
+/* The open mailbox is the card; weight carries it beside the tint. */
+.row[aria-current="page"] {
+  border-color: var(--hh-border);
+  background: var(--hh-surface);
+  font-weight: 600;
+}
+
+/* The ring sits inside the row, so it never clips at the sidebar's edge. */
+.row:focus-visible {
+  outline-offset: calc(-1 * var(--hhx-focus-ring-width));
+}
+
+.name {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.letter {
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+}

@@ -46,7 +46,11 @@ test("the app runs under the server's policy without a violation", async ({ page
   await page.getByLabel("Name").fill("mira@example.com");
   await page.getByLabel("Password").fill("example passphrase");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
+  // The account menu positions itself through the CSSOM, which the policy does not govern.
+  await page.getByRole("button", { name: /mira@example\.com/ }).click();
+  await expect(page.getByRole("menuitem", { name: "Sign out" })).toBeVisible();
+  await page.keyboard.press("Escape");
   expect(await violations(page)).toEqual([]);
 
   await page.goto("/settings/about");

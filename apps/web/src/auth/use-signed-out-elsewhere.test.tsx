@@ -20,6 +20,8 @@ import { useSignedOutElsewhere } from "./use-signed-out-elsewhere";
 const clearCache = vi.hoisted(() => vi.fn<() => Promise<void>>(() => Promise.resolve()));
 vi.mock("../cache/client", () => ({ clearCache }));
 
+const LAST_ACCOUNT_KEY = "huliho-last-account";
+
 const SESSION = {
   user: { id: "user-1", login: "mira@example.com", name: "Mira", role: "owner" },
   organization: { id: "org-1", name: "mira@example.com" },
@@ -57,9 +59,11 @@ async function renderHarness(signedIn: boolean) {
 afterEach(() => {
   cleanup();
   clearCache.mockClear();
+  localStorage.clear();
 });
 
-test("a signed-in tab stops its worker, drops what it holds and goes to sign-in", async () => {
+test("a signed-in tab stops its worker, drops what it holds and its account and goes to sign-in", async () => {
+  localStorage.setItem(LAST_ACCOUNT_KEY, "a1");
   const { queryClient, router } = await renderHarness(true);
   fireEvent.click(screen.getByRole("button", { name: "elsewhere" }));
   await waitFor(() => {
@@ -67,6 +71,7 @@ test("a signed-in tab stops its worker, drops what it holds and goes to sign-in"
   });
   expect(clearCache).toHaveBeenCalledOnce();
   expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  expect(localStorage.getItem(LAST_ACCOUNT_KEY)).toBeNull();
 });
 
 test("a second word while the tab is ending ends it once", async () => {
@@ -86,9 +91,11 @@ test("a second word while the tab is ending ends it once", async () => {
 });
 
 test("a tab without a session stays where it is", async () => {
+  localStorage.setItem(LAST_ACCOUNT_KEY, "a1");
   const { queryClient, router } = await renderHarness(false);
   fireEvent.click(screen.getByRole("button", { name: "elsewhere" }));
   expect(router.state.location.pathname).toBe("/");
   expect(clearCache).not.toHaveBeenCalled();
   expect(queryClient.getQueryData(queryKeys.mailboxes("a1"))).toEqual([]);
+  expect(localStorage.getItem(LAST_ACCOUNT_KEY)).toBe("a1");
 });

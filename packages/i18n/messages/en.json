@@ -1,7 +1,4 @@
 {
-  "app_tagline": "Your mail, wherever it lives.",
-  "demo_today": "Today is {today}.",
-  "demo_mailbox": "This demo mailbox holds {count, plural, one {{count, number} message} other {{count, number} messages}}.",
   "locale_label": "Language",
   "signin_name_label": "Name",
   "signin_password_label": "Password",
@@ -197,5 +194,22 @@
   "appearance_reading_pane_off": "Off",
   "appearance_reading_pane_hint": "Where a conversation opens: beside the list, below it or on its own screen. A phone always opens it on its own screen.",
   "appearance_error": "Couldn’t load your settings.",
-  "appearance_save_failed": "Couldn’t save that setting. Try again."
+  "appearance_save_failed": "Couldn’t save that setting. Try again.",
+  "mail_sidebar": "Mailboxes and accounts",
+  "sheet_close": "Close",
+  "mail_mailboxes": "Mailboxes",
+  "mail_account_menu": "Account menu",
+  "mail_all_mailboxes": "All mailboxes",
+  "mail_resize_list": "Resize the list",
+  "mail_error": "Couldn’t load your mail. The server didn’t answer. Your mail is safe; nothing was lost.",
+  "mail_empty_inbox": "Inbox is empty. Nothing needs you right now.",
+  "mail_open_archive": "Open Archive",
+  "mail_empty_mailbox": "{mailbox} is empty.",
+  "mail_open_inbox": "Open Inbox",
+  "mail_no_mailboxes": "This account has no mailboxes to show yet.",
+  "tree_folders": "Folders",
+  "tree_row_unread": "{name}, {unread, number} unread",
+  "tree_row_drafts": "{name}, {count, plural, one {{count, number} draft} other {{count, number} drafts}}",
+  "thread_pane": "Conversation",
+  "thread_none_open": "Select a conversation."
 }

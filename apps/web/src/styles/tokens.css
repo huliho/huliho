@@ -84,6 +84,9 @@
   /* The least a row's text column gets before its actions wrap under it. */
   --hhx-row-facts-min: 160px;
   --hhx-settings-sidebar-width: 260px;
+  /* The desktop mail panes before anyone drags the seam between list and reading pane. */
+  --hhx-mail-sidebar-width: 240px;
+  --hhx-mail-list-width: 360px;
 }
 
 :root[data-theme="light"] {

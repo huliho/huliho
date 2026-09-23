@@ -13,6 +13,86 @@ const STATE = "0";
 
 type Invocation = [string, Record<string, unknown>, string];
 
+export interface MailboxBody {
+  id: string;
+  name: string;
+  parentId: string | null;
+  role: string | null;
+  sortOrder: number;
+  totalEmails: number;
+  unreadEmails: number;
+  totalThreads: number;
+  unreadThreads: number;
+  myRights: Record<string, boolean>;
+  isSubscribed: boolean;
+}
+
+interface Counts {
+  id: string;
+  name: string;
+  role?: string;
+  sortOrder: number;
+  total: number;
+  unread: number;
+  parentId?: string;
+}
+
+const RIGHTS = {
+  mayReadItems: true,
+  mayAddItems: false,
+  mayRemoveItems: false,
+  maySetSeen: false,
+  maySetKeywords: false,
+  mayCreateChild: false,
+  mayRename: false,
+  mayDelete: false,
+  maySubmit: false,
+};
+
+function mailbox(counts: Counts): MailboxBody {
+  return {
+    id: counts.id,
+    name: counts.name,
+    parentId: counts.parentId ?? null,
+    role: counts.role ?? null,
+    sortOrder: counts.sortOrder,
+    totalEmails: counts.total,
+    unreadEmails: counts.unread,
+    totalThreads: counts.total,
+    unreadThreads: counts.unread,
+    myRights: RIGHTS,
+    isSubscribed: true,
+  };
+}
+
+// The six roles and three folders, one of them nested and one empty;
+// the roles arrive out of order, as a server may list them.
+export const MAILBOXES: MailboxBody[] = [
+  mailbox({ id: "mb-trash", name: "Trash", role: "trash", sortOrder: 5, total: 12, unread: 0 }),
+  mailbox({ id: "mb-inbox", name: "Inbox", role: "inbox", sortOrder: 0, total: 1204, unread: 23 }),
+  mailbox({ id: "mb-drafts", name: "Drafts", role: "drafts", sortOrder: 1, total: 2, unread: 0 }),
+  mailbox({ id: "mb-sent", name: "Sent", role: "sent", sortOrder: 2, total: 310, unread: 0 }),
+  mailbox({
+    id: "mb-archive",
+    name: "Archive",
+    role: "archive",
+    sortOrder: 3,
+    total: 4021,
+    unread: 0,
+  }),
+  mailbox({ id: "mb-junk", name: "Junk", role: "junk", sortOrder: 4, total: 9, unread: 1 }),
+  mailbox({ id: "mb-facturen", name: "Facturen", sortOrder: 10, total: 40, unread: 3 }),
+  mailbox({ id: "mb-verbouwing", name: "Verbouwing", sortOrder: 10, total: 0, unread: 0 }),
+  mailbox({
+    id: "mb-offertes",
+    name: "Offertes",
+    sortOrder: 10,
+    total: 5,
+    unread: 0,
+    parentId: "mb-verbouwing",
+  }),
+];
+
 function isInvocation(value: unknown): value is Invocation {
   return Array.isArray(value) && value.length === 3 && typeof value[0] === "string";
 }
@@ -58,8 +138,9 @@ function sessionBody(accountId: string): object {
   };
 }
 
-// The answer of a call against an account that holds nothing.
-function empty([name, , id]: Invocation): Invocation {
+// The answer of one call: the mailboxes for a Mailbox/get, nothing for
+// every other read, since the account holds no mail.
+function answer([name, , id]: Invocation, mailboxes: MailboxBody[]): Invocation {
   if (name.endsWith("/changes")) {
     return [
       name,
@@ -82,7 +163,8 @@ function empty([name, , id]: Invocation): Invocation {
       id,
     ];
   }
-  return [name, { accountId: UPSTREAM, state: STATE, list: [], notFound: [] }, id];
+  const list = name === "Mailbox/get" ? mailboxes : [];
+  return [name, { accountId: UPSTREAM, state: STATE, list, notFound: [] }, id];
 }
 
 function accountIdOf(route: Route): string {
@@ -90,11 +172,11 @@ function accountIdOf(route: Route): string {
   return parts[parts.indexOf("jmap") + 1] ?? "";
 }
 
-// Answers the proxy's two routes for any account with an empty mailbox,
-// so the cache worker behind a signed-in page has something to poll. A
+// Answers the proxy's two routes for any account with the mailboxes and
+// no mail, so the shell behind a signed-in page has a tree to draw. A
 // route never reaches a shared worker's requests, so the page runs the
 // dedicated worker, whose requests the context's routes do answer.
-export async function mockEmptyMail(page: Page): Promise<void> {
+export async function mockMail(page: Page, mailboxes: MailboxBody[] = MAILBOXES): Promise<void> {
   const context = page.context();
   await context.addInitScript(() => {
     Reflect.deleteProperty(window, "SharedWorker");
@@ -107,7 +189,22 @@ export async function mockEmptyMail(page: Page): Promise<void> {
       return route.fallback();
     }
     return route.fulfill({
-      json: { methodResponses: calls(route).map((call) => empty(call)), sessionState: "s1" },
+      json: {
+        methodResponses: calls(route).map((call) => answer(call, mailboxes)),
+        sessionState: "s1",
+      },
     });
   });
+}
+
+// Refuses the session object while `failing()` holds, as a proxy whose
+// upstream is down does; the mock behind answers once it lets go.
+export async function refuseMailWhile(page: Page, failing: () => boolean): Promise<void> {
+  await page
+    .context()
+    .route(SESSION_ROUTE, (route) =>
+      failing()
+        ? route.fulfill({ status: 502, json: { error: "upstream_unreachable" } })
+        : route.fallback(),
+    );
 }

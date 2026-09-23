@@ -10,6 +10,7 @@ import { TAB, applyCacheMessage } from "./client";
 import { LEASE_RENEW_MS } from "./coordinator";
 import type { Lease } from "./coordinator";
 import { CACHE_CHANNEL, readCacheMessage } from "./messages";
+import type { CacheResult } from "./outcome";
 
 // The worker's remote as the window sees it, one fake per test.
 const wrap = vi.hoisted(() => vi.fn<() => unknown>());
@@ -99,6 +100,7 @@ function fakeRemote() {
     focus: vi.fn<() => Promise<void>>(() => Promise.resolve()),
     persisted: vi.fn<() => Promise<void>>(() => Promise.resolve()),
     clear: vi.fn<(by: string) => Promise<void>>(() => Promise.resolve()),
+    mailboxes: vi.fn<(accountId: string) => Promise<CacheResult<unknown[]>>>(),
   };
 }
 
@@ -165,6 +167,25 @@ test("a sign-out names this tab and survives a worker that fails or never answer
   const cleared = windowSide.clearCache();
   await vi.advanceTimersByTimeAsync(windowSide.CLEAR_WAIT_MS);
   await expect(cleared).resolves.toBeUndefined();
+});
+
+test("a read hands the worker's value through and turns its failure back into the error", async () => {
+  const { remote, windowSide } = await page();
+  remote.mailboxes.mockResolvedValueOnce({ ok: true, value: [] });
+  await expect(windowSide.mailCache.mailboxes("a1")).resolves.toEqual([]);
+  remote.mailboxes.mockResolvedValueOnce({
+    ok: false,
+    failure: { code: "stopped", stopCause: "credentials", limit: null },
+  });
+  const failed = await windowSide.mailCache.mailboxes("a1").catch((error: unknown) => error);
+  expect(failed).toBeInstanceOf(Error);
+  expect(failed).toMatchObject({
+    name: "JmapError",
+    code: "stopped",
+    stopCause: "credentials",
+    limit: null,
+  });
+  expect(remote.mailboxes).toHaveBeenCalledWith("a1");
 });
 
 test("the listener hears the worker's messages on the channel and nothing else", async () => {

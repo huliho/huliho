@@ -128,7 +128,7 @@ test("a failed list offers a retry that works", async ({ page }) => {
 test("escape leaves settings for the shell", async ({ page }) => {
   await openSessions(page);
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("heading", { level: 1, name: "Huliho" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
 });
 
 test("a phone lists the pages first and a wide screen opens the first page", async ({ page }) => {
