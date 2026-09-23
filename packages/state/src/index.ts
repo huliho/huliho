@@ -5,6 +5,7 @@
 export { accountsQueryOptions, consentQueryOptions } from "./accounts";
 export { MAIL_KEY_WORDS, queryKeys } from "./keys";
 export { mailboxesQueryOptions, threadQueryOptions, threadWindowQueryOptions } from "./mail";
+export { preferencesQueryOptions } from "./preferences";
 export { sessionQueryOptions } from "./session";
 export { sessionsQueryOptions } from "./sessions";
 export { usersQueryOptions } from "./users";

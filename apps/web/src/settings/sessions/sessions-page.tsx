@@ -9,8 +9,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import { ErrorState } from "../../design-system/error-state";
 import { ListSkeleton } from "../../design-system/list-skeleton";
+import { useLocale } from "../../i18n/locale";
 import { m } from "../../paraglide/messages.js";
-import { getLocale } from "../../paraglide/runtime.js";
 import { listLens, useDeferredMutation } from "../../undo/use-deferred-mutation";
 import { SettingsSection } from "../settings-section";
 import { revokedToast } from "./device-label";
@@ -21,7 +21,7 @@ import { SessionList } from "./session-list";
 const SKELETON_ROW_COUNT = 3;
 
 export function SessionsPage() {
-  const locale = getLocale();
+  const locale = useLocale();
   const query = useQuery(sessionsQueryOptions);
   const revoke = useDeferredMutation<SessionRow[], SessionRow, string>({
     queryKey: queryKeys.sessions,

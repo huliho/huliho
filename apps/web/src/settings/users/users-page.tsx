@@ -9,8 +9,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "../../design-system/button";
 import { ErrorState } from "../../design-system/error-state";
 import { ListSkeleton } from "../../design-system/list-skeleton";
+import { useLocale } from "../../i18n/locale";
 import { m } from "../../paraglide/messages.js";
-import { getLocale } from "../../paraglide/runtime.js";
 import { SettingsSection } from "../settings-section";
 import { useUserFlow } from "./use-user-flow";
 import { UserDialog } from "./user-dialog";
@@ -20,7 +20,7 @@ import { UserTable } from "./user-table";
 const SKELETON_ROW_COUNT = 3;
 
 export function UsersPage() {
-  const locale = getLocale();
+  const locale = useLocale();
   const actor = useQuery(sessionQueryOptions).data?.user;
   const query = useQuery(usersQueryOptions);
   const flow = useUserFlow(locale);

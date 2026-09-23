@@ -4,11 +4,11 @@
 
 import { BrandMark } from "../design-system/brand-mark";
 import { LegalNotices } from "../legal/legal-notices";
-import { getLocale } from "../paraglide/runtime.js";
+import { useLocale } from "../i18n/locale";
 import { SettingsSection } from "./settings-section";
 
 export function AboutSettings() {
-  const locale = getLocale();
+  const locale = useLocale();
   return (
     <>
       <SettingsSection>

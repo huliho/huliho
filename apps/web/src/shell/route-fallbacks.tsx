@@ -6,12 +6,12 @@ import { useRouter } from "@tanstack/react-router";
 
 import { BrandMark } from "../design-system/brand-mark";
 import { ErrorState } from "../design-system/error-state";
+import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
-import { getLocale } from "../paraglide/runtime.js";
 import styles from "./route-fallbacks.module.css";
 
 export function RoutePending() {
-  const locale = getLocale();
+  const locale = useLocale();
   return (
     <output className={styles.pending} aria-label={m.loading_label({}, { locale })}>
       <BrandMark stacked />
@@ -20,7 +20,7 @@ export function RoutePending() {
 }
 
 export function RouteError() {
-  const locale = getLocale();
+  const locale = useLocale();
   const router = useRouter();
   return (
     <div className={styles.screen}>

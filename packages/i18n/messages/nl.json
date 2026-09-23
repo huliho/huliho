@@ -181,5 +181,21 @@
   "accounts_remove": "Verwijderen",
   "accounts_remove_for": "{name} verwijderen",
   "accounts_removed_toast": "{name} verwijderd.",
-  "accounts_remove_failed": "Dat account verwijderen is niet gelukt. Probeer het opnieuw."
+  "accounts_remove_failed": "Dat account verwijderen is niet gelukt. Probeer het opnieuw.",
+  "settings_appearance": "Weergave",
+  "appearance_theme": "Thema",
+  "appearance_theme_system": "Systeem",
+  "appearance_theme_light": "Licht",
+  "appearance_theme_dark": "Donker",
+  "appearance_density": "Dichtheid",
+  "appearance_density_comfortable": "Comfortabel",
+  "appearance_density_compact": "Compact",
+  "appearance_density_hint": "Compact laat meer op het scherm zien. Een touchscreen houdt zijn eigen ruimte.",
+  "appearance_reading_pane": "Leesvenster",
+  "appearance_reading_pane_right": "Rechts",
+  "appearance_reading_pane_bottom": "Onder",
+  "appearance_reading_pane_off": "Uit",
+  "appearance_reading_pane_hint": "Waar een gesprek opent: naast de lijst, eronder of op een eigen scherm. Op een telefoon opent het altijd op een eigen scherm.",
+  "appearance_error": "Je instellingen konden niet worden geladen.",
+  "appearance_save_failed": "Die instelling opslaan is niet gelukt. Probeer het opnieuw."
 }

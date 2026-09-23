@@ -58,6 +58,23 @@ out at once and reaches the server when its undo toast has run out,
 through the same deferred mutation as a revoke. A connect from the
 card lands here with its toast.
 
+Settings > Appearance holds the theme, the density, the reading pane
+position and the language, each a row of segments on the preferences
+the server keeps per user. A choice shows on the screen first and
+reaches the server next; a refused save puts the word on record back
+and says so. Every route behind a session guard renders inside one
+layout, which applies what the server holds: the theme and the density
+as attributes on the document, the language on every mounted screen
+without a reload, since every screen reads the locale through one
+store in `src/i18n`. A key the user never chose applies its default:
+the device's own scheme, comfortable rows, the reading pane on the
+right and the browser's language. The device remembers the last theme
+and density it applied, so the next load starts there before the
+server answers. While a one-time password is in force the server holds
+the words back, so the forced step keeps the device's own; they apply
+once the change lands. The pseudo locale is a development entry that
+never reaches the server.
+
 The mail cache runs in a worker under `src/cache`: a shared worker
 (one per origin) or a dedicated worker per tab where the browser has
 none. It keeps the mailbox tree, the headers, the threads and the

@@ -9,6 +9,7 @@ import { expect, test } from "@playwright/test";
 import { FIXED_NOW } from "./account-card";
 import { accountRow, mockAccounts } from "./account-mocks";
 import type { AccountRowBody, AccountsAnswers, Recorded } from "./account-mocks";
+import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
 import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
 
@@ -296,9 +297,7 @@ test("the page reads in Dutch and in the pseudo-locale", async ({ page }) => {
   await mockSignedIn(page);
   await mockAccounts(page, ROWS);
   await page.clock.install({ time: FIXED_NOW });
-  await page.addInitScript(() => {
-    window.localStorage.setItem("PARAGLIDE_LOCALE", "nl");
-  });
+  await mockPreferences(page, { locale: "nl" });
   await page.goto("/settings/accounts");
   await expect(page.getByText("Verbinding verlopen")).toBeVisible();
   await expect(page.getByText("elke 15 minuten")).toBeVisible();

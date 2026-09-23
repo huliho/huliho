@@ -9,10 +9,11 @@ import {
   createRootRoute,
   createRouter,
 } from "@tanstack/react-router";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test } from "vitest";
 
 import { App } from "./app";
+import { switchLocale } from "./i18n/locale";
 import { setLocale } from "./paraglide/runtime.js";
 
 beforeEach(async () => {
@@ -40,25 +41,18 @@ async function renderApp(): Promise<void> {
 test("mounts the application shell", async () => {
   await renderApp();
   expect(screen.getByRole("heading", { level: 1, name: "Huliho" })).toBeDefined();
+  expect(screen.getByText("Your mail, wherever it lives.")).toBeDefined();
+  expect(screen.getByText(/24,817 messages/)).toBeDefined();
 });
 
-test("switching the locale translates the page without a reload", async () => {
+test("a locale switch translates the mounted shell and its Intl formatting", async () => {
   await renderApp();
-  expect(screen.getByText("Your mail, wherever it lives.")).toBeDefined();
-
-  fireEvent.change(screen.getByLabelText("Language"), { target: { value: "nl" } });
-
+  act(() => {
+    switchLocale("nl");
+  });
   expect(await screen.findByText("Je mail, waar die ook staat.")).toBeDefined();
+  expect(screen.getByText(/24\.817 berichten/)).toBeDefined();
+  expect(screen.getByText(/Vandaag is het/)).toBeDefined();
   expect(document.documentElement.lang).toBe("nl");
   expect(localStorage.getItem("PARAGLIDE_LOCALE")).toBe("nl");
-});
-
-test("dates and numbers format per locale through Intl", async () => {
-  await renderApp();
-  expect(screen.getByText(/24,817 messages/)).toBeDefined();
-
-  fireEvent.change(screen.getByLabelText("Language"), { target: { value: "nl" } });
-
-  expect(await screen.findByText(/24\.817 berichten/)).toBeDefined();
-  expect(screen.getByText(/Vandaag is het/)).toBeDefined();
 });

@@ -3,7 +3,7 @@
 TanStack Query hooks on top of @huliho/core, including the query-key
 registry. Today it holds the key registry and the query options for
 the current session, the session list, the users, the connected
-accounts and the poll of a pending consent.
+accounts, the poll of a pending consent and the user's preferences.
 
 The mail queries read the cache rather than the network: each one
 takes the `MailCache` an adapter supplies (the web app's worker, a

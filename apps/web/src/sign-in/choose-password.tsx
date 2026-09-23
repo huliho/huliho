@@ -5,12 +5,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
-import { sessionQueryOptions } from "@huliho/state";
+import { queryKeys, sessionQueryOptions } from "@huliho/state";
 import { useSignOut } from "../auth/use-sign-out";
 import { BrandMark } from "../design-system/brand-mark";
 import { Button } from "../design-system/button";
+import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
-import { getLocale } from "../paraglide/runtime.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { PasswordForm } from "../password/password-form";
 import type { PasswordFormProps } from "../password/password-form";
@@ -43,13 +43,17 @@ export function ChoosePasswordCard({ locale, onSignOut, ...form }: ChoosePasswor
 // Where a one-time password lands: the session reaches nothing else
 // until the user has chosen a password of their own.
 export function ChoosePassword() {
-  const locale = getLocale();
+  const locale = useLocale();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const signOut = useSignOut(locale);
   const change = usePasswordChange(locale, async () => {
     queryClient.removeQueries({ queryKey: sessionQueryOptions.queryKey });
-    await navigate({ to: "/" });
+    // The server refuses the words on record until the password is chosen.
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.preferences }),
+      navigate({ to: "/" }),
+    ]);
   });
   return (
     <main className={styles.screen}>

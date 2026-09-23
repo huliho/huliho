@@ -6,14 +6,14 @@ import { Link, Outlet, useMatchRoute, useNavigate } from "@tanstack/react-router
 import { ArrowLeft } from "lucide-react";
 
 import { useCommand } from "../commands/use-command";
+import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
-import { getLocale } from "../paraglide/runtime.js";
 import { useSidebarShown } from "./layout";
 import { SETTINGS_ENTRIES, SettingsNav } from "./settings-nav";
 import styles from "./settings-page.module.css";
 
 export function SettingsPage() {
-  const locale = getLocale();
+  const locale = useLocale();
   const navigate = useNavigate();
   const matchRoute = useMatchRoute();
   const sidebarShown = useSidebarShown();

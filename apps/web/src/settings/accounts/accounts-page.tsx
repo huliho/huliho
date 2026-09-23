@@ -14,8 +14,8 @@ import { cx } from "../../design-system/cx";
 import { EmptyState } from "../../design-system/empty-state";
 import { ErrorState } from "../../design-system/error-state";
 import { ListSkeleton } from "../../design-system/list-skeleton";
+import { useLocale } from "../../i18n/locale";
 import { m } from "../../paraglide/messages.js";
-import { getLocale } from "../../paraglide/runtime.js";
 import type { Locale } from "../../paraglide/runtime.js";
 import { SettingsSection } from "../settings-section";
 import { AccountList } from "./account-list";
@@ -69,7 +69,7 @@ function ListedAccounts({ locale, list, afterLast }: ListedProps) {
 }
 
 export function AccountsPage() {
-  const locale = getLocale();
+  const locale = useLocale();
   const query = useQuery(accountsQueryOptions);
   // The link stays in one place whether the rows or the empty sentence
   // show above it, so a removal of the last row can hand it the cursor.
