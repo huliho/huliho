@@ -339,7 +339,7 @@ async fn a_gmail_account_lists_its_roles_syncs_its_stores_and_answers_a_window()
     let live = Live::public().await;
     let mail = live.add(&body, true).await;
     let roles: Vec<String> = live
-        .mailboxes(&mail)
+        .wait_listed(&mail, GMAIL_PATIENCE)
         .await
         .iter()
         .filter_map(|mailbox| mailbox["role"].as_str().map(str::to_owned))
