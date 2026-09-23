@@ -1,0 +1,42 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* The hit area straddles the seam; only the line in its middle shows. */
+.divider {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  inline-size: var(--hhx-space-4);
+  margin-inline: calc(-1 * var(--hhx-space-2));
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.divider::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(50% - var(--hhx-border-width) / 2);
+  inline-size: var(--hhx-border-width);
+  background: var(--hh-border);
+}
+
+.divider:hover::before,
+.divider:focus-visible::before {
+  inset-inline-start: calc(50% - var(--hhx-focus-ring-width) / 2);
+  inline-size: var(--hhx-focus-ring-width);
+  background: var(--hh-accent);
+}
+
+.divider:focus-visible {
+  outline-offset: calc(-1 * var(--hhx-focus-ring-width));
+}
+
+/* A touchscreen gets the touch target as the hit area, still centered on the seam. */
+@media (any-pointer: coarse) {
+  .divider {
+    inline-size: var(--hhx-hit-target);
+    margin-inline: calc(-1 * var(--hhx-hit-target) / 2);
+  }
+}

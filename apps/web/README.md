@@ -95,6 +95,23 @@ account from a server that did not answer. Sign-out deletes the
 database; every other tab of the session hears it and shows the
 sign-in screen with a word about it.
 
+The mail screen lives under `src/mail` at `/mail/{accountId}/{mailboxId}`.
+The root sends a visit to the account this device opened last, else to
+the oldest one. An account named without a mailbox opens its inbox, or
+the first mailbox it has. The shell has three layouts on two
+breakpoints, 720 and 1200 CSS pixels: below the first a phone shows the
+list alone and opens the sidebar as a sheet from the avatar in its
+header; from there a tablet shows the sidebar as a rail with the roles
+and a button for the whole tree; from the second the sidebar, the list
+and the reading pane stand side by side, with a seam between list and
+reading pane that drags, answers the arrow keys, resets on Enter or a
+double click and keeps its place on the device. The sidebar holds the
+account switcher (a menu with every account of the session, Settings
+and Sign out) over the mailbox tree: the six roles in a fixed order,
+then the folders with their depth. The tree is one tab stop: the arrow
+keys move inside it and Tab leaves it. Mailbox names are the server's
+words; the counts are unread mail, and drafts for the drafts folder.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component

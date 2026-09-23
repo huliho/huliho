@@ -9,13 +9,14 @@ import { useRef } from "react";
 
 import { clearCache } from "../cache/client";
 import { toastManager } from "../design-system/toast";
+import { forgetLastAccount } from "../mail/last-account";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
 
 // A sign-out in another tab ends this one too: this tab's worker stops
-// and the database goes, this tab drops what it holds, says so and shows
-// the sign-in screen. A tab without a session has nothing to end, and a
-// tab that is ending already ends once.
+// and the database goes, this tab drops what it holds and the remembered
+// account, says so and shows the sign-in screen. A tab without a session
+// has nothing to end, and a tab that is ending already ends once.
 export function useSignedOutElsewhere(): () => void {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -26,6 +27,7 @@ export function useSignedOutElsewhere(): () => void {
       toastManager.add({ description: m.session_ended({}, { locale: getLocale() }) });
       await clearCache();
       queryClient.clear();
+      forgetLastAccount();
       await navigate({ to: "/sign-in" });
     } finally {
       ending.current = false;

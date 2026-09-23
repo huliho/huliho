@@ -135,6 +135,12 @@
     "react/react-in-jsx-scope": "off",
     "react/hooks": "off",
 
+    // The composite widgets of the mail screen (a navigation tree, a
+    // window splitter) carry their ARIA roles on plain elements, as the
+    // authoring practices draw them; no HTML element stands in for those
+    // roles.
+    "jsx-a11y/prefer-tag-over-role": "off",
+
     // Stylesheets load for their side effect.
     "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
 

@@ -8,11 +8,13 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { clearCache } from "../cache/client";
 import { toastManager } from "../design-system/toast";
+import { forgetLastAccount } from "../mail/last-account";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 
-// The local session ends either way, the cached mail with it; the server
-// copy outlives only a failed revoke and ends at its timeout.
+// The local session ends either way, the cached mail and the remembered
+// account with it; the server copy outlives only a failed revoke and ends
+// at its timeout.
 export function useSignOut(locale: Locale): () => void {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -21,6 +23,7 @@ export function useSignOut(locale: Locale): () => void {
     onSettled: async () => {
       await clearCache();
       queryClient.clear();
+      forgetLastAccount();
       await navigate({ to: "/sign-in" });
     },
     onError: () => {

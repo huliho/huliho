@@ -7,6 +7,7 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   redirect,
 } from "@tanstack/react-router";
 
@@ -14,14 +15,10 @@ import { mayManageUsers } from "@huliho/core";
 import type { AccountRow, SessionInfo } from "@huliho/core";
 import { accountsQueryOptions, sessionQueryOptions } from "@huliho/state";
 import { AddAccount } from "./accounts/add/add-account";
-import { App } from "./app";
-import { AboutSettings } from "./settings/about";
-import { AccountsPage } from "./settings/accounts/accounts-page";
-import { AppearancePage } from "./settings/appearance/appearance-page";
-import { SessionsPage } from "./settings/sessions/sessions-page";
-import { SettingsIndex } from "./settings/settings-index";
-import { SettingsPage } from "./settings/settings-page";
-import { UsersPage } from "./settings/users/users-page";
+import { InboxRedirect } from "./mail/inbox-redirect";
+import { landingAccount } from "./mail/last-account";
+import { MailShell } from "./mail/mail-shell";
+import { MailboxPane } from "./mail/mailbox-pane";
 import { RootLayout } from "./shell/root-layout";
 import { RouteError, RoutePending } from "./shell/route-fallbacks";
 import { SignedInLayout } from "./shell/signed-in-layout";
@@ -35,6 +32,9 @@ interface RouterContext {
 type Home = "/" | "/choose-password";
 
 export const queryClient = new QueryClient();
+
+// The settings screens arrive as one chunk on the first settings visit.
+const settings = () => import("./settings/pages");
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
@@ -73,11 +73,12 @@ interface AddAccountSearch {
 
 // The shell has nothing to show without an account, so a session with
 // none starts by adding one.
-async function requireAccount(context: RouterContext): Promise<void> {
+async function requireAccounts(context: RouterContext): Promise<AccountRow[]> {
   const list = await context.queryClient.query(accountsQueryOptions);
   if (list.accounts.length === 0) {
     redirect({ to: "/accounts/new", throw: true });
   }
+  return list.accounts;
 }
 
 // The row a reconnect opens on; a row that is gone opens the card plain.
@@ -99,14 +100,43 @@ const signedInRoute = createRoute({
   component: SignedInLayout,
 });
 
-const shellRoute = createRoute({
+// The root lands in an account: the one this device used last, else the oldest.
+const homeRoute = createRoute({
   getParentRoute: () => signedInRoute,
   path: "/",
-  component: App,
   beforeLoad: async ({ context }) => {
     await requireHome(context, "/");
-    await requireAccount(context);
+    const accountId = landingAccount(await requireAccounts(context));
+    if (accountId !== null) {
+      redirect({ to: "/mail/$accountId", params: { accountId }, throw: true });
+    }
   },
+});
+
+// An account the session does not hold sends the visit back to the root.
+const mailRoute = createRoute({
+  getParentRoute: () => signedInRoute,
+  path: "/mail/$accountId",
+  component: MailShell,
+  beforeLoad: async ({ context, params }) => {
+    await requireHome(context, "/");
+    const accounts = await requireAccounts(context);
+    if (!accounts.some((account) => account.id === params.accountId)) {
+      redirect({ to: "/", throw: true });
+    }
+  },
+});
+
+const mailIndexRoute = createRoute({
+  getParentRoute: () => mailRoute,
+  path: "/",
+  component: InboxRedirect,
+});
+
+const mailboxRoute = createRoute({
+  getParentRoute: () => mailRoute,
+  path: "/$mailboxId",
+  component: MailboxPane,
 });
 
 const signInRoute = createRoute({
@@ -143,51 +173,52 @@ const addAccountRoute = createRoute({
 const settingsRoute = createRoute({
   getParentRoute: () => signedInRoute,
   path: "/settings",
-  component: SettingsPage,
+  component: lazyRouteComponent(settings, "SettingsPage"),
   beforeLoad: ({ context }) => requireHome(context, "/"),
 });
 
 const settingsIndexRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: "/",
-  component: SettingsIndex,
+  component: lazyRouteComponent(settings, "SettingsIndex"),
 });
 
 const accountsRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: "/accounts",
-  component: AccountsPage,
+  component: lazyRouteComponent(settings, "AccountsPage"),
 });
 
 const appearanceRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: "/appearance",
-  component: AppearancePage,
+  component: lazyRouteComponent(settings, "AppearancePage"),
 });
 
 const sessionsRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: "/sessions",
-  component: SessionsPage,
+  component: lazyRouteComponent(settings, "SessionsPage"),
 });
 
 const aboutRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: "/about",
-  component: AboutSettings,
+  component: lazyRouteComponent(settings, "AboutSettings"),
 });
 
 const usersRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: "/users",
-  component: UsersPage,
+  component: lazyRouteComponent(settings, "UsersPage"),
   beforeLoad: ({ context }) => requireAdmin(context),
 });
 
 const routeTree = rootRoute.addChildren([
   signInRoute,
   signedInRoute.addChildren([
-    shellRoute,
+    homeRoute,
+    mailRoute.addChildren([mailIndexRoute, mailboxRoute]),
     choosePasswordRoute,
     addAccountRoute,
     settingsRoute.addChildren([

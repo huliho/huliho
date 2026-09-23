@@ -113,17 +113,18 @@ test("signing in reaches the shell and survives a reload", async ({ page }) => {
   await mockSessionFlow(page);
   await page.goto("/sign-in");
   await signIn(page);
-  await expect(page.getByRole("heading", { level: 1, name: "Huliho" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { level: 1, name: "Huliho" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
 });
 
 test("signing out returns to the sign-in screen", async ({ page }) => {
   await mockSessionFlow(page);
   await page.goto("/sign-in");
   await signIn(page);
-  await expect(page.getByRole("heading", { level: 1, name: "Huliho" })).toBeVisible();
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
+  await page.getByRole("button", { name: /mira@example\.com/ }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/sign-in$/);
   await expect(page.getByLabel("Name")).toBeVisible();
 });
@@ -155,7 +156,7 @@ test("escape leaves the about view for the shell", async ({ page }) => {
   await page.goto("/settings/about");
   await expect(page.getByText(ATTRIBUTION)).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("heading", { level: 1, name: "Huliho" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
 });
 
 test("the notices render in Dutch with the names verbatim", async ({ page }) => {

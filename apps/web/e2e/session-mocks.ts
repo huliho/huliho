@@ -4,7 +4,7 @@
 
 import type { Page, Route } from "@playwright/test";
 
-import { mockEmptyMail } from "./mail-mocks";
+import { mockMail } from "./mail-mocks";
 import { mockPreferences, refusePreferencesWhile } from "./preference-mocks";
 
 const SESSION_ROUTE = "**/api/session";
@@ -44,11 +44,11 @@ const ACCOUNT_LIST_BODY = {
   probeIntervalMinutes: 15,
 };
 
-// The account's mail is empty, so the cache worker behind the shell
-// has an answer to its poll; the preferences answer empty, so every
-// signed-in page starts at the defaults.
+// The account has mailboxes and no mail, so the shell has a tree and the
+// cache worker an answer to its poll; the preferences answer empty, so
+// every signed-in page starts at the defaults.
 async function mockOneAccount(page: Page): Promise<void> {
-  await mockEmptyMail(page);
+  await mockMail(page);
   await mockPreferences(page);
   await page.route(ACCOUNTS_ROUTE, (route) =>
     route.request().method() === "GET"

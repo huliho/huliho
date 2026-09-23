@@ -57,12 +57,11 @@ test("choosing a language translates every screen, sticks and reaches the server
   expect(writes).toEqual([{ key: "locale", value: "nl" }]);
 
   await page.goto("/");
-  await expect(page.getByText("Je mail, waar die ook staat.")).toBeVisible();
-  await expect(page.getByText(/24\.817 berichten/)).toBeVisible();
-  await expect(page.getByText(/Vandaag is het donderdag 14 mei 2026/)).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Mailboxen en accounts" })).toBeVisible();
+  await expect(page.getByText("Kies een gesprek.")).toBeVisible();
 
   await page.reload();
-  await expect(page.getByText("Je mail, waar die ook staat.")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Mailboxen en accounts" })).toBeVisible();
 });
 
 test("the choices on record follow the user to a device that has none", async ({ page }) => {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import { JmapError } from "@huliho/core";
+import type { MailCache } from "@huliho/core";
 import { MAIL_KEY_WORDS, queryKeys } from "@huliho/state";
 import type { QueryClient } from "@tanstack/react-query";
 import { wrap } from "comlink";
@@ -11,6 +13,7 @@ import { LEASE_RENEW_MS } from "./coordinator";
 import type { CacheApi, Lease } from "./coordinator";
 import { CACHE_CHANNEL, readCacheMessage } from "./messages";
 import type { CacheMessage } from "./messages";
+import type { CacheResult } from "./outcome";
 
 const WORKER_NAME = "huliho-cache";
 
@@ -47,6 +50,28 @@ function passed(ms: number): Promise<void> {
     setTimeout(resolve, ms);
   });
 }
+
+// A failure crosses the boundary as data; here it becomes the error the
+// query hooks read, its cause and limit intact.
+async function unwrap<Value>(answer: Promise<CacheResult<Value>>): Promise<Value> {
+  const result = await answer;
+  if (result.ok) {
+    return result.value;
+  }
+  const { failure } = result;
+  throw new JmapError(failure.code, {
+    ...(failure.stopCause === null ? {} : { stopCause: failure.stopCause }),
+    ...(failure.limit === null ? {} : { limit: failure.limit }),
+  });
+}
+
+// The cache as the query hooks read it, served by the worker.
+export const mailCache: MailCache = {
+  mailboxes: (accountId) => unwrap(worker().mailboxes(accountId)),
+  window: (accountId, mailboxId, page) => unwrap(worker().window(accountId, mailboxId, page)),
+  thread: (accountId, threadId) => unwrap(worker().thread(accountId, threadId)),
+  reveal: (accountId, mailboxId) => unwrap(worker().reveal(accountId, mailboxId)),
+};
 
 // Sign out: the database goes with the session. A worker that fails the
 // call is named in the console and holds nothing up either.
