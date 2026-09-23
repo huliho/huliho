@@ -42,6 +42,18 @@ pub(super) struct Run<'a> {
     pub(super) given: Given<'a>,
 }
 
+/// What one refresh leaves behind: whether the session still stands and
+/// whether a store folder waits for its first sync.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Refreshed {
+    /// After `false` the caller drops the session and connects again
+    /// before the next refresh.
+    pub stands: bool,
+    /// A store folder whose first sync is not done, which the account's
+    /// task picks up.
+    pub undone: bool,
+}
+
 /// What the refreshes of one account carry from one to the next.
 #[derive(Default)]
 pub struct Refresher {
@@ -58,28 +70,32 @@ pub struct Refresher {
 
 impl Refresher {
     /// One pass over an account, on one session. Answers whether the
-    /// session still stands; after `false` the caller drops it and
-    /// connects again before the next refresh.
+    /// session still stands and whether a store folder waits for its
+    /// first sync.
     ///
     /// # Errors
     ///
     /// Returns the store's failure or `Task`. A failure of the session
-    /// ends the refresh where it stands and answers `false`, since the
-    /// cache is no worse for it.
+    /// ends the refresh where it stands and reads as a session that
+    /// does not stand, since the cache is no worse for it.
     pub async fn refresh<S: Session>(
         &mut self,
         session: &mut S,
         cache: &Cache,
         given: Given<'_>,
-    ) -> Result<bool, SyncError> {
+    ) -> Result<Refreshed, SyncError> {
         let found = match mailboxes::observe(session, given.gmail).await {
             Ok(found) => found,
-            Err(error) => return Ok(stands(&error)),
+            Err(error) => return Ok(ended(&error, false)),
         };
         let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
         blocking(move || store.apply_mailboxes(&key, &found)).await?;
         let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
         let snapshot = blocking(move || store.mailbox_snapshot(&key)).await?;
+        let undone = snapshot
+            .rows
+            .iter()
+            .any(|row| row.facts.store && !snapshot.done.contains(&row.id));
         // A label mailbox is done with its store and has no UIDs of its own.
         let mut rows: Vec<&MailboxRow> = snapshot
             .rows
@@ -97,7 +113,7 @@ impl Refresher {
                 Ok(()) => {}
                 Err(SyncError::Session(error)) => {
                     self.first = rows.get(index + 1).map(|row| row.id.clone());
-                    return Ok(stands(&error));
+                    return Ok(ended(&error, undone));
                 }
                 Err(other) => return Err(other),
             }
@@ -106,7 +122,10 @@ impl Refresher {
             let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
             blocking(move || store.sweep_parked(&key)).await?;
         }
-        Ok(true)
+        Ok(Refreshed {
+            stands: true,
+            undone,
+        })
     }
 
     /// One folder that is done: its new mail, its flags, what left. A
@@ -232,6 +251,14 @@ impl Refresher {
 /// leaves it usable, anything else ends it.
 fn stands(error: &SessionError) -> bool {
     matches!(error, SessionError::Refused)
+}
+
+/// A refresh the session's failure ended.
+fn ended(error: &SessionError, undone: bool) -> Refreshed {
+    Refreshed {
+        stands: stands(error),
+        undone,
+    }
 }
 
 #[cfg(test)]

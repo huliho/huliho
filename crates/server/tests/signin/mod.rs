@@ -18,30 +18,43 @@ use huliho_server::{auth, identity};
 pub const LOGIN: &str = "mira@example.com";
 pub const PASSWORD: &str = "example passphrase";
 
+/// The User-Agent of the fixture client.
+const CLIENT: &str = "test";
+
 /// A store holding one owner who can sign in.
 pub fn store_with_account() -> Arc<Store> {
-    let store = Arc::new(Store::in_memory().unwrap());
+    with_owner(Store::in_memory().unwrap())
+}
+
+/// The given store holding the fixture owner, who can sign in.
+pub fn with_owner(store: Store) -> Arc<Store> {
+    let store = Arc::new(store);
     let (_, user) = identity::create_personal_user(&store, LOGIN).unwrap();
     auth::set_password(&store, &user.id, PASSWORD).unwrap();
     store
 }
 
+/// A sign-in from the fixture client.
 pub fn login_request(login: &str, password: &str) -> Request<Body> {
-    login_request_as(login, password, "test")
-}
-
-/// A sign-in carrying the given User-Agent.
-pub fn login_request_as(login: &str, password: &str, user_agent: &str) -> Request<Body> {
     Request::builder()
         .method(Method::POST)
         .uri("/api/session")
         .header(header::CONTENT_TYPE, "application/json")
-        .header(header::USER_AGENT, user_agent)
+        .header(header::USER_AGENT, CLIENT)
         .header("x-requested-with", "huliho")
         .body(Body::from(format!(
             "{{\"login\":\"{login}\",\"password\":\"{password}\"}}"
         )))
         .unwrap()
+}
+
+/// A sign-in carrying the given User-Agent.
+pub fn login_request_as(login: &str, password: &str, user_agent: &str) -> Request<Body> {
+    let mut request = login_request(login, password);
+    request
+        .headers_mut()
+        .insert(header::USER_AGENT, user_agent.parse().unwrap());
+    request
 }
 
 pub fn with_cookie(method: Method, uri: &str, cookie: &str) -> Request<Body> {
@@ -55,7 +68,7 @@ pub fn with_cookie(method: Method, uri: &str, cookie: &str) -> Request<Body> {
 }
 
 pub async fn sign_in(router: &Router) -> String {
-    sign_in_as(router, "test").await
+    sign_in_as(router, CLIENT).await
 }
 
 /// Signs the fixture user in from a client with the given User-Agent

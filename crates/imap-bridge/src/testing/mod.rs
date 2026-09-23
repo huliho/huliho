@@ -37,7 +37,7 @@ use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
 use crate::session::{Target, TlsMode};
 use crate::verify::Credential;
 
-pub use connector::TestConnector;
+pub use connector::{Counting, TestConnector};
 pub use folder::Folder;
 pub use imap::FakeImap;
 pub use mailboxes::{Extension, Mailboxes};

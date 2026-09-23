@@ -178,7 +178,7 @@ fn smtp_error(error: VerifyError) -> ProbeError {
 
 /// The credential as the bridge signs in with it: LOGIN for a password,
 /// XOAUTH2 for the access token of a consent.
-fn bridge_credential(
+pub(crate) fn bridge_credential(
     username: &str,
     credential: &Credential,
 ) -> Result<BridgeCredential, ProbeError> {

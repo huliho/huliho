@@ -89,7 +89,9 @@ impl Store {
         batch: &Batch<'_>,
         sealer: &dyn Sealer,
     ) -> Result<Option<u64>, StoreError> {
-        self.write(|transaction| write_batch(transaction, key, batch, sealer))
+        self.write(key, |transaction| {
+            write_batch(transaction, key, batch, sealer)
+        })
     }
 
     /// The emails among `ids` the account holds, in the order asked.

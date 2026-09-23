@@ -8,6 +8,7 @@ pub mod accounts;
 pub mod api;
 pub mod app;
 pub mod auth;
+pub mod bridge;
 pub mod cli;
 pub mod config;
 pub mod discovery;

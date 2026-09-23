@@ -11,10 +11,21 @@ use huliho_imap_bridge::jmap::{
     CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, MAX_CALLS_IN_REQUEST, MAX_OBJECTS_IN_GET,
     MAX_SIZE_REQUEST, RequestError, Urls, session_object,
 };
-use jmap_rig::{ACCOUNT, Rig, error_type, first, mailbox_get};
+use huliho_imap_bridge::runtime::Registration;
+use huliho_imap_bridge::store::AccountKey;
+use jmap_rig::{ACCOUNT, Rig, SESSION_STATE, error_type, first, mailbox_get};
 use serde_json::{Value, json};
 
 const ADDRESS: &str = "sanne@example.test";
+
+/// The rig's account as the host registers it.
+fn registration() -> Registration {
+    Registration {
+        key: AccountKey::new(ACCOUNT),
+        gmail: false,
+        session_state: SESSION_STATE.to_owned(),
+    }
+}
 
 fn urls() -> Urls {
     Urls {
@@ -40,9 +51,12 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
     let rig = Rig::start().await;
     rig.edit();
     assert_eq!(rig.pass().await, 2);
-    let bytes = session_object(&rig.cache, ADDRESS, &urls()).unwrap();
+    let bytes = session_object(&registration(), ADDRESS, &urls()).unwrap();
     let session: Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(session["state"], "2");
+    // The state is the host's; the counter of the cache stands at 2.
+    assert_eq!(session["state"], SESSION_STATE);
+    let answered = rig.mail(json!([mailbox_get("c1")])).await;
+    assert_eq!(answered["sessionState"], SESSION_STATE);
     assert_eq!(session["username"], ADDRESS);
     assert_eq!(session["apiUrl"], "/api/jmap/a1");
     assert_eq!(session["eventSourceUrl"], urls().event_source);
@@ -91,7 +105,7 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
 async fn mailbox_get_answers_every_mailbox_with_its_rights_and_counts_rfc8621_2() {
     let rig = Rig::start().await;
     let response = rig.mail(json!([mailbox_get("c1")])).await;
-    assert_eq!(response["sessionState"], "1");
+    assert_eq!(response["sessionState"], SESSION_STATE);
     let answer = first(&response);
     assert_eq!(answer[0], "Mailbox/get");
     assert_eq!(answer[2], "c1");

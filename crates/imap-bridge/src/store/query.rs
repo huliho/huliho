@@ -76,16 +76,18 @@ const OLDEST_FIRST: Direction = Direction {
 impl Direction {
     /// The rows of the result: the memberships of the mailbox at `?2`
     /// and, with `?3` set, only those no email of the same thread in
-    /// that mailbox sorts ahead of.
+    /// that mailbox sorts ahead of. CROSS JOIN fixes the join order, so
+    /// the planner takes the thread index and the membership key without
+    /// statistics instead of scanning the mailbox once per row.
     fn rows(&self) -> String {
         format!(
             "FROM bridge_memberships m
              WHERE m.account_key = ?1 AND m.mailbox_id = ?2
                AND (?3 = 0 OR NOT EXISTS (
                    SELECT 1 FROM bridge_emails e
-                   JOIN bridge_emails o
+                   CROSS JOIN bridge_emails o
                      ON o.account_key = e.account_key AND o.thread_id = e.thread_id
-                   JOIN bridge_memberships n
+                   CROSS JOIN bridge_memberships n
                      ON n.account_key = o.account_key AND n.email_id = o.id
                     AND n.mailbox_id = m.mailbox_id
                    WHERE e.account_key = m.account_key AND e.id = m.email_id
@@ -233,5 +235,48 @@ impl Scope<'_> {
             )?
             .collect::<Result<_, _>>()?;
         Ok(ids)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The plan of the collapse on a fresh database, where the planner
+    /// has no statistics to go by.
+    fn plan(direction: &Direction) -> Vec<String> {
+        let store = Store::in_memory().unwrap();
+        let sql = format!(
+            "EXPLAIN QUERY PLAN SELECT m.email_id {} ORDER BY {}",
+            direction.rows(),
+            direction.order
+        );
+        store
+            .read(|connection| {
+                let mut statement = connection.prepare(&sql)?;
+                let steps = statement
+                    .query_map(params!["a", "m", 1], |row| row.get::<_, String>(3))?
+                    .collect::<Result<_, _>>()?;
+                Ok(steps)
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn the_collapse_reads_the_thread_index_and_the_membership_key_either_way() {
+        for direction in [&NEWEST_FIRST, &OLDEST_FIRST] {
+            let steps = plan(direction);
+            let step = |table: &str| {
+                steps
+                    .iter()
+                    .find(|step| step.starts_with(&format!("SEARCH {table} ")))
+                    .unwrap_or_else(|| panic!("{steps:?}"))
+            };
+            assert!(step("o").contains("bridge_emails_thread"), "{steps:?}");
+            assert!(
+                step("n").contains("sqlite_autoindex_bridge_memberships_1"),
+                "{steps:?}"
+            );
+        }
     }
 }

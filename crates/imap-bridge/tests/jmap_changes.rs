@@ -7,7 +7,7 @@
 
 mod jmap_rig;
 
-use jmap_rig::{ACCOUNT, Rig, error_type, first, mailbox_get};
+use jmap_rig::{ACCOUNT, Rig, SESSION_STATE, error_type, first, mailbox_get};
 use serde_json::{Value, json};
 
 fn changes(since: &str, max: Option<u64>) -> Value {
@@ -39,7 +39,8 @@ async fn mailbox_changes_reads_the_log_and_folds_it_rfc8620_5_2() {
     assert_eq!(lengths(answer), (1, 1, 1));
     assert_eq!(answer["created"][0], rig.id_of("Work"));
     assert_eq!(answer["updated"][0], rig.id_of("INBOX"));
-    assert_eq!(since_one["sessionState"], "2");
+    // A new mailbox state leaves the session state, which is the host's, alone.
+    assert_eq!(since_one["sessionState"], SESSION_STATE);
     let since_zero = rig.mail(json!([changes("0", None)])).await;
     assert_eq!(lengths(&first(&since_zero)[1]), (6, 0, 0));
     let current = rig.mail(json!([changes("2", None)])).await;

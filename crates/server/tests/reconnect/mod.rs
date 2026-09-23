@@ -34,6 +34,7 @@ use serde_json::{Value, json};
 use tempfile::NamedTempFile;
 use tower::ServiceExt;
 
+use crate::answers::answer;
 use crate::common::{api_state, router_on, router_with};
 use crate::readers;
 use crate::signin::{
@@ -242,7 +243,7 @@ impl Instance {
     }
 
     async fn answer(&self, request: Request<Body>) -> (StatusCode, Value) {
-        readers::answer(&self.router, request).await
+        answer(&self.router, request).await
     }
 }
 

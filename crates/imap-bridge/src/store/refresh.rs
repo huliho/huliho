@@ -77,7 +77,7 @@ impl Store {
         standing: &Standing<'_>,
         changes: &[FlagChange],
     ) -> Result<Option<u64>, StoreError> {
-        self.write(|transaction| {
+        self.write(key, |transaction| {
             let mut ledger = Ledger::default();
             if !folders::stands(transaction, key, standing)? {
                 return Ok(None);
@@ -128,7 +128,7 @@ impl Store {
         standing: &Standing<'_>,
         uids: &[u32],
     ) -> Result<Option<u64>, StoreError> {
-        self.write(|transaction| {
+        self.write(key, |transaction| {
             let mut ledger = Ledger::default();
             if !folders::stands(transaction, key, standing)? {
                 return Ok(None);
@@ -171,7 +171,7 @@ impl Store {
         standing: &Standing<'_>,
         synced: Synced,
     ) -> Result<(), StoreError> {
-        self.write(|transaction| {
+        self.write(key, |transaction| {
             if !folders::stands(transaction, key, standing)? {
                 return Ok(());
             }

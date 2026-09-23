@@ -31,7 +31,8 @@ fn sync_failed(error: SyncError) -> Result<(), RequestError> {
 }
 
 /// Runs one Request object against the account and answers the Response
-/// object as JSON. A `/changes` call has the account refreshed first
+/// object as JSON, its `sessionState` the value the host derived for the
+/// session object. A `/changes` call has the account refreshed first
 /// when a refresh is due; an `Email/get` that asks for previews the rows
 /// lack has them fetched and runs again. Neither waits on a server that
 /// is down: the cache answers as it stands.
@@ -44,6 +45,7 @@ pub async fn handle<C: Connector>(
     cache: &Cache,
     link: &Link<C>,
     body: &[u8],
+    session_state: &str,
 ) -> Result<Vec<u8>, RequestError> {
     if body.len() > MAX_SIZE_REQUEST {
         return Err(RequestError::Limit("maxSizeRequest"));
@@ -88,7 +90,7 @@ pub async fn handle<C: Connector>(
     let response = Response {
         method_responses: answered.responses,
         created_ids: request.created_ids,
-        session_state: answered.session_state,
+        session_state: session_state.to_owned(),
     };
     serde_json::to_vec(&response).map_err(|error| RequestError::Store(StoreError::Encoding(error)))
 }
@@ -96,7 +98,6 @@ pub async fn handle<C: Connector>(
 /// What one pass over the calls produced.
 struct Answered {
     responses: Vec<Invocation>,
-    session_state: String,
     viewed: Option<MailboxId>,
     /// Per call that asked, the emails whose preview the rows lack.
     missing: Vec<(usize, Vec<EmailId>)>,
@@ -116,17 +117,12 @@ async fn off_runtime(
     let (cache, calls) = (cache.clone(), calls.to_vec());
     tokio::task::spawn_blocking(move || answer(&cache, using, &calls, again))
         .await
-        .map_err(|_join| RequestError::Task)?
+        .map_err(|_join| RequestError::Task)
 }
 
 /// Every call in order, or the named ones again with the earlier
 /// responses standing, so a reference into one still resolves.
-fn answer(
-    cache: &Cache,
-    using: Using,
-    calls: &[Invocation],
-    again: Again,
-) -> Result<Answered, RequestError> {
+fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Again) -> Answered {
     let context = Context {
         store: &cache.store,
         sealer: cache.sealer.as_ref(),
@@ -136,7 +132,6 @@ fn answer(
         viewed: RefCell::new(None),
         missing_previews: RefCell::new(Vec::new()),
     };
-    let session_state = context.store.state(&cache.key)?.to_string();
     let (mut responses, rerun) = match again {
         Some((responses, indexes)) => (responses, Some(indexes)),
         None => (Vec::with_capacity(calls.len()), None),
@@ -158,12 +153,11 @@ fn answer(
             responses.push(response);
         }
     }
-    Ok(Answered {
+    Answered {
         responses,
-        session_state,
         viewed: context.viewed.take(),
         missing,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -207,8 +201,9 @@ mod tests {
         let body = json!({ "using": [CORE_CAPABILITY], "methodCalls": calls });
         let body = serde_json::to_vec(&body).unwrap();
         let link = Link::new(TestConnector::Refusing);
-        let answer = handle(cache, &link, &body).await.unwrap();
+        let answer = handle(cache, &link, &body, "s1").await.unwrap();
         let mut answer: Value = serde_json::from_slice(&answer).unwrap();
+        assert_eq!(answer["sessionState"], "s1");
         serde_json::from_value(answer["methodResponses"].take()).unwrap()
     }
 

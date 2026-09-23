@@ -28,6 +28,7 @@ use serde_json::{Value, json};
 use tempfile::NamedTempFile;
 use tower::ServiceExt;
 
+use crate::answers::answer;
 use crate::common::{api_state, router_on, router_with};
 use crate::fake_dns::FakeDns;
 use crate::jmap_upstream::{ADDRESS, HOST, INWARD_HOST, JmapUpstream, UPSTREAM_ACCOUNT};
@@ -182,7 +183,7 @@ impl Instance {
     }
 
     async fn answer(&self, request: Request<Body>) -> (StatusCode, Value) {
-        readers::answer(&self.router, request).await
+        answer(&self.router, request).await
     }
 }
 

@@ -128,7 +128,7 @@ pub fn link() -> Link<TestConnector> {
 pub async fn answer(cache: &Cache, link: &Link<TestConnector>, call: &Value) -> Value {
     let using = [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY];
     let body = json!({ "using": using, "methodCalls": [call] });
-    let bytes = handle(cache, link, &serde_json::to_vec(&body).unwrap())
+    let bytes = handle(cache, link, &serde_json::to_vec(&body).unwrap(), "live")
         .await
         .unwrap();
     let response: Value = serde_json::from_slice(&bytes).unwrap();

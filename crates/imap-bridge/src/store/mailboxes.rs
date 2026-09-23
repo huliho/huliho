@@ -90,7 +90,7 @@ impl Store {
         key: &AccountKey,
         found: &[MailboxFacts],
     ) -> Result<u64, StoreError> {
-        self.write(|transaction| apply(transaction, key, found))
+        self.write(key, |transaction| apply(transaction, key, found))
     }
 
     /// Every mailbox of the account by sort order then name, with the

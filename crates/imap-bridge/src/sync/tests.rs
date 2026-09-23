@@ -17,6 +17,7 @@ fn sync(walk: Walk, remaining: Vec<u32>) -> FolderSync {
         gmail: false,
         remaining,
         narrowed: Vec::new(),
+        pending: None,
         budget: NARROWING_BUDGET,
         top,
         answered: 0,

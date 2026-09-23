@@ -93,6 +93,19 @@ configs:
       submission_relay_host = 127.0.0.1
       submission_backend_capabilities = 8BITMIME PIPELINING SIZE
 
+  dovecot-mailboxes.conf:
+    content: |
+      # The English defaults (Drafts, Junk, Sent and Trash with their
+      # special-use attributes, created and subscribed on first login)
+      # plus an Archive, which the defaults leave out.
+      namespace inbox {
+        @mailbox_defaults = english
+        mailbox Archive {
+          auto = subscribe
+          special_use = \Archive
+        }
+      }
+
 services:
   certs:
     image: alpine/openssl:3.5.8
@@ -144,6 +157,9 @@ services:
         mode: 0444
       - source: dovecot-submission.conf
         target: /etc/dovecot/conf.d/submission.conf
+        mode: 0444
+      - source: dovecot-mailboxes.conf
+        target: /etc/dovecot/conf.d/mailboxes.conf
         mode: 0444
     volumes:
       - dev-certs:/certs:ro

@@ -193,6 +193,9 @@ pub struct Behavior {
     /// The three Gmail items on every header line and the labels on
     /// every flag line, asked for or not.
     pub gmail_items: bool,
+    /// The UID FETCH with this index on a connection never gets an
+    /// answer; the connection holds until the client gives up.
+    pub stalls_at: Option<usize>,
 }
 
 /// What one connection remembers between commands.
@@ -204,6 +207,11 @@ pub(super) struct Conversation {
 }
 
 impl Conversation {
+    /// Whether this command is the UID FETCH the behavior never answers.
+    pub(super) fn stalls(&self, command: &str, behavior: Behavior) -> bool {
+        command.starts_with("UID FETCH ") && behavior.stalls_at == Some(self.fetches)
+    }
+
     /// The answer to EXAMINE, NOOP or a UID command; `None` closes the
     /// connection.
     pub(super) fn answer(

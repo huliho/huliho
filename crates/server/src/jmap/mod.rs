@@ -5,20 +5,23 @@
 //! The JMAP proxy: one endpoint per account. The browser sends plain
 //! JMAP; the proxy adds the account's credential, keeps the upstream
 //! within its limits and reports every outcome to the connection gate.
+//! For an IMAP account the in-process bridge answers the same routes.
 
+mod endpoints;
 mod session;
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::Arc;
 
 use axum::body::Bytes;
 use reqwest::header::{CONTENT_TYPE, HeaderMap};
 use reqwest::{Response, StatusCode};
 use serde_json::{Map, Value};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use url::{Host, Url};
 
-use crate::accounts::{self, AccountSettings, Credential};
+pub use endpoints::Endpoints;
+pub(crate) use session::urls;
+
+use crate::accounts::{self, Account, AccountSettings, Credential};
 use crate::discovery::Address;
 use crate::events::Actor;
 use crate::gate::{AttemptError, Reconnect};
@@ -28,8 +31,9 @@ use crate::scope::Scope;
 use crate::upstream::{BodyError, UpstreamError, read_bounded};
 
 /// A Request object of one MiB at most: room for an `Email/set` with a
-/// body, far above what the other API routes take.
-pub const JMAP_REQUEST_LIMIT: usize = 1024 * 1024;
+/// body, far above what the other API routes take. The bridge's own
+/// bound, so both paths take the same body.
+pub const JMAP_REQUEST_LIMIT: usize = huliho_imap_bridge::jmap::MAX_SIZE_REQUEST;
 
 /// A Response object of sixteen MiB at most: an `Email/get` window with
 /// bodies fits, an upstream that answers without end does not.
@@ -38,7 +42,7 @@ pub const JMAP_RESPONSE_LIMIT: usize = 16 * 1024 * 1024;
 /// Requests in flight per account, on the native path and through the
 /// bridge alike; the value the bridge advertises as
 /// `maxConcurrentRequests`.
-pub const MAX_CONCURRENT_REQUESTS: usize = 4;
+pub const MAX_CONCURRENT_REQUESTS: usize = huliho_imap_bridge::jmap::MAX_CONCURRENT_REQUESTS;
 
 /// The media type of every JMAP request and answer (RFC 8620 section
 /// 3.2).
@@ -52,58 +56,6 @@ pub(crate) fn is_json(headers: &HeaderMap) -> bool {
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.split(';').next())
         .is_some_and(|essence| essence.trim().eq_ignore_ascii_case(JSON))
-}
-
-/// What the proxy keeps per account: the requests in flight and the
-/// upstream API endpoint its session object named.
-#[derive(Default)]
-pub struct Endpoints {
-    memory: Mutex<HashMap<AccountId, Endpoint>>,
-}
-
-struct Endpoint {
-    requests: Arc<Semaphore>,
-    api_url: Option<Url>,
-}
-
-impl Default for Endpoint {
-    fn default() -> Self {
-        Self {
-            requests: Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS)),
-            api_url: None,
-        }
-    }
-}
-
-impl Endpoints {
-    /// A permit for one request on the account; `None` past the cap.
-    #[must_use]
-    pub fn enter(&self, account_id: &AccountId) -> Option<OwnedSemaphorePermit> {
-        let requests = {
-            let mut memory = self.memory();
-            Arc::clone(&memory.entry(account_id.clone()).or_default().requests)
-        };
-        requests.try_acquire_owned().ok()
-    }
-
-    /// Drops what the proxy remembers of an account once its row left.
-    pub fn forget(&self, account_id: &AccountId) {
-        self.memory().remove(account_id);
-    }
-
-    fn api_url(&self, account_id: &AccountId) -> Option<Url> {
-        self.memory()
-            .get(account_id)
-            .and_then(|endpoint| endpoint.api_url.clone())
-    }
-
-    fn remember(&self, account_id: &AccountId, api_url: Url) {
-        self.memory().entry(account_id.clone()).or_default().api_url = Some(api_url);
-    }
-
-    fn memory(&self) -> MutexGuard<'_, HashMap<AccountId, Endpoint>> {
-        self.memory.lock().unwrap_or_else(PoisonError::into_inner)
-    }
 }
 
 /// The wiring of one proxied request.
@@ -134,19 +86,20 @@ struct Fetched {
 impl Proxy {
     /// The account's session object as the browser may see it: the URLs
     /// pointing here, the capabilities the proxy carries, the limits it
-    /// enforces. The gate sees the outcome.
+    /// enforces. The gate sees the outcome, signed by the scope's user.
+    /// The caller read the row as running.
     ///
     /// # Errors
     ///
-    /// Returns [`AttemptError::Stopped`] for a stopped row,
-    /// [`ProbeError::Unsupported`] for a row the proxy cannot serve and
-    /// the store's failure or [`AttemptError::Task`] when the row cannot
-    /// be read, all before anything connects. Otherwise the attempt's
-    /// failure once the gate saw it or the gate's own store failure.
-    pub async fn session(&self, scope: &Scope, actor: &Actor) -> Result<Vec<u8>, AttemptError> {
-        let stored = self.read(scope).await?;
+    /// Returns [`ProbeError::Unsupported`] for a row the proxy cannot
+    /// serve and the store's failure or [`AttemptError::Task`] when the
+    /// row cannot be read, all before anything connects. Otherwise the
+    /// attempt's failure once the gate saw it or the gate's own store
+    /// failure.
+    pub async fn session(&self, account: Account, scope: &Scope) -> Result<Vec<u8>, AttemptError> {
+        let stored = self.read(scope, account).await?;
         let outcome = self.fetch(&stored, scope).await;
-        self.observe(scope, actor, &outcome).await?;
+        self.observe(scope, &outcome).await?;
         Ok(outcome?.session)
     }
 
@@ -159,34 +112,30 @@ impl Proxy {
     /// As [`Proxy::session`].
     pub async fn forward(
         &self,
+        account: Account,
         scope: &Scope,
-        actor: &Actor,
         body: Bytes,
     ) -> Result<Vec<u8>, AttemptError> {
-        let stored = self.read(scope).await?;
+        let stored = self.read(scope, account).await?;
         let outcome = self.post(&stored, scope, body).await;
-        self.observe(scope, actor, &outcome).await?;
+        self.observe(scope, &outcome).await?;
         outcome
     }
 
     async fn observe<T>(
         &self,
         scope: &Scope,
-        actor: &Actor,
         outcome: &Result<T, AttemptError>,
     ) -> Result<(), AttemptError> {
         let fault = outcome.as_ref().err().map(AttemptError::fault);
-        self.wiring.gate.observe(scope, actor, fault).await
+        let actor = Actor::User(scope.user_id().clone());
+        self.wiring.gate.observe(scope, &actor, fault).await
     }
 
-    async fn read(&self, scope: &Scope) -> Result<Stored, AttemptError> {
+    async fn read(&self, scope: &Scope, account: Account) -> Result<Stored, AttemptError> {
         let store = Arc::clone(self.wiring.gate.store());
         let (keys, scope) = (Arc::clone(&self.wiring.keys), scope.clone());
         tokio::task::spawn_blocking(move || -> Result<Stored, AttemptError> {
-            let account = accounts::get(&store, &scope)?;
-            if let Some(cause) = account.stopped_cause {
-                return Err(AttemptError::Stopped(cause));
-            }
             let AccountSettings::Jmap { session_url } = accounts::settings(&store, &scope)? else {
                 return Err(unsupported("an IMAP account has no proxy route"));
             };
@@ -383,38 +332,10 @@ mod tests {
     }
 
     #[test]
-    fn the_limits_are_the_documented_ones() {
+    fn the_limits_are_the_documented_ones_and_the_bridges() {
         assert_eq!(JMAP_REQUEST_LIMIT, 1_048_576);
         assert_eq!(JMAP_RESPONSE_LIMIT, 16 * 1_048_576);
         assert_eq!(MAX_CONCURRENT_REQUESTS, 4);
-    }
-
-    #[test]
-    fn a_fifth_permit_on_one_account_is_refused_and_another_account_is_untouched() {
-        let endpoints = Endpoints::default();
-        let (alpha, beta) = (
-            AccountId::from("alpha".to_owned()),
-            AccountId::from("beta".to_owned()),
-        );
-        let held: Vec<_> = (0..MAX_CONCURRENT_REQUESTS)
-            .map(|_| endpoints.enter(&alpha).unwrap())
-            .collect();
-        assert!(endpoints.enter(&alpha).is_none());
-        assert!(endpoints.enter(&beta).is_some());
-        drop(held);
-        assert!(endpoints.enter(&alpha).is_some());
-    }
-
-    #[test]
-    fn a_remembered_endpoint_leaves_with_the_account() {
-        let endpoints = Endpoints::default();
-        let account = AccountId::from("alpha".to_owned());
-        let url: Url = "https://api.example.test/jmap/api".parse().unwrap();
-        assert_eq!(endpoints.api_url(&account), None);
-        endpoints.remember(&account, url.clone());
-        assert_eq!(endpoints.api_url(&account), Some(url));
-        endpoints.forget(&account);
-        assert_eq!(endpoints.api_url(&account), None);
     }
 
     #[test]

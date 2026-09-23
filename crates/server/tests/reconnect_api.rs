@@ -5,6 +5,7 @@
 //! The retry and the credential replacement over HTTP: every refusal,
 //! then the ways through.
 
+mod answers;
 mod common;
 mod log_capture;
 mod readers;

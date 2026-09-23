@@ -19,7 +19,8 @@ mod query;
 mod refresh;
 mod threads;
 
-use std::sync::{Mutex, MutexGuard};
+use std::collections::HashSet;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use thiserror::Error;
@@ -49,6 +50,17 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("refresh_progress.sql"),
 ];
 
+/// Every table of the bridge, the ones an account's rows leave from.
+const TABLES: [&str; 7] = [
+    "bridge_changes",
+    "bridge_emails",
+    "bridge_mailboxes",
+    "bridge_memberships",
+    "bridge_message_ids",
+    "bridge_state",
+    "bridge_sync",
+];
+
 /// Why the store could not answer.
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -60,12 +72,18 @@ pub enum StoreError {
     Seal(#[from] SealError),
     #[error("the store lock was poisoned by an earlier panic")]
     Poisoned,
+    /// The host forgot the account; nothing is written for it anymore.
+    #[error("the account was forgotten")]
+    Forgotten,
 }
 
 /// The bridge's handle on the database; every read and write goes
 /// through it.
 pub struct Store {
     connection: Mutex<Connection>,
+    /// The accounts the host forgot: a write for one is refused, so no
+    /// row lands after the host deleted the account's rows.
+    forgotten: Mutex<HashSet<AccountKey>>,
 }
 
 impl Store {
@@ -74,6 +92,7 @@ impl Store {
     pub fn new(connection: Connection) -> Self {
         Self {
             connection: Mutex::new(connection),
+            forgotten: Mutex::new(HashSet::new()),
         }
     }
 
@@ -97,6 +116,15 @@ impl Store {
         Ok(Self::new(connection))
     }
 
+    /// Refuses every later write for the account; the host deletes its
+    /// rows in the transaction that removes the account.
+    pub fn forget(&self, key: &AccountKey) {
+        self.forgotten
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(key.clone());
+    }
+
     pub(crate) fn read<T>(
         &self,
         operation: impl FnOnce(&Connection) -> Result<T, StoreError>,
@@ -105,10 +133,21 @@ impl Store {
         operation(&connection)
     }
 
+    /// One write for the account as one transaction; refused once the
+    /// host forgot the account.
     pub(crate) fn write<T>(
         &self,
+        key: &AccountKey,
         operation: impl FnOnce(&Transaction<'_>) -> Result<T, StoreError>,
     ) -> Result<T, StoreError> {
+        if self
+            .forgotten
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains(key)
+        {
+            return Err(StoreError::Forgotten);
+        }
         let mut connection = self.lock()?;
         // A deferred transaction that read cannot write past another connection's commit.
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -122,16 +161,35 @@ impl Store {
     }
 }
 
+/// Deletes every row of the account on a connection of the host's, so
+/// the rows leave in the transaction that removes the account.
+///
+/// # Errors
+///
+/// Returns the database error.
+pub fn remove_rows(connection: &Connection, key: &AccountKey) -> rusqlite::Result<()> {
+    for table in TABLES {
+        connection.execute(
+            &format!("DELETE FROM {table} WHERE account_key = ?1"),
+            [key.as_str()],
+        )?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
     use super::*;
 
-    #[test]
-    fn the_schema_creates_the_seven_tables() {
-        let store = Store::in_memory().unwrap();
-        let tables: Vec<String> = store
+    fn key() -> AccountKey {
+        AccountKey::new("a1")
+    }
+
+    /// The tables, in the order the schema names them.
+    fn tables(store: &Store) -> Vec<String> {
+        store
             .read(|connection| {
                 let mut statement = connection
                     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")?;
@@ -140,19 +198,13 @@ mod tests {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(names)
             })
-            .unwrap();
-        assert_eq!(
-            tables,
-            [
-                "bridge_changes",
-                "bridge_emails",
-                "bridge_mailboxes",
-                "bridge_memberships",
-                "bridge_message_ids",
-                "bridge_state",
-                "bridge_sync"
-            ]
-        );
+            .unwrap()
+    }
+
+    #[test]
+    fn the_schema_creates_the_seven_tables() {
+        let store = Store::in_memory().unwrap();
+        assert_eq!(tables(&store), TABLES);
     }
 
     /// A deferred transaction would let the second connection commit
@@ -171,7 +223,7 @@ mod tests {
         host.busy_timeout(Duration::ZERO).unwrap();
         let store = Store::new(bridge);
         store
-            .write(|_transaction| {
+            .write(&key(), |_transaction| {
                 let outcome = host.execute(
                     "INSERT INTO bridge_state (account_key, sequence) VALUES ('a1', 1)",
                     [],
@@ -190,5 +242,70 @@ mod tests {
         let connection = Connection::open_in_memory().unwrap();
         Store::apply_schema(&connection).unwrap();
         assert!(Store::apply_schema(&connection).is_err());
+    }
+
+    #[test]
+    fn a_forgotten_account_takes_no_write_and_every_other_account_does() {
+        let store = Store::in_memory().unwrap();
+        store.forget(&key());
+        let refused = store.write(&key(), |_transaction| Ok(()));
+        assert!(matches!(refused, Err(StoreError::Forgotten)), "{refused:?}");
+        store
+            .write(&AccountKey::new("a2"), |_transaction| Ok(()))
+            .unwrap();
+    }
+
+    /// The rows the tables hold for the key.
+    fn rows_of(connection: &Connection, key: &str) -> Vec<(String, i64)> {
+        TABLES
+            .iter()
+            .map(|table| {
+                let count = connection
+                    .query_row(
+                        &format!("SELECT COUNT(*) FROM {table} WHERE account_key = ?1"),
+                        [key],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                ((*table).to_owned(), count)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn removing_an_account_empties_every_table_for_its_key_alone() {
+        let connection = Connection::open_in_memory().unwrap();
+        Store::apply_schema(&connection).unwrap();
+        for key in ["a1", "a2"] {
+            connection
+                .execute_batch(&format!(
+                    "INSERT INTO bridge_state (account_key, sequence) VALUES ('{key}', 1);
+                     INSERT INTO bridge_sync (account_key, folder_id, done) VALUES ('{key}', 'm', 0);
+                     INSERT INTO bridge_changes (account_key, sequence, type, id, kind)
+                         VALUES ('{key}', 1, 'Mailbox', 'm', 'created');
+                     INSERT INTO bridge_mailboxes (account_key, id, name, imap_name, sort_order,
+                         subscribed, selectable, store)
+                         VALUES ('{key}', 'm', 'INBOX', 'INBOX', 0, 1, 1, 1);
+                     INSERT INTO bridge_emails (account_key, id, folder_id, uid, thread_id, keywords,
+                         size, received_at, has_attachment, sealed)
+                         VALUES ('{key}', 'e', 'm', 1, 't', '{{}}', 0, 0, 0, X'00');
+                     INSERT INTO bridge_memberships (account_key, email_id, mailbox_id, received_at)
+                         VALUES ('{key}', 'e', 'm', 0);
+                     INSERT INTO bridge_message_ids (account_key, message_id_hash, thread_id)
+                         VALUES ('{key}', X'01', 't');"
+                ))
+                .unwrap();
+        }
+        remove_rows(&connection, &key()).unwrap();
+        assert!(
+            rows_of(&connection, "a1")
+                .iter()
+                .all(|(_, count)| *count == 0)
+        );
+        assert!(
+            rows_of(&connection, "a2")
+                .iter()
+                .all(|(_, count)| *count == 1)
+        );
     }
 }

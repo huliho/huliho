@@ -140,7 +140,7 @@ fn the_settings_migration_keeps_accounts_and_they_list() {
     migrations().to_version(&mut connection, 3).unwrap();
     insert_owner(&connection);
     insert_pre_0004_account(&connection);
-    let store = Store::initialize(connection).unwrap();
+    let store = Store::initialize(connection, None).unwrap();
     let scope = crate::scope::resolve(&store, &UserId::from("u".to_owned()), None).unwrap();
     let listed = accounts::list(&store, &scope).unwrap();
     assert_eq!(listed.len(), 1);
@@ -173,7 +173,7 @@ fn the_instance_admin_migration_keeps_users_without_the_flag() {
         .unwrap();
     migrations().to_version(&mut connection, 4).unwrap();
     insert_owner(&connection);
-    let store = Store::initialize(connection).unwrap();
+    let store = Store::initialize(connection, None).unwrap();
     let scope = crate::scope::resolve(&store, &UserId::from("u".to_owned()), None).unwrap();
     assert!(!scope.instance_admin());
     assert_eq!(scope.role(), Role::Owner);
@@ -233,11 +233,54 @@ fn the_bridge_migration_keeps_accounts_and_creates_the_bridge_tables() {
         )
         .unwrap();
     assert!(indexed);
-    let store = Store::initialize(connection).unwrap();
+    let store = Store::initialize(connection, None).unwrap();
     let scope = crate::scope::resolve(&store, &UserId::from("u".to_owned()), None).unwrap();
     let listed = accounts::list(&store, &scope).unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].address, "sanne@example.test");
+}
+
+/// The bridge rows of the key as the server's connection counts them.
+fn bridge_mailboxes(store: &Store, key: &str) -> i64 {
+    store
+        .read(|connection| {
+            Ok(connection.query_row(
+                "SELECT COUNT(*) FROM bridge_mailboxes WHERE account_key = ?1",
+                [key],
+                |row| row.get(0),
+            )?)
+        })
+        .unwrap()
+}
+
+#[test]
+fn the_bridge_store_of_a_file_store_writes_into_the_same_database() {
+    use huliho_imap_bridge::store::{AccountKey, MailboxFacts};
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    let bridge = store.bridge_store().unwrap();
+    let key = AccountKey::new("a1");
+    let inbox = MailboxFacts {
+        name: "INBOX".to_owned(),
+        imap_name: "INBOX".to_owned(),
+        parent_imap_name: None,
+        role: Some("inbox".to_owned()),
+        sort_order: 0,
+        subscribed: true,
+        selectable: true,
+        store: true,
+        gmail_label: None,
+        uid_validity: Some(1),
+        uid_next: Some(1),
+        highest_modseq: None,
+        total_emails: 0,
+        unread_emails: 0,
+    };
+    bridge.apply_mailboxes(&key, &[inbox]).unwrap();
+    assert_eq!(bridge_mailboxes(&store, "a1"), 1);
+    let apart = Store::in_memory().unwrap();
+    let own = apart.bridge_store().unwrap();
+    assert_eq!(own.mailbox_snapshot(&key).unwrap().rows.len(), 0);
 }
 
 /// A sync row and a message id as the 0006 schema holds them.

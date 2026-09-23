@@ -7,6 +7,7 @@
 //! carries on where the last batch ended. The new mail of a folder that
 //! is done takes the same walk upward.
 
+mod cache;
 pub mod headers;
 pub mod mapping;
 pub mod preview;
@@ -16,13 +17,15 @@ mod tests;
 
 use std::sync::Arc;
 
+pub use cache::Cache;
+pub(crate) use cache::blocking;
+
 use crate::gmail;
 use crate::mailboxes::SyncError;
-use crate::seal::Sealer;
 use crate::session::{
     FetchItems, FetchedMessage, MAX_FETCH_MESSAGES, Session, SessionError, UidRange,
 };
-use crate::store::{AccountKey, Advance, Batch, EmailFacts, MailboxId, MailboxRow, Store, Synced};
+use crate::store::{Advance, Batch, EmailFacts, MailboxId, MailboxRow, Synced};
 
 /// The messages of one batch: one fetch, one transaction, one state.
 pub const SYNC_BATCH: usize = MAX_FETCH_MESSAGES;
@@ -37,17 +40,6 @@ pub const NARROWING_BUDGET: usize = 64;
 /// upward asks for range by range; a wider gap takes the UID list, so a
 /// server that jumps its UIDs buys no commands.
 pub const REFRESH_GAP: u32 = 10_000;
-
-/// Where a sync writes: the store, the host's sealer and the account.
-#[derive(Clone)]
-pub struct Cache {
-    pub store: Arc<Store>,
-    pub sealer: Arc<dyn Sealer>,
-    pub key: AccountKey,
-    /// The host's word that the account is a Gmail account; it holds
-    /// once the server advertises `X-GM-EXT-1`.
-    pub gmail: bool,
-}
 
 /// How a folder stands after one batch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +94,9 @@ pub struct FolderSync {
     remaining: Vec<u32>,
     /// What a failed fetch was narrowed to, the next slice last.
     narrowed: Vec<Slice>,
+    /// The slice whose fetch is out, kept so a turn cut short before the
+    /// answer fetches it again.
+    pending: Option<Slice>,
     budget: usize,
     /// The highest UID a walk upward covers.
     top: u32,
@@ -222,6 +217,7 @@ impl FolderSync {
             gmail: false,
             remaining: Vec::new(),
             narrowed: Vec::new(),
+            pending: None,
             budget: NARROWING_BUDGET,
             top: 0,
             answered: 0,
@@ -266,7 +262,7 @@ impl FolderSync {
         session: &mut S,
         cache: &Cache,
     ) -> Result<Step, SyncError> {
-        let Some(slice) = self.next_slice() else {
+        let Some(slice) = self.pending.take().or_else(|| self.next_slice()) else {
             return self.write(cache, Vec::new(), None).await;
         };
         let Some(range) = slice.range() else {
@@ -276,7 +272,13 @@ impl FolderSync {
             structure: slice.structure,
             gmail: self.gmail,
         };
-        match session.uid_fetch(range, items).await {
+        self.pending = Some(slice);
+        let fetched = session.uid_fetch(range, items).await;
+        let slice = self
+            .pending
+            .take()
+            .unwrap_or_else(|| unreachable!("set before the fetch"));
+        match fetched {
             Ok(messages) => {
                 let count = u32::try_from(messages.len()).unwrap_or(u32::MAX);
                 self.answered = self.answered.saturating_add(count);
@@ -412,14 +414,4 @@ impl FolderSync {
             Some(_) => Step::More,
         })
     }
-}
-
-/// Runs a store call off the runtime.
-pub(crate) async fn blocking<T: Send + 'static>(
-    call: impl FnOnce() -> Result<T, crate::store::StoreError> + Send + 'static,
-) -> Result<T, SyncError> {
-    tokio::task::spawn_blocking(call)
-        .await
-        .map_err(|_join| SyncError::Task)?
-        .map_err(SyncError::from)
 }

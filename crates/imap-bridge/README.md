@@ -140,6 +140,28 @@ the conversation; a request that reads the cache never waits on IMAP,
 and a server that is down costs nothing but the refresh: the cache
 answers as it stands.
 
+`runtime::Bridge` runs the accounts the host registers: one store, one
+sealer and one connector for all of them and, per account, the
+conversation requests take and a task that syncs every store folder
+whose first sync is not done, in tree order. The task takes one batch
+per turn on the conversation and hands it back, so a request gets in
+between, selects the folder afresh before every batch and puts one
+deadline (`runtime::CONVERSATION_DEADLINE`, sixty seconds) around a
+batch, a refresh and a preview fetch. A session that fails or runs past
+the deadline is dropped; a fresh one resumes the same sync after a
+pause, and the slice whose fetch was cut short is fetched again. A
+folder whose failures pass `runtime::FOLDER_FAILURE_BOUND` waits for the
+next round. Two accounts sync at once process wide
+(`runtime::SYNC_PARALLELISM`); a Gmail account holds a second
+conversation for its sync. A conversation nobody used for five minutes
+(`runtime::SESSION_IDLE_CLOSE`) is logged out and opened again on the
+next request. The host hands every account a `runtime::Registration`:
+its key, whether it is a Gmail account and the state its session object
+shows, which the host derives from what the object is built from, so
+the state never moves with the cache. `forget` stops an account's task
+and refuses every later write for its key, so the host deletes the rows
+(`store::remove_rows`) inside the transaction that removes the account.
+
 Change detection is on demand until the server pushes. A `/changes`
 call refreshes the account at most once per thirty seconds
 (`runtime::REFRESH_INTERVAL`): one mailbox pass, then per folder whose

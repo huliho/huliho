@@ -20,7 +20,7 @@ mod users;
 
 use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU32;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use axum::Router;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRequestParts, Request};
@@ -35,6 +35,7 @@ use url::Url;
 
 use error::{ApiError, internal};
 
+use crate::bridge::{self, ServerBridge};
 use crate::gate::{Gate, Reconnect};
 use crate::ids::UserId;
 use crate::jmap::{Endpoints, JMAP_REQUEST_LIMIT, Proxy};
@@ -81,6 +82,21 @@ pub struct ApiState {
     pub gate: Gate,
     /// What the JMAP proxy keeps per account, one process wide.
     pub endpoints: Arc<Endpoints>,
+    /// The bridge's own connection to the database, opened with the
+    /// store.
+    pub bridge_store: Arc<huliho_imap_bridge::store::Store>,
+    /// The in-process bridge, wired on first use from the state as it
+    /// stands then, so its runtime shares the gate, the keys and the
+    /// resolver of the routes.
+    pub bridge: Arc<OnceLock<ServerBridge>>,
+}
+
+impl ApiState {
+    /// The bridge, wired on first use.
+    #[must_use]
+    pub fn bridge(&self) -> &ServerBridge {
+        self.bridge.get_or_init(|| bridge::open(self))
+    }
 }
 
 /// The wiring of a check on a stored account, as the routes and the
