@@ -17,12 +17,14 @@ import { AddAccount } from "./accounts/add/add-account";
 import { App } from "./app";
 import { AboutSettings } from "./settings/about";
 import { AccountsPage } from "./settings/accounts/accounts-page";
+import { AppearancePage } from "./settings/appearance/appearance-page";
 import { SessionsPage } from "./settings/sessions/sessions-page";
 import { SettingsIndex } from "./settings/settings-index";
 import { SettingsPage } from "./settings/settings-page";
 import { UsersPage } from "./settings/users/users-page";
 import { RootLayout } from "./shell/root-layout";
 import { RouteError, RoutePending } from "./shell/route-fallbacks";
+import { SignedInLayout } from "./shell/signed-in-layout";
 import { ChoosePassword } from "./sign-in/choose-password";
 import { SignIn } from "./sign-in/sign-in";
 
@@ -90,8 +92,15 @@ async function reconnectRow(
   return list.accounts.find((account) => account.id === id) ?? null;
 }
 
-const shellRoute = createRoute({
+// Every route behind a session guard renders inside this layout.
+const signedInRoute = createRoute({
   getParentRoute: () => rootRoute,
+  id: "signed-in",
+  component: SignedInLayout,
+});
+
+const shellRoute = createRoute({
+  getParentRoute: () => signedInRoute,
   path: "/",
   component: App,
   beforeLoad: async ({ context }) => {
@@ -114,14 +123,14 @@ const signInRoute = createRoute({
 });
 
 const choosePasswordRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => signedInRoute,
   path: "/choose-password",
   component: ChoosePassword,
   beforeLoad: ({ context }) => requireHome(context, "/choose-password"),
 });
 
 const addAccountRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => signedInRoute,
   path: "/accounts/new",
   component: AddAccount,
   validateSearch: (search: Record<string, unknown>): AddAccountSearch =>
@@ -132,7 +141,7 @@ const addAccountRoute = createRoute({
 });
 
 const settingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => signedInRoute,
   path: "/settings",
   component: SettingsPage,
   beforeLoad: ({ context }) => requireHome(context, "/"),
@@ -148,6 +157,12 @@ const accountsRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: "/accounts",
   component: AccountsPage,
+});
+
+const appearanceRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/appearance",
+  component: AppearancePage,
 });
 
 const sessionsRoute = createRoute({
@@ -170,16 +185,19 @@ const usersRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  shellRoute,
   signInRoute,
-  choosePasswordRoute,
-  addAccountRoute,
-  settingsRoute.addChildren([
-    settingsIndexRoute,
-    accountsRoute,
-    sessionsRoute,
-    aboutRoute,
-    usersRoute,
+  signedInRoute.addChildren([
+    shellRoute,
+    choosePasswordRoute,
+    addAccountRoute,
+    settingsRoute.addChildren([
+      settingsIndexRoute,
+      accountsRoute,
+      appearanceRoute,
+      sessionsRoute,
+      aboutRoute,
+      usersRoute,
+    ]),
   ]),
 ]);
 

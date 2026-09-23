@@ -68,6 +68,23 @@ export {
   fitsPasswordWindow,
 } from "./password";
 export type { PasswordChangeInput } from "./password";
+export {
+  DENSITIES,
+  PreferencesError,
+  THEMES,
+  fetchPreferences,
+  isPreferenceLocale,
+  setPreference,
+  withPreference,
+} from "./preferences";
+export type {
+  Density,
+  PreferenceChange,
+  PreferenceLocale,
+  Preferences,
+  ReadingPane,
+  Theme,
+} from "./preferences";
 export { ROLES, grantableRoles, mayManageUsers } from "./role";
 export type { Role } from "./role";
 export { fetchSession, sessionInfoSchema, signIn, signOut } from "./session";

@@ -181,5 +181,21 @@
   "accounts_remove": "Remove",
   "accounts_remove_for": "Remove {name}",
   "accounts_removed_toast": "{name} removed.",
-  "accounts_remove_failed": "Couldn’t remove that account. Try again."
+  "accounts_remove_failed": "Couldn’t remove that account. Try again.",
+  "settings_appearance": "Appearance",
+  "appearance_theme": "Theme",
+  "appearance_theme_system": "System",
+  "appearance_theme_light": "Light",
+  "appearance_theme_dark": "Dark",
+  "appearance_density": "Density",
+  "appearance_density_comfortable": "Comfortable",
+  "appearance_density_compact": "Compact",
+  "appearance_density_hint": "Compact fits more on the screen. A touchscreen keeps its own spacing.",
+  "appearance_reading_pane": "Reading pane",
+  "appearance_reading_pane_right": "Right",
+  "appearance_reading_pane_bottom": "Bottom",
+  "appearance_reading_pane_off": "Off",
+  "appearance_reading_pane_hint": "Where a conversation opens: beside the list, below it or on its own screen. A phone always opens it on its own screen.",
+  "appearance_error": "Couldn’t load your settings.",
+  "appearance_save_failed": "Couldn’t save that setting. Try again."
 }

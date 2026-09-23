@@ -6,14 +6,14 @@ import { queryKeys } from "@huliho/state";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 
+import { useLocale } from "../../i18n/locale";
 import { m } from "../../paraglide/messages.js";
-import { getLocale } from "../../paraglide/runtime.js";
 import { PasswordForm } from "../../password/password-form";
 import { usePasswordChange } from "../../password/use-password-change";
 import { SettingsSection } from "../settings-section";
 
 export function PasswordSection() {
-  const locale = getLocale();
+  const locale = useLocale();
   const queryClient = useQueryClient();
   const form = useRef<HTMLFormElement>(null);
   // The change ended every other session and moved this one onto a new row.

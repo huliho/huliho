@@ -10,13 +10,13 @@ import { sessionQueryOptions } from "@huliho/state";
 import { useCredentialMutation } from "../auth/use-credential-mutation";
 import { BrandMark } from "../design-system/brand-mark";
 import { LegalNotices } from "../legal/legal-notices";
+import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
-import { getLocale } from "../paraglide/runtime.js";
 import { SignInForm } from "./sign-in-form";
 import styles from "./sign-in.module.css";
 
 export function SignIn() {
-  const locale = getLocale();
+  const locale = useLocale();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const mutation = useCredentialMutation(

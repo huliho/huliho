@@ -1,0 +1,48 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.group {
+  display: flex;
+  inline-size: 100%;
+  max-inline-size: var(--hhx-measure-narrow);
+  border: var(--hhx-border-width) solid var(--hh-border-control);
+  border-radius: var(--hhx-radius-field);
+  background: var(--hh-surface);
+  overflow: hidden;
+}
+
+.segment {
+  flex: 1 1 0;
+  min-inline-size: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: var(--hhx-hit-target);
+  padding-block: var(--hhx-space-2);
+  padding-inline: var(--hhx-space-3);
+  color: var(--hh-text);
+  text-align: center;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.segment + .segment {
+  border-inline-start: var(--hhx-border-width) solid var(--hh-border-control);
+}
+
+.segment:hover {
+  background: var(--hh-hover);
+}
+
+/* The chosen segment carries weight as well as tint, so color is never the only signal. */
+.segment[data-checked] {
+  background: var(--hh-accent-tint);
+  color: var(--hh-accent);
+  font-weight: 600;
+}
+
+/* The control clips its box, so a focused segment keeps its ring inside. */
+.segment:focus-visible {
+  outline-offset: calc(-1 * var(--hhx-focus-ring-width));
+}

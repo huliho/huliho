@@ -6,8 +6,8 @@ import { Toast } from "@base-ui/react/toast";
 import type { ReactNode } from "react";
 
 import { useCommand } from "../commands/use-command";
+import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
-import { getLocale } from "../paraglide/runtime.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { Kbd } from "./kbd";
 import styles from "./toast.module.css";
@@ -50,7 +50,7 @@ function UndoHint({ locale }: { locale: Locale }) {
 }
 
 function ToastItem({ toast }: { toast: Toast.Root.ToastObject<ToastData> }) {
-  const locale = getLocale();
+  const locale = useLocale();
   const undo = toast.data?.undo;
   // A closing toast lets go of the key, so the next undo can take it.
   const claimsKey = undo !== undefined && toast.transitionStatus !== "ending";
@@ -71,7 +71,7 @@ function ToastItem({ toast }: { toast: Toast.Root.ToastObject<ToastData> }) {
 }
 
 export function Toasts() {
-  const locale = getLocale();
+  const locale = useLocale();
   const { toasts } = Toast.useToastManager<ToastData>();
   return (
     <Toast.Portal>

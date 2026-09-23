@@ -6,6 +6,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
+import { mockPreferences } from "./preference-mocks";
 import { mockSessions, mockSignedIn, sessionRows } from "./session-mocks";
 import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
 
@@ -171,9 +172,7 @@ test("the translated pages match their screenshots and the region is named", asy
   await page.setViewportSize({ width: desktop.width, height: desktop.height });
   await mockSessions(page, sessionRows(FIXED_NOW));
   await page.clock.install({ time: FIXED_NOW });
-  await page.addInitScript(() => {
-    window.localStorage.setItem("PARAGLIDE_LOCALE", "nl");
-  });
+  await mockPreferences(page, { locale: "nl" });
   await page.goto("/settings/sessions");
   await expect(page.getByText("Dit apparaat, Firefox op Linux")).toBeVisible();
   await expect(page.getByText("2 uur geleden")).toBeVisible();

@@ -13,6 +13,7 @@ import { createRoot } from "react-dom/client";
 
 import { getLocale } from "./paraglide/runtime.js";
 import { queryClient, router } from "./router";
+import { applyAppearance, rememberedAppearance } from "./theme/appearance";
 import { loadInstanceOverride } from "./theme/instance-override";
 
 async function applyInstanceOverride(): Promise<void> {
@@ -24,6 +25,8 @@ async function applyInstanceOverride(): Promise<void> {
 void applyInstanceOverride();
 
 document.documentElement.lang = getLocale();
+// The device's last theme and density, before anything paints.
+applyAppearance(document, rememberedAppearance());
 
 const container = document.getElementById("root");
 if (container === null) {

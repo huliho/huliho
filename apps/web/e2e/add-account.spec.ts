@@ -15,6 +15,7 @@ import {
   accountRow,
   mockAccounts,
 } from "./account-mocks";
+import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
 import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
 
@@ -343,9 +344,7 @@ test("the card reads in Dutch and in the pseudo-locale", async ({ page }) => {
   await page.setViewportSize({ width: desktop.width, height: desktop.height });
   await mockSignedIn(page);
   await mockAccounts(page, []);
-  await page.addInitScript(() => {
-    window.localStorage.setItem("PARAGLIDE_LOCALE", "nl");
-  });
+  await mockPreferences(page, { locale: "nl" });
   await page.goto("/accounts/new");
   await expect(
     page.getByRole("heading", { level: 1, name: "Een mailaccount toevoegen" }),

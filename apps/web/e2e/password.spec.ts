@@ -105,7 +105,7 @@ test("a short or mismatched password never leaves the browser", async ({ page })
 });
 
 test("a one-time password lands on the forced step from every route", async ({ page }) => {
-  const { changes } = await mockForcedSession(page);
+  const { changes } = await mockForcedSession(page, { theme: "dark" });
   for (const path of ["/settings/sessions", "/", "/sign-in"]) {
     await page.goto(path);
     await expect(page).toHaveURL(/\/choose-password$/);
@@ -115,11 +115,14 @@ test("a one-time password lands on the forced step from every route", async ({ p
   ).toBeVisible();
   await expect(page.getByText("An admin reset your password", { exact: false })).toBeVisible();
   await expect(page.getByLabel("Current password")).toHaveCount(0);
+  // The server refuses the words on record here, so the step keeps the device's theme.
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "system");
   await fillNewPassword(page);
   await page.getByRole("button", { name: "Save and continue" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Huliho" })).toBeVisible();
   await expect(page).not.toHaveURL(/choose-password/);
   await expect(page.getByText(CHANGED_TOAST)).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   expect(changes).toEqual([{ new: NEXT }]);
 });
 
@@ -168,6 +171,7 @@ test("the forced step reads in Dutch and in the pseudo-locale", async ({ page })
   const desktop = VIEWPORTS[1];
   await page.setViewportSize({ width: desktop.width, height: desktop.height });
   await mockForcedSession(page);
+  // No server word reaches the forced step, so the device's word is the one that shows.
   await page.addInitScript(() => {
     window.localStorage.setItem("PARAGLIDE_LOCALE", "nl");
   });

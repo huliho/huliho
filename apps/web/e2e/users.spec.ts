@@ -6,6 +6,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
+import { mockPreferences } from "./preference-mocks";
 import { mockSessions, mockSignedIn, sessionRows } from "./session-mocks";
 import type { MockRole } from "./session-mocks";
 import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
@@ -226,9 +227,7 @@ test("the page reads in Dutch and in the pseudo-locale", async ({ page }) => {
   await mockSignedIn(page);
   await mockUsers(page, userRows(FIXED_NOW));
   await page.clock.install({ time: FIXED_NOW });
-  await page.addInitScript(() => {
-    window.localStorage.setItem("PARAGLIDE_LOCALE", "nl");
-  });
+  await mockPreferences(page, { locale: "nl" });
   await page.goto("/settings/users");
   await expect(page.getByRole("columnheader", { name: "Inlognaam" })).toBeVisible();
   await expect(page.getByText("gisteren")).toBeVisible();

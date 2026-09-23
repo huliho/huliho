@@ -5,6 +5,7 @@
 import type { Page, Route } from "@playwright/test";
 
 import { mockEmptyMail } from "./mail-mocks";
+import { mockPreferences, refusePreferencesWhile } from "./preference-mocks";
 
 const SESSION_ROUTE = "**/api/session";
 const SESSIONS_ROUTE = "**/api/sessions";
@@ -44,9 +45,11 @@ const ACCOUNT_LIST_BODY = {
 };
 
 // The account's mail is empty, so the cache worker behind the shell
-// has an answer to its poll.
+// has an answer to its poll; the preferences answer empty, so every
+// signed-in page starts at the defaults.
 async function mockOneAccount(page: Page): Promise<void> {
   await mockEmptyMail(page);
+  await mockPreferences(page);
   await page.route(ACCOUNTS_ROUTE, (route) =>
     route.request().method() === "GET"
       ? route.fulfill({ json: ACCOUNT_LIST_BODY })
@@ -236,10 +239,16 @@ export async function mockPasswordChange(
   return { changes };
 }
 
-// A session opened with a one-time password: forced until one change lands.
-export async function mockForcedSession(page: Page): Promise<{ changes: PasswordChangeBody[] }> {
+// A session opened with a one-time password: forced until one change
+// lands. The words on record are refused meanwhile, as the server does.
+export async function mockForcedSession(
+  page: Page,
+  preferences: Record<string, string> = {},
+): Promise<{ changes: PasswordChangeBody[] }> {
   let forced = true;
   await mockLiveSession(page, () => ({ ...SESSION_BODY, passwordChangeRequired: forced }));
+  await mockPreferences(page, preferences);
+  await refusePreferencesWhile(page, () => forced);
   return mockPasswordChange(page, [], () => {
     forced = false;
   });

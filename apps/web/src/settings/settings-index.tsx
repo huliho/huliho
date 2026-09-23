@@ -4,13 +4,13 @@
 
 import { Navigate } from "@tanstack/react-router";
 
-import { getLocale } from "../paraglide/runtime.js";
+import { useLocale } from "../i18n/locale";
 import { useSidebarShown } from "./layout";
 import { SettingsNav } from "./settings-nav";
 
 // A wide screen already lists the pages in the sidebar, so it opens the first one.
 export function SettingsIndex() {
-  const locale = getLocale();
+  const locale = useLocale();
   const sidebarShown = useSidebarShown();
   if (sidebarShown) {
     return <Navigate to="/settings/accounts" replace />;
