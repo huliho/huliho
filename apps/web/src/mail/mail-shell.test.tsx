@@ -3,7 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import { JmapError } from "@huliho/core";
-import type { Mailbox, WindowPage } from "@huliho/core";
+import type { ListPage, Mailbox } from "@huliho/core";
 import { queryKeys } from "@huliho/state";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -30,7 +30,7 @@ vi.mock("../cache/client", async () => {
   return {
     mailCache: {
       mailboxes,
-      window: vi.fn<() => Promise<WindowPage>>(() => Promise.resolve(fixtures.INBOX_PAGE)),
+      window: vi.fn<() => Promise<ListPage>>(() => Promise.resolve(fixtures.INBOX_PAGE)),
       thread: vi.fn<() => Promise<never>>(),
       reveal: vi.fn<() => Promise<never>>(),
     },
@@ -129,7 +129,7 @@ test("the shell names the mailbox, draws the tree and leases the worker the watc
   expect(screen.getByText("23 unread")).toBeDefined();
   expect(screen.getAllByRole("treeitem")).toHaveLength(MAILBOXES.length);
   const grid = await screen.findByRole("grid", { name: "Conversations" });
-  expect(grid.getAttribute("aria-rowcount")).toBe(String(INBOX_PAGE.ids.length));
+  expect(grid.getAttribute("aria-rowcount")).toBe(String(INBOX_PAGE.rows.length));
   expect(
     screen.getByRole("treeitem", { name: "Inbox, 23 unread" }).getAttribute("aria-current"),
   ).toBe("page");
@@ -161,7 +161,7 @@ test("a mailbox opened after another starts at its first row", async () => {
   fireEvent.keyDown(first, { key: "End" });
   await vi.waitFor(() => {
     expect(document.activeElement?.getAttribute("aria-rowindex")).toBe(
-      String(INBOX_PAGE.ids.length),
+      String(INBOX_PAGE.rows.length),
     );
   });
   fireEvent.click(screen.getByRole("treeitem", { name: "Sent" }));

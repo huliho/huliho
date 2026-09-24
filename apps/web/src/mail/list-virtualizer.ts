@@ -66,6 +66,9 @@ function withActive(indexes: number[], active: number, rowCount: number): number
 // place, so a row keeps its element while its page lands.
 export function useListVirtualizer(options: VirtualListOptions): VirtualList {
   const { scrollerRef, rowHeight, rowCount, edgeRows, active, onSpan } = options;
+  // The span last told; a scroll that stays inside it tells nothing, so
+  // the frame carries no second render for an unchanged state.
+  const spanRef = useRef("");
   const virtualizer = useVirtualizer({
     count: rowCount + edgeRows,
     getScrollElement: () => scrollerRef.current,
@@ -73,8 +76,13 @@ export function useListVirtualizer(options: VirtualListOptions): VirtualList {
     overscan: LIST_OVERSCAN,
     rangeExtractor: (range: Range) => withActive(defaultRangeExtractor(range), active, rowCount),
     onChange: (instance) => {
-      if (instance.range !== null) {
-        onSpan(spanOf(instance.range, rowCount));
+      if (instance.range === null) {
+        return;
+      }
+      const span = spanOf(instance.range, rowCount);
+      if (span !== spanRef.current) {
+        spanRef.current = span;
+        onSpan(span);
       }
     },
   });

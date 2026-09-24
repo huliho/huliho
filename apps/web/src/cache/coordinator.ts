@@ -7,12 +7,13 @@ import {
   JmapError,
   applyChanges,
   firstSyncOf,
+  listPage,
   queryWindow,
   readThread,
   revealNewMail,
   syncMailboxes,
 } from "@huliho/core";
-import type { AppliedChanges, MailStore, Mailbox, ThreadDetail, WindowPage } from "@huliho/core";
+import type { AppliedChanges, ListPage, MailStore, Mailbox, ThreadDetail } from "@huliho/core";
 
 import type { Locks } from "./locks";
 import type { CacheMessage } from "./messages";
@@ -63,7 +64,8 @@ export interface CacheApi {
   // Sign out: the tab names itself, so every other tab hears who did it.
   clear(by: string): Promise<void>;
   mailboxes(accountId: string): Promise<CacheResult<Mailbox[]>>;
-  window(accountId: string, mailboxId: string, page: number): Promise<CacheResult<WindowPage>>;
+  // A page crosses as the rows the list draws, made on this side.
+  window(accountId: string, mailboxId: string, page: number): Promise<CacheResult<ListPage>>;
   thread(accountId: string, threadId: string): Promise<CacheResult<ThreadDetail | null>>;
   reveal(accountId: string, mailboxId: string): Promise<CacheResult<void>>;
 }
@@ -154,11 +156,12 @@ export class Coordinator {
       clear: (by) => this.clear(by),
       mailboxes: (accountId) => attempt(() => this.mailboxes(accountId)),
       window: (accountId, mailboxId, page) =>
-        attempt(() =>
-          this.locked(accountId, (store) =>
+        attempt(async () => {
+          const assembled = await this.locked(accountId, (store) =>
             queryWindow(this.client(accountId), store, mailboxId, page),
-          ),
-        ),
+          );
+          return listPage(assembled, mailboxId);
+        }),
       thread: (accountId, threadId) => attempt(() => readThread(this.store, accountId, threadId)),
       reveal: (accountId, mailboxId) => attempt(() => this.reveal(accountId, mailboxId)),
     };

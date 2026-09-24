@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { WINDOW_SIZE, listRows } from "@huliho/core";
-import type { ListRow, MailCache, WindowPage } from "@huliho/core";
+import { WINDOW_SIZE } from "@huliho/core";
+import type { ListPage, ListRow, MailCache } from "@huliho/core";
 import { threadWindowQueryOptions } from "@huliho/state";
 import { useQueries } from "@tanstack/react-query";
 import type { UseQueryResult } from "@tanstack/react-query";
@@ -11,7 +11,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 // The pages a list holds: the first one carries the total and the
 // marker's count; every page that has landed contributes its rows.
 export interface ListPages {
-  first: UseQueryResult<WindowPage> | undefined;
+  first: UseQueryResult<ListPage> | undefined;
   rows: ReadonlyMap<number, ListRow[]>;
   // Fetches every page that failed once more; true when they all landed.
   retry: () => Promise<boolean>;
@@ -37,23 +37,9 @@ export function indexOf(rows: ReadonlyMap<number, ListRow[]>, id: string): numbe
   return null;
 }
 
-// The rows of a page, made once per page object: the query keeps a page
-// that did not change as the same object, and a page joining the held
-// ones must not cost the others their rows again.
-const rowsOfPage = new WeakMap<WindowPage, ListRow[]>();
-
-function rowsOf(page: WindowPage, mailboxId: string): ListRow[] {
-  const held = rowsOfPage.get(page);
-  if (held !== undefined) {
-    return held;
-  }
-  const rows = listRows(page, mailboxId);
-  rowsOfPage.set(page, rows);
-  return rows;
-}
-
 // The pages in view plus the first: one query each, on the cache the
-// caller runs.
+// caller runs. The worker makes a page's rows, so a landing costs the
+// list only this map.
 export function useThreadPages(
   cache: MailCache,
   accountId: string,
@@ -70,7 +56,7 @@ export function useThreadPages(
           if (page === undefined || result.data === undefined) {
             return [];
           }
-          return [[page, rowsOf(result.data, mailboxId)]];
+          return [[page, result.data.rows]];
         }),
       ),
       retry: async () => {

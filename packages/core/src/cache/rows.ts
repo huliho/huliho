@@ -81,6 +81,18 @@ export function listRows(page: WindowPage, mailboxId: string): ListRow[] {
   });
 }
 
+// One page of a list as the client renders it: the rows, the frozen
+// total and the marker's count.
+export interface ListPage {
+  rows: ListRow[];
+  total: number | null;
+  pending: number;
+}
+
+export function listPage(page: WindowPage, mailboxId: string): ListPage {
+  return { rows: listRows(page, mailboxId), total: page.total, pending: page.pending };
+}
+
 // A bridge mailbox still fetching its headers: fewer synced than the
 // server holds.
 export function firstSyncOf(mailbox: Mailbox): FirstSync | null {

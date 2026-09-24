@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import { listPage } from "@huliho/core";
 import type {
   AccountRow,
   EmailHeader,
+  ListPage,
   MailCache,
   Mailbox,
   MemberState,
@@ -247,13 +249,14 @@ function thread(exemplar: EmailHeader, draft: Draft): ThreadRow {
 }
 
 // A page of rows from the drafts, newest first as the server serves
-// them; `from` numbers the ids past an earlier page's.
-export function pageOf(drafts: readonly Draft[] = DRAFTS, pending = 0, from = 0): WindowPage {
+// them, read from the headers and the thread rows the way the worker
+// reads them; `from` numbers the ids past an earlier page's.
+export function pageOf(drafts: readonly Draft[] = DRAFTS, pending = 0, from = 0): ListPage {
   const exemplars = drafts.map((draft, index) => {
     const number = String(from + index + 1);
     return { draft, exemplar: header(`e-${number}`, draft, `t-${number}`) };
   });
-  return {
+  const held: WindowPage = {
     ids: exemplars.map(({ exemplar }) => exemplar.id),
     total: exemplars.length,
     pending,
@@ -262,12 +265,13 @@ export function pageOf(drafts: readonly Draft[] = DRAFTS, pending = 0, from = 0)
       exemplars.map(({ draft, exemplar }) => [exemplar.threadId, thread(exemplar, draft)]),
     ),
   };
+  return listPage(held, INBOX_ID);
 }
 
-export const INBOX_PAGE: WindowPage = pageOf();
+export const INBOX_PAGE: ListPage = pageOf();
 
 // How a fixture cache answers a page: with rows, with a refusal or not at all.
-export type PageAnswer = WindowPage | "never" | Error;
+export type PageAnswer = ListPage | "never" | Error;
 
 // A cache for stories and tests: pages by mailbox and number; the
 // mailbox tree from the fixtures; every reveal a no-op it records.
@@ -281,7 +285,7 @@ export function fixtureCache(
     window: (_accountId, mailboxId, page) => {
       const answer = pages[`${mailboxId}/${String(page)}`];
       if (answer === undefined) {
-        return Promise.resolve({ ids: [], total: 0, pending: 0, emails: {}, threads: {} });
+        return Promise.resolve({ rows: [], total: 0, pending: 0 });
       }
       if (answer === "never") {
         return new Promise(() => undefined);

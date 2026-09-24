@@ -56,7 +56,7 @@ function addsTo(target: Node): (record: MutationRecord) => boolean {
 test("the rows carry their name, place and state; the grid its count", async () => {
   renderList();
   const grid = await screen.findByRole("grid", { name: "Conversations" });
-  expect(grid.getAttribute("aria-rowcount")).toBe(String(INBOX_PAGE.ids.length));
+  expect(grid.getAttribute("aria-rowcount")).toBe(String(INBOX_PAGE.rows.length));
   expect(row(0).getAttribute("aria-label")).toBe(
     "Mireille Dekker, Serverwissel zaterdagnacht, korte onderbreking, 9:41 AM, unread",
   );
@@ -199,14 +199,14 @@ test("a first sync shows its sentence once and its count beside three still rows
   expect(foot.getAttribute("role")).toBe("status");
   expect(screen.getByText("1,240 of 18,532")).toBeDefined();
   const grid = screen.getByRole("grid");
-  expect(grid.getAttribute("aria-rowcount")).toBe(String(INBOX_PAGE.ids.length));
+  expect(grid.getAttribute("aria-rowcount")).toBe(String(INBOX_PAGE.rows.length));
   // The list is three rows taller than its rows; the ones in reach are drawn still.
   const sizer = grid.firstElementChild;
   expect(sizer instanceof HTMLElement && sizer.style.blockSize).toBe(
-    `${String((INBOX_PAGE.ids.length + SYNC_EDGE_ROWS) * ROW_PX)}px`,
+    `${String((INBOX_PAGE.rows.length + SYNC_EDGE_ROWS) * ROW_PX)}px`,
   );
   expect(grid.querySelectorAll('[aria-hidden="true"] > div').length).toBeGreaterThan(0);
-  expect(grid.querySelector(`[data-index="${String(INBOX_PAGE.ids.length)}"]`)).toBeNull();
+  expect(grid.querySelector(`[data-index="${String(INBOX_PAGE.rows.length)}"]`)).toBeNull();
 });
 
 test("the row height follows the density token, under a mounted list too", async () => {

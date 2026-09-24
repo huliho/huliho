@@ -7,10 +7,11 @@ import {
   JmapError,
   MemoryMailStore,
   applyChanges,
+  listPage,
   queryWindow,
   revealNewMail,
 } from "@huliho/core";
-import type { MailCache, Mailbox, WindowPage } from "@huliho/core";
+import type { ListPage, MailCache, Mailbox } from "@huliho/core";
 import { ACCOUNT, FakeJmap, at, email, mailbox as mailboxRow } from "@huliho/core/testing";
 import { queryKeys } from "@huliho/state";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -120,7 +121,8 @@ export function coreCache(server: FakeJmap): MailCache & { poll: () => Promise<v
   vi.stubGlobal("fetch", server.fetch);
   return {
     mailboxes: () => Promise.resolve(MAILBOXES),
-    window: (_accountId, mailboxId, page) => queryWindow(client, store, mailboxId, page),
+    window: async (_accountId, mailboxId, page) =>
+      listPage(await queryWindow(client, store, mailboxId, page), mailboxId),
     thread: () => Promise.resolve(null),
     reveal: (accountId, mailboxId) => revealNewMail(store, accountId, mailboxId),
     poll: async () => {
@@ -146,7 +148,7 @@ export function addMail(server: FakeJmap, count: number, prefix: string, step: n
 }
 
 // A page of `count` plain rows numbered from `from`, in a list of `total`.
-export function numbered(from: number, count: number, total: number): WindowPage {
+export function numbered(from: number, count: number, total: number): ListPage {
   const drafts: Draft[] = Array.from({ length: count }, (_, index) => ({
     sender: `Sender ${String(from + index)}`,
     subject: `Subject ${String(from + index)}`,

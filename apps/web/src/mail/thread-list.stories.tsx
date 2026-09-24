@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { JmapError, listRows } from "@huliho/core";
+import { JmapError } from "@huliho/core";
 import type { ListRow, Mailbox } from "@huliho/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
@@ -121,7 +121,7 @@ interface Drawn {
   stop: boolean;
 }
 
-const ROWS = listRows(INBOX_PAGE, INBOX_ID);
+const ROWS = INBOX_PAGE.rows;
 const PLAIN = ROWS[6] ?? ROWS[0];
 const UNREAD = ROWS[0];
 const THREAD = ROWS[2];

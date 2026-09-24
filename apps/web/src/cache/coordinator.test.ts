@@ -260,8 +260,8 @@ test("two workers on one store never interleave a window fetch", async () => {
     first.window(ACCOUNT, "inbox", 0),
     second.window(ACCOUNT, "inbox", 0),
   ]);
-  expect(one.ok && one.value.ids).toHaveLength(WINDOW_SIZE);
-  expect(two.ok && two.value.ids).toHaveLength(WINDOW_SIZE);
+  expect(one.ok && one.value.rows).toHaveLength(WINDOW_SIZE);
+  expect(two.ok && two.value.rows).toHaveLength(WINDOW_SIZE);
   expect(server.posted()).toHaveLength(1);
 });
 
@@ -278,7 +278,7 @@ test("a write waits for the window's word on persistence", async () => {
   expect(landed).toBe(false);
   await tab.persisted();
   const page = await window;
-  expect(page.ok && page.value.ids).toHaveLength(3);
+  expect(page.ok && page.value.rows).toHaveLength(3);
 });
 
 test("a limit failure waits for the next poll and a lost session stops every account", async () => {
@@ -360,7 +360,7 @@ test("reveal lands the new mail and tells every tab; a thread reads from the sto
     { kind: "changed", accountId: ACCOUNT, mailboxes: false, windows: ["inbox"], threads: [] },
   ]);
   const page = await tab.window(ACCOUNT, "inbox", 0);
-  expect(page.ok && page.value.ids[0]).toBe("e4");
+  expect(page.ok && page.value.rows[0]?.id).toBe("e4");
   const thread = await tab.thread(ACCOUNT, "t-e4");
   expect(thread.ok && thread.value?.emails["e4"]?.subject).toBe("Message e4");
   const unknown = await tab.thread(ACCOUNT, "t-e9");

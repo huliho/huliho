@@ -3,8 +3,8 @@
 // Additional terms apply, see NOTICE.
 
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
+import type { ListPage } from "./rows";
 import type { ThreadRow } from "./store";
-import type { WindowPage } from "./window";
 
 // A thread as the reading pane opens it: its row and the headers the
 // store holds for its emails.
@@ -18,7 +18,7 @@ export interface ThreadDetail {
 // JmapError, so a caller reads the stop cause or the limit's name.
 export interface MailCache {
   mailboxes(accountId: string): Promise<Mailbox[]>;
-  window(accountId: string, mailboxId: string, page: number): Promise<WindowPage>;
+  window(accountId: string, mailboxId: string, page: number): Promise<ListPage>;
   thread(accountId: string, threadId: string): Promise<ThreadDetail | null>;
   reveal(accountId: string, mailboxId: string): Promise<void>;
 }

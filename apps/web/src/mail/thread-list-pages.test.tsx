@@ -3,7 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import { WINDOW_SIZE } from "@huliho/core";
-import type { MailCache, WindowPage } from "@huliho/core";
+import type { ListPage, MailCache } from "@huliho/core";
 import { queryKeys } from "@huliho/state";
 import { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen } from "@testing-library/react";
@@ -37,7 +37,7 @@ const SHORT_SECOND = WINDOW_SIZE + 25;
 mockListBox();
 
 test("the grid comes with its rows once the first page lands", async () => {
-  const first = Promise.withResolvers<WindowPage>();
+  const first = Promise.withResolvers<ListPage>();
   const pages = fixtureCache({ [`${INBOX_ID}/0`]: INBOX_PAGE });
   const window = vi.fn<MailCache["window"]>(() => first.promise);
   renderList({ cache: { ...pages, window } });
@@ -49,7 +49,7 @@ test("the grid comes with its rows once the first page lands", async () => {
 });
 
 test("a second page loads when its rows come into view; its rows are still until then", async () => {
-  const second = Promise.withResolvers<WindowPage>();
+  const second = Promise.withResolvers<ListPage>();
   const pages = fixtureCache({ [`${INBOX_ID}/0`]: numbered(0, WINDOW_SIZE, LONG_TOTAL) });
   const window = vi.fn<MailCache["window"]>((accountId, mailboxId, page) =>
     page === 1 ? second.promise : pages.window(accountId, mailboxId, page),

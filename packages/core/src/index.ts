@@ -41,8 +41,8 @@ export { MemoryMailStore } from "./cache/memory";
 export { applyChanges } from "./cache/poll";
 export type { AppliedChanges } from "./cache/poll";
 export { revealNewMail } from "./cache/refresh";
-export { firstSyncOf, listRows } from "./cache/rows";
-export type { FirstSync, ListRow } from "./cache/rows";
+export { firstSyncOf, listPage } from "./cache/rows";
+export type { FirstSync, ListPage, ListRow } from "./cache/rows";
 export { queryRowSchema, threadRowSchema } from "./cache/schemas";
 export type {
   Batch,
