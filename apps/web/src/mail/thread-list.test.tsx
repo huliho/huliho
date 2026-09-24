@@ -3,9 +3,10 @@
 // Additional terms apply, see NOTICE.
 
 import { JmapError } from "@huliho/core";
+import type { ListRow } from "@huliho/core";
 import { queryKeys } from "@huliho/state";
 import { QueryClient } from "@tanstack/react-query";
-import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { useLayoutEffect } from "react";
 import type { ReactNode } from "react";
 import { expect, test, vi } from "vitest";
@@ -71,6 +72,14 @@ test("the rows carry their name, place and state; the grid its count", async () 
   expect(row(9).getAttribute("aria-label")).toBe("Unknown sender, (No subject), May 7");
   expect(row(10).getAttribute("aria-label")).toBe(
     "Marktplaats, Je advertentie verloopt bijna, Oct 14, 2025",
+  );
+  // The sender, the text line and the preview inside it each read in their own direction.
+  const first = within(row(0));
+  expect(first.getByText("Mireille Dekker").getAttribute("dir")).toBe("auto");
+  const subject = first.getByText("Serverwissel zaterdagnacht, korte onderbreking");
+  expect(subject.parentElement?.getAttribute("dir")).toBe("auto");
+  expect(first.getByText("We verhuizen mail-03 tussen 01:00 en 02:30.").getAttribute("dir")).toBe(
+    "auto",
   );
 });
 
@@ -207,6 +216,52 @@ test("a first sync shows its sentence once and its count beside three still rows
   );
   expect(grid.querySelectorAll('[aria-hidden="true"] > div').length).toBeGreaterThan(0);
   expect(grid.querySelector(`[data-index="${String(INBOX_PAGE.rows.length)}"]`)).toBeNull();
+});
+
+test("Enter, o and a click open the cursor's row; the open thread's row is drawn selected", async () => {
+  const onOpen = vi.fn<(row: ListRow) => void>();
+  const open = INBOX_PAGE.rows[2];
+  renderList({ onOpen, openThreadId: open?.threadId ?? null });
+  await screen.findByRole("grid");
+  expect(row(2).getAttribute("aria-selected")).toBe("true");
+  expect(row(2).dataset["selection"]).toBe("selected");
+  expect(row(0).getAttribute("aria-selected")).toBeNull();
+  row(0).focus();
+  press("Enter");
+  expect(onOpen).toHaveBeenLastCalledWith(INBOX_PAGE.rows[0]);
+  press("ArrowDown");
+  command("o");
+  expect(onOpen).toHaveBeenLastCalledWith(INBOX_PAGE.rows[1]);
+  fireEvent.click(row(3));
+  expect(onOpen).toHaveBeenLastCalledWith(INBOX_PAGE.rows[3]);
+  expect(onOpen).toHaveBeenCalledTimes(3);
+});
+
+test("the focus returns to the cursor's row when the thread closes and took the focus with it", async () => {
+  const list = renderList({ openThreadId: "t-2" });
+  await screen.findByRole("grid");
+  row(1).focus();
+  row(1).blur();
+  expect(document.activeElement).toBe(document.body);
+  list.rerender({ openThreadId: null });
+  expect(focused()).toBe(row(1));
+  // A close that leaves the focus elsewhere, on the tree say, moves it nowhere.
+  const elsewhere = document.createElement("button");
+  document.body.append(elsewhere);
+  list.rerender({ openThreadId: "t-3" });
+  elsewhere.focus();
+  list.rerender({ openThreadId: null });
+  expect(focused()).toBe(elsewhere);
+  elsewhere.remove();
+});
+
+test("a thread opened from the address returns the focus to its own row", async () => {
+  const open = INBOX_PAGE.rows[2];
+  const list = renderList({ openThreadId: open?.threadId ?? null });
+  await screen.findByRole("grid");
+  expect(document.activeElement).toBe(document.body);
+  list.rerender({ openThreadId: null });
+  expect(focused()).toBe(row(2));
 });
 
 test("the row height follows the density token, under a mounted list too", async () => {

@@ -35,7 +35,7 @@ export type {
 } from "./accounts";
 export { fitsAddress, fitsHostName } from "./address";
 export type { MailCache, ThreadDetail } from "./cache/api";
-export { CHANGES_ROUNDS_MAX, WINDOW_SIZE } from "./cache/limits";
+export { CHANGES_ROUNDS_MAX, PREVIEW_BATCH, WINDOW_SIZE } from "./cache/limits";
 export { syncMailboxes } from "./cache/mailboxes";
 export { MemoryMailStore } from "./cache/memory";
 export { applyChanges } from "./cache/poll";

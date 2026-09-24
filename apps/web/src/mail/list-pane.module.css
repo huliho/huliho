@@ -2,9 +2,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Additional terms apply, see NOTICE. */
 
-/* The list keeps the width the frame hands it, the device's choice or the
-   design's default, clamped so the reading pane keeps at least 320 pixels.
-   The width declared here is that default. */
+/* The list keeps the size the frame hands it, the device's choice or the
+   design's default, clamped so the reading pane keeps its minimum. The
+   width declared here is that default beside the pane. */
 .main {
   flex: none;
   display: flex;
@@ -14,7 +14,14 @@
   background: var(--hh-surface);
 }
 
-.main[data-layout="phone"] {
+/* Above the pane the list spans the stage and its height is what the seam moves. */
+.main[data-pane="bottom"] {
+  inline-size: auto;
+  min-block-size: 0;
+}
+
+/* With the thread as a screen of its own, the list fills the room. */
+.main[data-pane="screen"] {
   flex: 1;
   inline-size: auto;
 }

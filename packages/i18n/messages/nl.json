@@ -225,5 +225,19 @@
   "list_first_sync": "Deze mailbox wordt voor het eerst gesynchroniseerd.",
   "list_first_sync_count": "{synced, number} van {total, number}",
   "thread_pane": "Gesprek",
-  "thread_none_open": "Kies een gesprek."
+  "thread_none_open": "Kies een gesprek.",
+  "thread_close": "Gesprek sluiten",
+  "thread_back": "Terug naar {mailbox}",
+  "thread_back_unnamed": "Terug",
+  "thread_count": "{count, plural, one {{count, number} bericht} other {{count, number} berichten}}",
+  "thread_show_older": "{count, plural, one {Toon {count, number} ouder bericht} other {Toon {count, number} oudere berichten}}",
+  "thread_to": "aan {names}",
+  "thread_recipients_show": "Alle ontvangers tonen",
+  "thread_recipients_hide": "Ontvangers verbergen",
+  "thread_field_to": "Aan",
+  "thread_field_cc": "Cc",
+  "thread_field_bcc": "Bcc",
+  "thread_field_reply_to": "Antwoord aan",
+  "thread_unread": "Ongelezen",
+  "thread_gone": "Dit gesprek is niet gevonden. Misschien is het verplaatst of verwijderd."
 }

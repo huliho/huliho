@@ -6,7 +6,7 @@ import type { ListRow } from "@huliho/core";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, RefObject } from "react";
 
-import { indexOf, rowAt } from "./use-thread-pages";
+import { indexOf, indexOfThread, rowAt } from "./use-thread-pages";
 
 // The row that carries the roving tab stop, by place and by id, so it
 // stays on its thread when the rows above it change.
@@ -19,6 +19,9 @@ interface CursorOptions {
   scrollerRef: RefObject<HTMLElement | null>;
   rows: ReadonlyMap<number, ListRow[]>;
   rowCount: number;
+  // The thread open beside the list; the focus returns to the cursor's
+  // row when it closes and the focus went with it.
+  openThreadId: string | null;
   // Told of every move by key, with the row it went to.
   onMove: (index: number) => void;
 }
@@ -64,13 +67,20 @@ function keyTarget(key: string, index: number, count: number): number | null {
   }
 }
 
-// The handler for the grid's keys: an arrow, Home or End moves the cursor.
+// The handler for the grid's keys: an arrow, Home or End moves the
+// cursor and Enter opens its row.
 export function keyHandler(
   cursor: ListCursor,
   rowCount: number,
   scrollTo: (index: number) => void,
+  open: () => void,
 ): (event: KeyboardEvent<HTMLElement>) => void {
   return (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      open();
+      return;
+    }
     const target = keyTarget(event.key, cursor.active, rowCount);
     if (target === null) {
       return;
@@ -80,22 +90,49 @@ export function keyHandler(
   };
 }
 
+// Whether the focus is on nothing: what a closed thread leaves behind
+// when the focus stood inside it.
+function focusLost(): boolean {
+  return document.activeElement === null || document.activeElement === document.body;
+}
+
+// The row a closed thread returns the focus to: the cursor's, or the
+// thread's own row while nothing placed the cursor, as after a thread
+// opened from the address.
+function returnRow(
+  rows: ReadonlyMap<number, ListRow[]>,
+  cursor: Cursor,
+  threadId: string,
+  active: number,
+): number {
+  return cursor.id === null ? (indexOfThread(rows, threadId) ?? active) : active;
+}
+
 // The one tab stop of the grid and the focus that follows it: the arrow
 // keys, Home, End, j and k move it; a click or Tab places it.
-export function useCursor({ scrollerRef, rows, rowCount, onMove }: CursorOptions): ListCursor {
+export function useCursor(options: CursorOptions): ListCursor {
+  const { scrollerRef, rows, rowCount, openThreadId, onMove } = options;
   const [cursor, setCursor] = useState<Cursor>({ index: 0, id: null });
   const pendingFocusRef = useRef<number | null>(null);
+  const openRef = useRef(openThreadId);
   const found = cursor.id === null ? null : indexOf(rows, cursor.id);
   const active = clampIndex(found ?? cursor.index, rowCount);
-  // The focus follows the cursor: to the row a move asked for, and to
-  // the row the cursor's thread stands in once rows above it changed.
+  // The focus follows the cursor: to the row a move asked for, to the
+  // row the cursor's thread stands in once rows above it changed and
+  // back to the cursor's row when the thread it opened closes.
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
     if (scroller === null) {
       return;
     }
+    const closedId = openThreadId === null && focusLost() ? openRef.current : null;
+    openRef.current = openThreadId;
     const moved = pendingFocusRef.current !== null;
-    const wanted = pendingFocusRef.current ?? activeIfFocused(scroller, active);
+    const wanted =
+      pendingFocusRef.current ??
+      (closedId === null
+        ? activeIfFocused(scroller, active)
+        : returnRow(rows, cursor, closedId, active));
     if (wanted === null) {
       return;
     }

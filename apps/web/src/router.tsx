@@ -140,6 +140,13 @@ const mailboxRoute = createRoute({
   component: MailboxPane,
 });
 
+// The thread open in the mailbox; the shell draws it beside, below or
+// over the list, so the route itself renders nothing of its own.
+const threadRoute = createRoute({
+  getParentRoute: () => mailboxRoute,
+  path: "/$threadId",
+});
+
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sign-in",
@@ -219,7 +226,7 @@ const routeTree = rootRoute.addChildren([
   signInRoute,
   signedInRoute.addChildren([
     homeRoute,
-    mailRoute.addChildren([mailIndexRoute, mailboxRoute]),
+    mailRoute.addChildren([mailIndexRoute, mailboxRoute.addChildren([threadRoute])]),
     choosePasswordRoute,
     addAccountRoute,
     settingsRoute.addChildren([

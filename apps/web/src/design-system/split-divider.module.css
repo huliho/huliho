@@ -33,10 +33,67 @@
   outline-offset: calc(-1 * var(--hhx-focus-ring-width));
 }
 
+/* The seam between a pane above and one below: the same hit area turned. */
+.divider[aria-orientation="horizontal"] {
+  inline-size: auto;
+  block-size: var(--hhx-space-4);
+  margin-block: calc(-1 * var(--hhx-space-2));
+  margin-inline: 0;
+  cursor: row-resize;
+}
+
+.divider[aria-orientation="horizontal"]::before {
+  inset-block: calc(50% - var(--hhx-border-width) / 2) auto;
+  inset-inline: 0;
+  inline-size: auto;
+  block-size: var(--hhx-border-width);
+}
+
+.divider[aria-orientation="horizontal"]:hover::before,
+.divider[aria-orientation="horizontal"]:focus-visible::before {
+  inset-block-start: calc(50% - var(--hhx-focus-ring-width) / 2);
+  inset-inline-start: 0;
+  inline-size: auto;
+  block-size: var(--hhx-focus-ring-width);
+}
+
 /* A touchscreen gets the touch target as the hit area, still centered on the seam. */
 @media (any-pointer: coarse) {
   .divider {
     inline-size: var(--hhx-hit-target);
     margin-inline: calc(-1 * var(--hhx-hit-target) / 2);
+  }
+
+  /* Turned, the seam keeps a band in the flow with a grip to take hold of. */
+  .divider[aria-orientation="horizontal"] {
+    inline-size: auto;
+    block-size: var(--hhx-hit-target);
+    margin-block: calc((var(--hhx-space-3) - var(--hhx-hit-target)) / 2);
+    margin-inline: 0;
+  }
+
+  .divider[aria-orientation="horizontal"]::before {
+    inset-block-start: calc(50% - var(--hhx-space-3) / 2);
+    block-size: var(--hhx-space-3);
+    border-block: var(--hhx-border-width) solid var(--hh-border);
+    background: var(--hh-bg);
+  }
+
+  .divider[aria-orientation="horizontal"]::after {
+    content: "";
+    position: absolute;
+    inset-block-start: calc(50% - var(--hhx-space-1) / 2);
+    inset-inline-start: calc(50% - var(--hhx-space-6) / 2);
+    inline-size: var(--hhx-space-6);
+    block-size: var(--hhx-space-1);
+    border-radius: var(--hhx-radius-control);
+    background: var(--hh-border-strong);
+  }
+
+  .divider[aria-orientation="horizontal"]:hover::before,
+  .divider[aria-orientation="horizontal"]:focus-visible::before {
+    inset-block-start: calc(50% - var(--hhx-space-3) / 2);
+    block-size: var(--hhx-space-3);
+    background: var(--hh-accent-tint);
   }
 }

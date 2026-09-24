@@ -19,11 +19,11 @@ import { useMarker } from "./list-marker";
 import type { ListMarker } from "./list-marker";
 import { pagesFor, useListVirtualizer } from "./list-virtualizer";
 import type { VirtualList } from "./list-virtualizer";
-import { NewMailMarker } from "./new-mail-marker";
 import { OfflineBanner } from "./offline-banner";
-import { EdgeRow, ThreadListItem } from "./thread-list-item";
-import { useRowHeight } from "./use-row-height";
+import { REVEAL_KEY, Viewport } from "./thread-grid";
+import { EdgeRow } from "./thread-list-item";
 import { pageOf, rowAt, useThreadPages } from "./use-thread-pages";
+import { useRowHeight } from "./use-token-px";
 import type { ListPages } from "./use-thread-pages";
 import styles from "./thread-list.module.css";
 
@@ -31,8 +31,8 @@ import styles from "./thread-list.module.css";
 const SYNC_EDGE_ROWS = 3;
 // Still rows that stand in for the list while its first page loads.
 const LOADING_ROWS = 8;
-// The key that brings new mail in; the marker shows it.
-const REVEAL_KEY = ".";
+// The key that opens the cursor's row from anywhere, as Enter does in the grid.
+const OPEN_KEY = "o";
 
 interface ThreadListProps {
   locale: Locale;
@@ -42,8 +42,11 @@ interface ThreadListProps {
   accountId: string;
   mailbox: Mailbox;
   online: boolean;
+  // The thread open beside the list, whose row is drawn as selected.
+  openThreadId: string | null;
   // What the pane shows when the list holds no row.
   empty: ReactNode;
+  onOpen: (row: ListRow) => void;
 }
 
 // Where the first page stands: still on its way, refused or in.
@@ -93,12 +96,13 @@ interface Commands {
   pending: number;
   active: number;
   goTo: (index: number) => void;
+  open: () => void;
   reveal: () => void;
 }
 
-// j and k move the cursor from anywhere on the screen; the dot key
-// brings new mail in while some waits.
-function useListCommands({ rowCount, pending, active, goTo, reveal }: Commands): void {
+// j and k move the cursor from anywhere on the screen and o opens its
+// row; the dot key brings new mail in while some waits.
+function useListCommands({ rowCount, pending, active, goTo, open, reveal }: Commands): void {
   const next = (): void => {
     goTo(active + 1);
   };
@@ -107,6 +111,7 @@ function useListCommands({ rowCount, pending, active, goTo, reveal }: Commands):
   };
   useCommand(rowCount > 0 ? { id: "list.next", key: "j", run: next } : null);
   useCommand(rowCount > 0 ? { id: "list.previous", key: "k", run: previous } : null);
+  useCommand(rowCount > 0 ? { id: "list.open", key: OPEN_KEY, run: open } : null);
   useCommand(pending > 0 ? { id: "list.reveal", key: REVEAL_KEY, run: reveal } : null);
 }
 
@@ -144,59 +149,6 @@ function ListState({ locale, facts, retry, empty }: StateProps) {
     return <LoadingRows locale={locale} />;
   }
   return facts.isEmpty ? empty : null;
-}
-
-interface GridProps {
-  locale: Locale;
-  today: number;
-  scrollerRef: RefObject<HTMLDivElement | null>;
-  list: VirtualList;
-  rows: ReadonlyMap<number, ListRow[]>;
-  rowCount: number;
-  cursor: ListCursor;
-  onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
-  // A scroll or a click in the grid: the user acted in the list.
-  onAct: () => void;
-}
-
-// The rows in view, each placed by its offset; a row whose page is on
-// its way is still, and so are the rows past the synced edge.
-function Grid(props: GridProps) {
-  const { locale, today, scrollerRef, list, rows, rowCount, cursor } = props;
-  return (
-    <div
-      ref={scrollerRef}
-      role="grid"
-      tabIndex={-1}
-      aria-label={m.list_label({}, { locale })}
-      aria-rowcount={rowCount}
-      className={styles.scroller}
-      onKeyDown={props.onKeyDown}
-      onScroll={props.onAct}
-      onClick={props.onAct}
-    >
-      <div className={styles.sizer} style={{ blockSize: `${String(list.totalSize)}px` }}>
-        {list.items.map((item) =>
-          item.index >= rowCount ? (
-            <EdgeRow key={item.key} placement={item} index={item.index} />
-          ) : (
-            <ThreadListItem
-              key={item.key}
-              locale={locale}
-              today={today}
-              row={rowAt(rows, item.index)}
-              index={item.index}
-              stop={item.index === cursor.active}
-              selection="none"
-              start={item.start}
-              size={item.size}
-              onPlace={cursor.place}
-            />
-          ),
-        )}
-      </div>
-    </div>
-  );
 }
 
 interface Actions {
@@ -238,12 +190,14 @@ interface ControlsProps {
   pages: ListPages;
   facts: Facts;
   rowHeight: number;
+  openThreadId: string | null;
   scrollerRef: RefObject<HTMLDivElement | null>;
   regionRef: RefObject<HTMLDivElement | null>;
   markerRef: RefObject<HTMLDivElement | null>;
   onSpan: (span: string) => void;
   // Told the page of the row the cursor went to, so it stays mounted.
   onPin: (page: number) => void;
+  onOpen: (row: ListRow) => void;
 }
 
 interface ListControls {
@@ -251,6 +205,8 @@ interface ListControls {
   list: VirtualList;
   marker: ListMarker;
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+  // Opens the row at an index; a still row opens nothing.
+  openAt: (index: number) => void;
   reveal: () => void;
   retry: () => void;
 }
@@ -258,15 +214,15 @@ interface ListControls {
 // The cursor, the virtualizer, the marker and the commands over the
 // pages the list holds.
 function useListControls(props: ControlsProps): ListControls {
-  const { locale, cache, accountId, mailbox, pages, facts, rowHeight } = props;
-  const { scrollerRef, regionRef, markerRef, onSpan, onPin } = props;
+  const { locale, cache, accountId, mailbox, pages, facts, rowHeight, openThreadId } = props;
+  const { scrollerRef, regionRef, markerRef, onSpan, onPin, onOpen } = props;
   const { rowCount, pending } = facts;
   const marker = useMarker(pending, regionRef, m.list_new_mail({ count: pending }, { locale }));
   const onMove = (index: number): void => {
     marker.dismiss();
     onPin(pageOf(index));
   };
-  const cursor = useCursor({ scrollerRef, rows: pages.rows, rowCount, onMove });
+  const cursor = useCursor({ scrollerRef, rows: pages.rows, rowCount, openThreadId, onMove });
   const list = useListVirtualizer({
     scrollerRef,
     rowHeight,
@@ -278,6 +234,15 @@ function useListControls(props: ControlsProps): ListControls {
   const goTo = (index: number): void => {
     cursor.moveTo(index, list.scrollTo);
   };
+  const openAt = (index: number): void => {
+    const row = rowAt(pages.rows, index);
+    if (row !== undefined) {
+      onOpen(row);
+    }
+  };
+  const open = (): void => {
+    openAt(cursor.active);
+  };
   const actions = listActions({
     cache,
     accountId,
@@ -286,21 +251,23 @@ function useListControls(props: ControlsProps): ListControls {
     cursor,
     markerRef,
   });
-  useListCommands({ rowCount, pending, active: cursor.active, goTo, reveal: actions.reveal });
+  useListCommands({ rowCount, pending, active: cursor.active, goTo, open, reveal: actions.reveal });
   return {
     cursor,
     list,
     marker,
-    onKeyDown: keyHandler(cursor, rowCount, list.scrollTo),
+    onKeyDown: keyHandler(cursor, rowCount, list.scrollTo, open),
+    openAt,
     ...actions,
   };
 }
 
 // The threads of one mailbox as a virtualized grid over the pages the
-// cache serves: one tab stop that the arrow keys, j and k move, the
-// marker for new mail, the offline strip and the first-sync foot.
+// cache serves: one tab stop that the arrow keys, j and k move and
+// Enter, o or a click opens, the marker for new mail, the offline strip
+// and the first-sync foot.
 export function ThreadList(props: ThreadListProps) {
-  const { locale, today, cache, accountId, mailbox, online, empty } = props;
+  const { locale, today, cache, accountId, mailbox, online, openThreadId, empty, onOpen } = props;
   const listRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const regionRef = useRef<HTMLDivElement>(null);
@@ -319,11 +286,13 @@ export function ThreadList(props: ThreadListProps) {
     pages,
     facts,
     rowHeight,
+    openThreadId,
     scrollerRef,
     regionRef,
     markerRef,
     onSpan: setSpan,
     onPin: setPinned,
+    onOpen,
   });
   return (
     <div ref={listRef} className={styles.list}>
@@ -332,28 +301,22 @@ export function ThreadList(props: ThreadListProps) {
       <ListState locale={locale} facts={facts} retry={controls.retry} empty={empty} />
       {/* The grid mounts once the first page is in: measured laid out, its rows render with it. */}
       {facts.state === "ready" && !facts.isEmpty && (
-        <div className={styles.viewport}>
-          {controls.marker.shown && (
-            <NewMailMarker
-              ref={markerRef}
-              locale={locale}
-              count={facts.pending}
-              keyHint={REVEAL_KEY}
-              onReveal={controls.reveal}
-            />
-          )}
-          <Grid
-            locale={locale}
-            today={today}
-            scrollerRef={scrollerRef}
-            list={controls.list}
-            rows={pages.rows}
-            rowCount={facts.rowCount}
-            cursor={controls.cursor}
-            onKeyDown={controls.onKeyDown}
-            onAct={controls.marker.dismiss}
-          />
-        </div>
+        <Viewport
+          locale={locale}
+          today={today}
+          scrollerRef={scrollerRef}
+          markerRef={markerRef}
+          marker={controls.marker}
+          list={controls.list}
+          rows={pages.rows}
+          rowCount={facts.rowCount}
+          pending={facts.pending}
+          cursor={controls.cursor}
+          openThreadId={openThreadId}
+          onKeyDown={controls.onKeyDown}
+          onOpen={controls.openAt}
+          onReveal={controls.reveal}
+        />
       )}
       <FirstSyncBlock locale={locale} progress={facts.firstSync} />
     </div>

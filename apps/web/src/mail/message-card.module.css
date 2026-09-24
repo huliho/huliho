@@ -1,0 +1,143 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.card {
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-overlay);
+  background: var(--hh-surface);
+}
+
+/* The dot, the initials, who wrote and when, in one row that folds the card. */
+.head {
+  display: grid;
+  grid-template-columns: var(--hhx-icon-inline) var(--hhx-avatar-size) minmax(0, 1fr) auto;
+  column-gap: var(--hhx-space-2);
+  align-items: center;
+  inline-size: 100%;
+  min-block-size: var(--hhx-row-height);
+  padding: var(--hhx-space-2) var(--hhx-space-3);
+  border: none;
+  border-radius: var(--hhx-radius-overlay);
+  background: none;
+  color: var(--hh-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.head:hover {
+  background: var(--hh-hover);
+}
+
+.card[data-expanded] .head {
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+}
+
+/* Unread is the dot plus the weight; the dot keeps its place either way. */
+.dot {
+  justify-self: center;
+  inline-size: var(--hhx-space-2);
+  block-size: var(--hhx-space-2);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.card[data-unread] .dot {
+  background: var(--hh-accent);
+}
+
+.who {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.name {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card[data-unread] .name {
+  font-weight: 600;
+}
+
+.detail {
+  overflow: hidden;
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time {
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+  white-space: nowrap;
+}
+
+/* The open card's rest starts under the name, past the dot and the initials. */
+.details {
+  display: grid;
+  gap: var(--hhx-space-3);
+  padding-block: 0 var(--hhx-space-3);
+  padding-inline: calc(
+      var(--hhx-space-3) + var(--hhx-icon-inline) + var(--hhx-avatar-size) + 2 * var(--hhx-space-2)
+    )
+    var(--hhx-space-3);
+}
+
+.recipients {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--hhx-space-1) var(--hhx-space-2);
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+}
+
+.toLine {
+  overflow: hidden;
+  max-inline-size: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--hhx-space-1) var(--hhx-space-3);
+  margin: 0;
+  font-size: var(--hhx-type-1);
+}
+
+.list dt {
+  color: var(--hh-text-muted);
+}
+
+/* A recipient after the first of its field stands under it, in the same column. */
+.list dd {
+  grid-column: 2;
+  margin: 0;
+}
+
+.address {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hhx-space-2);
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  color: var(--hh-text-muted);
+}
+
+.text {
+  margin: 0;
+  line-height: var(--hhx-leading);
+  overflow-wrap: anywhere;
+}

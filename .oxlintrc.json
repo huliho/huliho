@@ -141,6 +141,10 @@
     // roles.
     "jsx-a11y/prefer-tag-over-role": "off",
 
+    // Safari drops the list semantics of a list without markers; the
+    // role on the element keeps them.
+    "jsx-a11y/no-redundant-roles": ["error", { "ol": ["list"], "ul": ["list"] }],
+
     // Stylesheets load for their side effect.
     "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
 

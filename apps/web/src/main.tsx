@@ -11,6 +11,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { applyDocumentLocale } from "./i18n/locale";
 import { getLocale } from "./paraglide/runtime.js";
 import { queryClient, router } from "./router";
 import { applyAppearance, rememberedAppearance } from "./theme/appearance";
@@ -24,7 +25,7 @@ async function applyInstanceOverride(): Promise<void> {
 }
 void applyInstanceOverride();
 
-document.documentElement.lang = getLocale();
+applyDocumentLocale(getLocale());
 // The device's last theme and density, before anything paints.
 applyAppearance(document, rememberedAppearance());
 

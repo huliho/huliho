@@ -162,7 +162,10 @@ export class Coordinator {
           );
           return listPage(assembled, mailboxId);
         }),
-      thread: (accountId, threadId) => attempt(() => readThread(this.store, accountId, threadId)),
+      thread: (accountId, threadId) =>
+        attempt(() =>
+          this.locked(accountId, (store) => readThread(this.client(accountId), store, threadId)),
+        ),
       reveal: (accountId, mailboxId) => attempt(() => this.reveal(accountId, mailboxId)),
     };
   }

@@ -10,6 +10,7 @@ import type {
   MailCache,
   Mailbox,
   MemberState,
+  ThreadDetail,
   ThreadRow,
   WindowPage,
 } from "@huliho/core";
@@ -270,29 +271,132 @@ export function pageOf(drafts: readonly Draft[] = DRAFTS, pending = 0, from = 0)
 
 export const INBOX_PAGE: ListPage = pageOf();
 
+// The thread of the third row, as the reading pane opens it.
+export const THREAD_ID = "t-3";
+const THREAD_EXEMPLAR = "e-3";
+const THREAD_COUNT = 14;
+// The two sides of the thread write in turn; the newest message is the first one's.
+const PIETER = { name: "Pieter Blom", email: "pieter@blom-installaties.example" };
+const SANNE = { name: "Sanne Bakker", email: "sanne@fastmail.com" };
+const JONAS = { name: "Jonas Verhulst", email: "jonas@kastanje.example" };
+// One message every so many hours back from the newest.
+const THREAD_STEP_MS = 5 * HOUR_MS;
+
+const THREAD_TEXTS = [
+  "Hierbij de eerste versie van de offerte voor de badkamer.",
+  "Dank Pieter, kan het tegelwerk in dezelfde prijs mee?",
+  "Ja, mits we de wandtegels in één maat houden.",
+  "Prima, dan gaan we voor 30 bij 60.",
+  "Versie 2 staat in de bijlage, met het tegelwerk erin.",
+  "De meerprijs voor de vloerverwarming ontbreekt nog.",
+  "Klopt, die stuur ik apart; de leverancier antwoordt maandag.",
+  "Hierbij versie 3 met het tegelwerk erin; de meerprijs valt binnen de eerdere schatting.",
+];
+
+// The exemplar of the row is the newest message; the others carry the
+// ids the row's members carry.
+function threadMessageId(fromEnd: number): string {
+  return fromEnd === 0 ? THREAD_EXEMPLAR : `${THREAD_EXEMPLAR}-m${String(THREAD_COUNT - fromEnd)}`;
+}
+
+// The first message carries the subject; every reply carries it with a prefix.
+function threadSubject(index: number): string | null {
+  const subject = DRAFTS[2]?.subject ?? null;
+  if (index === 0 || subject === null) {
+    return subject;
+  }
+  return `Re: ${subject}`;
+}
+
+// One message of the thread: `fromEnd` places it before the newest,
+// which the row's draft dates.
+function threadMessage(index: number, unread: boolean, newest: Date): EmailHeader {
+  const fromEnd = THREAD_COUNT - 1 - index;
+  const id = threadMessageId(fromEnd);
+  const fromPieter = fromEnd % 2 === 0;
+  return {
+    id,
+    blobId: id,
+    threadId: THREAD_ID,
+    mailboxIds: { [INBOX_ID]: true },
+    keywords: unread ? {} : { $seen: true },
+    size: 2048,
+    receivedAt: new Date(newest.getTime() - fromEnd * THREAD_STEP_MS).toISOString(),
+    messageId: [`${id}@example.test`],
+    inReplyTo: null,
+    references: null,
+    sender: null,
+    from: [fromPieter ? PIETER : SANNE],
+    to: [fromPieter ? SANNE : PIETER],
+    cc: fromEnd === 0 ? [JONAS] : null,
+    bcc: null,
+    replyTo: null,
+    subject: threadSubject(index),
+    sentAt: null,
+    hasAttachment: fromEnd === 0,
+    preview: THREAD_TEXTS[index % THREAD_TEXTS.length] ?? "",
+  };
+}
+
+// The messages of the thread, oldest first.
+function threadMessages(unreadAt: readonly number[]): EmailHeader[] {
+  const newest = DRAFTS[2]?.at ?? FIXED_NOW;
+  return Array.from({ length: THREAD_COUNT }, (_, index) =>
+    threadMessage(index, unreadAt.includes(index), newest),
+  );
+}
+
+// The thread with every message read, or with the ones at `unreadAt` unread.
+export function threadDetail(unreadAt: readonly number[] = []): ThreadDetail {
+  const messages = threadMessages(unreadAt);
+  return {
+    thread: {
+      id: THREAD_ID,
+      emailIds: messages.map((email) => email.id),
+      members: Object.fromEntries(
+        messages.map((email) => [
+          email.id,
+          { keywords: email.keywords, mailboxIds: email.mailboxIds },
+        ]),
+      ),
+    },
+    emails: Object.fromEntries(messages.map((email) => [email.id, email])),
+  };
+}
+
+export const THREAD: ThreadDetail = threadDetail();
+
 // How a fixture cache answers a page: with rows, with a refusal or not at all.
 export type PageAnswer = ListPage | "never" | Error;
+// How it answers a thread: with the thread, with nothing, with a refusal or not at all.
+export type ThreadAnswer = ThreadDetail | null | "never" | Error;
 
-// A cache for stories and tests: pages by mailbox and number; the
-// mailbox tree from the fixtures; every reveal a no-op it records.
+function answered<Value>(answer: Value | "never" | Error): Promise<Value> {
+  if (answer === "never") {
+    return new Promise(() => undefined);
+  }
+  return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer);
+}
+
+// A cache for stories and tests: pages by mailbox and number, threads
+// by id; the mailbox tree from the fixtures; every reveal a no-op it
+// records.
 export function fixtureCache(
   pages: Record<string, PageAnswer>,
+  threads: Record<string, ThreadAnswer> = {},
 ): MailCache & { revealed: string[] } {
   const revealed: string[] = [];
+  const held = new Map(Object.entries(threads));
   return {
     revealed,
     mailboxes: () => Promise.resolve(MAILBOXES),
     window: (_accountId, mailboxId, page) => {
       const answer = pages[`${mailboxId}/${String(page)}`];
-      if (answer === undefined) {
-        return Promise.resolve({ rows: [], total: 0, pending: 0 });
-      }
-      if (answer === "never") {
-        return new Promise(() => undefined);
-      }
-      return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer);
+      return answer === undefined
+        ? Promise.resolve({ rows: [], total: 0, pending: 0 })
+        : answered(answer);
     },
-    thread: () => Promise.resolve(null),
+    thread: (_accountId, threadId) => answered(held.get(threadId) ?? null),
     reveal: (_accountId, mailboxId) => {
       revealed.push(mailboxId);
       return Promise.resolve();

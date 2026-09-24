@@ -130,6 +130,20 @@ closer while such a sync runs. A render failure in one pane stays in
 that pane. The add-account card and the settings screens each load as
 a chunk of their own on their first visit.
 
+Enter, `o` or a click opens a row's thread at
+`/mail/{accountId}/{mailboxId}/{threadId}`, where the reading pane
+preference puts it: beside the list; below it, behind a seam that moves
+by rows and keeps its place on the device; or as a screen of its own,
+which a phone always uses. The list stays where it was underneath, so
+Escape, the Close button or the way back return the focus to the row.
+The pane shows the thread's subject, its message count and one card per
+message: who wrote it, to whom and when, with the message's first
+sentence standing in for the body until bodies arrive. The newest
+message and the unread ones open, the two before them stay in sight
+collapsed and the rest wait behind a button. The members' headers are
+fetched with their previews when a thread opens, in batches of the size
+the bridge fills previews in.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component

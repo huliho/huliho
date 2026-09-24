@@ -6,6 +6,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
+import iconButton from "./icon-button.module.css";
 import styles from "./side-sheet.module.css";
 
 interface SideSheetProps {
@@ -26,8 +27,8 @@ export function SideSheet({ open, onOpenChange, label, closeLabel, children }: S
         <Dialog.Backdrop className={styles.backdrop} />
         <Dialog.Popup className={styles.popup} aria-label={label}>
           <div className={styles.bar}>
-            <Dialog.Close className={styles.close} aria-label={closeLabel}>
-              <X className={styles.icon} aria-hidden="true" />
+            <Dialog.Close className={iconButton.button} aria-label={closeLabel}>
+              <X className={iconButton.icon} aria-hidden="true" />
             </Dialog.Close>
           </div>
           {children}
