@@ -135,6 +135,10 @@ tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component
 workshop. The frame traces run alone, without the rest of the suite,
 with `pnpm exec playwright test --project scroll-budget --no-deps`.
+The phone trace slows the CPU by the host's Lighthouse benchmark index
+over 1000, the middle of the high-end mobile bracket in Lighthouse's
+throttling doc, so a mid-range phone means the same on every machine;
+the run's annotations show the index and the factor.
 
 `pnpm lighthouse` audits the built app against the performance and
 accessibility budgets in `lighthouserc.cjs`.

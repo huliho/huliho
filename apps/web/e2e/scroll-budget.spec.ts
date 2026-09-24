@@ -4,6 +4,7 @@
 
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { pageFunctions } from "lighthouse/core/lib/page-functions.js";
 
 import { accountRow, mockAccounts } from "./account-mocks";
 import { FIXED_NOW } from "./mail-corpus";
@@ -17,8 +18,13 @@ import { VIEWPORTS } from "./sweep";
 const FRAME_BUDGET_MS = 16.7;
 // From a keypress to the painted focus.
 const INTERACTION_BUDGET_MS = 100;
-// The mid-range phone profile: a 4x slowed CPU, as the Lighthouse run has it.
-const MID_RANGE_CPU_SLOWDOWN = 4;
+// The middle of the high-end mobile bracket, 800 to 1200, in Lighthouse's
+// docs/throttling.md. The phone profile slows the CPU by the host's own
+// index, measured before throttling, over this one, so the profile means
+// the same on every host.
+const MID_RANGE_PHONE_BENCHMARK_INDEX = 1000;
+// No slowdown: the floor, for a host no faster than the phone.
+const NO_SLOWDOWN = 1;
 // The scroll: this many frames at a fast fling of this many rows each,
 // the first few left out while the page warms up.
 const SCROLL_FRAMES = 600;
@@ -139,16 +145,26 @@ test("the fifty-thousand-row list scrolls without a long frame on the desktop pr
   await expectSmoothScroll(page, "desktop");
 });
 
+function benchmarkIndexOf(page: Page): Promise<number> {
+  return page.evaluate(pageFunctions.computeBenchmarkIndex);
+}
+
 test("the fifty-thousand-row list scrolls without a long frame on the phone profile", async ({
   page,
 }) => {
   test.setTimeout(TRACE_TIMEOUT_MS);
   await page.setViewportSize(VIEWPORTS[0]);
+  const benchmarkIndex = await benchmarkIndexOf(page);
+  const slowdown = Math.max(NO_SLOWDOWN, benchmarkIndex / MID_RANGE_PHONE_BENCHMARK_INDEX);
+  test.info().annotations.push({
+    type: "phone profile",
+    description: `benchmark index ${benchmarkIndex.toFixed(0)}, CPU slowed ${slowdown.toFixed(1)}x`,
+  });
   const session = await page.context().newCDPSession(page);
-  await session.send("Emulation.setCPUThrottlingRate", { rate: MID_RANGE_CPU_SLOWDOWN });
+  await session.send("Emulation.setCPUThrottlingRate", { rate: slowdown });
   await openInbox(page);
   await expectSmoothScroll(page, "phone");
-  await session.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+  await session.send("Emulation.setCPUThrottlingRate", { rate: NO_SLOWDOWN });
 });
 
 // Where the page keeps the measurement between the two evaluations.
