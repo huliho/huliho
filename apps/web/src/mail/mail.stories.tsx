@@ -2,14 +2,26 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import type { ReadingPane } from "@huliho/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX, ReactNode } from "react";
 
 import { useLayout } from "../shell/breakpoints";
-import { ACCOUNTS, FASTMAIL, MAILBOXES, MAILBOXES_EMPTY_INBOX } from "./fixtures";
+import {
+  ACCOUNTS,
+  FASTMAIL,
+  INBOX_ID,
+  INBOX_PAGE,
+  MAILBOXES,
+  MAILBOXES_EMPTY_INBOX,
+  THREAD,
+  THREAD_ID,
+  fixtureCache,
+} from "./fixtures";
 import { EmptyMailbox } from "./mailbox-pane";
 import { ShellFrame } from "./shell-frame";
 import { Sidebar } from "./sidebar";
+import { FixtureList } from "./story-list";
 import { routed } from "./story-router";
 import type { TreeState } from "./tree";
 
@@ -22,26 +34,53 @@ const LOADING: TreeState = { status: "pending" };
 const FAILED: TreeState = { status: "error", retry: nothing };
 const EMPTY_INBOX: TreeState = { status: "success", mailboxes: MAILBOXES_EMPTY_INBOX };
 const INBOX = MAILBOXES_EMPTY_INBOX.find((mailbox) => mailbox.role === "inbox");
+const THREAD_PATH = `/mail/acc-1/mb-inbox/${THREAD_ID}`;
+const CACHE = fixtureCache({ [`${INBOX_ID}/0`]: INBOX_PAGE }, { [THREAD_ID]: THREAD });
 
 interface ShellProps {
   tree: TreeState;
   currentMailboxId?: string | undefined;
+  // The thread open in the frame, drawn where the preference puts it.
+  currentThreadId?: string | undefined;
+  readingPane?: ReadingPane;
   children?: ReactNode;
 }
 
-function Shell({ tree, currentMailboxId, children }: ShellProps): JSX.Element {
+function Shell(props: ShellProps): JSX.Element {
+  const { tree, currentMailboxId, currentThreadId, readingPane = "right", children } = props;
   const layout = useLayout();
   return (
     <ShellFrame
       locale="en"
       layout={layout}
+      readingPane={readingPane}
+      cache={CACHE}
       accounts={ACCOUNTS}
       account={FASTMAIL}
       tree={tree}
       currentMailboxId={currentMailboxId}
+      currentThreadId={currentThreadId}
+      onCloseThread={nothing}
     >
       {children}
     </ShellFrame>
+  );
+}
+
+// The shell with the inbox open at its thread, the pane where `readingPane` puts it.
+function opened(readingPane: ReadingPane): JSX.Element {
+  return routed(
+    () => (
+      <Shell
+        tree={LOADED}
+        currentMailboxId={INBOX_ID}
+        currentThreadId={THREAD_ID}
+        readingPane={readingPane}
+      >
+        <FixtureList openThreadId={THREAD_ID} />
+      </Shell>
+    ),
+    THREAD_PATH,
   );
 }
 
@@ -82,6 +121,18 @@ export const EmptyInbox: StoryObj = {
 export const Folder: StoryObj = {
   render: () =>
     routed(() => <Shell tree={LOADED} currentMailboxId="mb-offertes" />, "/mail/acc-1/mb-offertes"),
+};
+
+export const ThreadOpen: StoryObj = {
+  render: () => opened("right"),
+};
+
+export const PaneBottom: StoryObj = {
+  render: () => opened("bottom"),
+};
+
+export const PaneOff: StoryObj = {
+  render: () => opened("off"),
 };
 
 export const SidebarAlone: StoryObj = {

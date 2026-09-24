@@ -1,0 +1,28 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* A square button of the hit target's size around one icon, named for a
+   screen reader by its label. */
+.button {
+  display: grid;
+  place-items: center;
+  inline-size: var(--hhx-hit-target);
+  block-size: var(--hhx-hit-target);
+  padding: 0;
+  border: none;
+  border-radius: var(--hhx-radius-field);
+  background: none;
+  color: var(--hh-text);
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--hh-hover);
+}
+
+.icon {
+  inline-size: var(--hhx-icon-header);
+  block-size: var(--hhx-icon-header);
+  stroke-width: var(--hhx-icon-stroke);
+}

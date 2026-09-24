@@ -47,11 +47,14 @@ interface Wanted {
   type: ObjectType;
   ids: readonly string[];
   properties?: readonly string[];
+  // A cap on one get below the server's, where the caller has one.
+  batch?: number;
 }
 
 // The objects named, in the round trips the server's limits ask for. A
 // window and a poll ask them by result reference first; this is the
-// road when that answer was too large.
+// road when that answer was too large, and the road a thread's members
+// take.
 export async function fetchInChunks<Schema extends z.ZodType>(
   client: JmapClient,
   wanted: Wanted,
@@ -60,7 +63,8 @@ export async function fetchInChunks<Schema extends z.ZodType>(
   const session = await client.session();
   const calls = callsFor(session.accountId);
   const schema = getAnswerSchema(item);
-  const chunks = chunked([...new Set(wanted.ids)], session.maxObjectsInGet);
+  const size = Math.min(session.maxObjectsInGet, wanted.batch ?? session.maxObjectsInGet);
+  const chunks = chunked([...new Set(wanted.ids)], size);
   const batches = chunked(chunks, session.maxCallsInRequest);
   const answered = await Promise.all(
     batches.map(async (batch) => {

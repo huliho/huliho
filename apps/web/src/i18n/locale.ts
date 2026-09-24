@@ -10,6 +10,7 @@ import {
   baseLocale,
   extractLocaleFromNavigator,
   getLocale,
+  getTextDirection,
   locales,
   setLocale,
 } from "../paraglide/runtime.js";
@@ -29,13 +30,24 @@ export function useLocale(): Locale {
   return useSyncExternalStore(subscribe, getLocale, getLocale);
 }
 
+// The pseudo locale reads right to left, so every sweep in it shows the RTL state.
+function directionOf(locale: Locale): "ltr" | "rtl" {
+  return locale === PSEUDO_LOCALE ? "rtl" : getTextDirection(locale);
+}
+
+// Puts a locale on the document: its language and its writing direction.
+export function applyDocumentLocale(locale: Locale): void {
+  document.documentElement.lang = locale;
+  document.documentElement.dir = directionOf(locale);
+}
+
 // Applies a locale to the document and to every mounted screen without a reload.
 export function switchLocale(next: Locale): void {
   if (next === getLocale()) {
     return;
   }
   void setLocale(next, { reload: false });
-  document.documentElement.lang = next;
+  applyDocumentLocale(next);
   for (const listener of listeners) {
     listener();
   }

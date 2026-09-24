@@ -44,14 +44,15 @@ interface Left {
 
 // The states patch the header rows and the thread members held; a
 // destroyed email and one that left a mailbox leave every list they
-// stood in.
+// stood in, and a thread whose member changed is named as changed.
 export function landEmails(
   changes: ChangesAnswer,
   states: readonly EmailState[],
   held: Held,
   { batch, folded }: Landing,
 ): void {
-  const { patched, left } = patchHeaders(states, held, folded);
+  const { patched, left, touched } = patchHeaders(states, held, folded);
+  folded.threads = [...new Set([...folded.threads, ...touched])];
   const gone = new Set(changes.destroyed);
   for (const row of held.queries) {
     const leaving = left.filter((it) => it.from.includes(row.id)).map((it) => it.id);
@@ -70,14 +71,17 @@ function patchHeaders(
   states: readonly EmailState[],
   held: Held,
   folded: Folded,
-): { patched: EmailHeader[]; left: Left[] } {
+): { patched: EmailHeader[]; left: Left[]; touched: Set<string> } {
   const lists = new Set(held.queries.map((row) => row.id));
   const patched: EmailHeader[] = [];
   const left: Left[] = [];
+  // The held threads whose members changed.
+  const touched = new Set<string>();
   for (const state of states) {
     const thread = held.heldThreads.get(state.threadId);
     if (thread !== undefined) {
       thread.members = { ...thread.members, [state.id]: memberOf(state) };
+      touched.add(thread.id);
     }
     const header = held.headers.get(state.id);
     if (header === undefined) {
@@ -92,7 +96,7 @@ function patchHeaders(
       left.push({ id: state.id, from });
     }
   }
-  return { patched, left };
+  return { patched, left, touched };
 }
 
 // The threads a round updates, with the states of their members.
@@ -117,8 +121,9 @@ export function landThreads(
   }
   batch.threads = { ...batch.threads, remove: changes.destroyed };
   batch.states = { ...batch.states, Thread: changes.newState };
-  folded.threads = [...changes.updated, ...changes.destroyed];
-  folded.listMoved ||= folded.threads.length > 0 || changes.created.length > 0;
+  folded.threads = [...new Set([...folded.threads, ...changes.updated, ...changes.destroyed])];
+  folded.listMoved ||=
+    changes.updated.length > 0 || changes.destroyed.length > 0 || changes.created.length > 0;
 }
 
 // Takes `ids` out of every page of the list; true when a row left.

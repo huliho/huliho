@@ -3,7 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import { DENSITIES, THEMES } from "@huliho/core";
-import type { Density, Theme } from "@huliho/core";
+import type { Density, ReadingPane, Theme } from "@huliho/core";
 
 export interface Appearance {
   theme: Theme;
@@ -12,6 +12,9 @@ export interface Appearance {
 
 // What a user who never chose gets: the device's own scheme and the roomy rows.
 export const DEFAULT_APPEARANCE: Appearance = { theme: "system", density: "comfortable" };
+
+// Where a conversation opens until the user says otherwise.
+export const DEFAULT_READING_PANE: ReadingPane = "right";
 
 const THEME_KEY = "huliho-theme";
 const DENSITY_KEY = "huliho-density";

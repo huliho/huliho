@@ -3,7 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import { JmapError } from "@huliho/core";
-import type { ListPage, Mailbox } from "@huliho/core";
+import type { ListPage, Mailbox, ReadingPane, ThreadDetail } from "@huliho/core";
 import { queryKeys } from "@huliho/state";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -13,15 +13,18 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { Lease } from "../cache/coordinator";
-import { ACCOUNTS, INBOX_PAGE, MAILBOXES } from "./fixtures";
+import { dispatchKey } from "../commands/registry";
+import { ACCOUNTS, INBOX_PAGE, MAILBOXES, THREAD_ID } from "./fixtures";
 import { InboxRedirect } from "./inbox-redirect";
+import { LIST_DEFAULT_ROWS, LIST_MIN_ROWS, PANE_MIN_HEIGHT_PX } from "./list-height";
 import { LIST_WIDTH_DEFAULT_PX, PANE_MIN_WIDTH_PX } from "./list-width";
 import { MailShell } from "./mail-shell";
 import { MailboxPane } from "./mailbox-pane";
+import { ROW_HEIGHT_FALLBACK_PX, TOOLBAR_HEIGHT_FALLBACK_PX } from "./use-token-px";
 
 const mailboxes = vi.hoisted(() => vi.fn<(accountId: string) => Promise<Mailbox[]>>());
 const attach = vi.hoisted(() => vi.fn<(lease: Lease) => () => void>(() => () => undefined));
@@ -31,7 +34,7 @@ vi.mock("../cache/client", async () => {
     mailCache: {
       mailboxes,
       window: vi.fn<() => Promise<ListPage>>(() => Promise.resolve(fixtures.INBOX_PAGE)),
-      thread: vi.fn<() => Promise<never>>(),
+      thread: vi.fn<() => Promise<ThreadDetail>>(() => Promise.resolve(fixtures.THREAD)),
       reveal: vi.fn<() => Promise<never>>(),
     },
     attachCache: attach,
@@ -49,9 +52,18 @@ const STORED_LIST_WIDTH_PX = 1360;
 const TIGHT_FRAME_PX = 900;
 // The list's box in the test, which jsdom gives no element.
 const VIEW_HEIGHT_PX = 520;
+// The frame's height, for the pane below the list.
+const FRAME_HEIGHT_PX = 900;
+// A frame too short for the list's least height and the pane's together.
+const SHORT_FRAME_HEIGHT_PX = 400;
+const THREAD_PATH = `/mail/acc-1/mb-inbox/${THREAD_ID}`;
+const SUBJECT = "Offerte badkamerrenovatie, herziene versie";
+// Whether the width queries match: every one at the desktop width, none on a phone.
+let wide = true;
 
-// The shell at the desktop width, with the accounts the guard would have fetched.
-function renderShell(path: string) {
+// The shell at the desktop width, with the accounts the guard would
+// have fetched and the reading pane where the preference puts it.
+function renderShell(path: string, readingPane: ReadingPane = "right") {
   const rootRoute = createRootRoute();
   const signedInRoute = createRoute({ getParentRoute: () => rootRoute, id: "signed-in" });
   const homeRoute = createRoute({
@@ -74,9 +86,13 @@ function renderShell(path: string) {
     path: "/$mailboxId",
     component: MailboxPane,
   });
+  const threadRoute = createRoute({ getParentRoute: () => mailboxRoute, path: "/$threadId" });
   const router = createRouter({
     routeTree: rootRoute.addChildren([
-      signedInRoute.addChildren([homeRoute, mailRoute.addChildren([indexRoute, mailboxRoute])]),
+      signedInRoute.addChildren([
+        homeRoute,
+        mailRoute.addChildren([indexRoute, mailboxRoute.addChildren([threadRoute])]),
+      ]),
     ]),
     history: createMemoryHistory({ initialEntries: [path] }),
   });
@@ -85,6 +101,7 @@ function renderShell(path: string) {
     accounts: ACCOUNTS,
     probeIntervalMinutes: PROBE_INTERVAL_MINUTES,
   });
+  queryClient.setQueryData(queryKeys.preferences, { readingPane });
   render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
@@ -93,20 +110,55 @@ function renderShell(path: string) {
   return router;
 }
 
+function command(key: string): void {
+  act(() => {
+    dispatchKey(new KeyboardEvent("keydown", { key }));
+  });
+}
+
+// The list's height at `count` rows under its header, at the fallback sizes jsdom leaves.
+function rows(count: number): number {
+  return TOOLBAR_HEIGHT_FALLBACK_PX + count * ROW_HEIGHT_FALLBACK_PX;
+}
+
+// jsdom has no ResizeObserver; the frame watches its side panel with
+// one and the virtualizer its scroll box.
+class StillObserver {
+  observe(): void {
+    return undefined;
+  }
+
+  unobserve(): void {
+    return undefined;
+  }
+
+  disconnect(): void {
+    return undefined;
+  }
+}
+
 beforeEach(() => {
   localStorage.clear();
+  wide = true;
   mailboxes.mockReset();
   mailboxes.mockResolvedValue(MAILBOXES);
   attach.mockClear();
+  vi.stubGlobal("ResizeObserver", StillObserver);
   vi.stubGlobal("scrollTo", vi.fn<typeof scrollTo>());
   Object.defineProperty(HTMLElement.prototype, "scrollTo", {
     configurable: true,
     value: vi.fn<() => void>(),
   });
-  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(VIEW_HEIGHT_PX);
-  // Every width query matches: the desktop layout.
+  // Every box is the view's height, but the seam, which takes nothing of the flow.
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.getAttribute("role") === "separator" ? 0 : VIEW_HEIGHT_PX;
+  });
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(FRAME_HEIGHT_PX);
+  // Every width query matches: the desktop layout; none matches on a phone.
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: true,
+    matches: wide,
     media: query,
     addEventListener() {
       return undefined;
@@ -242,6 +294,136 @@ test("a width stored on a wider window is clamped so the reading pane keeps its 
   expect(main.style.inlineSize).toBe(`${String(narrower)}px`);
   expect(seam.getAttribute("aria-valuenow")).toBe(String(narrower));
   expect(seam.getAttribute("aria-valuemax")).toBe(String(narrower));
+});
+
+test("a thread in the address opens beside the list with its row drawn selected; Escape closes it", async () => {
+  const router = renderShell(THREAD_PATH);
+  const pane = await screen.findByRole("complementary", { name: "Conversation" });
+  const title = await within(pane).findByRole("heading", { level: 2, name: SUBJECT });
+  expect(document.activeElement).toBe(title);
+  const grid = await screen.findByRole("grid", { name: "Conversations" });
+  await vi.waitFor(() => {
+    expect(grid.querySelector('[aria-rowindex="3"]')?.getAttribute("aria-selected")).toBe("true");
+  });
+  command("Escape");
+  await vi.waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/mb-inbox");
+  });
+  await vi.waitFor(() => {
+    expect(pane.textContent).toBe("Select a conversation.");
+  });
+  expect(document.activeElement?.getAttribute("role")).toBe("row");
+  expect(grid.querySelector('[aria-selected="true"]')).toBeNull();
+});
+
+test("a thread opened from the list closes by going back over its entry; a second open replaces it", async () => {
+  const router = renderShell("/mail/acc-1/mb-inbox");
+  const grid = await screen.findByRole("grid", { name: "Conversations" });
+  const second = INBOX_PAGE.rows[1]?.threadId ?? "";
+  const third = INBOX_PAGE.rows[2]?.threadId ?? "";
+  // Each open is done once its row is drawn selected, as a hand would see it.
+  const opened = async (index: number, threadId: string): Promise<void> => {
+    fireEvent.click(grid.querySelector(`[aria-rowindex="${String(index)}"]`) ?? grid);
+    await vi.waitFor(() => {
+      expect(router.state.location.pathname).toBe(`/mail/acc-1/mb-inbox/${threadId}`);
+      expect(grid.querySelector('[aria-selected="true"]')?.getAttribute("aria-rowindex")).toBe(
+        String(index),
+      );
+    });
+  };
+  await opened(2, second);
+  await opened(3, third);
+  command("Escape");
+  await vi.waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/mb-inbox");
+  });
+  act(() => {
+    router.history.forward();
+  });
+  await vi.waitFor(() => {
+    expect(router.state.location.pathname).toBe(`/mail/acc-1/mb-inbox/${third}`);
+  });
+});
+
+test("a thread reached by its address stays unmarked through a second open, so closing leaves the mailbox in its place", async () => {
+  const router = renderShell(THREAD_PATH);
+  const grid = await screen.findByRole("grid", { name: "Conversations" });
+  const second = INBOX_PAGE.rows[1]?.threadId ?? "";
+  fireEvent.click(grid.querySelector('[aria-rowindex="2"]') ?? grid);
+  await vi.waitFor(() => {
+    expect(router.state.location.pathname).toBe(`/mail/acc-1/mb-inbox/${second}`);
+    expect(grid.querySelector('[aria-selected="true"]')?.getAttribute("aria-rowindex")).toBe("2");
+  });
+  expect(router.history.length).toBe(1);
+  command("Escape");
+  await vi.waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/mb-inbox");
+  });
+  expect(router.history.length).toBe(1);
+  await vi.waitFor(() => {
+    expect(document.activeElement?.getAttribute("aria-rowindex")).toBe("2");
+  });
+});
+
+test("below the list the seam turns and sizes the list in rows under its header", async () => {
+  renderShell(THREAD_PATH, "bottom");
+  await screen.findByRole("heading", { level: 2, name: SUBJECT });
+  const main = screen.getByRole("main");
+  const seam = screen.getByRole("separator", { name: "Resize the list" });
+  expect(seam.getAttribute("aria-orientation")).toBe("horizontal");
+  expect(seam.getAttribute("aria-valuenow")).toBe(String(rows(LIST_DEFAULT_ROWS)));
+  expect(seam.getAttribute("aria-valuemin")).toBe(String(rows(LIST_MIN_ROWS)));
+  expect(seam.getAttribute("aria-valuemax")).toBe(String(FRAME_HEIGHT_PX - PANE_MIN_HEIGHT_PX));
+  expect(main.style.blockSize).toBe(`${String(rows(LIST_DEFAULT_ROWS))}px`);
+  expect(main.style.inlineSize).toBe("");
+  fireEvent.keyDown(seam, { key: "ArrowDown" });
+  expect(main.style.blockSize).toBe(`${String(rows(LIST_DEFAULT_ROWS + 1))}px`);
+  expect(localStorage.getItem("huliho-list-height")).toBe(String(rows(LIST_DEFAULT_ROWS + 1)));
+  fireEvent.keyDown(seam, { key: "Enter" });
+  expect(main.style.blockSize).toBe(`${String(rows(LIST_DEFAULT_ROWS))}px`);
+  expect(localStorage.getItem("huliho-list-height")).toBeNull();
+});
+
+test("a frame too short for the list and the pane keeps the list at its least", async () => {
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(SHORT_FRAME_HEIGHT_PX);
+  renderShell(THREAD_PATH, "bottom");
+  await screen.findByRole("heading", { level: 2, name: SUBJECT });
+  expect(SHORT_FRAME_HEIGHT_PX).toBeLessThan(rows(LIST_MIN_ROWS) + PANE_MIN_HEIGHT_PX);
+  const seam = screen.getByRole("separator", { name: "Resize the list" });
+  expect(seam.getAttribute("aria-valuemin")).toBe(String(rows(LIST_MIN_ROWS)));
+  expect(seam.getAttribute("aria-valuemax")).toBe(String(rows(LIST_MIN_ROWS)));
+  expect(seam.getAttribute("aria-valuenow")).toBe(String(rows(LIST_MIN_ROWS)));
+  expect(screen.getByRole("main").style.blockSize).toBe(`${String(rows(LIST_MIN_ROWS))}px`);
+});
+
+test("with the pane off the thread is a screen over the list, which is out of reach until it closes", async () => {
+  const router = renderShell(THREAD_PATH, "off");
+  const title = await screen.findByRole("heading", { level: 1, name: SUBJECT });
+  expect(document.activeElement).toBe(title);
+  expect(screen.queryByRole("complementary")).toBeNull();
+  expect(screen.queryByRole("separator")).toBeNull();
+  expect(screen.getByRole("region", { name: "Conversation" })).toBeDefined();
+  const main = document.querySelector("main");
+  expect(main?.hasAttribute("inert")).toBe(true);
+  expect(main?.style.inlineSize).toBe("");
+  fireEvent.click(screen.getByRole("button", { name: "Back to Inbox" }));
+  await vi.waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/mb-inbox");
+  });
+  await vi.waitFor(() => {
+    expect(main?.hasAttribute("inert")).toBe(false);
+  });
+  expect(screen.queryByRole("region", { name: "Conversation" })).toBeNull();
+});
+
+test("a phone opens the thread as a screen whatever the preference says", async () => {
+  wide = false;
+  renderShell(THREAD_PATH);
+  await screen.findByRole("heading", { level: 1, name: SUBJECT });
+  expect(screen.queryByRole("complementary")).toBeNull();
+  expect(screen.queryByRole("separator")).toBeNull();
+  expect(document.querySelector("main")?.hasAttribute("inert")).toBe(true);
+  expect(screen.getByRole("button", { name: "Back to Inbox" }).textContent).not.toContain("Esc");
 });
 
 test("the design's default is clamped when the frame leaves less room", async () => {

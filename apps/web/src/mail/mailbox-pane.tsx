@@ -3,10 +3,10 @@
 // Additional terms apply, see NOTICE.
 
 import { firstSyncOf } from "@huliho/core";
-import type { Mailbox } from "@huliho/core";
+import type { ListRow, Mailbox } from "@huliho/core";
 import { mailboxesQueryOptions } from "@huliho/state";
 import { useQuery } from "@tanstack/react-query";
-import { Link, Navigate, useParams } from "@tanstack/react-router";
+import { Link, Navigate, useNavigate, useParams } from "@tanstack/react-router";
 
 import { mailCache } from "../cache/client";
 import buttonStyles from "../design-system/button.module.css";
@@ -16,6 +16,7 @@ import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { useOnline } from "../shell/use-online";
+import { markedFromMailbox } from "./thread-history";
 import { ThreadList } from "./thread-list";
 import { useToday } from "./use-today";
 import styles from "./mailbox-pane.module.css";
@@ -57,12 +58,15 @@ export function EmptyMailbox({ locale, accountId, mailbox, mailboxes }: EmptyMai
 // The list pane of one mailbox. A mailbox the tree lacks goes back to
 // the account's inbox; one the tree knows as empty says so without a
 // fetch; every other one gets the list, a fresh one per mailbox so the
-// cursor, the pages and the scroll start over with it.
+// cursor, the pages and the scroll start over with it. A row opened
+// puts its thread in the address, where the frame draws it.
 export function MailboxPane() {
   const locale = useLocale();
   const today = useToday();
   const online = useOnline();
+  const navigate = useNavigate();
   const { accountId, mailboxId } = useParams({ from: "/signed-in/mail/$accountId/$mailboxId" });
+  const { threadId } = useParams({ strict: false });
   const tree = useQuery(mailboxesQueryOptions(mailCache, accountId));
   if (!tree.isSuccess) {
     return null;
@@ -77,6 +81,17 @@ export function MailboxPane() {
   if (mailbox.totalEmails === 0 && firstSyncOf(mailbox) === null) {
     return empty;
   }
+  // The first row opened pushes a marked entry closing can go back
+  // over; another row while a thread is open replaces the entry and
+  // keeps its state, so a thread reached by its address stays unmarked.
+  const open = (row: ListRow): void => {
+    void navigate({
+      to: "/mail/$accountId/$mailboxId/$threadId",
+      params: { accountId, mailboxId, threadId: row.threadId },
+      replace: threadId !== undefined,
+      state: threadId === undefined ? markedFromMailbox : true,
+    });
+  };
   return (
     <ThreadList
       key={`${accountId}/${mailbox.id}`}
@@ -86,7 +101,9 @@ export function MailboxPane() {
       accountId={accountId}
       mailbox={mailbox}
       online={online}
+      openThreadId={threadId ?? null}
       empty={empty}
+      onOpen={open}
     />
   );
 }

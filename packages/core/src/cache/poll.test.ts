@@ -48,7 +48,7 @@ test("an account without states asks nothing", async () => {
   expect(server.requests).toHaveLength(0);
 });
 
-test("a flag change patches the header row and the thread member in one round trip and moves no list", async () => {
+test("a flag change patches the header row and the thread member in one round trip, names the thread and moves no list", async () => {
   const { server, client, store } = await serve(5);
   server.amend("e5", { keywords: { $seen: true, $flagged: true } });
   const applied = await applyChanges(client, store, ["inbox"]);
@@ -64,7 +64,8 @@ test("a flag change patches the header row and the thread member in one round tr
     "Thread/get#u:Thread",
     "Email/get#m:Thread",
   ]);
-  expect(applied).toEqual({ mailboxes: false, windows: [], threads: [] });
+  // The reading pane of that thread refetches; no list moved.
+  expect(applied).toEqual({ mailboxes: false, windows: [], threads: ["t-e5"] });
   expect((await store.emails(ACCOUNT, ["e5"])).get("e5")?.keywords).toEqual({
     $seen: true,
     $flagged: true,

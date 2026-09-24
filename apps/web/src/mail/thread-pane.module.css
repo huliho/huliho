@@ -1,0 +1,127 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--hhx-space-2);
+  min-block-size: var(--hhx-toolbar-height);
+  padding: var(--hhx-space-1) var(--hhx-space-3);
+  border-block-end: var(--hhx-border-width) solid var(--hh-border);
+  background: var(--hh-surface);
+}
+
+.toolbar[data-position="screen"] {
+  justify-content: flex-start;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hhx-space-2);
+  min-block-size: var(--hhx-hit-target);
+  padding-block: 0;
+  padding-inline: var(--hhx-space-1) var(--hhx-space-2);
+  border: none;
+  border-radius: var(--hhx-radius-field);
+  background: none;
+  color: var(--hh-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.back:hover {
+  background: var(--hh-hover);
+}
+
+/* The chevron points at the list, which is behind the reader in either direction. */
+.back:dir(rtl) .chevron {
+  scale: -1 1;
+}
+
+.body {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+  padding: var(--hhx-pane-padding);
+}
+
+.thread {
+  --hhx-reveal-shift: calc(-1 * var(--hhx-reveal-distance)) 0;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--hhx-space-3);
+  max-inline-size: var(--hhx-measure-wide);
+}
+
+/* The thread that landed fades in while sliding a step from the list; the still cards before it stay put. */
+.reveal {
+  animation: reveal var(--hhx-duration-reveal) var(--hhx-ease);
+}
+
+.thread:dir(rtl) {
+  --hhx-reveal-shift: var(--hhx-reveal-distance) 0;
+}
+
+.body[data-position="bottom"] .thread {
+  --hhx-reveal-shift: 0 calc(-1 * var(--hhx-reveal-distance));
+}
+
+.body[data-position="screen"] .thread {
+  margin-inline: auto;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    translate: var(--hhx-reveal-shift);
+  }
+}
+
+.title {
+  margin: 0;
+  font-size: var(--hhx-type-4);
+  font-weight: 600;
+  line-height: var(--hhx-leading);
+  overflow-wrap: anywhere;
+}
+
+.count {
+  margin: 0;
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+}
+
+.older {
+  align-self: flex-start;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hhx-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.titleBar {
+  inline-size: min(calc(var(--hhx-swatch-min) * 2), 100%);
+  block-size: var(--hhx-type-4);
+}
+
+.countBar {
+  inline-size: calc(var(--hhx-swatch-min) / 2);
+  block-size: var(--hhx-type-1);
+}
+
+.cardBar {
+  block-size: var(--hhx-row-height);
+  border-radius: var(--hhx-radius-overlay);
+}

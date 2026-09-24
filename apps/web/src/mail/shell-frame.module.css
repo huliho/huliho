@@ -21,3 +21,20 @@
 .shell[data-layout="tablet"] .side {
   inline-size: auto;
 }
+
+/* The list and the reading pane side by side or one above the other; or
+   the list alone with the thread as a screen over it. */
+.stage {
+  flex: 1;
+  min-inline-size: 0;
+  display: flex;
+}
+
+.stage[data-pane="bottom"] {
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.stage[data-pane="screen"] {
+  position: relative;
+}

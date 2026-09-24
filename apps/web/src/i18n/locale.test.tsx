@@ -32,7 +32,16 @@ test("a switch re-renders every subscriber, sets the document language and stick
   });
   expect(screen.getAllByRole("status").map((node) => node.textContent)).toEqual(["nl", "nl"]);
   expect(document.documentElement.lang).toBe("nl");
+  expect(document.documentElement.dir).toBe("ltr");
   expect(localStorage.getItem("PARAGLIDE_LOCALE")).toBe("nl");
+});
+
+test("the pseudo locale turns the document right to left and a real locale turns it back", () => {
+  switchLocale("en-XA");
+  expect(document.documentElement.lang).toBe("en-XA");
+  expect(document.documentElement.dir).toBe("rtl");
+  switchLocale("en");
+  expect(document.documentElement.dir).toBe("ltr");
 });
 
 test("the browser's first language among ours wins, else the base locale", () => {

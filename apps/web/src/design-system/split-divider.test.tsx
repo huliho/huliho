@@ -12,6 +12,8 @@ const LIST_ID = "list";
 const START = 360;
 const GRAB_X = 100;
 const DRAG_X = 50;
+// A drag that stays inside the bounds when it shrinks the pane.
+const SHORT_DRAG_X = 20;
 const FAR_X = 900;
 
 beforeEach(() => {
@@ -19,17 +21,30 @@ beforeEach(() => {
   HTMLElement.prototype.setPointerCapture = vi.fn<(pointerId: number) => void>();
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  document.documentElement.removeAttribute("dir");
+});
 
-function renderSeam() {
+// The row height, as the step of a seam that moves a list by rows, from
+// a height with a row of room below it.
+const ROW_STEP = 52;
+const START_ROWS = 480;
+const GRAB_Y = 400;
+const DRAG_Y = 30;
+
+function renderSeam(orientation: "vertical" | "horizontal" = "vertical") {
   const onChange = vi.fn<(value: number) => void>();
   const onReset = vi.fn<() => void>();
+  const turned = orientation === "horizontal";
   render(
     <SplitDivider
       label="Resize the list"
-      value={START}
+      value={turned ? START_ROWS : START}
       bounds={BOUNDS}
       controls={LIST_ID}
+      orientation={orientation}
+      step={turned ? ROW_STEP : DIVIDER_STEP_PX}
       onChange={onChange}
       onReset={onReset}
     />,
@@ -70,4 +85,36 @@ test("a drag follows its pointer inside the bounds and ends on release", () => {
   expect(onChange).toHaveBeenCalledTimes(2);
   fireEvent.doubleClick(seam);
   expect(onReset).toHaveBeenCalledOnce();
+});
+
+test("under a right-to-left document the keys and the drag run with the reading direction", () => {
+  document.documentElement.dir = "rtl";
+  const { seam, onChange } = renderSeam();
+  fireEvent.keyDown(seam, { key: "ArrowRight" });
+  expect(onChange).toHaveBeenLastCalledWith(START - DIVIDER_STEP_PX);
+  fireEvent.keyDown(seam, { key: "ArrowLeft" });
+  expect(onChange).toHaveBeenLastCalledWith(START + DIVIDER_STEP_PX);
+  fireEvent.pointerDown(seam, { pointerId: 1, clientX: GRAB_X });
+  fireEvent.pointerMove(seam, { pointerId: 1, clientX: GRAB_X + SHORT_DRAG_X });
+  expect(onChange).toHaveBeenLastCalledWith(START - SHORT_DRAG_X);
+});
+
+test("a horizontal seam moves on the up and down keys by its own step and follows the pointer down", () => {
+  const { seam, onChange, onReset } = renderSeam("horizontal");
+  expect(seam.getAttribute("aria-orientation")).toBe("horizontal");
+  expect(seam.getAttribute("aria-valuenow")).toBe(String(START_ROWS));
+  fireEvent.keyDown(seam, { key: "ArrowDown" });
+  expect(onChange).toHaveBeenLastCalledWith(START_ROWS + ROW_STEP);
+  fireEvent.keyDown(seam, { key: "ArrowUp" });
+  expect(onChange).toHaveBeenLastCalledWith(START_ROWS - ROW_STEP);
+  fireEvent.keyDown(seam, { key: "ArrowRight" });
+  fireEvent.keyDown(seam, { key: "ArrowLeft" });
+  expect(onChange).toHaveBeenCalledTimes(2);
+  fireEvent.keyDown(seam, { key: "End" });
+  expect(onChange).toHaveBeenLastCalledWith(BOUNDS.max);
+  fireEvent.keyDown(seam, { key: "Enter" });
+  expect(onReset).toHaveBeenCalledOnce();
+  fireEvent.pointerDown(seam, { pointerId: 1, clientX: GRAB_X, clientY: GRAB_Y });
+  fireEvent.pointerMove(seam, { pointerId: 1, clientX: GRAB_X + DRAG_X, clientY: GRAB_Y + DRAG_Y });
+  expect(onChange).toHaveBeenLastCalledWith(START_ROWS + DRAG_Y);
 });

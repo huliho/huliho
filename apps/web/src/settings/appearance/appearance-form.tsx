@@ -11,12 +11,9 @@ import type { RadioOption } from "../../design-system/radio-group";
 import { listedLocales } from "../../i18n/locale";
 import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
-import { DEFAULT_APPEARANCE } from "../../theme/appearance";
+import { DEFAULT_APPEARANCE, DEFAULT_READING_PANE } from "../../theme/appearance";
 import { SettingsSection } from "../settings-section";
 import styles from "./appearance.module.css";
-
-// Where a conversation opens until the user says otherwise.
-const DEFAULT_READING_PANE: ReadingPane = "right";
 
 function themeOptions(locale: Locale): RadioOption<Theme>[] {
   return [

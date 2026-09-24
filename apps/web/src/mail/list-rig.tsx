@@ -11,7 +11,7 @@ import {
   queryWindow,
   revealNewMail,
 } from "@huliho/core";
-import type { ListPage, MailCache, Mailbox } from "@huliho/core";
+import type { ListPage, ListRow, MailCache, Mailbox } from "@huliho/core";
 import { ACCOUNT, FakeJmap, at, email, mailbox as mailboxRow } from "@huliho/core/testing";
 import { queryKeys } from "@huliho/state";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -47,6 +47,8 @@ interface Filled {
   cache: MailCache;
   online: boolean;
   client: QueryClient;
+  openThreadId: string | null;
+  onOpen: (row: ListRow) => void;
 }
 
 export interface Options {
@@ -54,6 +56,8 @@ export interface Options {
   cache?: MailCache;
   online?: boolean;
   client?: QueryClient;
+  openThreadId?: string | null;
+  onOpen?: (row: ListRow) => void;
   // A component around the tree, for a probe that has to render with it.
   wrapper?: JSXElementConstructor<{ children: ReactNode }>;
 }
@@ -65,7 +69,7 @@ export function inbox(): Mailbox {
   return INBOX;
 }
 
-function tree({ mailbox, cache, online, client }: Filled) {
+function tree({ mailbox, cache, online, client, openThreadId, onOpen }: Filled) {
   return (
     <QueryClientProvider client={client}>
       <ThreadList
@@ -75,10 +79,16 @@ function tree({ mailbox, cache, online, client }: Filled) {
         accountId={FASTMAIL.id}
         mailbox={mailbox}
         online={online}
+        openThreadId={openThreadId}
         empty={<p>nothing here</p>}
+        onOpen={onOpen}
       />
     </QueryClientProvider>
   );
+}
+
+function opensNothing(): void {
+  // The rig's default: a row opened goes nowhere.
 }
 
 export function renderList(options: Options = {}) {
@@ -88,6 +98,8 @@ export function renderList(options: Options = {}) {
     cache: options.cache ?? fixtureCache({ [`${mailbox.id}/0`]: INBOX_PAGE }),
     online: options.online ?? true,
     client: options.client ?? new QueryClient(),
+    openThreadId: options.openThreadId ?? null,
+    onOpen: options.onOpen ?? opensNothing,
   };
   const rendered = render(tree(filled), { wrapper: options.wrapper });
   return {

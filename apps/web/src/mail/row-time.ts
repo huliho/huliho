@@ -6,13 +6,14 @@
 const RECENT_DAYS = 6;
 const DAY_MS = 86_400_000;
 
-type Shape = "time" | "weekday" | "date" | "dated";
+type Shape = "time" | "weekday" | "date" | "dated" | "stamp";
 
 const SHAPES = new Map<Shape, Intl.DateTimeFormatOptions>([
   ["time", { timeStyle: "short" }],
   ["weekday", { weekday: "short" }],
   ["date", { day: "numeric", month: "short" }],
   ["dated", { day: "numeric", month: "short", year: "numeric" }],
+  ["stamp", { dateStyle: "medium", timeStyle: "short" }],
 ]);
 
 // One formatter per locale and shape: building one costs more than a
@@ -53,4 +54,9 @@ function shapeOf(at: Date, today: number): Shape {
 export function formatRowTime(receivedAt: string, today: number, locale: string): string {
   const at = new Date(receivedAt);
   return formatter(locale, shapeOf(at, today)).format(at);
+}
+
+// The whole moment, as an open message shows it.
+export function formatMessageTime(receivedAt: string, locale: string): string {
+  return formatter(locale, "stamp").format(new Date(receivedAt));
 }

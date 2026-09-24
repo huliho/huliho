@@ -93,7 +93,9 @@ interface FactsProps {
 }
 
 // Sender and time on the first line; subject and preview on the second.
-// A row picked among several carries the check where the dot sits.
+// A row picked among several carries the check where the dot sits. The
+// sender and the text line are mail content and read in their own
+// direction; the line takes the subject's, the preview inside it its own.
 function Facts({ locale, today, row, selection }: FactsProps) {
   return (
     <>
@@ -102,7 +104,9 @@ function Facts({ locale, today, row, selection }: FactsProps) {
       ) : (
         <span className={styles.dot} aria-hidden="true" />
       )}
-      <span className={styles.sender}>{senderOf(row, locale)}</span>
+      <span dir="auto" className={styles.sender}>
+        {senderOf(row, locale)}
+      </span>
       <span className={styles.count}>
         {row.count > 1 && <MonoCount value={row.count} locale={locale} tone="muted" />}
       </span>
@@ -111,9 +115,14 @@ function Facts({ locale, today, row, selection }: FactsProps) {
         {row.flagged && <Star className={cx(styles.icon, styles.flag)} aria-hidden="true" />}
         <span className={styles.time}>{formatRowTime(row.receivedAt, today, locale)}</span>
       </span>
-      <span className={styles.text}>
+      <span dir="auto" className={styles.text}>
         <span className={styles.subject}>{subjectOf(row, locale)}</span>
-        {row.preview !== "" && <span className={styles.preview}> · {row.preview}</span>}
+        {row.preview !== "" && (
+          <span className={styles.preview}>
+            {" · "}
+            <span dir="auto">{row.preview}</span>
+          </span>
+        )}
       </span>
     </>
   );

@@ -225,5 +225,19 @@
   "list_first_sync": "Syncing this mailbox for the first time.",
   "list_first_sync_count": "{synced, number} of {total, number}",
   "thread_pane": "Conversation",
-  "thread_none_open": "Select a conversation."
+  "thread_none_open": "Select a conversation.",
+  "thread_close": "Close conversation",
+  "thread_back": "Back to {mailbox}",
+  "thread_back_unnamed": "Back",
+  "thread_count": "{count, plural, one {{count, number} message} other {{count, number} messages}}",
+  "thread_show_older": "{count, plural, one {Show {count, number} older message} other {Show {count, number} older messages}}",
+  "thread_to": "to {names}",
+  "thread_recipients_show": "Show all recipients",
+  "thread_recipients_hide": "Hide recipients",
+  "thread_field_to": "To",
+  "thread_field_cc": "Cc",
+  "thread_field_bcc": "Bcc",
+  "thread_field_reply_to": "Reply to",
+  "thread_unread": "Unread",
+  "thread_gone": "Couldn’t find this conversation. It may have been moved or deleted."
 }

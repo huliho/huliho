@@ -123,6 +123,7 @@ test("the pseudo locale renders catalog text accented and stays past the server'
   await openAppearance(page, "en-XA");
   await expect(page.getByRole("heading", { level: 2, name: /Thémé/ })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "en-XA");
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
 });
 
 test("the appearance page is axe-clean and matches its screenshots", async ({ page }) => {
@@ -151,6 +152,7 @@ test("the translated pages match their screenshots", async ({ page }) => {
   await mockPreferences(page, { locale: "nl" });
   await openAppearance(page);
   await expect(page.getByRole("heading", { level: 2, name: "Thema" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
   await expect.soft(page).toHaveScreenshot("appearance-nl-light-desktop.png", { fullPage: true });
   await openAppearance(page, "en-XA");
   await expect(page.getByRole("heading", { level: 2, name: /Thémé/ })).toBeVisible();

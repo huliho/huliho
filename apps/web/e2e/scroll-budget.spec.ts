@@ -171,10 +171,10 @@ test("the fifty-thousand-row list scrolls without a long frame on the phone prof
 const MEASUREMENT = "__keyToPaint";
 
 // The time from the key going down to the first frame painted with the
-// focus on another row, measured inside the page: a frame that finds
-// the focus moved is the one that paints it. The listeners go in before
-// the key, in an evaluation of their own, since a key sent beside one
-// can land first.
+// focus on another element, measured inside the page: a frame that
+// finds the focus moved is the one that paints it. The listeners go in
+// before the key, in an evaluation of their own, since a key sent
+// beside one can land first.
 async function keyToPaint(page: Page, key: string): Promise<number> {
   await page.evaluate((slot) => {
     const measured = new Promise<number>((resolve) => {
@@ -206,11 +206,15 @@ async function keyToPaint(page: Page, key: string): Promise<number> {
   return elapsed;
 }
 
+// The keys of the list, then Enter, which opens the row and puts the
+// focus on the thread's title, then Escape, which brings it back.
+const MEASURED_KEYS = ["j", "k", "ArrowDown", "ArrowUp", "End", "Home", "Enter", "Escape"];
+
 test("a key moves the focus within the interaction budget on the long list", async ({ page }) => {
   await page.setViewportSize(VIEWPORTS[1]);
   await openInbox(page);
   await page.getByRole("grid").locator('[aria-rowindex="1"]').focus();
-  for (const key of ["j", "k", "ArrowDown", "ArrowUp", "End", "Home"]) {
+  for (const key of MEASURED_KEYS) {
     const elapsed = await keyToPaint(page, key);
     test
       .info()

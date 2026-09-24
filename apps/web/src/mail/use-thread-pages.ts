@@ -25,16 +25,30 @@ export function rowAt(rows: ReadonlyMap<number, ListRow[]>, index: number): List
   return rows.get(pageOf(index))?.[index % WINDOW_SIZE];
 }
 
-// Where the row with that id stands among the pages held; null when no
-// held page has it.
-export function indexOf(rows: ReadonlyMap<number, ListRow[]>, id: string): number | null {
+// Where the first row that fits stands among the pages held; null when
+// no held page has one.
+function indexWhere(
+  rows: ReadonlyMap<number, ListRow[]>,
+  fits: (row: ListRow) => boolean,
+): number | null {
   for (const [page, list] of rows) {
-    const at = list.findIndex((row) => row.id === id);
+    const at = list.findIndex(fits);
     if (at !== -1) {
       return page * WINDOW_SIZE + at;
     }
   }
   return null;
+}
+
+export function indexOf(rows: ReadonlyMap<number, ListRow[]>, id: string): number | null {
+  return indexWhere(rows, (row) => row.id === id);
+}
+
+export function indexOfThread(
+  rows: ReadonlyMap<number, ListRow[]>,
+  threadId: string,
+): number | null {
+  return indexWhere(rows, (row) => row.threadId === threadId);
 }
 
 // The pages in view plus the first: one query each, on the cache the

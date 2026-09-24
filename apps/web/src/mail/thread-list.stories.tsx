@@ -7,21 +7,11 @@ import type { ListRow, Mailbox } from "@huliho/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
+import { FIXED_NOW, INBOX_ID, INBOX_PAGE, MAILBOXES, pageOf } from "./fixtures";
 import { startOfDay } from "./row-time";
 import { routed } from "./story-router";
-import {
-  FASTMAIL,
-  FIXED_NOW,
-  INBOX_ID,
-  INBOX_PAGE,
-  MAILBOXES,
-  MAILBOXES_EMPTY_INBOX,
-  fixtureCache,
-  pageOf,
-} from "./fixtures";
-import type { PageAnswer } from "./fixtures";
-import { EmptyMailbox } from "./mailbox-pane";
-import { ThreadList } from "./thread-list";
+import { FixtureList } from "./story-list";
+import type { FixtureListProps } from "./story-list";
 import { ThreadListItem } from "./thread-list-item";
 import type { Selection } from "./thread-list-item";
 import styles from "./thread-list.module.css";
@@ -37,36 +27,6 @@ const NEW_MAIL = 2;
 // The comfortable row height, which the row strip draws at.
 const ROW_PX = 52;
 
-interface ListProps {
-  mailbox?: Mailbox | undefined;
-  page?: PageAnswer;
-  online?: boolean;
-}
-
-function List({ mailbox = INBOX, page = INBOX_PAGE, online = true }: ListProps): JSX.Element {
-  if (mailbox === undefined) {
-    return <p>no inbox in the fixtures</p>;
-  }
-  return (
-    <ThreadList
-      locale="en"
-      today={TODAY}
-      cache={fixtureCache({ [`${mailbox.id}/0`]: page })}
-      accountId={FASTMAIL.id}
-      mailbox={mailbox}
-      online={online}
-      empty={
-        <EmptyMailbox
-          locale="en"
-          accountId={FASTMAIL.id}
-          mailbox={mailbox}
-          mailboxes={MAILBOXES_EMPTY_INBOX}
-        />
-      }
-    />
-  );
-}
-
 // The list pane's box, so the list has a height to scroll in.
 function Pane({ children }: { children: JSX.Element }): JSX.Element {
   return (
@@ -74,10 +34,10 @@ function Pane({ children }: { children: JSX.Element }): JSX.Element {
   );
 }
 
-function listed(props: ListProps): JSX.Element {
+function listed(props: FixtureListProps): JSX.Element {
   return routed(() => (
     <Pane>
-      <List {...props} />
+      <FixtureList {...props} />
     </Pane>
   ));
 }
