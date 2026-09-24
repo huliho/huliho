@@ -1,0 +1,38 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-2);
+  padding: var(--hhx-space-2) var(--hhx-pane-padding);
+  border-block-end: var(--hhx-border-width) solid var(--hh-border);
+  background: var(--hh-hover);
+  color: var(--hh-text);
+}
+
+/* The status region stays in the DOM, empty and without a footprint. */
+.banner[data-idle] {
+  padding: 0;
+  border: none;
+  overflow: hidden;
+}
+
+.banner[data-idle] .dot {
+  display: none;
+}
+
+/* The dot names the state beside the sentence; warn, since nothing is lost. */
+.dot {
+  flex: none;
+  inline-size: var(--hhx-space-2);
+  block-size: var(--hhx-space-2);
+  border-radius: 50%;
+  background: var(--hh-warn);
+}
+
+.sentence {
+  margin: 0;
+}

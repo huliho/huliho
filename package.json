@@ -145,7 +145,8 @@
       "path": [
         "apps/web/dist/assets/*.js",
         "!apps/web/dist/assets/worker-*.js",
-        "!apps/web/dist/assets/pages-*.js"
+        "!apps/web/dist/assets/pages-*.js",
+        "!apps/web/dist/assets/add-account-*.js"
       ],
       "limit": "250 kB",
       "gzip": true
@@ -153,6 +154,12 @@
     {
       "name": "settings chunk",
       "path": "apps/web/dist/assets/pages-*.js",
+      "limit": "100 kB",
+      "gzip": true
+    },
+    {
+      "name": "add-account chunk",
+      "path": "apps/web/dist/assets/add-account-*.js",
       "limit": "100 kB",
       "gzip": true
     },

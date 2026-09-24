@@ -14,7 +14,6 @@ import {
 import { mayManageUsers } from "@huliho/core";
 import type { AccountRow, SessionInfo } from "@huliho/core";
 import { accountsQueryOptions, sessionQueryOptions } from "@huliho/state";
-import { AddAccount } from "./accounts/add/add-account";
 import { InboxRedirect } from "./mail/inbox-redirect";
 import { landingAccount } from "./mail/last-account";
 import { MailShell } from "./mail/mail-shell";
@@ -33,8 +32,10 @@ type Home = "/" | "/choose-password";
 
 export const queryClient = new QueryClient();
 
-// The settings screens arrive as one chunk on the first settings visit.
+// The settings screens arrive as one chunk on the first settings visit;
+// the add-account card as another on the first visit to it.
 const settings = () => import("./settings/pages");
+const addAccount = () => import("./accounts/add/add-account");
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
@@ -162,7 +163,7 @@ const choosePasswordRoute = createRoute({
 const addAccountRoute = createRoute({
   getParentRoute: () => signedInRoute,
   path: "/accounts/new",
-  component: AddAccount,
+  component: lazyRouteComponent(addAccount, "AddAccount"),
   validateSearch: (search: Record<string, unknown>): AddAccountSearch =>
     typeof search["reconnect"] === "string" ? { reconnect: search["reconnect"] } : {},
   beforeLoad: ({ context }) => requireHome(context, "/"),

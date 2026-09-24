@@ -25,7 +25,7 @@ const threadAnswerSchema = getAnswerSchema(threadSchema);
 // What one window fetch brought: the exemplars in the server's order,
 // their headers, their threads with every member's state and the
 // states an account without any starts from.
-interface Fetched {
+export interface Fetched {
   ids: string[];
   total: number | null;
   queryState: string;
@@ -57,8 +57,19 @@ interface Chunk {
   leading: boolean;
 }
 
-function pageOf(row: QueryRow | null, page: number): string[] | undefined {
+export function pageOf(row: QueryRow | null, page: number): string[] | undefined {
   return row?.pages.find((held) => held.page === page)?.ids;
+}
+
+// A page held short of a full one while the total says rows follow it:
+// it was the last page when it was fetched and the list grew since. The
+// first page is the refresh's own and never reads as outgrown here.
+function outgrown(row: QueryRow, page: number): boolean {
+  const ids = pageOf(row, page);
+  if (page === 0 || ids === undefined || row.total === null) {
+    return false;
+  }
+  return ids.length < WINDOW_SIZE && page * WINDOW_SIZE + ids.length < row.total;
 }
 
 // A window of WINDOW_SIZE exemplars in one round trip: the query, the
@@ -164,9 +175,9 @@ async function membersOf(
   );
 }
 
-// The page as the store holds it, fetched when it does not: by anchor
-// on the page before it, so the pages stay one list, by position when
-// no page precedes it or the anchor left.
+// The page as the store holds it, fetched when it does not or when the
+// list outgrew it: by anchor on the page before it, so the pages stay
+// one list, by position when no page precedes it or the anchor left.
 export async function queryWindow(
   client: JmapClient,
   store: MailStore,
@@ -174,7 +185,7 @@ export async function queryWindow(
   page: number,
 ): Promise<WindowPage> {
   const held = await store.query(client.accountId, mailboxId);
-  if (held !== null && pageOf(held, page) !== undefined) {
+  if (held !== null && pageOf(held, page) !== undefined && !outgrown(held, page)) {
     return assemble(store, client.accountId, held, page);
   }
   const fetched = await fetchPage(client, store, { mailboxId, held, page });
@@ -192,13 +203,17 @@ function emptyRow(mailboxId: string): QueryRow {
   return { id: mailboxId, queryState: "", total: null, pages: [], pending: [], fresh: null };
 }
 
-// The row with one more page; the total is the first page's.
+// The row with the page; the total is the first page's. A page fetched
+// anew takes the place of the one held, and the pages after it go with
+// it, since they were anchored on its old end.
 function withPage(row: QueryRow, page: number, fetched: Fetched): QueryRow {
+  const kept =
+    pageOf(row, page) === undefined ? row.pages : row.pages.filter((held) => held.page < page);
   return {
     ...row,
     queryState: fetched.queryState,
     total: page === 0 ? fetched.total : row.total,
-    pages: [...row.pages, { page, ids: fetched.ids }],
+    pages: [...kept, { page, ids: fetched.ids }],
   };
 }
 
@@ -248,83 +263,49 @@ async function assemble(
   };
 }
 
-// The first page as the server orders it now. New mail, the exemplars
-// newer than every row the list showed, waits in `pending` and `fresh`
-// for the user; everything else lands at once.
-export async function refreshFirstPage(
+// The first page as the server orders it now, with the total.
+export function fetchFirstPage(
   client: JmapClient,
   store: MailStore,
-  row: QueryRow,
-): Promise<void> {
-  const fetched = await fetchWindow(client, store, {
-    mailboxId: row.id,
-    start: { position: 0 },
-    calculateTotal: true,
-  });
-  const held = row.pages.flatMap((page) => page.ids);
-  const heldRows = await store.emails(client.accountId, held);
-  const times = [...heldRows.values()].map((email) => Date.parse(email.receivedAt));
-  const oldest = times.length === 0 ? Number.NEGATIVE_INFINITY : Math.min(...times);
-  const known = new Set(held);
-  const arrived = new Map(fetched.emails.map((email) => [email.id, Date.parse(email.receivedAt)]));
-  // A fresh page short of a full one is the whole list, so every id it
-  // adds is new; a full one may end in rows that the next page holds.
-  const complete = fetched.ids.length < WINDOW_SIZE;
-  const pending = fetched.ids.filter(
-    (id) => !known.has(id) && (complete || (arrived.get(id) ?? Number.NaN) > oldest),
-  );
-  const first = pageOf(row, 0) ?? [];
-  const landed: QueryRow =
-    pending.length === 0
-      ? {
-          ...row,
-          queryState: fetched.queryState,
-          total: fetched.total,
-          pages: sameIds(first, fetched.ids) ? row.pages : [{ page: 0, ids: fetched.ids }],
-          pending: [],
-          fresh: null,
-        }
-      : {
-          ...row,
-          pending,
-          fresh: { ids: fetched.ids, total: fetched.total, queryState: fetched.queryState },
-        };
-  await store.commit(client.accountId, {
-    emails: { put: fetched.emails },
-    threads: { put: fetched.threads },
-    queries: { put: [landed] },
-    states: fetched.states,
-  });
-}
-
-function sameIds(first: readonly string[], second: readonly string[]): boolean {
-  return first.length === second.length && first.every((id, index) => id === second.at(index));
-}
-
-// The user brings the new mail in: the fresh first page becomes the
-// list and every deeper page is fetched anew from it.
-export async function revealNewMail(
-  store: MailStore,
-  accountId: string,
   mailboxId: string,
-): Promise<void> {
-  const row = await store.query(accountId, mailboxId);
-  if (row === null || row.fresh === null) {
-    return;
+): Promise<Fetched> {
+  return fetchWindow(client, store, { mailboxId, start: { position: 0 }, calculateTotal: true });
+}
+
+export type Filler = Pick<Fetched, "ids" | "emails" | "threads">;
+
+export function nothingFetched(): Filler {
+  return { ids: [], emails: [], threads: [] };
+}
+
+// `wanted` rows after the row `after`.
+export interface Gap {
+  mailboxId: string;
+  after: string | undefined;
+  wanted: number;
+}
+
+// The rows after an anchor, by anchor on it; none when nothing is asked
+// or the anchor left the list.
+export async function fetchAfter(client: JmapClient, store: MailStore, gap: Gap): Promise<Filler> {
+  if (gap.wanted <= 0 || gap.after === undefined) {
+    return nothingFetched();
   }
-  const { fresh } = row;
-  await store.commit(accountId, {
-    queries: {
-      put: [
-        {
-          ...row,
-          queryState: fresh.queryState,
-          total: fresh.total,
-          pages: [{ page: 0, ids: fresh.ids }],
-          pending: [],
-          fresh: null,
-        },
-      ],
-    },
-  });
+  try {
+    return await fetchChunk(
+      client,
+      store,
+      {
+        mailboxId: gap.mailboxId,
+        start: { anchor: gap.after, anchorOffset: 1 },
+        calculateTotal: false,
+      },
+      { wanted: gap.wanted, leading: false },
+    );
+  } catch (error) {
+    if (error instanceof MethodFailure && error.type === "anchorNotFound") {
+      return nothingFetched();
+    }
+    throw error;
+  }
 }

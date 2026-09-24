@@ -1,0 +1,36 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* Floats over the first rows, so its coming and going shifts nothing. */
+.marker {
+  position: absolute;
+  inset-block-start: var(--hhx-space-2);
+  inset-inline: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hhx-space-2);
+  min-block-size: var(--hhx-hit-target);
+  padding: var(--hhx-space-1) var(--hhx-space-3);
+  border: var(--hhx-border-width) solid var(--hh-accent);
+  border-radius: var(--hhx-radius-overlay);
+  background: var(--hh-surface);
+  box-shadow: 0 0 0 var(--hhx-halo-width) var(--hh-accent-tint);
+  color: var(--hh-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.button:hover {
+  background: var(--hh-accent-tint);
+  color: var(--hh-accent-strong);
+}

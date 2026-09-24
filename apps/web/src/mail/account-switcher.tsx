@@ -28,6 +28,8 @@ interface AccountSwitcherProps {
   account: AccountRow;
   // The full row names the account; the avatar alone fits the rail.
   variant: "full" | "avatar";
+  // Told when another account opens, so a sheet around the menu can close.
+  onNavigate?: (() => void) | undefined;
 }
 
 function AccountFacts({ account }: { account: AccountRow }) {
@@ -41,12 +43,14 @@ function AccountFacts({ account }: { account: AccountRow }) {
 
 // The account at the top of the sidebar and the menu behind it: every
 // account of the session, Settings and Sign out.
-export function AccountSwitcher({ locale, accounts, account, variant }: AccountSwitcherProps) {
+export function AccountSwitcher(props: AccountSwitcherProps) {
+  const { locale, accounts, account, variant } = props;
   const navigate = useNavigate();
   const signOut = useSignOut(locale);
   const open = (next: unknown): void => {
     if (typeof next === "string" && next !== account.id) {
       void navigate({ to: "/mail/$accountId", params: { accountId: next } });
+      props.onNavigate?.();
     }
   };
   return (

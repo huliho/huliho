@@ -12,6 +12,7 @@ import type { Bounds } from "../design-system/split-divider";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import type { Layout } from "../shell/breakpoints";
+import { PaneBoundary } from "../shell/pane-boundary";
 import { ListPane } from "./list-pane";
 import { LIST_WIDTH_DEFAULT_PX, PANE_MIN_WIDTH_PX, useListWidth } from "./list-width";
 import { Rail } from "./rail";
@@ -102,7 +103,9 @@ function Seam({ locale, list, controls }: SeamProps) {
           list.choose(null);
         }}
       />
-      <ReadingPane locale={locale} />
+      <PaneBoundary>
+        <ReadingPane locale={locale} />
+      </PaneBoundary>
     </>
   );
 }
@@ -110,7 +113,7 @@ function Seam({ locale, list, controls }: SeamProps) {
 // The three layouts of the mail screen: the sidebar, the list and the
 // reading pane side by side at the desktop width, the sidebar as a rail
 // at the tablet width and the list alone on a phone, with the sidebar in
-// a sheet at both of those.
+// a sheet at both of those. Each pane keeps a render failure to itself.
 export function ShellFrame(props: ShellFrameProps) {
   const { locale, layout, accounts, account, tree, currentMailboxId, children } = props;
   const frame = useRef<HTMLDivElement>(null);
@@ -123,19 +126,27 @@ export function ShellFrame(props: ShellFrameProps) {
   };
   const shared = { locale, accounts, account, tree, currentMailboxId };
   const sidebar = (
-    <Sidebar
-      {...shared}
-      showLetters={layout === "desktop"}
-      onNavigate={() => {
-        setSheetOpen(false);
-      }}
-    />
+    <PaneBoundary>
+      <Sidebar
+        {...shared}
+        showLetters={layout === "desktop"}
+        onNavigate={() => {
+          setSheetOpen(false);
+        }}
+      />
+    </PaneBoundary>
   );
   return (
     <div ref={frame} className={styles.shell} data-layout={layout}>
       {layout !== "phone" && (
         <div ref={side} className={styles.side}>
-          {layout === "desktop" ? sidebar : <Rail {...shared} onMore={openSheet} />}
+          {layout === "desktop" ? (
+            sidebar
+          ) : (
+            <PaneBoundary>
+              <Rail {...shared} onMore={openSheet} />
+            </PaneBoundary>
+          )}
         </div>
       )}
       <ListPane

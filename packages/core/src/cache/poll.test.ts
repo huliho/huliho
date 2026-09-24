@@ -10,7 +10,8 @@ import { CHANGES_ROUNDS_MAX, WINDOW_SIZE } from "./limits";
 import { syncMailboxes } from "./mailboxes";
 import { MemoryMailStore } from "./memory";
 import { applyChanges } from "./poll";
-import { queryWindow, revealNewMail } from "./window";
+import { revealNewMail } from "./refresh";
+import { queryWindow } from "./window";
 
 interface Rig {
   server: FakeJmap;
@@ -105,6 +106,8 @@ test("a reply to a shown thread updates its members and waits as new mail while 
   const page = await queryWindow(client, store, "inbox", 0);
   expect(page.ids).toContain("e50");
   expect(page.pending).toBe(1);
+  // The reply takes the shown row's place once revealed, so the count stands.
+  expect(page.total).toBe(120);
   const thread = page.threads["t-e50"];
   expect(thread?.emailIds).toEqual(["e50", "e121"]);
   expect(Object.keys(thread?.members ?? {})).toEqual(["e50", "e121"]);
@@ -130,13 +133,183 @@ test("a destroyed row and one moved out leave the list at once and older mail th
   expect((await store.emails(ACCOUNT, ["e120"])).size).toBe(0);
 });
 
-test("in a list shorter than a page every row the server adds is new mail", async () => {
+test("in a list shorter than a page an older row lands below the rows shown and a newer one waits", async () => {
   const { server, client, store } = await serve(5);
   server.addEmail(email("e0", { receivedAt: at(0) }));
   await applyChanges(client, store, ["inbox"]);
+  const grown = await queryWindow(client, store, "inbox", 0);
+  expect(grown.pending).toBe(0);
+  expect(grown.ids).toHaveLength(6);
+  expect(grown.ids.at(-1)).toBe("e0");
+  expect(grown.total).toBe(6);
+  server.addEmail(email("e6", { receivedAt: at(6) }));
+  await applyChanges(client, store, ["inbox"]);
   const page = await queryWindow(client, store, "inbox", 0);
   expect(page.pending).toBe(1);
-  expect(page.ids).toHaveLength(5);
+  expect(page.ids).toHaveLength(6);
+  expect(page.ids[0]).toBe("e5");
+});
+
+test("a list opened before its first rows arrive takes them as rows, not as new mail", async () => {
+  const { server, client, store } = await serve(0);
+  const arriving = WINDOW_SIZE + WINDOW_SIZE / 2;
+  for (let index = 1; index <= arriving; index += 1) {
+    server.addEmail(email(`e${String(index)}`, { receivedAt: at(index) }));
+  }
+  await applyChanges(client, store, ["inbox"]);
+  const page = await queryWindow(client, store, "inbox", 0);
+  expect(page.pending).toBe(0);
+  expect(page.ids).toHaveLength(WINDOW_SIZE);
+  expect(page.ids[0]).toBe(`e${String(arriving)}`);
+  expect(page.total).toBe(arriving);
+});
+
+test("rows landing below a short list come in while the new mail above it waits", async () => {
+  const shown = 40;
+  const { server, client, store } = await serve(shown);
+  for (let index = 1; index <= shown; index += 1) {
+    server.addEmail(email(`o${String(index)}`, { receivedAt: at(-index) }));
+  }
+  server.addEmail(email("n1", { receivedAt: at(shown + 1) }));
+  server.addEmail(email("n2", { receivedAt: at(shown + 2) }));
+  await applyChanges(client, store, ["inbox"]);
+  const page = await queryWindow(client, store, "inbox", 0);
+  expect(page.pending).toBe(2);
+  expect(page.ids).toHaveLength(shown * 2);
+  expect(page.ids[0]).toBe(`e${String(shown)}`);
+  expect(page.ids.at(-1)).toBe(`o${String(shown)}`);
+  expect(page.total).toBe(shown * 2);
+  await revealNewMail(store, ACCOUNT, "inbox");
+  const revealed = await queryWindow(client, store, "inbox", 0);
+  expect(revealed.ids.slice(0, 3)).toEqual(["n2", "n1", `e${String(shown)}`]);
+  expect(revealed.pending).toBe(0);
+  expect(revealed.total).toBe(shown * 2 + 2);
+});
+
+test("a second page held short grows to a full one once the poll finds rows behind it", async () => {
+  const held = WINDOW_SIZE + 25;
+  const { server, client, store } = await serve(held);
+  await queryWindow(client, store, "inbox", 1);
+  for (let index = 1; index <= held; index += 1) {
+    server.addEmail(email(`o${String(index)}`, { receivedAt: at(-index) }));
+  }
+  await applyChanges(client, store, ["inbox"]);
+  const first = await queryWindow(client, store, "inbox", 0);
+  expect(first.ids[0]).toBe(`e${String(held)}`);
+  expect(first.pending).toBe(0);
+  expect(first.total).toBe(held * 2);
+  server.requests.length = 0;
+  const second = await queryWindow(client, store, "inbox", 1);
+  expect(second.ids).toHaveLength(WINDOW_SIZE);
+  expect(second.ids[0]).toBe("e25");
+  expect(second.ids.at(-1)).toBe("o75");
+  expect(server.posted()).toHaveLength(1);
+  expect(server.posted()[0]?.[0]?.[1]).toMatchObject({ anchor: "e26", anchorOffset: 1 });
+  const third = await queryWindow(client, store, "inbox", 2);
+  expect(third.ids[0]).toBe("o76");
+  expect(third.ids.at(-1)).toBe(`o${String(held)}`);
+  server.requests.length = 0;
+  await queryWindow(client, store, "inbox", 1);
+  expect(server.requests).toHaveLength(0);
+  expect((await store.query(ACCOUNT, "inbox"))?.pages.map((page) => page.ids.length)).toEqual([
+    WINDOW_SIZE,
+    WINDOW_SIZE,
+    held * 2 - 2 * WINDOW_SIZE,
+  ]);
+});
+
+test("rows landing below a short list fill the first page when a full fresh page holds new mail back", async () => {
+  const shown = 40;
+  const { server, client, store } = await serve(shown);
+  for (let index = 1; index <= WINDOW_SIZE; index += 1) {
+    server.addEmail(email(`o${String(index)}`, { receivedAt: at(-index) }));
+  }
+  server.addEmail(email("n1", { receivedAt: at(shown + 1) }));
+  server.addEmail(email("n2", { receivedAt: at(shown + 2) }));
+  await applyChanges(client, store, ["inbox"]);
+  const page = await queryWindow(client, store, "inbox", 0);
+  expect(page.pending).toBe(2);
+  expect(page.ids).toHaveLength(WINDOW_SIZE);
+  expect(page.ids[0]).toBe(`e${String(shown)}`);
+  expect(page.ids.at(-1)).toBe("o60");
+  expect(page.total).toBe(shown + WINDOW_SIZE);
+  const second = await queryWindow(client, store, "inbox", 1);
+  expect(second.ids[0]).toBe("o61");
+  expect(second.ids).toHaveLength(shown);
+  await revealNewMail(store, ACCOUNT, "inbox");
+  const revealed = await queryWindow(client, store, "inbox", 0);
+  expect(revealed.ids.slice(0, 3)).toEqual(["n2", "n1", `e${String(shown)}`]);
+  expect(revealed.ids.at(-1)).toBe("o58");
+  expect(revealed.total).toBe(shown + WINDOW_SIZE + 2);
+});
+
+test("a shown row that leaves while new mail waits fills the first page from below and the total follows", async () => {
+  const { server, client, store } = await serve(120);
+  await queryWindow(client, store, "inbox", 1);
+  server.destroyEmail("e50");
+  server.addEmail(email("e121", { receivedAt: at(121) }));
+  await applyChanges(client, store, ["inbox"]);
+  const first = await queryWindow(client, store, "inbox", 0);
+  expect(first.pending).toBe(1);
+  expect(first.ids).toHaveLength(WINDOW_SIZE);
+  expect(first.ids).not.toContain("e50");
+  expect(first.ids.at(-1)).toBe("e20");
+  expect(first.total).toBe(119);
+  const second = await queryWindow(client, store, "inbox", 1);
+  expect(second.ids[0]).toBe("e19");
+  expect(second.ids.at(-1)).toBe("e1");
+  expect(first.ids.length + second.ids.length).toBe(first.total);
+});
+
+test("a shown row archived while new mail already waits leaves the first page full", async () => {
+  const { server, client, store } = await serve(120);
+  server.addEmail(email("e121", { receivedAt: at(121) }));
+  await applyChanges(client, store, ["inbox"]);
+  server.amend("e60", { mailboxIds: { archive: true } });
+  await applyChanges(client, store, ["inbox"]);
+  const page = await queryWindow(client, store, "inbox", 0);
+  expect(page.pending).toBe(1);
+  expect(page.ids).toHaveLength(WINDOW_SIZE);
+  expect(page.ids).not.toContain("e60");
+  expect(page.ids.at(-1)).toBe("e20");
+  expect(page.total).toBe(119);
+});
+
+test("a reply to the last shown row's thread while the first page is short tops it up past that row", async () => {
+  const { server, client, store } = await serve(120);
+  server.destroyEmail("e50");
+  server.addEmail(email("e121", { threadId: "t-e21", receivedAt: at(121) }));
+  await applyChanges(client, store, ["inbox"]);
+  const page = await queryWindow(client, store, "inbox", 0);
+  expect(page.pending).toBe(1);
+  expect(page.ids).toHaveLength(WINDOW_SIZE);
+  expect(page.ids.slice(-2)).toEqual(["e21", "e20"]);
+  expect(page.total).toBe(119);
+  // The fresh page reached the row below, so the changes and the refresh were the only requests.
+  expect(server.posted()).toHaveLength(2);
+});
+
+test("rows landing below a held second page move the total while the new mail above waits", async () => {
+  const held = WINDOW_SIZE + 50;
+  const below = 50;
+  const { server, client, store } = await serve(held);
+  await queryWindow(client, store, "inbox", 1);
+  server.addEmail(email("n1", { receivedAt: at(held + 1) }));
+  for (let index = 1; index <= below; index += 1) {
+    server.addEmail(email(`o${String(index)}`, { receivedAt: at(-index) }));
+  }
+  await applyChanges(client, store, ["inbox"]);
+  const first = await queryWindow(client, store, "inbox", 0);
+  expect(first.pending).toBe(1);
+  expect(first.ids).toHaveLength(WINDOW_SIZE);
+  expect(first.ids[0]).toBe(`e${String(held)}`);
+  expect(first.total).toBe(held + below);
+  const second = await queryWindow(client, store, "inbox", 1);
+  expect(second.ids).toHaveLength(WINDOW_SIZE);
+  expect(second.ids[0]).toBe("e50");
+  expect(second.ids.at(-1)).toBe(`o${String(below)}`);
+  await revealNewMail(store, ACCOUNT, "inbox");
+  expect((await queryWindow(client, store, "inbox", 0)).total).toBe(held + below + 1);
 });
 
 test("a state past the horizon drops the emails, threads and lists for a fresh fetch", async () => {

@@ -1,0 +1,55 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.block {
+  position: relative;
+  flex: none;
+  display: grid;
+  gap: var(--hhx-space-1);
+  padding: var(--hhx-space-3) var(--hhx-pane-padding);
+  border-block-start: var(--hhx-border-width) solid var(--hh-border);
+  background: var(--hh-bg);
+  transition: opacity var(--hhx-duration-flip) var(--hhx-ease);
+}
+
+/* The status region stays in the DOM, empty and without a footprint. */
+.block[data-idle] {
+  padding: 0;
+  border: none;
+  overflow: hidden;
+}
+
+.block[data-leaving] {
+  opacity: 0;
+}
+
+/* The hairline grows per batch along the block's top edge. */
+.hairline {
+  position: absolute;
+  inset-block-start: calc(-1 * var(--hhx-border-width));
+  inset-inline-start: 0;
+  block-size: var(--hhx-hairline-width);
+  background: var(--hh-accent);
+  transition: inline-size var(--hhx-duration-flip) var(--hhx-ease);
+}
+
+.sentence {
+  margin: 0;
+}
+
+.count {
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .block {
+    transition: none;
+  }
+
+  .hairline {
+    display: none;
+  }
+}

@@ -8,13 +8,13 @@ import { expect, test } from "@playwright/test";
 
 import { accountRow, mockAccounts } from "./account-mocks";
 import type { AccountRowBody } from "./account-mocks";
+import { FIXED_NOW } from "./mail-corpus";
 import { MAILBOXES, mockMail, refuseMailWhile } from "./mail-mocks";
 import type { MailboxBody } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
 import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
 
-const FIXED_NOW = new Date("2026-05-14T10:00:00");
 const HOUR_MS = 3_600_000;
 // The shell has two widths of its own beside the sweep's: the smallest
 // viewport the product supports and the tablet reference.
@@ -32,6 +32,9 @@ const PANE_MIN_PX = 320;
 // A stored list width wider than any window here, and the touch target size.
 const STORED_LIST_WIDTH_PX = 1360;
 const HIT_TARGET_PX = 44;
+// A point on the scrim beside the sheet on a phone.
+const SCRIM_X = 380;
+const SCRIM_Y = 300;
 
 const OLDEST = accountRow(FIXED_NOW);
 const NEWER = accountRow(FIXED_NOW, {
@@ -91,6 +94,7 @@ test("the root lands in the oldest account's inbox and draws its tree", async ({
   await expect(page).toHaveURL(/\/mail\/acc-1\/mb-inbox$/);
   await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
   await expect(page.getByRole("main")).toContainText("23");
+  await expect(page.getByRole("main").getByText("23 unread")).toBeAttached();
   await expect(tree(page).getByRole("treeitem")).toHaveCount(MAILBOXES.length);
   expect(await names(tree(page).getByRole("treeitem"))).toEqual([
     "Inbox, 23 unread",
@@ -160,6 +164,10 @@ test("the arrow keys walk the tree and Tab leaves it as one stop", async ({ page
   await expect(tree(page).getByRole("treeitem", { name: "Offertes" })).toBeFocused();
   await page.keyboard.press("Home");
   await expect(tree(page).getByRole("treeitem", { name: "Inbox, 23 unread" })).toBeFocused();
+  // Tab reaches the list once its first page is in.
+  await expect(page.getByRole("grid").locator('[aria-rowindex="1"]')).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("grid").locator('[aria-rowindex="1"]')).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("separator", { name: "Resize the list" })).toBeFocused();
   await page.keyboard.press("Enter");
@@ -311,6 +319,15 @@ test("a phone shows the list alone and the avatar opens the sidebar as a sheet",
   await expect(sheet).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
+  await page.getByRole("button", { name: "Mailboxes and accounts" }).click();
+  await expect(sheet).toBeVisible();
+  await page.mouse.click(SCRIM_X, SCRIM_Y);
+  await expect(sheet).toBeHidden();
+  await page.getByRole("button", { name: "Mailboxes and accounts" }).click();
+  await sheet.getByRole("button", { name: /sanne@fastmail\.com/ }).click();
+  await page.getByRole("menuitemradio", { name: /Gmail/ }).click();
+  await expect(sheet).toBeHidden();
+  await expect(page).toHaveURL(/\/mail\/acc-2\/mb-inbox$/);
 });
 
 test("a tablet shows the rail with the roles and More opens the whole sidebar", async ({

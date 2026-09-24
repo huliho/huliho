@@ -56,6 +56,8 @@
   --hhx-focus-ring-width: 2px;
   --hhx-focus-ring-offset: 2px;
   --hhx-halo-width: 4px;
+  /* The progress line on the first-sync block's top edge. */
+  --hhx-hairline-width: 2px;
 
   --hhx-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --hhx-duration-flip: 120ms;
@@ -75,6 +77,8 @@
   --hhx-toolbar-height: 44px;
 
   --hhx-tracking-caps: 0.06em;
+  /* The box of text that is read out and never drawn: the smallest one a screen reader keeps. */
+  --hhx-spoken-size: 1px;
   --hhx-logo-size: 40px;
   --hhx-avatar-size: 32px;
   --hhx-measure-narrow: 400px;

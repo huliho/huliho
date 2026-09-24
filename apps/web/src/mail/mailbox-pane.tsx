@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import { firstSyncOf } from "@huliho/core";
 import type { Mailbox } from "@huliho/core";
 import { mailboxesQueryOptions } from "@huliho/state";
 import { useQuery } from "@tanstack/react-query";
@@ -14,6 +15,9 @@ import { EmptyState } from "../design-system/empty-state";
 import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
+import { useOnline } from "../shell/use-online";
+import { ThreadList } from "./thread-list";
+import { useToday } from "./use-today";
 import styles from "./mailbox-pane.module.css";
 
 interface EmptyMailboxProps {
@@ -51,9 +55,13 @@ export function EmptyMailbox({ locale, accountId, mailbox, mailboxes }: EmptyMai
 }
 
 // The list pane of one mailbox. A mailbox the tree lacks goes back to
-// the account's inbox; an empty one says so.
+// the account's inbox; one the tree knows as empty says so without a
+// fetch; every other one gets the list, a fresh one per mailbox so the
+// cursor, the pages and the scroll start over with it.
 export function MailboxPane() {
   const locale = useLocale();
+  const today = useToday();
+  const online = useOnline();
   const { accountId, mailboxId } = useParams({ from: "/signed-in/mail/$accountId/$mailboxId" });
   const tree = useQuery(mailboxesQueryOptions(mailCache, accountId));
   if (!tree.isSuccess) {
@@ -63,10 +71,22 @@ export function MailboxPane() {
   if (mailbox === undefined) {
     return <Navigate to="/mail/$accountId" params={{ accountId }} replace />;
   }
-  if (mailbox.totalEmails > 0) {
-    return null;
+  const empty = (
+    <EmptyMailbox locale={locale} accountId={accountId} mailbox={mailbox} mailboxes={tree.data} />
+  );
+  if (mailbox.totalEmails === 0 && firstSyncOf(mailbox) === null) {
+    return empty;
   }
   return (
-    <EmptyMailbox locale={locale} accountId={accountId} mailbox={mailbox} mailboxes={tree.data} />
+    <ThreadList
+      key={`${accountId}/${mailbox.id}`}
+      locale={locale}
+      today={today}
+      cache={mailCache}
+      accountId={accountId}
+      mailbox={mailbox}
+      online={online}
+      empty={empty}
+    />
   );
 }

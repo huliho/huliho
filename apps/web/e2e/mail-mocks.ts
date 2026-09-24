@@ -4,14 +4,17 @@
 
 import type { Page, Route } from "@playwright/test";
 
+import { answerCalls, noteArrival, serverFor } from "./mail-answers";
+import type { Invocation, MailServer } from "./mail-answers";
+import { UPSTREAM, arrive, corpusFor } from "./mail-corpus";
+import type { Corpus, CorpusEmail } from "./mail-corpus";
+
 const SESSION_ROUTE = "**/api/jmap/*/session";
 const API_ROUTE = "**/api/jmap/*";
 const CORE_CAPABILITY = "urn:ietf:params:jmap:core";
 const MAIL_CAPABILITY = "urn:ietf:params:jmap:mail";
-const UPSTREAM = "u1";
-const STATE = "0";
-
-type Invocation = [string, Record<string, unknown>, string];
+// The vendor capability a bridge account advertises, which brings syncedEmails.
+const HULIHO_CAPABILITY = "https://huliho.com/jmap";
 
 export interface MailboxBody {
   id: string;
@@ -25,6 +28,7 @@ export interface MailboxBody {
   unreadThreads: number;
   myRights: Record<string, boolean>;
   isSubscribed: boolean;
+  syncedEmails?: number;
 }
 
 interface Counts {
@@ -104,8 +108,10 @@ function calls(route: Route): Invocation[] {
   return Array.isArray(listed) ? listed.filter((call) => isInvocation(call)) : [];
 }
 
-// The session object of an account on the proxy, as the worker reads it.
-function sessionBody(accountId: string): object {
+// The session object of an account on the proxy, as the worker reads
+// it; a bridge account carries the vendor capability as well.
+function sessionBody(accountId: string, vendor: boolean): object {
+  const extra = vendor ? { [HULIHO_CAPABILITY]: {} } : {};
   return {
     capabilities: {
       [CORE_CAPABILITY]: {
@@ -119,13 +125,14 @@ function sessionBody(accountId: string): object {
         collationAlgorithms: ["i;unicode-casemap"],
       },
       [MAIL_CAPABILITY]: {},
+      ...extra,
     },
     accounts: {
       [UPSTREAM]: {
         name: "mira@example.com",
         isPersonal: true,
         isReadOnly: true,
-        accountCapabilities: { [MAIL_CAPABILITY]: {} },
+        accountCapabilities: { [MAIL_CAPABILITY]: {}, ...extra },
       },
     },
     primaryAccounts: { [MAIL_CAPABILITY]: UPSTREAM },
@@ -138,63 +145,66 @@ function sessionBody(accountId: string): object {
   };
 }
 
-// The answer of one call: the mailboxes for a Mailbox/get, nothing for
-// every other read, since the account holds no mail.
-function answer([name, , id]: Invocation, mailboxes: MailboxBody[]): Invocation {
-  if (name.endsWith("/changes")) {
-    return [
-      name,
-      {
-        accountId: UPSTREAM,
-        oldState: STATE,
-        newState: STATE,
-        hasMoreChanges: false,
-        created: [],
-        updated: [],
-        destroyed: [],
-      },
-      id,
-    ];
-  }
-  if (name === "Email/query") {
-    return [
-      name,
-      { accountId: UPSTREAM, queryState: STATE, canCalculateChanges: false, position: 0, ids: [] },
-      id,
-    ];
-  }
-  const list = name === "Mailbox/get" ? mailboxes : [];
-  return [name, { accountId: UPSTREAM, state: STATE, list, notFound: [] }, id];
-}
-
 function accountIdOf(route: Route): string {
   const parts = route.request().url().split("/");
   return parts[parts.indexOf("jmap") + 1] ?? "";
 }
 
+export interface MailOptions {
+  // The messages behind the mailboxes; built from their counts without one.
+  corpus?: Corpus;
+  // Whether the account is a bridge account, whose mailboxes count their synced emails.
+  vendor?: boolean;
+}
+
+// The mocked mail behind a page: the server the routes answer from and
+// a way to let new mail arrive in a mailbox.
+export interface MockedMail {
+  server: MailServer;
+  arrive: (mailboxId: string) => CorpusEmail;
+}
+
 // Answers the proxy's two routes for any account with the mailboxes and
-// no mail, so the shell behind a signed-in page has a tree to draw. A
-// route never reaches a shared worker's requests, so the page runs the
-// dedicated worker, whose requests the context's routes do answer.
-export async function mockMail(page: Page, mailboxes: MailboxBody[] = MAILBOXES): Promise<void> {
+// the corpus, so the shell behind a signed-in page has a tree and a
+// list to draw. A route never reaches a shared worker's requests, so
+// the page runs the dedicated worker, whose requests the context's
+// routes do answer.
+export async function mockMail(
+  page: Page,
+  mailboxes: MailboxBody[] = MAILBOXES,
+  options: MailOptions = {},
+): Promise<MockedMail> {
+  const corpus = options.corpus ?? corpusFor(mailboxes);
+  // A native account's mailboxes carry no synced count.
+  const listed = mailboxes.map((row) =>
+    options.vendor === true
+      ? row
+      : Object.fromEntries(Object.entries(row).filter(([key]) => key !== "syncedEmails")),
+  );
+  const server = serverFor(corpus, listed);
   const context = page.context();
   await context.addInitScript(() => {
     Reflect.deleteProperty(window, "SharedWorker");
   });
   await context.route(SESSION_ROUTE, (route) =>
-    route.fulfill({ json: sessionBody(accountIdOf(route)) }),
+    route.fulfill({ json: sessionBody(accountIdOf(route), options.vendor === true) }),
   );
   await context.route(API_ROUTE, (route) => {
     if (route.request().method() !== "POST") {
       return route.fallback();
     }
     return route.fulfill({
-      json: {
-        methodResponses: calls(route).map((call) => answer(call, mailboxes)),
-        sessionState: "s1",
-      },
+      json: { methodResponses: answerCalls(server, calls(route)), sessionState: "s1" },
     });
   });
+  return {
+    server,
+    arrive: (mailboxId) => {
+      const message = arrive(corpus, mailboxId);
+      noteArrival(server, message.id, message.threadId);
+      return message;
+    },
+  };
 }
 
 // Refuses the session object while `failing()` holds, as a proxy whose
@@ -207,4 +217,26 @@ export async function refuseMailWhile(page: Page, failing: () => boolean): Promi
         ? route.fulfill({ status: 502, json: { error: "upstream_unreachable" } })
         : route.fallback(),
     );
+}
+
+// Refuses every request that asks for a list while `failing()` holds,
+// so the tree stands and the list alone fails; `holding()` keeps such a
+// request open instead, the way a slow server does.
+export async function refuseListWhile(
+  page: Page,
+  failing: () => boolean,
+  holding: () => boolean = () => false,
+): Promise<void> {
+  await page.context().route(API_ROUTE, (route) => {
+    const asksList = calls(route).some(([name]) => name === "Email/query");
+    if (!asksList || route.request().method() !== "POST") {
+      return route.fallback();
+    }
+    if (holding()) {
+      return new Promise<void>(() => undefined);
+    }
+    return failing()
+      ? route.fulfill({ status: 502, json: { error: "upstream_failed" } })
+      : route.fallback();
+  });
 }

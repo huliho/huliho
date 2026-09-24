@@ -9,7 +9,7 @@ import { ACCOUNT, FakeJmap, at, email, json, mailbox } from "@huliho/core/testin
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { CHANGES_POLL_MS, Coordinator, LEASE_MS } from "./coordinator";
+import { CHANGES_POLL_MS, Coordinator, FIRST_SYNC_POLL_MS, LEASE_MS } from "./coordinator";
 import type { CacheApi } from "./coordinator";
 import { DexieMailStore, MailDatabase } from "./db";
 import { webLocks } from "./locks";
@@ -212,6 +212,28 @@ test("a fresh list drops the rows an earlier session left for another account", 
   expect(await store().mailboxes(ACCOUNT)).toEqual([]);
   expect(await store().query(ACCOUNT, "inbox")).toBeNull();
   expect(await store().state(ACCOUNT, "Email")).toBeNull();
+});
+
+test("a mailbox in its first sync brings the next poll closer until it is done", async () => {
+  const server = serve(3);
+  const inbox = { ...mailbox("inbox", "inbox"), totalEmails: 5, syncedEmails: 2 };
+  server.putMailbox(inbox);
+  const posted: CacheMessage[] = [];
+  const tab = coordinate(posted).api();
+  await tab.persisted();
+  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null });
+  await settled(posts(posted, 1));
+  await vi.advanceTimersByTimeAsync(FIRST_SYNC_POLL_MS);
+  await settled(posts(posted, 2));
+  server.putMailbox({ ...inbox, syncedEmails: 5 });
+  await vi.advanceTimersByTimeAsync(FIRST_SYNC_POLL_MS);
+  await settled(posts(posted, 3));
+  expect(posted[2]).toMatchObject({ mailboxes: true });
+  await vi.advanceTimersByTimeAsync(FIRST_SYNC_POLL_MS);
+  await drained();
+  expect(posted).toHaveLength(3);
+  await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS - FIRST_SYNC_POLL_MS);
+  await settled(posts(posted, 4));
 });
 
 test("a focus polls at once, but not twice inside the gap", async () => {

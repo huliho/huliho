@@ -9,6 +9,7 @@ import { ErrorState } from "../design-system/error-state";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import type { Layout } from "../shell/breakpoints";
+import { PaneBoundary } from "../shell/pane-boundary";
 import { PaneHeader } from "./pane-header";
 import type { TreeState } from "./tree";
 import styles from "./list-pane.module.css";
@@ -28,7 +29,8 @@ interface ListPaneProps {
 }
 
 // The list pane: the mailbox header over the route's body, or over the
-// error state when the tree did not load.
+// error state when the tree did not load. A render failure in the body
+// stays inside it.
 export function ListPane(props: ListPaneProps) {
   const { locale, tree, width } = props;
   const mailbox =
@@ -57,7 +59,7 @@ export function ListPane(props: ListPaneProps) {
             onRetry={tree.retry}
           />
         )}
-        {tree.status === "success" && props.children}
+        {tree.status === "success" && <PaneBoundary>{props.children}</PaneBoundary>}
       </div>
     </main>
   );

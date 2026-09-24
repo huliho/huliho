@@ -21,6 +21,7 @@
     "@huliho/state": "workspace:*",
     "@tanstack/react-query": "^5.102.8",
     "@tanstack/react-router": "^1.170.32",
+    "@tanstack/react-virtual": "^3.14.13",
     "comlink": "^4.4.2",
     "dexie": "^4.4.6",
     "lucide-react": "^1.38.0",

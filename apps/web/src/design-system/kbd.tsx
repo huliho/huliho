@@ -4,6 +4,16 @@
 
 import styles from "./kbd.module.css";
 
-export function Kbd({ children }: { children: string }) {
-  return <kbd className={styles.kbd}>{children}</kbd>;
+interface KbdProps {
+  children: string;
+  // Whether a screen reader reads the key; a hint beside a spoken label stays silent.
+  spoken?: boolean;
+}
+
+export function Kbd({ children, spoken = true }: KbdProps) {
+  return (
+    <kbd className={styles.kbd} aria-hidden={spoken ? undefined : true}>
+      {children}
+    </kbd>
+  );
 }

@@ -10,9 +10,9 @@ import type { LucideIcon } from "lucide-react";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { AccountSwitcher } from "./account-switcher";
+import { MonoCount, countLabel } from "./mono-count";
 import { buildTree, countOf } from "./tree";
 import type { TreeState } from "./tree";
-import { UnreadCount, countLabel } from "./unread-count";
 import styles from "./rail.module.css";
 
 const ROLE_ICONS = new Map<string, LucideIcon>([
@@ -56,7 +56,7 @@ export function Rail({ locale, accounts, account, tree, currentMailboxId, onMore
           >
             <Icon className={styles.icon} aria-hidden="true" />
             {count > 0 && (
-              <UnreadCount value={count} locale={locale} tone={current ? "accent" : "muted"} />
+              <MonoCount value={count} locale={locale} tone={current ? "accent" : "muted"} />
             )}
           </Link>
         );
