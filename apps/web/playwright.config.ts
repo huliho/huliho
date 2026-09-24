@@ -14,12 +14,25 @@ export const STORYBOOK_URL = `http://localhost:${String(STORYBOOK_PORT)}`;
 // and in the Linux container that refreshes them (README).
 const COMPARE_SCREENSHOTS = process.env.CI !== undefined || process.platform === "linux";
 
+// Baseline names carry the platform and no project name.
+const SNAPSHOT_PATH_TEMPLATE =
+  "{snapshotDir}/{testFileDir}/{testFileName}-snapshots/{arg}{-snapshotSuffix}{ext}";
+
+// The frame traces run in a project of their own after the rest of the
+// suite, so no other worker shares the CPU while one measures.
+const SCROLL_BUDGET_SPEC = "**/scroll-budget.spec.ts";
+
 export default defineConfig({
   testDir: "e2e",
   ignoreSnapshots: !COMPARE_SCREENSHOTS,
+  snapshotPathTemplate: SNAPSHOT_PATH_TEMPLATE,
   use: {
     baseURL: PREVIEW_URL,
   },
+  projects: [
+    { name: "suite", testIgnore: SCROLL_BUDGET_SPEC },
+    { name: "scroll-budget", testMatch: SCROLL_BUDGET_SPEC, dependencies: ["suite"] },
+  ],
   webServer: [
     {
       command: `vite preview --port ${String(PREVIEW_PORT)} --strictPort`,

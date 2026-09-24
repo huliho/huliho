@@ -5,8 +5,8 @@
 import type { JmapClient } from "../jmap/client";
 import { followChanges } from "./changes";
 import { CHANGES_ROUNDS_MAX } from "./limits";
+import { refreshFirstPage } from "./refresh";
 import type { MailStore, QueryRow } from "./store";
-import { refreshFirstPage } from "./window";
 
 // What a poll changed, for the tabs to invalidate: the mailbox tree, the
 // lists by mailbox id and the threads by id.

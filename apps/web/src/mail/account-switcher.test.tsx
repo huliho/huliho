@@ -19,10 +19,18 @@ import { ACCOUNTS, FASTMAIL } from "./fixtures";
 const signOut = vi.hoisted(() => vi.fn<() => void>());
 vi.mock("../auth/use-sign-out", () => ({ useSignOut: () => signOut }));
 
+const navigated = vi.fn<() => void>();
+
 function Screen() {
   return (
     <>
-      <AccountSwitcher locale="en" accounts={ACCOUNTS} account={FASTMAIL} variant="full" />
+      <AccountSwitcher
+        locale="en"
+        accounts={ACCOUNTS}
+        account={FASTMAIL}
+        variant="full"
+        onNavigate={navigated}
+      />
       <Outlet />
     </>
   );
@@ -63,6 +71,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   signOut.mockReset();
+  navigated.mockReset();
 });
 
 test("the menu lists every account with the open one checked, then Settings and Sign out", async () => {
@@ -79,7 +88,7 @@ test("the menu lists every account with the open one checked, then Settings and 
   expect(menu.textContent).toContain("Sign out");
 });
 
-test("choosing another account opens it and closes the menu", async () => {
+test("choosing another account opens it, closes the menu and tells the caller", async () => {
   const router = renderSwitcher();
   await openMenu();
   fireEvent.click(screen.getByRole("menuitemradio", { name: /Gmail/ }));
@@ -87,6 +96,7 @@ test("choosing another account opens it and closes the menu", async () => {
     expect(router.state.location.pathname).toBe("/mail/acc-2");
     expect(screen.queryByRole("menu")).toBeNull();
   });
+  expect(navigated).toHaveBeenCalledOnce();
 });
 
 test("Sign out runs the sign-out", async () => {

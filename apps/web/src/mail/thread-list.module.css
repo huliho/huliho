@@ -1,0 +1,44 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.list {
+  flex: 1;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The marker floats over this box; the rows scroll inside it. */
+.viewport {
+  position: relative;
+  flex: 1;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.scroller {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.sizer {
+  position: relative;
+  inline-size: 100%;
+}
+
+/* The rows stand in their own flow until the first page lands. */
+.loading {
+  position: relative;
+  display: block;
+  flex: 1;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+.loading > * {
+  position: static;
+}

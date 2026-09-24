@@ -3,13 +3,6 @@
 // Additional terms apply, see NOTICE.
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRootRoute,
-  createRouter,
-} from "@tanstack/react-router";
 import type { JSX, ReactNode } from "react";
 
 import { useLayout } from "../shell/breakpoints";
@@ -17,6 +10,7 @@ import { ACCOUNTS, FASTMAIL, MAILBOXES, MAILBOXES_EMPTY_INBOX } from "./fixtures
 import { EmptyMailbox } from "./mailbox-pane";
 import { ShellFrame } from "./shell-frame";
 import { Sidebar } from "./sidebar";
+import { routed } from "./story-router";
 import type { TreeState } from "./tree";
 
 function nothing(): void {
@@ -28,20 +22,6 @@ const LOADING: TreeState = { status: "pending" };
 const FAILED: TreeState = { status: "error", retry: nothing };
 const EMPTY_INBOX: TreeState = { status: "success", mailboxes: MAILBOXES_EMPTY_INBOX };
 const INBOX = MAILBOXES_EMPTY_INBOX.find((mailbox) => mailbox.role === "inbox");
-
-// The links and the sign-out need a router and a query client; a memory
-// router at the shell's own address serves.
-function routed(Screen: () => JSX.Element, path = "/mail/acc-1/mb-inbox"): JSX.Element {
-  const router = createRouter({
-    routeTree: createRootRoute({ component: Screen }),
-    history: createMemoryHistory({ initialEntries: [path] }),
-  });
-  return (
-    <QueryClientProvider client={new QueryClient()}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  );
-}
 
 interface ShellProps {
   tree: TreeState;

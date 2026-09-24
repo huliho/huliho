@@ -9,7 +9,7 @@ import { ACCOUNT, FakeJmap, at, email, json, mailbox } from "@huliho/core/testin
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { CHANGES_POLL_MS, Coordinator, LEASE_MS } from "./coordinator";
+import { CHANGES_POLL_MS, Coordinator, FIRST_SYNC_POLL_MS, LEASE_MS } from "./coordinator";
 import type { CacheApi } from "./coordinator";
 import { DexieMailStore, MailDatabase } from "./db";
 import { webLocks } from "./locks";
@@ -214,6 +214,28 @@ test("a fresh list drops the rows an earlier session left for another account", 
   expect(await store().state(ACCOUNT, "Email")).toBeNull();
 });
 
+test("a mailbox in its first sync brings the next poll closer until it is done", async () => {
+  const server = serve(3);
+  const inbox = { ...mailbox("inbox", "inbox"), totalEmails: 5, syncedEmails: 2 };
+  server.putMailbox(inbox);
+  const posted: CacheMessage[] = [];
+  const tab = coordinate(posted).api();
+  await tab.persisted();
+  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null });
+  await settled(posts(posted, 1));
+  await vi.advanceTimersByTimeAsync(FIRST_SYNC_POLL_MS);
+  await settled(posts(posted, 2));
+  server.putMailbox({ ...inbox, syncedEmails: 5 });
+  await vi.advanceTimersByTimeAsync(FIRST_SYNC_POLL_MS);
+  await settled(posts(posted, 3));
+  expect(posted[2]).toMatchObject({ mailboxes: true });
+  await vi.advanceTimersByTimeAsync(FIRST_SYNC_POLL_MS);
+  await drained();
+  expect(posted).toHaveLength(3);
+  await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS - FIRST_SYNC_POLL_MS);
+  await settled(posts(posted, 4));
+});
+
 test("a focus polls at once, but not twice inside the gap", async () => {
   const { server, posted, tab } = await attached(3);
   await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS);
@@ -238,8 +260,8 @@ test("two workers on one store never interleave a window fetch", async () => {
     first.window(ACCOUNT, "inbox", 0),
     second.window(ACCOUNT, "inbox", 0),
   ]);
-  expect(one.ok && one.value.ids).toHaveLength(WINDOW_SIZE);
-  expect(two.ok && two.value.ids).toHaveLength(WINDOW_SIZE);
+  expect(one.ok && one.value.rows).toHaveLength(WINDOW_SIZE);
+  expect(two.ok && two.value.rows).toHaveLength(WINDOW_SIZE);
   expect(server.posted()).toHaveLength(1);
 });
 
@@ -256,7 +278,7 @@ test("a write waits for the window's word on persistence", async () => {
   expect(landed).toBe(false);
   await tab.persisted();
   const page = await window;
-  expect(page.ok && page.value.ids).toHaveLength(3);
+  expect(page.ok && page.value.rows).toHaveLength(3);
 });
 
 test("a limit failure waits for the next poll and a lost session stops every account", async () => {
@@ -338,7 +360,7 @@ test("reveal lands the new mail and tells every tab; a thread reads from the sto
     { kind: "changed", accountId: ACCOUNT, mailboxes: false, windows: ["inbox"], threads: [] },
   ]);
   const page = await tab.window(ACCOUNT, "inbox", 0);
-  expect(page.ok && page.value.ids[0]).toBe("e4");
+  expect(page.ok && page.value.rows[0]?.id).toBe("e4");
   const thread = await tab.thread(ACCOUNT, "t-e4");
   expect(thread.ok && thread.value?.emails["e4"]?.subject).toBe("Message e4");
   const unknown = await tab.thread(ACCOUNT, "t-e9");

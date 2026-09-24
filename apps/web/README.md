@@ -112,10 +112,33 @@ then the folders with their depth. The tree is one tab stop: the arrow
 keys move inside it and Tab leaves it. Mailbox names are the server's
 words; the counts are unread mail, and drafts for the drafts folder.
 
+Under the header sits the thread list, a grid over the pages the cache
+serves, rendered only where it is in view, so a mailbox of fifty
+thousand messages scrolls like one of fifty. A row is a thread as this
+mailbox shows it: sender and time on the first line, subject and
+preview on the second, a dot and weight for unread, a count for a
+thread of more than one and icons for a flag and an attachment; a
+screen reader hears the row in one go. One row carries the tab stop:
+the arrow keys, Home and End move it inside the grid, j and k from
+anywhere on the screen. New mail never moves the rows: a marker names
+it above the list until the dot key or a click brings it in, and a
+scroll or a move in the list puts the marker away until more arrives.
+Offline, a strip over the list says so while the cached rows stay. A
+mailbox still fetching its headers shows its progress at the foot of
+the pane, with still rows after the last synced one; the worker polls
+closer while such a sync runs. A render failure in one pane stays in
+that pane. The add-account card and the settings screens each load as
+a chunk of their own on their first visit.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component
-workshop.
+workshop. The frame traces run alone, without the rest of the suite,
+with `pnpm exec playwright test --project scroll-budget --no-deps`.
+The phone trace slows the CPU by the host's Lighthouse benchmark index
+over 1000, the middle of the high-end mobile bracket in Lighthouse's
+throttling doc, so a mid-range phone means the same on every machine;
+the run's annotations show the index and the factor.
 
 `pnpm lighthouse` audits the built app against the performance and
 accessibility budgets in `lighthouserc.cjs`.

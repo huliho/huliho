@@ -161,6 +161,13 @@
       "rules": { "unicorn/no-empty-file": "off" }
     },
     {
+      // The virtualizer's hook hands back functions the compiler cannot
+      // memoize, so it leaves this hook unmemoized; the rows it feeds
+      // are plain components that the compiler memoizes on their own.
+      "files": ["apps/web/src/mail/list-virtualizer.ts"],
+      "rules": { "react-hooks/incompatible-library": "off" }
+    },
+    {
       // Browser automation steps run in order; parallel awaits would race one page.
       "files": ["apps/web/e2e/**"],
       "rules": { "no-await-in-loop": "off" }

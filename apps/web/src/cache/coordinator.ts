@@ -6,12 +6,14 @@ import {
   JmapClient,
   JmapError,
   applyChanges,
+  firstSyncOf,
+  listPage,
   queryWindow,
   readThread,
   revealNewMail,
   syncMailboxes,
 } from "@huliho/core";
-import type { AppliedChanges, MailStore, Mailbox, ThreadDetail, WindowPage } from "@huliho/core";
+import type { AppliedChanges, ListPage, MailStore, Mailbox, ThreadDetail } from "@huliho/core";
 
 import type { Locks } from "./locks";
 import type { CacheMessage } from "./messages";
@@ -20,6 +22,10 @@ import type { CacheResult } from "./outcome";
 
 // The client asks for changes every sixty seconds until push lands.
 export const CHANGES_POLL_MS = 60_000;
+
+// While a mailbox of the account is in its first sync, the poll follows
+// the batches closer, so the list and its count grow as they land.
+export const FIRST_SYNC_POLL_MS = 10_000;
 
 // A tab renews its watch this often; a hidden tab's timers still run
 // once a minute, so a live tab never falls past the lease.
@@ -58,7 +64,8 @@ export interface CacheApi {
   // Sign out: the tab names itself, so every other tab hears who did it.
   clear(by: string): Promise<void>;
   mailboxes(accountId: string): Promise<CacheResult<Mailbox[]>>;
-  window(accountId: string, mailboxId: string, page: number): Promise<CacheResult<WindowPage>>;
+  // A page crosses as the rows the list draws, made on this side.
+  window(accountId: string, mailboxId: string, page: number): Promise<CacheResult<ListPage>>;
   thread(accountId: string, threadId: string): Promise<CacheResult<ThreadDetail | null>>;
   reveal(accountId: string, mailboxId: string): Promise<CacheResult<void>>;
 }
@@ -149,11 +156,12 @@ export class Coordinator {
       clear: (by) => this.clear(by),
       mailboxes: (accountId) => attempt(() => this.mailboxes(accountId)),
       window: (accountId, mailboxId, page) =>
-        attempt(() =>
-          this.locked(accountId, (store) =>
+        attempt(async () => {
+          const assembled = await this.locked(accountId, (store) =>
             queryWindow(this.client(accountId), store, mailboxId, page),
-          ),
-        ),
+          );
+          return listPage(assembled, mailboxId);
+        }),
       thread: (accountId, threadId) => attempt(() => readThread(this.store, accountId, threadId)),
       reveal: (accountId, mailboxId) => attempt(() => this.reveal(accountId, mailboxId)),
     };
@@ -285,7 +293,15 @@ export class Coordinator {
       }
       return;
     }
-    this.schedule(accountId, CHANGES_POLL_MS);
+    this.schedule(accountId, await this.pollDelay(accountId));
+  }
+
+  // The next poll comes sooner while any mailbox of the account is
+  // still in its first sync.
+  private async pollDelay(accountId: string): Promise<number> {
+    const mailboxes = await attempt(() => this.store.mailboxes(accountId));
+    const syncing = mailboxes.ok && mailboxes.value.some((row) => firstSyncOf(row) !== null);
+    return syncing ? FIRST_SYNC_POLL_MS : CHANGES_POLL_MS;
   }
 
   // The tree first; once the account holds it, the changes since.

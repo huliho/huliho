@@ -8,9 +8,9 @@ import type { KeyboardEvent } from "react";
 
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
+import { MonoCount, countLabel } from "./mono-count";
 import { buildTree, countOf, flatten } from "./tree";
 import type { FlatRow } from "./tree";
-import { UnreadCount, countLabel } from "./unread-count";
 import styles from "./mailbox-tree.module.css";
 
 interface MailboxTreeProps {
@@ -92,7 +92,7 @@ function TreeItem({ row, stopId, ...props }: ItemProps) {
           </span>
         )}
         {count > 0 && (
-          <UnreadCount value={count} locale={props.locale} tone={current ? "accent" : "muted"} />
+          <MonoCount value={count} locale={props.locale} tone={current ? "accent" : "muted"} />
         )}
       </Link>
     </li>

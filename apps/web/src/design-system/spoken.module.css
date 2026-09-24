@@ -1,0 +1,13 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* Read out, never drawn: the smallest box a screen reader still keeps. */
+.spoken {
+  position: absolute;
+  inline-size: var(--hhx-spoken-size);
+  block-size: var(--hhx-spoken-size);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

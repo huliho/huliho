@@ -41,7 +41,13 @@ export function Sidebar(props: SidebarProps) {
   const { locale, accounts, account, tree } = props;
   return (
     <nav className={styles.sidebar} aria-label={m.mail_sidebar({}, { locale })}>
-      <AccountSwitcher locale={locale} accounts={accounts} account={account} variant="full" />
+      <AccountSwitcher
+        locale={locale}
+        accounts={accounts}
+        account={account}
+        variant="full"
+        onNavigate={props.onNavigate}
+      />
       {tree.status === "pending" && <TreeSkeleton locale={locale} />}
       {tree.status === "success" && (
         <MailboxTree

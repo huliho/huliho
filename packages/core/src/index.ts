@@ -40,6 +40,9 @@ export { syncMailboxes } from "./cache/mailboxes";
 export { MemoryMailStore } from "./cache/memory";
 export { applyChanges } from "./cache/poll";
 export type { AppliedChanges } from "./cache/poll";
+export { revealNewMail } from "./cache/refresh";
+export { firstSyncOf, listPage } from "./cache/rows";
+export type { FirstSync, ListPage, ListRow } from "./cache/rows";
 export { queryRowSchema, threadRowSchema } from "./cache/schemas";
 export type {
   Batch,
@@ -52,7 +55,7 @@ export type {
   ThreadRow,
 } from "./cache/store";
 export { readThread } from "./cache/thread";
-export { queryWindow, revealNewMail } from "./cache/window";
+export { queryWindow } from "./cache/window";
 export type { WindowPage } from "./cache/window";
 export { CredentialError } from "./credentials";
 export type { CredentialFailureCode } from "./credentials";

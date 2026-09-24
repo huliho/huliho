@@ -8,8 +8,8 @@ import { Avatar } from "../design-system/avatar";
 import { Skeleton } from "../design-system/skeleton";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
+import { MonoCount, countWords } from "./mono-count";
 import { countOf } from "./tree";
-import { UnreadCount } from "./unread-count";
 import styles from "./pane-header.module.css";
 
 interface PaneHeaderProps {
@@ -22,7 +22,8 @@ interface PaneHeaderProps {
   onOpenSidebar?: (() => void) | undefined;
 }
 
-// The bar above the list: the mailbox's name and unread count.
+// The bar above the list: the mailbox's name and unread count, the
+// count worded for a reader who cannot see what it stands beside.
 export function PaneHeader({ locale, account, mailbox, pending, onOpenSidebar }: PaneHeaderProps) {
   const count = mailbox === undefined ? 0 : countOf(mailbox);
   return (
@@ -38,7 +39,14 @@ export function PaneHeader({ locale, account, mailbox, pending, onOpenSidebar }:
         </button>
       )}
       {mailbox !== undefined && <h1 className={styles.title}>{mailbox.name}</h1>}
-      {count > 0 && <UnreadCount value={count} locale={locale} tone="accent" />}
+      {mailbox !== undefined && count > 0 && (
+        <MonoCount
+          value={count}
+          locale={locale}
+          tone="accent"
+          label={countWords(mailbox, locale)}
+        />
+      )}
       {mailbox === undefined && pending && <Skeleton className={styles.titleSkeleton} />}
     </header>
   );
