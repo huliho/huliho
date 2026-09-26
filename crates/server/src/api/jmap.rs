@@ -5,7 +5,8 @@
 //! The JMAP routes: an account's session object and its API endpoint.
 //! A native account is answered from the upstream with the account's
 //! credential added here; an IMAP account by the in-process bridge, so
-//! the browser sees one surface.
+//! the browser sees one surface. An answer that carries body values
+//! leaves with its HTML values sanitized, whichever path answered it.
 
 use std::sync::Arc;
 
@@ -21,7 +22,8 @@ use super::{ApiError, ApiState, Caller, internal};
 use crate::accounts::{self, Account, AccountKind};
 use crate::bridge;
 use crate::ids::AccountId;
-use crate::jmap::{JSON, Proxy, is_json};
+use crate::jmap::{JSON, Proxy, Wants, inspect, is_json};
+use crate::mail::bodies;
 use crate::scope::Scope;
 
 /// The media type of a problem details object (RFC 7807), the shape
@@ -92,6 +94,7 @@ pub(super) async fn request(
 ) -> Result<Response, ApiError> {
     let account_id = AccountId::from(id);
     let scope = scoped(&state, caller, &account_id).await?;
+    let wants = inspected(body.clone()).await?;
     let Some(_permit) = state.endpoints.enter(&account_id) else {
         return Ok(over_the_cap());
     };
@@ -106,7 +109,40 @@ pub(super) async fn request(
             }
         }
     };
+    let answer = match wants {
+        Wants::Headers => answer,
+        Wants::Bodies => sanitized(&state, &account_id, answer).await?,
+    };
     Ok(json(answer))
+}
+
+/// What the request wants of its answer, read off the runtime; a body
+/// ask the pass cannot serve is invalid before anything connects.
+async fn inspected(body: Bytes) -> Result<Wants, ApiError> {
+    tokio::task::spawn_blocking(move || inspect(&body))
+        .await
+        .map_err(internal)?
+        .map_err(|_| ApiError::InvalidRequest)
+}
+
+/// The answer with its HTML body values sanitized, off the runtime; an
+/// answer that is no Response object is not usable.
+async fn sanitized(
+    state: &ApiState,
+    account_id: &AccountId,
+    answer: Vec<u8>,
+) -> Result<Vec<u8>, ApiError> {
+    let sanitizer = Arc::clone(&state.sanitizer);
+    tokio::task::spawn_blocking(move || bodies::clean_answer(&sanitizer, &answer))
+        .await
+        .map_err(internal)?
+        .map_err(|_| {
+            tracing::debug!(
+                account = account_id.as_str(),
+                "the answer to a body request is no Response object"
+            );
+            ApiError::UpstreamUnsupported
+        })
 }
 
 /// The row as it stands; a stopped account answers 409 with its cause

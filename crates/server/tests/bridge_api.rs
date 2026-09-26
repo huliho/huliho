@@ -331,3 +331,39 @@ async fn removing_the_account_stops_its_runtime_and_removes_the_bridge_rows() {
     sleep(LOOK * 8).await;
     assert_eq!(instance.logins(), logins, "the runtime connected again");
 }
+
+/// The bridge answers a body property with `invalidArguments`; the pass
+/// walks that answer and leaves it, and a body ask the pass cannot
+/// serve is refused on this path as on the native one.
+#[tokio::test]
+async fn a_body_ask_takes_the_sanitizer_pass_and_its_refusal_like_a_native_one() {
+    let instance = instance().await;
+    let id = instance.add_account(PASSWORD);
+    let cookie = instance.sign_in().await;
+    assert!(
+        instance.wait_synced(&cookie, &id).await,
+        "{:?}",
+        instance.fake.lines()
+    );
+    let ask = json!(["Email/get", {
+        "accountId": id,
+        "ids": ["e1"],
+        "properties": ["id", "subject", "textBody", "htmlBody", "attachments", "bodyValues"],
+        "fetchHTMLBodyValues": true
+    }, "c1"]);
+    let (status, answer) = instance.request(&cookie, &id, &using(&[ask])).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    let response = &answer["methodResponses"][0];
+    assert_eq!(response[0], "error");
+    assert_eq!(response[1]["type"], "invalidArguments");
+    assert_eq!(response[2], "c1");
+    let refused = json!(["Email/get", {
+        "accountId": id,
+        "ids": ["e1"],
+        "properties": ["id", "bodyValues"],
+        "fetchHTMLBodyValues": true
+    }, "c1"]);
+    let (status, body) = instance.request(&cookie, &id, &using(&[refused])).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["error"], "invalid_request");
+}

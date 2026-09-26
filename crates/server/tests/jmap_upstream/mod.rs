@@ -58,6 +58,8 @@ pub struct Script {
     pub oversized: bool,
     /// Whether the endpoint parks the request until the next `set`.
     pub hold: bool,
+    /// The bytes the endpoint answers in place of the echo.
+    pub answer: Option<Vec<u8>>,
 }
 
 impl Script {
@@ -71,6 +73,7 @@ impl Script {
             json: true,
             oversized: false,
             hold: false,
+            answer: None,
         }
     }
 }
@@ -213,12 +216,13 @@ async fn session(State(shared): State<Shared>, headers: HeaderMap) -> Response {
 }
 
 /// The API endpoint: parked while the script holds, then the scripted
-/// status with an echo, a page or an oversized document.
+/// status with the fixed answer, an echo, a page or an oversized
+/// document.
 async fn api(State(shared): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
     if !authorized(&headers) {
         return challenge();
     }
-    let (status, json, oversized, parked) = {
+    let (status, json, oversized, parked, fixed) = {
         let script = shared.script.lock().unwrap();
         // Enabled under the lock, so a release between reading `hold`
         // and the await cannot be missed.
@@ -227,7 +231,13 @@ async fn api(State(shared): State<Shared>, headers: HeaderMap, body: Bytes) -> R
             notified.as_mut().enable();
             notified
         });
-        (script.status, script.json, script.oversized, parked)
+        (
+            script.status,
+            script.json,
+            script.oversized,
+            parked,
+            script.answer.clone(),
+        )
     };
     if let Some(notified) = parked {
         notified.await;
@@ -238,7 +248,9 @@ async fn api(State(shared): State<Shared>, headers: HeaderMap, body: Bytes) -> R
     } else {
         "text/html"
     };
-    let answer = if oversized {
+    let answer = if let Some(fixed) = fixed {
+        fixed
+    } else if oversized {
         oversized_document()
     } else if json {
         echo(&body)

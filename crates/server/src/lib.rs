@@ -17,6 +17,7 @@ pub mod gate;
 pub mod identity;
 pub mod ids;
 pub mod jmap;
+pub mod mail;
 pub mod oauth;
 pub mod prefs;
 pub mod presets;
