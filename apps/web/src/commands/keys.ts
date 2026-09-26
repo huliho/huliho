@@ -17,9 +17,9 @@ const APPLE = /Mac|iPhone|iPad|iPod/u;
 // The bare modifiers, which never form a chord of their own.
 const MODIFIERS = new Set(["Shift", "Control", "Meta", "Alt", "AltGraph", "CapsLock"]);
 // What a key cap shows for a key the event names in words.
-const LEGENDS = new Map([
+export const LEGENDS: ReadonlyMap<string, string> = new Map([
   ["Escape", "esc"],
-  ["Enter", "↵"],
+  ["Enter", "enter"],
   ["ArrowUp", "↑"],
   ["ArrowDown", "↓"],
 ]);
@@ -78,19 +78,18 @@ function legend(key: string, combined: boolean): string {
   return combined ? key.toUpperCase() : key;
 }
 
-// What a cap shows for one chord: the modifiers as the platform draws
-// them, then the key.
+// What a cap shows for one chord: the modifiers by the platform's names,
+// then the key.
 export function chordText(chord: Chord): string {
-  const apple = isApple();
   const parts: string[] = [];
   if (chord.mod === true) {
-    parts.push(apple ? "⌘" : "Ctrl");
+    parts.push(isApple() ? "Cmd" : "Ctrl");
   }
   if (chord.shift === true) {
-    parts.push(apple ? "⇧" : "Shift");
+    parts.push("Shift");
   }
   parts.push(legend(chord.key, chord.mod === true));
-  return parts.join(apple ? "" : "+");
+  return parts.join("+");
 }
 
 // A sequence reads as its chords with a space between them.

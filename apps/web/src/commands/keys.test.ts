@@ -2,12 +2,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import { readFileSync } from "node:fs";
+
 import { afterEach, expect, test, vi } from "vitest";
 
-import { chordOf, chordText, keysText, sameKeys } from "./keys";
+import { LEGENDS, chordOf, chordText, keysText, sameKeys } from "./keys";
 
 const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
 const WINDOWS = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+// Vitest runs with apps/web as its root, so this relative path reaches the fonts file.
+const FONTS_CSS = readFileSync("src/styles/fonts.css", "utf8");
+// The code points the self-hosted mono faces declare, each as [first, last].
+const MONO_RANGES = FONTS_CSS.split("@font-face")
+  .filter((face) => face.includes('"IBM Plex Mono"'))
+  .flatMap((face) => face.match(/U\+[0-9A-F-]+/gu) ?? [])
+  .map((range): [number, number] => {
+    const [first = "", last = first] = range.replace("U+", "").split("-");
+    return [Number.parseInt(first, 16), Number.parseInt(last, 16)];
+  });
+
+function outsideMonoFonts(text: string): string[] {
+  return Array.from(text).filter((char) => {
+    const point = char.codePointAt(0) ?? Number.NaN;
+    return !MONO_RANGES.some(([first, last]) => point >= first && point <= last);
+  });
+}
 
 function onPlatform(userAgent: string): void {
   vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
@@ -21,10 +40,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("a cap shows the modifiers as the platform draws them", () => {
+test("a cap names the command key as the platform does", () => {
   onPlatform(MAC);
-  expect(chordText({ key: "k", mod: true })).toBe("⌘K");
-  expect(chordText({ key: "l", mod: true, shift: true })).toBe("⌘⇧L");
+  expect(chordText({ key: "k", mod: true })).toBe("Cmd+K");
+  expect(chordText({ key: "l", mod: true, shift: true })).toBe("Cmd+Shift+L");
   expect(keysText([{ key: "g" }, { key: "i" }])).toBe("g i");
   onPlatform(WINDOWS);
   expect(chordText({ key: "k", mod: true })).toBe("Ctrl+K");
@@ -33,10 +52,19 @@ test("a cap shows the modifiers as the platform draws them", () => {
 
 test("a key the event names in words shows its legend", () => {
   expect(chordText({ key: "Escape" })).toBe("esc");
-  expect(chordText({ key: "Enter" })).toBe("↵");
+  expect(chordText({ key: "Enter" })).toBe("enter");
   expect(chordText({ key: "ArrowDown" })).toBe("↓");
   expect(chordText({ key: "?" })).toBe("?");
   expect(keysText([])).toBe("");
+});
+
+test("every legend and modifier is drawn from the self-hosted mono fonts", () => {
+  const drawn = [...LEGENDS.values()];
+  for (const platform of [MAC, WINDOWS]) {
+    onPlatform(platform);
+    drawn.push(chordText({ key: "l", mod: true, shift: true }));
+  }
+  expect(drawn.filter((text) => outsideMonoFonts(text).length > 0)).toEqual([]);
 });
 
 test("a key no command registers shows the name the event gives it", () => {
