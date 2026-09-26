@@ -14,8 +14,9 @@
   position: fixed;
   inset-block: 0;
   inset-inline-start: 0;
+  display: flex;
+  flex-direction: column;
   inline-size: min(var(--hhx-measure-narrow), calc(100% - var(--hhx-space-6)));
-  overflow: auto;
   border-inline-end: var(--hhx-border-width) solid var(--hh-border);
   background: var(--hh-surface);
   box-shadow: 0 0 0 var(--hhx-halo-width) var(--hh-accent-tint);
@@ -25,9 +26,17 @@
 }
 
 .bar {
+  flex: none;
   display: flex;
   justify-content: flex-end;
   padding: var(--hhx-space-2) var(--hhx-space-2) 0;
+}
+
+/* The bar keeps its place and the content under it scrolls on its own. */
+.body {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
 }
 
 .backdrop[data-starting-style],

@@ -220,6 +220,13 @@ test("the account menu shows each inbox's unread count and the mark words of the
   await page.setViewportSize(VIEWPORTS[0]);
   await page.getByRole("button", { name: "Mailboxes and accounts" }).click();
   const sheet = page.getByRole("dialog", { name: "Mailboxes and accounts" });
+  // The panel has no room to scroll, so a focus inside it moves nothing.
+  const close = sheet.getByRole("button", { name: "Close" });
+  const closeTop = (await close.boundingBox())?.y;
+  expect(closeTop).toBeDefined();
+  await sheet.getByRole("treeitem").last().focus();
+  expect(await sheet.evaluate((panel) => panel.scrollHeight - panel.clientHeight)).toBe(0);
+  expect((await close.boundingBox())?.y).toBe(closeTop);
   await sheet.getByRole("button", { name: CONNECTED.address }).click();
   await expect(menu.getByText("23 unread")).toHaveCount(ROWS.length);
   await expect.soft(page).toHaveScreenshot("banner-menu-light-phone.png");
