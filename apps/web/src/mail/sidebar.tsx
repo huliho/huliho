@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { AccountRow } from "@huliho/core";
+import type { AccountRow, MailCache } from "@huliho/core";
 
 import { Skeleton } from "../design-system/skeleton";
 import { m } from "../paraglide/messages.js";
@@ -17,6 +17,7 @@ const SKELETON_ROW_COUNT = 6;
 
 export interface SidebarProps {
   locale: Locale;
+  cache: MailCache;
   accounts: readonly AccountRow[];
   account: AccountRow;
   tree: TreeState;
@@ -38,11 +39,12 @@ function TreeSkeleton({ locale }: { locale: Locale }) {
 // The account switcher over the mailbox tree: the whole sidebar at the
 // desktop width, the sheet's content at the other two.
 export function Sidebar(props: SidebarProps) {
-  const { locale, accounts, account, tree } = props;
+  const { locale, cache, accounts, account, tree } = props;
   return (
     <nav className={styles.sidebar} aria-label={m.mail_sidebar({}, { locale })}>
       <AccountSwitcher
         locale={locale}
+        cache={cache}
         accounts={accounts}
         account={account}
         variant="full"

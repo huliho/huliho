@@ -3,31 +3,19 @@
 // Additional terms apply, see NOTICE.
 
 import { JmapError } from "@huliho/core";
-import type { ListPage, Mailbox, ReadingPane, ThreadDetail } from "@huliho/core";
-import { queryKeys } from "@huliho/state";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-} from "@tanstack/react-router";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import type { ListPage, Mailbox, ThreadDetail } from "@huliho/core";
+import { act, fireEvent, screen, within } from "@testing-library/react";
+import { beforeEach, expect, test, vi } from "vitest";
 
 import type { Lease } from "../cache/coordinator";
-import { dispatchKey } from "../commands/registry";
-import { ACCOUNTS, INBOX_PAGE, MAILBOXES, THREAD_ID } from "./fixtures";
-import { InboxRedirect } from "./inbox-redirect";
+import { INBOX_PAGE, MAILBOXES, THREAD_ID } from "./fixtures";
 import { LIST_DEFAULT_ROWS, LIST_MIN_ROWS, PANE_MIN_HEIGHT_PX } from "./list-height";
 import { LIST_WIDTH_DEFAULT_PX, PANE_MIN_WIDTH_PX } from "./list-width";
-import { MailShell } from "./mail-shell";
-import { MailboxPane } from "./mailbox-pane";
-import { ROW_HEIGHT_FALLBACK_PX, TOOLBAR_HEIGHT_FALLBACK_PX } from "./use-token-px";
+import { FRAME_HEIGHT_PX, command, layout, mockShellBox, renderShell, rows } from "./shell-rig";
 
 const mailboxes = vi.hoisted(() => vi.fn<(accountId: string) => Promise<Mailbox[]>>());
 const attach = vi.hoisted(() => vi.fn<(lease: Lease) => () => void>(() => () => undefined));
+const polled = vi.hoisted(() => vi.fn<() => void>());
 vi.mock("../cache/client", async () => {
   const fixtures = await import("./fixtures");
   return {
@@ -39,10 +27,10 @@ vi.mock("../cache/client", async () => {
     },
     attachCache: attach,
     clearCache: vi.fn<() => Promise<void>>(() => Promise.resolve()),
+    pollCache: polled,
   };
 });
 
-const PROBE_INTERVAL_MINUTES = 15;
 // A frame and a side panel, in CSS pixels, that leave less room than the stored width asks.
 const FRAME_PX = 1200;
 const NARROWER_FRAME_PX = 1000;
@@ -50,129 +38,17 @@ const SIDE_PX = 240;
 const STORED_LIST_WIDTH_PX = 1360;
 // A frame that leaves the design's default less room than it asks.
 const TIGHT_FRAME_PX = 900;
-// The list's box in the test, which jsdom gives no element.
-const VIEW_HEIGHT_PX = 520;
-// The frame's height, for the pane below the list.
-const FRAME_HEIGHT_PX = 900;
 // A frame too short for the list's least height and the pane's together.
 const SHORT_FRAME_HEIGHT_PX = 400;
 const THREAD_PATH = `/mail/acc-1/mb-inbox/${THREAD_ID}`;
 const SUBJECT = "Offerte badkamerrenovatie, herziene versie";
-// Whether the width queries match: every one at the desktop width, none on a phone.
-let wide = true;
 
-// The shell at the desktop width, with the accounts the guard would
-// have fetched and the reading pane where the preference puts it.
-function renderShell(path: string, readingPane: ReadingPane = "right") {
-  const rootRoute = createRootRoute();
-  const signedInRoute = createRoute({ getParentRoute: () => rootRoute, id: "signed-in" });
-  const homeRoute = createRoute({
-    getParentRoute: () => signedInRoute,
-    path: "/",
-    component: () => <p>home</p>,
-  });
-  const mailRoute = createRoute({
-    getParentRoute: () => signedInRoute,
-    path: "/mail/$accountId",
-    component: MailShell,
-  });
-  const indexRoute = createRoute({
-    getParentRoute: () => mailRoute,
-    path: "/",
-    component: InboxRedirect,
-  });
-  const mailboxRoute = createRoute({
-    getParentRoute: () => mailRoute,
-    path: "/$mailboxId",
-    component: MailboxPane,
-  });
-  const threadRoute = createRoute({ getParentRoute: () => mailboxRoute, path: "/$threadId" });
-  const router = createRouter({
-    routeTree: rootRoute.addChildren([
-      signedInRoute.addChildren([
-        homeRoute,
-        mailRoute.addChildren([indexRoute, mailboxRoute.addChildren([threadRoute])]),
-      ]),
-    ]),
-    history: createMemoryHistory({ initialEntries: [path] }),
-  });
-  const queryClient = new QueryClient();
-  queryClient.setQueryData(queryKeys.accounts, {
-    accounts: ACCOUNTS,
-    probeIntervalMinutes: PROBE_INTERVAL_MINUTES,
-  });
-  queryClient.setQueryData(queryKeys.preferences, { readingPane });
-  render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
-  );
-  return router;
-}
-
-function command(key: string): void {
-  act(() => {
-    dispatchKey(new KeyboardEvent("keydown", { key }));
-  });
-}
-
-// The list's height at `count` rows under its header, at the fallback sizes jsdom leaves.
-function rows(count: number): number {
-  return TOOLBAR_HEIGHT_FALLBACK_PX + count * ROW_HEIGHT_FALLBACK_PX;
-}
-
-// jsdom has no ResizeObserver; the frame watches its side panel with
-// one and the virtualizer its scroll box.
-class StillObserver {
-  observe(): void {
-    return undefined;
-  }
-
-  unobserve(): void {
-    return undefined;
-  }
-
-  disconnect(): void {
-    return undefined;
-  }
-}
+mockShellBox();
 
 beforeEach(() => {
-  localStorage.clear();
-  wide = true;
   mailboxes.mockReset();
   mailboxes.mockResolvedValue(MAILBOXES);
   attach.mockClear();
-  vi.stubGlobal("ResizeObserver", StillObserver);
-  vi.stubGlobal("scrollTo", vi.fn<typeof scrollTo>());
-  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
-    configurable: true,
-    value: vi.fn<() => void>(),
-  });
-  // Every box is the view's height, but the seam, which takes nothing of the flow.
-  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
-    this: HTMLElement,
-  ) {
-    return this.getAttribute("role") === "separator" ? 0 : VIEW_HEIGHT_PX;
-  });
-  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(FRAME_HEIGHT_PX);
-  // Every width query matches: the desktop layout; none matches on a phone.
-  vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: wide,
-    media: query,
-    addEventListener() {
-      return undefined;
-    },
-    removeEventListener() {
-      return undefined;
-    },
-  }));
-});
-
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
 });
 
 test("the shell names the mailbox, draws the tree and leases the worker the watched mailbox", async () => {
@@ -245,9 +121,8 @@ test("an empty mailbox says so; an account without mailboxes says that", async (
   expect(screen.getByRole("link", { name: "Open Inbox" }).getAttribute("href")).toBe(
     "/mail/acc-1/mb-inbox",
   );
-  cleanup();
   mailboxes.mockResolvedValue([]);
-  renderShell("/mail/acc-1");
+  renderShell("/mail/acc-2");
   expect(await screen.findByText("This account has no mailboxes to show yet.")).toBeDefined();
 });
 
@@ -259,7 +134,8 @@ test("a tree that fails to load says so and Try again fetches it again", async (
   expect(screen.queryByRole("tree")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   expect(await screen.findByRole("heading", { level: 1, name: "Inbox" })).toBeDefined();
-  expect(mailboxes).toHaveBeenCalledTimes(2);
+  // The switcher reads the other account's tree beside; this one was asked twice.
+  expect(mailboxes.mock.calls.filter(([accountId]) => accountId === "acc-1")).toHaveLength(2);
 });
 
 test("an account the session does not hold sends the visit to the root", async () => {
@@ -366,7 +242,7 @@ test("a thread reached by its address stays unmarked through a second open, so c
 });
 
 test("below the list the seam turns and sizes the list in rows under its header", async () => {
-  renderShell(THREAD_PATH, "bottom");
+  renderShell(THREAD_PATH, { readingPane: "bottom" });
   await screen.findByRole("heading", { level: 2, name: SUBJECT });
   const main = screen.getByRole("main");
   const seam = screen.getByRole("separator", { name: "Resize the list" });
@@ -386,7 +262,7 @@ test("below the list the seam turns and sizes the list in rows under its header"
 
 test("a frame too short for the list and the pane keeps the list at its least", async () => {
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(SHORT_FRAME_HEIGHT_PX);
-  renderShell(THREAD_PATH, "bottom");
+  renderShell(THREAD_PATH, { readingPane: "bottom" });
   await screen.findByRole("heading", { level: 2, name: SUBJECT });
   expect(SHORT_FRAME_HEIGHT_PX).toBeLessThan(rows(LIST_MIN_ROWS) + PANE_MIN_HEIGHT_PX);
   const seam = screen.getByRole("separator", { name: "Resize the list" });
@@ -397,7 +273,7 @@ test("a frame too short for the list and the pane keeps the list at its least", 
 });
 
 test("with the pane off the thread is a screen over the list, which is out of reach until it closes", async () => {
-  const router = renderShell(THREAD_PATH, "off");
+  const router = renderShell(THREAD_PATH, { readingPane: "off" });
   const title = await screen.findByRole("heading", { level: 1, name: SUBJECT });
   expect(document.activeElement).toBe(title);
   expect(screen.queryByRole("complementary")).toBeNull();
@@ -417,7 +293,7 @@ test("with the pane off the thread is a screen over the list, which is out of re
 });
 
 test("a phone opens the thread as a screen whatever the preference says", async () => {
-  wide = false;
+  layout.wide = false;
   renderShell(THREAD_PATH);
   await screen.findByRole("heading", { level: 1, name: SUBJECT });
   expect(screen.queryByRole("complementary")).toBeNull();

@@ -240,6 +240,19 @@ export async function startConsent(input: ConsentInput): Promise<StartedConsent>
   return startedConsentSchema.parse(await response.json());
 }
 
+// Cancel on the card: ends the caller's own open consent, so a window
+// still at the provider lands nothing. One already gone is the outcome
+// asked for, so 404 passes.
+export async function endConsent(id: string): Promise<void> {
+  const response = await reach(`${CONSENT_PENDING_ENDPOINT}/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: CSRF_HEADERS,
+  });
+  if (!response.ok && response.status !== 404) {
+    throw await failureOf(response);
+  }
+}
+
 // Where a consent stands; a 404 is one that ran out or was never this user's.
 export async function fetchConsent(id: string): Promise<ConsentOutcome> {
   const response = await reach(`${CONSENT_PENDING_ENDPOINT}/${encodeURIComponent(id)}`);

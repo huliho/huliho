@@ -106,6 +106,12 @@ async function requestPersistence(): Promise<void> {
   }
 }
 
+// Asks the worker for a poll now, as a tab's return to view does: what
+// a retry brought back is fetched without waiting for the interval.
+export function pollCache(): void {
+  void worker().focus();
+}
+
 // Keeps the worker told about this tab: its lease on mount and at the
 // renewal interval, a poll when the tab comes back into view.
 export function attachCache(lease: Lease): () => void {
@@ -135,6 +141,8 @@ function isMailQuery(queryKey: readonly unknown[]): boolean {
 // A change lands as an invalidation of the queries it names. A cleared
 // database takes every mail query with it and, when another tab did it,
 // hands the rest to the caller, since the session that owned it ended.
+// An account the server stopped, or runs again, refetches the accounts
+// list, which the banner and the switcher's marks read.
 export function applyCacheMessage(
   queryClient: QueryClient,
   message: CacheMessage,
@@ -145,6 +153,10 @@ export function applyCacheMessage(
     if (message.by !== TAB) {
       onCleared();
     }
+    return;
+  }
+  if (message.kind === "account") {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.accounts });
     return;
   }
   const { accountId } = message;

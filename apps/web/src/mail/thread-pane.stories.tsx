@@ -16,7 +16,7 @@ import {
   threadDetail,
 } from "./fixtures";
 import type { ThreadAnswer } from "./fixtures";
-import { ReadingPane, ThreadScreen } from "./reading-pane";
+import { ReadingPane, ThreadScreen, prefetchThreadPane } from "./reading-pane";
 import type { OpenThread } from "./reading-pane";
 import { routed } from "./story-router";
 
@@ -49,8 +49,16 @@ function paned(answer: ThreadAnswer): JSX.Element {
   ));
 }
 
+// The pane comes as a chunk of its own; every story waits for it before
+// it renders, so no screenshot shows the still cards in its place.
 const meta: Meta = {
   title: "Mail/ThreadPane",
+  loaders: [
+    async () => {
+      await prefetchThreadPane();
+      return {};
+    },
+  ],
 };
 
 export default meta;

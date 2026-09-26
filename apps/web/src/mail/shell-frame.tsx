@@ -34,6 +34,7 @@ import styles from "./shell-frame.module.css";
 // What the sidebar, the rail and the list pane all take.
 interface Shared {
   locale: Locale;
+  cache: MailCache;
   accounts: readonly AccountRow[];
   account: AccountRow;
   tree: TreeState;
@@ -43,7 +44,6 @@ interface Shared {
 interface ShellFrameProps extends Shared {
   layout: Layout;
   readingPane: PanePreference;
-  cache: MailCache;
   currentThreadId: string | undefined;
   onCloseThread: () => void;
   // What the list pane shows under its header.
@@ -327,7 +327,7 @@ export function ShellFrame(props: ShellFrameProps) {
   const sheet = useSheet();
   const position = positionOf(layout, readingPane);
   const list = useListSize({ frame, side, seam }, position);
-  const shared = { locale, accounts, account, tree, currentMailboxId };
+  const shared = { locale, cache, accounts, account, tree, currentMailboxId };
   const sidebar = (
     <PaneBoundary>
       <Sidebar {...shared} showLetters={layout === "desktop"} onNavigate={sheet.hide} />

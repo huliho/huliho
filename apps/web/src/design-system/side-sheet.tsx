@@ -31,7 +31,7 @@ export function SideSheet({ open, onOpenChange, label, closeLabel, children }: S
               <X className={iconButton.icon} aria-hidden="true" />
             </Dialog.Close>
           </div>
-          {children}
+          <div className={styles.body}>{children}</div>
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>

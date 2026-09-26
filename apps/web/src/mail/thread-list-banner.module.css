@@ -1,0 +1,55 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* The action wraps under the sentence where the list is narrow. */
+.banner {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--hhx-space-2) var(--hhx-space-3);
+  padding: var(--hhx-space-3) var(--hhx-pane-padding);
+  border-block-end: var(--hhx-border-width) solid var(--hh-border);
+  background: var(--hh-bg);
+  color: var(--hh-text);
+  transition: opacity var(--hhx-duration-flip) var(--hhx-ease);
+}
+
+/* The status region stays in the DOM, empty and without a footprint. */
+.banner[data-idle] {
+  padding: 0;
+  border: none;
+  overflow: hidden;
+}
+
+.banner[data-leaving] {
+  opacity: 0;
+}
+
+/* The role color sits on the icon alone; the sentence stays text. */
+.icon {
+  flex: none;
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
+}
+
+.banner[data-cause="expired"] .icon {
+  color: var(--hh-danger);
+}
+
+.banner[data-cause="stopped"] .icon {
+  color: var(--hh-warn);
+}
+
+.sentence {
+  flex: 1 1 var(--hhx-row-facts-min);
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banner {
+    transition: none;
+  }
+}

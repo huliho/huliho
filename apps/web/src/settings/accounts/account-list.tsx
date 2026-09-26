@@ -7,6 +7,8 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 
+import { RetryButton } from "../../accounts/retry-button";
+import type { RetryOutcome, RetryOutcomes } from "../../accounts/use-retry-account";
 import { Avatar } from "../../design-system/avatar";
 import { Button } from "../../design-system/button";
 import buttonStyles from "../../design-system/button.module.css";
@@ -17,7 +19,6 @@ import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
 import { captionOf } from "./caption";
 import type { RowCaption } from "./caption";
-import type { RetryOutcome, RetryOutcomes } from "./use-retry-account";
 import styles from "./account-list.module.css";
 
 export interface AccountListProps {
@@ -86,21 +87,15 @@ function StateAction({ row, locale, outcome, onRetry }: ItemProps) {
   if (row.stoppedCause === null) {
     return null;
   }
-  const pending = outcome === "pending";
   return (
-    <Button
-      aria-label={
-        pending
-          ? m.accounts_retrying_for({ name }, { locale })
-          : m.accounts_retry_for({ name }, { locale })
-      }
-      pending={pending}
-      onClick={() => {
+    <RetryButton
+      locale={locale}
+      name={name}
+      pending={outcome === "pending"}
+      onRetry={() => {
         onRetry(row.id);
       }}
-    >
-      {pending ? m.accounts_retrying({}, { locale }) : m.accounts_retry({}, { locale })}
-    </Button>
+    />
   );
 }
 

@@ -6,7 +6,7 @@ import { JmapError } from "@huliho/core";
 import type { MailCache, ThreadDetail } from "@huliho/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, expect, test, vi } from "vitest";
 
 import { dispatchKey } from "../commands/registry";
 import {
@@ -19,9 +19,14 @@ import {
   threadDetail,
 } from "./fixtures";
 import type { ThreadAnswer } from "./fixtures";
-import { ReadingPane, ThreadScreen } from "./reading-pane";
+import { ReadingPane, ThreadScreen, prefetchThreadPane } from "./reading-pane";
 import type { OpenThread } from "./reading-pane";
 import type { PanePosition } from "./thread-pane";
+
+// The pane's code is in before the first render, as the shell has it.
+beforeAll(async () => {
+  await prefetchThreadPane();
+});
 
 const INBOX = MAILBOXES.find((mailbox) => mailbox.id === INBOX_ID);
 const OPEN: OpenThread = { accountId: FASTMAIL.id, threadId: THREAD_ID, mailbox: INBOX };

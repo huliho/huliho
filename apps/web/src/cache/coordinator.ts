@@ -13,7 +13,14 @@ import {
   revealNewMail,
   syncMailboxes,
 } from "@huliho/core";
-import type { AppliedChanges, ListPage, MailStore, Mailbox, ThreadDetail } from "@huliho/core";
+import type {
+  AppliedChanges,
+  ListPage,
+  MailStore,
+  Mailbox,
+  StopCause,
+  ThreadDetail,
+} from "@huliho/core";
 
 import type { Locks } from "./locks";
 import type { CacheMessage } from "./messages";
@@ -81,6 +88,8 @@ interface Account {
   // The next poll; null while one runs.
   timer: ReturnType<typeof setTimeout> | null;
   lastPoll: number;
+  // Whether the last poll found the account stopped on the server.
+  stopped: boolean;
 }
 
 interface Watched {
@@ -175,7 +184,12 @@ export class Coordinator {
   private setAccounts(ids: readonly string[], fresh: boolean): void {
     for (const accountId of ids) {
       if (!this.accounts.has(accountId)) {
-        this.accounts.set(accountId, { client: this.client(accountId), timer: null, lastPoll: 0 });
+        this.accounts.set(accountId, {
+          client: this.client(accountId),
+          timer: null,
+          lastPoll: 0,
+          stopped: false,
+        });
         this.schedule(accountId, 0);
       }
     }
@@ -296,7 +310,19 @@ export class Coordinator {
       }
       return;
     }
+    this.noteStop(account, accountId, outcome.ok ? null : outcome.failure.stopCause);
     this.schedule(accountId, await this.pollDelay(accountId));
+  }
+
+  // Every tab hears when the server stops an account, so the banner
+  // lands with the next poll; once the account runs again they hear
+  // that once.
+  private noteStop(account: Account, accountId: string, stoppedCause: StopCause | null): void {
+    const stopped = stoppedCause !== null;
+    if (stopped || account.stopped) {
+      this.deps.post({ kind: "account", accountId, stoppedCause });
+    }
+    account.stopped = stopped;
   }
 
   // The next poll comes sooner while any mailbox of the account is

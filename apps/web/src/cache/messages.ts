@@ -2,18 +2,36 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { AppliedChanges } from "@huliho/core";
+import type { AppliedChanges, StopCause } from "@huliho/core";
 
 // The channel every tab listens on for what the worker changed.
 export const CACHE_CHANNEL = "huliho-cache";
 
 // `cleared` names the tab that signed out, so that tab can tell its own
-// word from another tab's.
+// word from another tab's; `account` says the server stopped an
+// account, or runs it again, as the worker's poll last found it.
 export type CacheMessage =
-  ({ kind: "changed"; accountId: string } & AppliedChanges) | { kind: "cleared"; by: string };
+  | ({ kind: "changed"; accountId: string } & AppliedChanges)
+  | { kind: "cleared"; by: string }
+  | { kind: "account"; accountId: string; stoppedCause: StopCause | null };
+
+const STOP_CAUSES: readonly StopCause[] = ["credentials", "connection"];
 
 function isStringList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isStopCause(value: unknown): value is StopCause | null {
+  return value === null || STOP_CAUSES.some((cause) => cause === value);
+}
+
+function account(fields: ReadonlyMap<string, unknown>): CacheMessage | null {
+  const accountId = fields.get("accountId");
+  const stoppedCause = fields.get("stoppedCause");
+  if (typeof accountId !== "string" || !isStopCause(stoppedCause)) {
+    return null;
+  }
+  return { kind: "account", accountId, stoppedCause };
 }
 
 function changed(fields: ReadonlyMap<string, unknown>): CacheMessage | null {
@@ -40,6 +58,9 @@ export function readCacheMessage(value: unknown): CacheMessage | null {
   if (kind === "cleared") {
     const by = fields.get("by");
     return typeof by === "string" ? { kind, by } : null;
+  }
+  if (kind === "account") {
+    return account(fields);
   }
   return kind === "changed" ? changed(fields) : null;
 }

@@ -46,9 +46,17 @@
   display: grid;
 }
 
+/* The name and its mark on one line; only the name clips. */
 .name {
-  overflow: hidden;
+  display: flex;
+  align-items: baseline;
+  gap: var(--hhx-space-2);
+  min-inline-size: 0;
   font-weight: 600;
+}
+
+.nameText {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -59,6 +67,21 @@
   color: var(--hh-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* One word after the name; the color groups it, the word carries it. */
+.mark {
+  flex: none;
+  font-size: var(--hhx-type-1);
+  font-weight: 600;
+}
+
+.markDanger {
+  color: var(--hh-danger);
+}
+
+.markWarn {
+  color: var(--hh-warn);
 }
 
 .chevron {

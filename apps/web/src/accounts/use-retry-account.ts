@@ -3,14 +3,14 @@
 // Additional terms apply, see NOTICE.
 
 import { AccountsError, retryAccount } from "@huliho/core";
-import type { AccountList, AccountRow, AccountsFailureCode } from "@huliho/core";
+import type { AccountList, AccountRow, AccountsFailureCode, StopCause } from "@huliho/core";
 import { queryKeys } from "@huliho/state";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { useSessionEnded } from "../../auth/use-session-ended";
-import type { Locale } from "../../paraglide/runtime.js";
+import { useSessionEnded } from "../auth/use-session-ended";
+import type { Locale } from "../paraglide/runtime.js";
 
 // What the last retry of a row did, as the row shows it; failed covers
 // every retry that settled nothing, whatever refused it along the way.
@@ -46,9 +46,16 @@ function patchRow(
   );
 }
 
+// What a retry's answer tells the caller before the row is patched, so
+// a control that leaves with it can hand the focus on.
+export interface RetryEvents {
+  onResumed?: (id: string) => void;
+  onStillStopped?: (id: string, cause: StopCause) => void;
+}
+
 // One mutation runs every retry; the outcome per row lives beside it, so
 // two rows can retry at once and each says its own.
-export function useRetryAccount(locale: Locale): AccountRetry {
+export function useRetryAccount(locale: Locale, events: RetryEvents = {}): AccountRetry {
   const queryClient = useQueryClient();
   const sessionEnded = useSessionEnded(locale);
   const [outcomes, setOutcomes] = useState<RetryOutcomes>({});
@@ -63,11 +70,13 @@ export function useRetryAccount(locale: Locale): AccountRetry {
     onSuccess: (result, id) => {
       if (result.status === "resumed") {
         const { account } = result;
+        events.onResumed?.(id);
         patchRow(queryClient, id, () => account);
         mark(id, "resumed");
         return;
       }
       const { cause } = result;
+      events.onStillStopped?.(id, cause);
       patchRow(queryClient, id, (row) => ({ ...row, stoppedCause: cause }));
       mark(id, "stillStopped");
     },

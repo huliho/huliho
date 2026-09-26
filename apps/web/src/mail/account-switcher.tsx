@@ -2,86 +2,78 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { AccountRow } from "@huliho/core";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ChevronDown } from "lucide-react";
+import { Suspense, use, useRef, useState } from "react";
+import type { RefObject } from "react";
 
-import { useSignOut } from "../auth/use-sign-out";
-import { Avatar } from "../design-system/avatar";
-import {
-  MenuItem,
-  MenuLinkItem,
-  MenuPopup,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuRoot,
-  MenuSeparator,
-  MenuTrigger,
-} from "../design-system/menu";
 import { m } from "../paraglide/messages.js";
-import type { Locale } from "../paraglide/runtime.js";
-import styles from "./account-switcher.module.css";
+import { chunk } from "../shell/chunk";
+import { AccountCard, triggerClass } from "./account-card";
+import type { AccountSwitcherProps } from "./account-card";
 
-interface AccountSwitcherProps {
-  locale: Locale;
-  accounts: readonly AccountRow[];
-  account: AccountRow;
-  // The full row names the account; the avatar alone fits the rail.
-  variant: "full" | "avatar";
-  // Told when another account opens, so a sheet around the menu can close.
-  onNavigate?: (() => void) | undefined;
+// The menu's code is a chunk of its own, outside the initial bundle;
+// the shell fetches it on mount, so the first open finds it in.
+export const prefetchAccountMenu = chunk(() => import("./account-menu"));
+
+interface WaitingTriggerProps extends AccountSwitcherProps {
+  onWant: () => void;
+  // Told whether the stand-in holds the focus, read once the chunk lands.
+  onHeld: (held: boolean) => void;
 }
 
-function AccountFacts({ account }: { account: AccountRow }) {
+// Until the menu's code is in, the trigger is a plain button of the
+// same shape; a press on it opens the menu the moment it lands.
+function WaitingTrigger({ locale, account, variant, onWant, onHeld }: WaitingTriggerProps) {
   return (
-    <span className={styles.facts}>
-      <span className={styles.name}>{account.name}</span>
-      <span className={styles.address}>{account.address}</span>
-    </span>
+    <button
+      type="button"
+      className={triggerClass(variant)}
+      aria-haspopup="menu"
+      aria-expanded={false}
+      aria-label={variant === "avatar" ? m.mail_account_menu({}, { locale }) : undefined}
+      onClick={onWant}
+      onFocus={() => {
+        onHeld(true);
+      }}
+      onBlur={() => {
+        onHeld(false);
+      }}
+    >
+      <AccountCard locale={locale} account={account} variant={variant} />
+    </button>
   );
 }
 
-// The account at the top of the sidebar and the menu behind it: every
-// account of the session, Settings and Sign out.
+interface LoadedProps extends AccountSwitcherProps {
+  openOnMount: boolean;
+  takeFocus: RefObject<boolean>;
+}
+
+function LoadedAccountMenu(props: LoadedProps) {
+  const { AccountMenu } = use(prefetchAccountMenu());
+  return <AccountMenu {...props} />;
+}
+
+// The account at the top of the sidebar with its menu behind it; the
+// menu's code comes as its own chunk, the trigger standing in for it
+// while it loads.
 export function AccountSwitcher(props: AccountSwitcherProps) {
-  const { locale, accounts, account, variant } = props;
-  const navigate = useNavigate();
-  const signOut = useSignOut(locale);
-  const open = (next: unknown): void => {
-    if (typeof next === "string" && next !== account.id) {
-      void navigate({ to: "/mail/$accountId", params: { accountId: next } });
-      props.onNavigate?.();
-    }
-  };
+  const [wanted, setWanted] = useState(false);
+  const held = useRef(false);
   return (
-    <MenuRoot>
-      <MenuTrigger
-        className={variant === "full" ? styles.trigger : styles.avatarTrigger}
-        aria-label={variant === "avatar" ? m.mail_account_menu({}, { locale }) : undefined}
-      >
-        <Avatar name={account.name} locale={locale} />
-        {variant === "full" && (
-          <>
-            <AccountFacts account={account} />
-            <ChevronDown className={styles.chevron} aria-hidden="true" />
-          </>
-        )}
-      </MenuTrigger>
-      <MenuPopup>
-        <MenuRadioGroup value={account.id} onValueChange={open}>
-          {accounts.map((row) => (
-            <MenuRadioItem key={row.id} value={row.id}>
-              <Avatar name={row.name} locale={locale} />
-              <AccountFacts account={row} />
-            </MenuRadioItem>
-          ))}
-        </MenuRadioGroup>
-        <MenuSeparator />
-        <MenuLinkItem render={<Link to="/settings" />}>
-          {m.settings_title({}, { locale })}
-        </MenuLinkItem>
-        <MenuItem onClick={signOut}>{m.signout_action({}, { locale })}</MenuItem>
-      </MenuPopup>
-    </MenuRoot>
+    <Suspense
+      fallback={
+        <WaitingTrigger
+          {...props}
+          onWant={() => {
+            setWanted(true);
+          }}
+          onHeld={(now) => {
+            held.current = now;
+          }}
+        />
+      }
+    >
+      <LoadedAccountMenu {...props} openOnMount={wanted} takeFocus={held} />
+    </Suspense>
   );
 }

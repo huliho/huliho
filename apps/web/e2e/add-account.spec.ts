@@ -15,6 +15,7 @@ import {
   accountRow,
   mockAccounts,
 } from "./account-mocks";
+import { mockMail } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
 import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
@@ -81,8 +82,9 @@ test("a Fastmail address takes three stops and two typed fields; the token goes 
   const { adds } = await openCard(page, { discover: [FASTMAIL_FOUND] });
   const walk = await walkDiscovered(page, FASTMAIL_ADDRESS, "API token", TOKEN);
   await expect(page.getByText("Fastmail connected.")).toBeVisible();
-  await expect(page).toHaveURL(/\/settings\/accounts$/);
-  await expect(page.getByRole("list", { name: "Mail accounts" })).toContainText(FASTMAIL_ADDRESS);
+  await expect(page).toHaveURL(/\/mail\/acc-1\/mb-inbox$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /sanne@fastmail\.com/ })).toBeVisible();
   expect(walk.stops).toEqual(["typing", "found", "confirmHost"]);
   expect(walk.typed).toHaveLength(2);
   expect(adds).toEqual([
@@ -300,6 +302,7 @@ test("a reconnect asks for the credential only and replaces it on the row", asyn
   await field(page, "API token").fill(TOKEN);
   await page.getByRole("button", { name: "Connect" }).click();
   await expect(page.getByText("Fastmail connected.")).toBeVisible();
+  // A reconnect the mail screen did not send returns to the accounts page.
   await expect(page).toHaveURL(/\/settings\/accounts$/);
   expect(credentials).toEqual([{ id: "acc-1", credential: { kind: "bearer", token: TOKEN } }]);
 });

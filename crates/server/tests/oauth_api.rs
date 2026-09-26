@@ -30,6 +30,7 @@ use tower::ServiceExt;
 use url::Url;
 
 const START: &str = "/api/accounts/oauth/start";
+const PENDING: &str = "/api/accounts/oauth/pending";
 
 fn tokens() -> Answer {
     Answer::Tokens {
@@ -72,6 +73,22 @@ fn query_pairs(url: &str) -> HashMap<String, String> {
         .query_pairs()
         .map(|(key, value)| (key.into_owned(), value.into_owned()))
         .collect()
+}
+
+/// The callback as the provider window makes it, in its default language.
+fn visit<'a>(cookie: Option<&'a str>, provider: &'a str, query: &'a str) -> Visit<'a> {
+    Visit {
+        cookie,
+        provider,
+        query,
+        language: None,
+    }
+}
+
+/// Cancel on the card: the DELETE the page sends for its consent.
+async fn end(rig: &Rig, cookie: &str, state: &str) -> StatusCode {
+    let request = with_cookie(Method::DELETE, &format!("{PENDING}/{state}"), cookie);
+    rig.router.clone().oneshot(request).await.unwrap().status()
 }
 
 #[tokio::test]
@@ -213,7 +230,7 @@ async fn the_consent_url_carries_pkce_the_state_the_scopes_and_the_hint() {
 }
 
 #[tokio::test]
-async fn the_pending_route_answers_the_owner_only() {
+async fn the_pending_and_the_cancel_route_answer_the_owner_only() {
     let rig = rig().await;
     let cookie = rig.sign_in().await;
     let (_, started) = rig.start_consent(&cookie, &gmail_start_body()).await;
@@ -221,10 +238,54 @@ async fn the_pending_route_answers_the_owner_only() {
     let other = rig.sign_in_other().await;
     let (status, _) = rig.pending(&other, state).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(end(&rig, &other, state).await, StatusCode::NOT_FOUND);
     let (status, _) = rig.pending(&cookie, "no-such-state").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(
+        end(&rig, &cookie, "no-such-state").await,
+        StatusCode::NOT_FOUND
+    );
     let (status, _) = rig.pending("huliho_session=stale", state).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let signed_out = end(&rig, "huliho_session=stale", state).await;
+    assert_eq!(signed_out, StatusCode::UNAUTHORIZED);
+    let mut bare = with_cookie(Method::DELETE, &format!("{PENDING}/{state}"), &cookie);
+    bare.headers_mut().remove("x-requested-with");
+    let response = rig.router.clone().oneshot(bare).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let (_, pending) = rig.pending(&cookie, state).await;
+    assert_eq!(pending, json!({ "status": "pending" }));
+}
+
+#[tokio::test]
+async fn cancel_ends_the_owners_open_consent_so_its_callback_lands_nothing() {
+    let rig = rig().await;
+    let cookie = rig.sign_in().await;
+    let (_, started) = rig.start_consent(&cookie, &gmail_start_body()).await;
+    let state = started["state"].as_str().unwrap();
+    assert_eq!(end(&rig, &cookie, state).await, StatusCode::NO_CONTENT);
+    let (status, _) = rig.pending(&cookie, state).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(end(&rig, &cookie, state).await, StatusCode::NOT_FOUND);
+    let query = google_query(state);
+    let (status, body) = rig.callback(visit(Some(&cookie), "google", &query)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(body.contains("You can close this window."));
+    assert!(rig.token_requests().is_empty());
+    assert!(rig.imap.lines().is_empty());
+    assert!(rig.accounts(&cookie).await.is_empty());
+    // A settled consent stays as it is; its outcome is still there for the poll.
+    let (_, started) = rig.start_consent(&cookie, &gmail_start_body()).await;
+    let state = started["state"].as_str().unwrap();
+    let denied = format!("error=access_denied&state={state}");
+    let (status, _) = rig.callback(visit(Some(&cookie), "google", &denied)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(end(&rig, &cookie, state).await, StatusCode::NOT_FOUND);
+    let (_, pending) = rig.pending(&cookie, state).await;
+    assert_eq!(
+        pending,
+        json!({ "status": "denied", "cause": "accessDenied" })
+    );
 }
 
 #[tokio::test]
@@ -235,54 +296,23 @@ async fn a_callback_from_another_session_or_without_one_is_refused_and_the_conse
     let state = started["state"].as_str().unwrap();
     let query = google_query(state);
     let other = rig.sign_in_other().await;
-    for (label, visit) in [
-        (
-            "another session",
-            Visit {
-                cookie: Some(&other),
-                provider: "google",
-                query: &query,
-                language: None,
-            },
-        ),
-        (
-            "no session",
-            Visit {
-                cookie: None,
-                provider: "google",
-                query: &query,
-                language: None,
-            },
-        ),
+    for (label, call) in [
+        ("another session", visit(Some(&other), "google", &query)),
+        ("no session", visit(None, "google", &query)),
         (
             "an unknown provider word",
-            Visit {
-                cookie: Some(&cookie),
-                provider: "yahoo",
-                query: &query,
-                language: None,
-            },
+            visit(Some(&cookie), "yahoo", &query),
         ),
         (
             "the other provider",
-            Visit {
-                cookie: Some(&cookie),
-                provider: "microsoft",
-                query: &query,
-                language: None,
-            },
+            visit(Some(&cookie), "microsoft", &query),
         ),
         (
             "no state",
-            Visit {
-                cookie: Some(&cookie),
-                provider: "google",
-                query: "code=4%2Ffixture-code",
-                language: None,
-            },
+            visit(Some(&cookie), "google", "code=4%2Ffixture-code"),
         ),
     ] {
-        let (status, body) = rig.callback(visit).await;
+        let (status, body) = rig.callback(call).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{label}");
         assert!(body.contains("You can close this window."), "{label}");
     }
@@ -310,14 +340,7 @@ async fn a_callback_from_another_session_or_without_one_is_refused_and_the_conse
         pending,
         json!({ "status": "denied", "cause": "accessDenied" })
     );
-    let (status, _) = rig
-        .callback(Visit {
-            cookie: Some(&cookie),
-            provider: "google",
-            query: &query,
-            language: None,
-        })
-        .await;
+    let (status, _) = rig.callback(visit(Some(&cookie), "google", &query)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(rig.forms.lock().unwrap().is_empty());
     assert!(rig.accounts(&cookie).await.is_empty());
@@ -335,14 +358,7 @@ async fn a_failing_exchange_or_a_missing_refresh_token_denies_and_stores_nothing
         let (_, started) = rig.start_consent(&cookie, &gmail_start_body()).await;
         let state = started["state"].as_str().unwrap();
         let query = google_query(state);
-        let (status, _) = rig
-            .callback(Visit {
-                cookie: Some(&cookie),
-                provider: "google",
-                query: &query,
-                language: None,
-            })
-            .await;
+        let (status, _) = rig.callback(visit(Some(&cookie), "google", &query)).await;
         assert_eq!(status, StatusCode::OK, "{cause}");
         let (_, pending) = rig.pending(&cookie, state).await;
         assert_eq!(
@@ -372,14 +388,7 @@ async fn a_submission_server_without_auth_denies_with_the_outlook_word() {
     let (_, started) = rig.start_consent(&cookie, &gmail_start_body()).await;
     let state = started["state"].as_str().unwrap();
     let query = google_query(state);
-    let (status, _) = rig
-        .callback(Visit {
-            cookie: Some(&cookie),
-            provider: "google",
-            query: &query,
-            language: None,
-        })
-        .await;
+    let (status, _) = rig.callback(visit(Some(&cookie), "google", &query)).await;
     assert_eq!(status, StatusCode::OK);
     let (_, pending) = rig.pending(&cookie, state).await;
     assert_eq!(

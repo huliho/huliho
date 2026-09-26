@@ -146,9 +146,23 @@
         "apps/web/dist/assets/*.js",
         "!apps/web/dist/assets/worker-*.js",
         "!apps/web/dist/assets/pages-*.js",
-        "!apps/web/dist/assets/add-account-*.js"
+        "!apps/web/dist/assets/add-account-*.js",
+        "!apps/web/dist/assets/thread-pane-*.js",
+        "!apps/web/dist/assets/account-menu-*.js"
       ],
       "limit": "250 kB",
+      "gzip": true
+    },
+    {
+      "name": "thread pane chunk",
+      "path": "apps/web/dist/assets/thread-pane-*.js",
+      "limit": "100 kB",
+      "gzip": true
+    },
+    {
+      "name": "account menu chunk",
+      "path": "apps/web/dist/assets/account-menu-*.js",
+      "limit": "100 kB",
       "gzip": true
     },
     {

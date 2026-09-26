@@ -9,6 +9,7 @@ import { Link } from "@tanstack/react-router";
 import { useRef } from "react";
 import type { Ref, RefObject } from "react";
 
+import { useRetryAccount } from "../../accounts/use-retry-account";
 import buttonStyles from "../../design-system/button.module.css";
 import { cx } from "../../design-system/cx";
 import { EmptyState } from "../../design-system/empty-state";
@@ -20,7 +21,6 @@ import type { Locale } from "../../paraglide/runtime.js";
 import { SettingsSection } from "../settings-section";
 import { AccountList } from "./account-list";
 import { useRemoveAccount } from "./use-remove-account";
-import { useRetryAccount } from "./use-retry-account";
 import styles from "./accounts-page.module.css";
 
 // One or two accounts, the shape a personal list has.

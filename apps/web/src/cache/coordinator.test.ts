@@ -332,6 +332,26 @@ test("a failure reaches the tab with its code and cause", async () => {
   });
 });
 
+test("a poll that finds the account stopped tells every tab, and once more when it runs again", async () => {
+  const { server, posted } = await attached(3);
+  server.queue.push(json(409, { error: "still_stopped", cause: "connection" }));
+  await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS);
+  await settled(posts(posted, 2));
+  expect(posted[1]).toEqual({ kind: "account", accountId: ACCOUNT, stoppedCause: "connection" });
+  server.queue.push(json(409, { error: "still_stopped", cause: "connection" }));
+  await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS);
+  await settled(posts(posted, 3));
+  await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS);
+  await settled(posts(posted, 5));
+  expect(posted.slice(3)).toEqual([
+    { kind: "changed", accountId: ACCOUNT, mailboxes: false, windows: [], threads: [] },
+    { kind: "account", accountId: ACCOUNT, stoppedCause: null },
+  ]);
+  await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS);
+  await settled(posts(posted, 6));
+  expect(posted[5]).toMatchObject({ kind: "changed" });
+});
+
 test("an account that left the list stops polling and leaves no rows", async () => {
   const { server, posted, tab } = await attached(3);
   await tab.window(ACCOUNT, "inbox", 0);

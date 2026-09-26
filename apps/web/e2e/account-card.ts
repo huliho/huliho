@@ -7,6 +7,7 @@ import { expect } from "@playwright/test";
 
 import { mockAccounts } from "./account-mocks";
 import type { AccountRowBody, AccountsAnswers, Recorded } from "./account-mocks";
+import { mockMail } from "./mail-mocks";
 import { mockSignedIn } from "./session-mocks";
 import type { MockSignIn } from "./session-mocks";
 
@@ -37,6 +38,8 @@ export async function openCard(
 ): Promise<Recorded> {
   await mockSignedIn(page, "owner", signInProviders);
   const recorded = await mockAccounts(page, rows, answers);
+  // A connect lands in the new account's inbox, which needs its mail.
+  await mockMail(page);
   await page.clock.install({ time: FIXED_NOW });
   await page.goto("/accounts/new");
   await expect(page.getByRole("heading", { level: 1, name: "Add a mail account" })).toBeVisible();

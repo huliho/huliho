@@ -6,6 +6,7 @@ import {
   AccountsError,
   addAccount,
   discoverServer,
+  endConsent,
   replaceCredential,
   startConsent,
 } from "@huliho/core";
@@ -79,7 +80,8 @@ interface HeldWindow {
 interface Machine {
   dispatch: (action: Action) => void;
   held: RefObject<HeldWindow>;
-  onConnected: (name: string) => void;
+  // Told the row that connected, by id and name.
+  onConnected: (id: string, name: string) => void;
   sessionEnded: () => void;
   countdown: RetryCountdown;
 }
@@ -94,6 +96,10 @@ type Requests = ReturnType<typeof useRequests>;
 function codeOf(error: unknown): AccountsFailureCode {
   return error instanceof AccountsError ? error.code : "unavailable";
 }
+
+// How often a refused end of a consent is sent again: once, so a dropped
+// request still closes the consent the server holds open.
+const END_RETRIES = 1;
 
 // Discovery stores nothing, so a request the network dropped is safe to
 // send again; the retry waits for the browser to be back online.
@@ -167,7 +173,7 @@ function useRequests(machine: Machine) {
   };
   const connected = (row: AccountRow): void => {
     dispatch({ type: "connected" });
-    machine.onConnected(row.name);
+    machine.onConnected(row.id, row.name);
   };
   const discovery = useMutation({
     mutationFn: discoverServer,
@@ -189,12 +195,27 @@ function useRequests(machine: Machine) {
     onSuccess: connected,
     onError: failed,
   });
+  // Cancel ends the consent on the server, so a window still at the
+  // provider lands nothing. A refused end is tried once more; only a
+  // session that ended is worth a word.
+  const end = useMutation({
+    mutationFn: endConsent,
+    gcTime: 0,
+    retry: (count, error) => count < END_RETRIES && codeOf(error) !== "unauthenticated",
+    onError: (error) => {
+      if (codeOf(error) === "unauthenticated") {
+        machine.sessionEnded();
+      }
+    },
+  });
   const start = useMutation({
     mutationFn: startConsent,
     gcTime: 0,
     onSuccess: (started) => {
       if (sendWindow(held.current, started.url)) {
         dispatch({ type: "consentStarted", id: started.state });
+      } else {
+        end.mutate(started.state);
       }
     },
     onError: (error) => {
@@ -202,7 +223,7 @@ function useRequests(machine: Machine) {
       failed(error);
     },
   });
-  return { discovery, add, replace, start };
+  return { discovery, add, replace, start, end };
 }
 
 // An error outranks the data a failed refetch leaves in place; pending
@@ -229,7 +250,7 @@ function settle(machine: Machine, name: string, answer: Answer): void {
   release(held);
   if (answer.status === "done") {
     dispatch({ type: "connected" });
-    machine.onConnected(name);
+    machine.onConnected(answer.accountId, name);
     return;
   }
   dispatch({ type: "consentRefused", cause: answer.status === "gone" ? "gone" : answer.cause });
@@ -289,7 +310,7 @@ function requestActions(
 export function useAddAccount(
   locale: Locale,
   account: AccountRow | null,
-  onConnected: (name: string) => void,
+  onConnected: (id: string, name: string) => void,
 ): AddAccountFlow {
   const [state, dispatch] = useReducer(reduce, account, initialState);
   const countdown = useRetryCountdown();
@@ -324,6 +345,9 @@ export function useAddAccount(
     },
     cancelConsent: () => {
       release(held.current);
+      if (step.name === "consent" && step.id !== null) {
+        requests.end.mutate(step.id);
+      }
       dispatch({ type: "cancelConsent" });
     },
     usePassword: () => {
