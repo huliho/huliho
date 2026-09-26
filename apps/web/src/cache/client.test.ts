@@ -82,11 +82,31 @@ test("a database this tab cleared hands nothing over", async () => {
   expect(onCleared).not.toHaveBeenCalled();
 });
 
+test("an account the server stopped refetches the accounts list and nothing else", async () => {
+  const queryClient = await client();
+  const onCleared = vi.fn<() => void>();
+  applyCacheMessage(
+    queryClient,
+    { kind: "account", accountId: "a1", stoppedCause: "connection" },
+    onCleared,
+  );
+  expect(stale(queryClient)).toEqual(["accounts"]);
+  expect(onCleared).not.toHaveBeenCalled();
+});
+
 test("only a message of the worker's shape is read", () => {
   const changed = { kind: "changed", accountId: "a1", mailboxes: false, windows: [], threads: [] };
   expect(readCacheMessage(changed)).toEqual(changed);
   expect(readCacheMessage({ kind: "cleared", by: "t1" })).toEqual({ kind: "cleared", by: "t1" });
   expect(readCacheMessage({ kind: "cleared" })).toBeNull();
+  const stopped = { kind: "account", accountId: "a1", stoppedCause: "credentials" };
+  expect(readCacheMessage(stopped)).toEqual(stopped);
+  expect(readCacheMessage({ ...stopped, stoppedCause: null })).toEqual({
+    ...stopped,
+    stoppedCause: null,
+  });
+  expect(readCacheMessage({ ...stopped, stoppedCause: "other" })).toBeNull();
+  expect(readCacheMessage({ kind: "account", stoppedCause: null })).toBeNull();
   expect(readCacheMessage({ ...changed, windows: [1] })).toBeNull();
   expect(readCacheMessage({ ...changed, accountId: 1 })).toBeNull();
   expect(readCacheMessage({ kind: "other" })).toBeNull();

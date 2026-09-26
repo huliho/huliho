@@ -32,8 +32,10 @@ const GRIP_WIDTH_PX = 32;
 const LIST_DEFAULT_ROWS = 6;
 const LIST_MIN_ROWS = 4;
 const PANE_MIN_HEIGHT_PX = 216;
-// The most a card may span on a screen of its own.
+// The most a card may span on a screen of its own; a bounding box
+// carries float noise below a hundredth of a pixel.
 const CARD_MAX_WIDTH_PX = 760;
+const SUBPIXEL_PX = 0.01;
 const DRAG_PX = 60;
 // The collapsed cards in sight beside the open one.
 const CARDS_IN_SIGHT = 3;
@@ -283,7 +285,9 @@ test("with the pane off the list fills the room and a thread opens as a screen o
   await expect(screen.getByRole("heading", { level: 1, name: subjectOf(1) })).toBeFocused();
   await expect(main).toHaveAttribute("inert", "");
   const card = screen.getByRole("listitem").last();
-  expect((await card.boundingBox())?.width ?? 0).toBeLessThanOrEqual(CARD_MAX_WIDTH_PX);
+  expect((await card.boundingBox())?.width ?? 0).toBeLessThanOrEqual(
+    CARD_MAX_WIDTH_PX + SUBPIXEL_PX,
+  );
   await expect(page.getByRole("tree", { name: "Mailboxes" })).toBeVisible();
   await screen.getByRole("button", { name: "Back to Inbox" }).click();
   await expect(screenOf(page)).toHaveCount(0);

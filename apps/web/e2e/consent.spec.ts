@@ -7,7 +7,7 @@ import { expect, test } from "@playwright/test";
 
 import { FIXED_NOW, card, field, openCard, stopAt, typeInto } from "./account-card";
 import type { Walk } from "./account-card";
-import { GMAIL_FOUND, accountRow, mockAccounts, mockConsent } from "./account-mocks";
+import { CONSENT_STATE, GMAIL_FOUND, accountRow, mockAccounts, mockConsent } from "./account-mocks";
 import type { FoundBody } from "./account-mocks";
 import { mockSignedIn } from "./session-mocks";
 import type { MockSignIn } from "./session-mocks";
@@ -32,6 +32,8 @@ const BOTH: MockSignIn[] = ["google", "microsoft"];
 const PROVIDER_PAGE = /accounts\.google\.test/;
 // Longer than one poll interval, so a poll that kept going would show.
 const POLL_SETTLE_MS = 2_500;
+// Long enough for a click on Cancel to land before the start answers.
+const SLOW_START_MS = 1_500;
 
 // The provider's window, as the click opens it.
 async function clickForWindow(page: Page, name: string): Promise<Page> {
@@ -63,7 +65,7 @@ test("a Gmail address by consent takes three stops and one typed field; the wind
   await popup.waitForURL(PROVIDER_PAGE);
   expect(await popup.evaluate(() => window.opener === null)).toBe(true);
   await expect(page.getByText("Gmail connected.")).toBeVisible();
-  await expect(page).toHaveURL(/\/settings\/accounts$/);
+  await expect(page).toHaveURL(/\/mail\/acc-1\/mb-inbox$/);
   expect(walk.stops).toEqual(["typing", "found", "consent"]);
   expect(walk.typed).toEqual(["Email address"]);
   expect(consent.starts).toEqual([{ provider: "gmail", address: GMAIL_ADDRESS }]);
@@ -138,11 +140,30 @@ for (const origin of CANCEL_ORIGINS) {
     await expect(card(page)).toHaveAttribute("data-step", "found");
     await expect(field(page, "Email address")).toHaveValue(origin.address);
     await expect(origin.control(page)).toBeFocused();
+    await expect.poll(() => consent.ends).toEqual([CONSENT_STATE]);
     const polled = consent.polls;
     await page.waitForTimeout(POLL_SETTLE_MS);
     expect(consent.polls).toBe(polled);
   });
 }
+
+test("a Cancel before the start answers ends the consent once it does, so the window lands nothing", async ({
+  page,
+}) => {
+  await openCard(page, { discover: [GMAIL_SIGN_IN] }, [], BOTH);
+  const consent = await mockConsent(page, {
+    startDelayMs: SLOW_START_MS,
+    outcomes: [{ status: "pending" }],
+  });
+  await field(page, "Email address").fill(GMAIL_ADDRESS);
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  const popup = await clickForWindow(page, "Continue with Google");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(card(page)).toHaveAttribute("data-step", "found");
+  await expect.poll(() => popup.isClosed()).toBe(true);
+  await expect.poll(() => consent.ends, { timeout: SLOW_START_MS * 2 }).toEqual([CONSENT_STATE]);
+  expect(consent.polls).toBe(0);
+});
 
 test("a session that ends mid-consent signs out and says so", async ({ page }) => {
   await openCard(page, { discover: [GMAIL_SIGN_IN] }, [], BOTH);
@@ -178,6 +199,7 @@ test("an OAuth row reconnects through its consent and the tokens land on the row
   await expect(page.getByLabel(/password/i)).toHaveCount(0);
   await clickForWindow(page, "Continue with Google");
   await expect(page.getByText("Gmail connected.")).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\/accounts$/);
   expect(consent.starts).toEqual([
     { provider: "gmail", address: GMAIL_ADDRESS, accountId: "acc-1" },
   ]);

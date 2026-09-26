@@ -16,11 +16,11 @@ import { EmptyState } from "../design-system/empty-state";
 import { ErrorState } from "../design-system/error-state";
 import iconButton from "../design-system/icon-button.module.css";
 import { Kbd } from "../design-system/kbd";
-import { Skeleton } from "../design-system/skeleton";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { MessageCard } from "./message-card";
 import { messagesOf, planMessages, subjectOf } from "./thread-messages";
+import { ThreadSkeleton } from "./thread-skeleton";
 import { useToday } from "./use-today";
 import styles from "./thread-pane.module.css";
 
@@ -29,8 +29,6 @@ export type PanePosition = "right" | "bottom" | "screen";
 
 // The key that closes the thread, shown beside the way back.
 const CLOSE_KEY = "Esc";
-// Still cards that stand for the thread while it loads.
-const LOADING_CARDS = 2;
 
 export interface ThreadPaneProps {
   locale: Locale;
@@ -82,18 +80,6 @@ function Toolbar({ locale, position, mailbox, keyHints, onClose }: ToolbarProps)
         <span>{name}</span>
         {keyHints && <Kbd spoken={false}>{CLOSE_KEY}</Kbd>}
       </button>
-    </div>
-  );
-}
-
-function ThreadSkeleton({ locale }: { locale: Locale }) {
-  return (
-    <div role="status" aria-label={m.loading_label({}, { locale })} className={styles.thread}>
-      <Skeleton className={styles.titleBar} />
-      <Skeleton className={styles.countBar} />
-      {Array.from({ length: LOADING_CARDS }, (_, index) => (
-        <Skeleton key={index} className={styles.cardBar} />
-      ))}
     </div>
   );
 }

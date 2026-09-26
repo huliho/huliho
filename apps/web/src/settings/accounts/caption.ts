@@ -4,9 +4,9 @@
 
 import type { AccountRow } from "@huliho/core";
 
+import type { RetryOutcome } from "../../accounts/use-retry-account";
 import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
-import type { RetryOutcome } from "./use-retry-account";
 
 export interface RowCaption {
   text: string;

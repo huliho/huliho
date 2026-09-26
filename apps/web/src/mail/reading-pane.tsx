@@ -3,12 +3,24 @@
 // Additional terms apply, see NOTICE.
 
 import type { MailCache, Mailbox } from "@huliho/core";
+import { Suspense, use } from "react";
 
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
-import { ThreadPane } from "./thread-pane";
-import type { PanePosition } from "./thread-pane";
+import { chunk } from "../shell/chunk";
+import type { PanePosition, ThreadPaneProps } from "./thread-pane";
+import { ThreadSkeleton } from "./thread-skeleton";
 import styles from "./reading-pane.module.css";
+
+// The pane's code is a chunk of its own, outside the initial bundle.
+// The shell fetches it on mount; once it is in, a render reads it in
+// the same pass, so the first open shows no still cards for it.
+export const prefetchThreadPane = chunk(() => import("./thread-pane"));
+
+function LoadedThreadPane(props: ThreadPaneProps) {
+  const { ThreadPane } = use(prefetchThreadPane());
+  return <ThreadPane {...props} />;
+}
 
 // The thread the address names, with the mailbox it was opened from.
 export interface OpenThread {
@@ -39,16 +51,18 @@ export function ReadingPane(props: ReadingPaneProps) {
       {thread === null ? (
         <p className={styles.nothingOpen}>{m.thread_none_open({}, { locale })}</p>
       ) : (
-        <ThreadPane
-          locale={locale}
-          cache={cache}
-          accountId={thread.accountId}
-          threadId={thread.threadId}
-          mailbox={thread.mailbox}
-          position={position}
-          keyHints={keyHints}
-          onClose={onClose}
-        />
+        <Suspense fallback={<ThreadSkeleton locale={locale} />}>
+          <LoadedThreadPane
+            locale={locale}
+            cache={cache}
+            accountId={thread.accountId}
+            threadId={thread.threadId}
+            mailbox={thread.mailbox}
+            position={position}
+            keyHints={keyHints}
+            onClose={onClose}
+          />
+        </Suspense>
       )}
     </aside>
   );
@@ -67,16 +81,18 @@ interface ThreadScreenProps {
 export function ThreadScreen({ locale, cache, thread, keyHints, onClose }: ThreadScreenProps) {
   return (
     <section className={styles.screen} aria-label={m.thread_pane({}, { locale })}>
-      <ThreadPane
-        locale={locale}
-        cache={cache}
-        accountId={thread.accountId}
-        threadId={thread.threadId}
-        mailbox={thread.mailbox}
-        position="screen"
-        keyHints={keyHints}
-        onClose={onClose}
-      />
+      <Suspense fallback={<ThreadSkeleton locale={locale} />}>
+        <LoadedThreadPane
+          locale={locale}
+          cache={cache}
+          accountId={thread.accountId}
+          threadId={thread.threadId}
+          mailbox={thread.mailbox}
+          position="screen"
+          keyHints={keyHints}
+          onClose={onClose}
+        />
+      </Suspense>
     </section>
   );
 }

@@ -105,7 +105,32 @@ export const GMAIL: AccountRow = {
   createdAt: CREATED_AT + HOUR_MS,
 };
 
+// An account whose connection expired: only its user can act.
+export const EXPIRED: AccountRow = {
+  ...GMAIL,
+  id: "acc-3",
+  address: "s.bakker@kastanje.studio",
+  name: "Kastanje Studio",
+  provider: "generic",
+  stoppedCause: "credentials",
+  stoppedAt: CREATED_AT + 2 * HOUR_MS,
+  createdAt: CREATED_AT + 2 * HOUR_MS,
+};
+
+// An account whose server could not be reached: the probe may bring it back.
+export const STOPPED: AccountRow = {
+  ...EXPIRED,
+  id: "acc-4",
+  address: "sanne@noordwind.nl",
+  name: "Noordwind",
+  stoppedCause: "connection",
+  createdAt: CREATED_AT + 3 * HOUR_MS,
+};
+
 export const ACCOUNTS: AccountRow[] = [FASTMAIL, GMAIL];
+
+// The server's default, as the accounts list answers it.
+export const PROBE_INTERVAL_MINUTES = 15;
 
 // One row to draw: who wrote, what about, the preview, when and the
 // flags, plus how many of the thread stand in the inbox.

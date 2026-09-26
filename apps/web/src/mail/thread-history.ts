@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-// The mark a row opened from its list leaves on the history entry, so
-// closing the thread can go back over it; the router's own keys stay.
+// The mark an entry opened from the mailbox carries in the history
+// state. On a thread it lets closing go back over the entry; on the
+// card a banner's Reconnect opened it sends a pass back to the mail.
+// The router's own keys stay.
 export function markedFromMailbox<State extends object>(
   state: State,
 ): State & { fromMailbox: true } {

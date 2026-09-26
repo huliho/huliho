@@ -6,6 +6,7 @@ export {
   AccountsError,
   addAccount,
   discoverServer,
+  endConsent,
   fetchAccounts,
   fetchConsent,
   removeAccount,

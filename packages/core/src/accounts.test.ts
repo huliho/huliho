@@ -8,6 +8,7 @@ import type { Mock } from "vitest";
 import {
   addAccount,
   discoverServer,
+  endConsent,
   fetchAccounts,
   fetchConsent,
   removeAccount,
@@ -227,6 +228,21 @@ test.each([
 ])("a %i refusal carries the code %s", async (status, code) => {
   answer(status, { error: code });
   await expect(addAccount(INPUT)).rejects.toMatchObject({ code });
+});
+
+test("a cancel deletes the encoded consent with the header and passes one already gone", async () => {
+  const fetchMock = answer(204);
+  await endConsent("s 1");
+  const [url, init] = fetchMock.mock.calls[0] ?? [];
+  expect(url).toBe("/api/accounts/oauth/pending/s%201");
+  expect(init?.method).toBe("DELETE");
+  expect(new Headers(init?.headers).get("x-requested-with")).toBe("huliho");
+  answer(404, { error: "not_found" });
+  await expect(endConsent("s1")).resolves.toBeUndefined();
+  answer(401, { error: "unauthenticated" });
+  await expect(endConsent("s1")).rejects.toMatchObject({ code: "unauthenticated" });
+  answer(500, { error: "internal" });
+  await expect(endConsent("s1")).rejects.toMatchObject({ code: "unavailable" });
 });
 
 test("a rate-limited answer carries how long to wait", async () => {

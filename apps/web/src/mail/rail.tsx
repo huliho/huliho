@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { AccountRow } from "@huliho/core";
+import type { AccountRow, MailCache } from "@huliho/core";
 import { Link } from "@tanstack/react-router";
 import { Archive, FilePen, FolderTree, Inbox, Send, ShieldAlert, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -26,6 +26,7 @@ const ROLE_ICONS = new Map<string, LucideIcon>([
 
 interface RailProps {
   locale: Locale;
+  cache: MailCache;
   accounts: readonly AccountRow[];
   account: AccountRow;
   tree: TreeState;
@@ -36,11 +37,18 @@ interface RailProps {
 
 // The sidebar collapsed to a rail: the avatar, the roles as icons and a
 // button for the rest.
-export function Rail({ locale, accounts, account, tree, currentMailboxId, onMore }: RailProps) {
+export function Rail(props: RailProps) {
+  const { locale, cache, accounts, account, tree, currentMailboxId, onMore } = props;
   const roles = tree.status === "success" ? buildTree(tree.mailboxes, locale).roles : [];
   return (
     <nav className={styles.rail} aria-label={m.mail_sidebar({}, { locale })}>
-      <AccountSwitcher locale={locale} accounts={accounts} account={account} variant="avatar" />
+      <AccountSwitcher
+        locale={locale}
+        cache={cache}
+        accounts={accounts}
+        account={account}
+        variant="avatar"
+      />
       {roles.map(({ mailbox }) => {
         const Icon = ROLE_ICONS.get(mailbox.role ?? "") ?? FolderTree;
         const count = countOf(mailbox);

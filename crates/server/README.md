@@ -67,7 +67,10 @@ into tokens through the same pinned HTTP client as every other outbound
 request, the tokens are checked with XOAUTH2 on IMAP and SMTP and
 sealed on a new row or on the row being reconnected. The window then
 shows one sentence in the browser's language; the app polls the
-outcome. A consent lives ten minutes and is claimed once. An access
+outcome. A consent lives ten minutes and is claimed once; its owner
+can end it before that through `DELETE
+/api/accounts/oauth/pending/{state}`, after which the callback lands
+nothing and any other state answers 404. An access
 token about to run out is refreshed before use and the rotated tokens
 are written back; a provider that refuses the grant stops the account.
 Request logs carry the matched route, never a path with an id or a

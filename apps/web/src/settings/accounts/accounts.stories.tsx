@@ -12,13 +12,13 @@ import {
 } from "@tanstack/react-router";
 import type { JSX } from "react";
 
+import type { RetryOutcomes } from "../../accounts/use-retry-account";
 import { cx } from "../../design-system/cx";
 import { EmptyState } from "../../design-system/empty-state";
 import { ListSkeleton } from "../../design-system/list-skeleton";
 import { SettingsSection } from "../settings-section";
 import { AccountList } from "./account-list";
 import { AddAccountLink } from "./accounts-page";
-import type { RetryOutcomes } from "./use-retry-account";
 import styles from "./accounts-page.module.css";
 
 // Screenshots must not age, so the rows sit at fixed distances from a fixed now.

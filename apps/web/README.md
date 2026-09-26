@@ -36,9 +36,9 @@ Adding a mail account is a card at `/accounts/new`, where a session
 without accounts lands from the shell. The flow is a reducer over the
 steps (typing, detecting, found, confirm host, not found, manual,
 connecting, insecure, consent, consent denied) with the fields of each
-step in plain component state; four requests sit behind it (discover,
-add, replace a credential, start a consent) and every refusal is one
-sentence on the field or above the fields. A reconnect opens the same
+step in plain component state; five requests sit behind it (discover,
+add, replace a credential, start a consent, end a consent) and every
+refusal is one sentence on the field or above the fields. A reconnect opens the same
 card at
 `/accounts/new?reconnect={id}` with the address fixed. The address is
 checked against the server's shape rule before it goes out. A
@@ -47,7 +47,11 @@ A Google or Microsoft account signs in through a consent: the session
 lists the providers the instance can start one with, the card opens
 the provider in a window it holds no opener to, polls the outcome
 every two seconds and ends in the toast or in one sentence saying why
-nothing was connected. An OAuth row reconnects the same way.
+nothing was connected. Cancel ends the consent on the server, so a
+window still at the provider lands nothing. An OAuth row reconnects the
+same way. A first add lands in the new account's inbox with its toast;
+a reconnect returns to where the card was opened, the mail or the
+accounts page.
 
 Settings > Accounts lists the connected accounts, one row each with
 its state: nothing while connected, Connection expired with Reconnect
@@ -55,8 +59,7 @@ once the upstream rejected the credential, the stopped sentence with
 Retry once a run of refused connections tripped the stop. Retry sends
 the row id and says on the row what came of it; Remove takes the row
 out at once and reaches the server when its undo toast has run out,
-through the same deferred mutation as a revoke. A connect from the
-card lands here with its toast.
+through the same deferred mutation as a revoke.
 
 Settings > Appearance holds the theme, the density, the reading pane
 position and the language, each a row of segments on the preferences
@@ -106,8 +109,10 @@ and a button for the whole tree; from the second the sidebar, the list
 and the reading pane stand side by side, with a seam between list and
 reading pane that drags, answers the arrow keys, resets on Enter or a
 double click and keeps its place on the device. The sidebar holds the
-account switcher (a menu with every account of the session, Settings
-and Sign out) over the mailbox tree: the six roles in a fixed order,
+account switcher (a menu with every account of the session, each with
+its inbox's unread count and the word Expired or Stopped after the
+name of a stopped one, then Settings and Sign out) over the mailbox
+tree: the six roles in a fixed order,
 then the folders with their depth. The tree is one tab stop: the arrow
 keys move inside it and Tab leaves it. Mailbox names are the server's
 words; the counts are unread mail, and drafts for the drafts folder.
@@ -124,11 +129,17 @@ anywhere on the screen. New mail never moves the rows: a marker names
 it above the list until the dot key or a click brings it in, and a
 scroll or a move in the list puts the marker away until more arrives.
 Offline, a strip over the list says so while the cached rows stay. A
+stopped account shows a banner over its list: an expired connection
+with Reconnect to the card, a server that could not be reached with
+Retry, whose outcome lands in the same sentence; a pass says so, hands
+the focus to the first row and fades the banner. A
 mailbox still fetching its headers shows its progress at the foot of
 the pane, with still rows after the last synced one; the worker polls
 closer while such a sync runs. A render failure in one pane stays in
 that pane. The add-account card and the settings screens each load as
-a chunk of their own on their first visit.
+a chunk of their own on their first visit; the thread pane and the
+account menu load as chunks when the shell mounts, the still cards or
+a plain trigger standing in until they land.
 
 Enter, `o` or a click opens a row's thread at
 `/mail/{accountId}/{mailboxId}/{threadId}`, where the reading pane

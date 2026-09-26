@@ -108,6 +108,23 @@ pub(super) async fn pending_consent(
         .ok_or(ApiError::NotFound)
 }
 
+/// Cancel on the card: the owner's open consent ends, so a callback
+/// that still arrives lands nothing. Every other state is not found.
+pub(super) async fn end_consent(
+    State(state): State<ApiState>,
+    auth: Full,
+    Path(consent): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    if state
+        .consents
+        .end(&auth.session.user_id, &consent, now_ms())
+    {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
 /// The parameters the provider sends back (RFC 6749 sections 4.1.2 and
 /// 4.1.2.1); anything else is ignored.
 #[derive(Default)]

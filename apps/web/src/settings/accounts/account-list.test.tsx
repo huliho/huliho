@@ -14,8 +14,8 @@ import { useRef } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { Mock } from "vitest";
 
+import type { RetryOutcomes } from "../../accounts/use-retry-account";
 import { AccountList } from "./account-list";
-import type { RetryOutcomes } from "./use-retry-account";
 
 const NOW = 1_778_750_400_000;
 const MINUTES = 15;

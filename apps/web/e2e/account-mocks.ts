@@ -13,7 +13,7 @@ const CONSENT_START_ROUTE = "**/api/accounts/oauth/start";
 const CONSENT_PENDING_ROUTE = "**/api/accounts/oauth/pending/*";
 // Where a mocked start sends the window; the context answers it with a page.
 const CONSENT_URL = "https://accounts.google.test/consent";
-const CONSENT_STATE = "consent-1";
+export const CONSENT_STATE = "consent-1";
 const CONSENT_PAGE = "<!doctype html><title>Provider</title><p>Consent page</p>";
 // The server's default, so the page renders the sentence with it.
 const PROBE_INTERVAL_MINUTES = 15;
@@ -117,6 +117,8 @@ interface OutcomeBody {
 export interface ConsentAnswers {
   // Refusals for the start in order; once they run out every start answers the fixture URL.
   start?: AccountsAnswer[];
+  // How long a start takes to answer, for a Cancel that comes before it.
+  startDelayMs?: number;
   // The poll answers in order, the last one repeating; a numeric status is a refusal.
   outcomes: (OutcomeBody | AccountsAnswer)[];
 }
@@ -124,6 +126,8 @@ export interface ConsentAnswers {
 export interface RecordedConsent {
   starts: ConsentBody[];
   polls: number;
+  // The states the card ended through Cancel.
+  ends: string[];
 }
 
 const PROVIDER_NAMES: Record<Provider, string | null> = {
@@ -391,17 +395,23 @@ export async function mockAccounts(
   return mocked.recorded;
 }
 
-// Answers the start and the poll; the provider's page comes from the
-// context, so the window has somewhere to go.
+function held(ms: number | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms ?? 0);
+  });
+}
+
+// Answers the start, the poll and the cancel; the provider's page comes
+// from the context, so the window has somewhere to go.
 export async function mockConsent(page: Page, answers: ConsentAnswers): Promise<RecordedConsent> {
-  const recorded: RecordedConsent = { starts: [], polls: 0 };
+  const recorded: RecordedConsent = { starts: [], polls: 0, ends: [] };
   const outcomes = [...answers.outcomes];
   await page
     .context()
     .route(`${CONSENT_URL}**`, (route) =>
       route.fulfill({ contentType: "text/html", body: CONSENT_PAGE }),
     );
-  await page.route(CONSENT_START_ROUTE, (route) => {
+  await page.route(CONSENT_START_ROUTE, async (route) => {
     const body: unknown = route.request().postDataJSON();
     if (!isConsentBody(body)) {
       throw new Error("the start carried no consent");
@@ -411,11 +421,16 @@ export async function mockConsent(page: Page, answers: ConsentAnswers): Promise<
     if (refusal !== undefined) {
       return refuse(route, refusal);
     }
+    await held(answers.startDelayMs);
     return route.fulfill({
       json: { url: `${CONSENT_URL}?state=${CONSENT_STATE}`, state: CONSENT_STATE },
     });
   });
   await page.route(CONSENT_PENDING_ROUTE, (route) => {
+    if (route.request().method() === "DELETE") {
+      recorded.ends.push(rowIdOf(route, -1));
+      return route.fulfill({ status: 204 });
+    }
     recorded.polls += 1;
     const answer = outcomes.length > 1 ? outcomes.shift() : outcomes[0];
     if (answer === undefined) {

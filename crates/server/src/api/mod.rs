@@ -151,7 +151,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/accounts/oauth/start", post(oauth::start_consent))
         .route(
             "/accounts/oauth/pending/{state}",
-            get(oauth::pending_consent),
+            get(oauth::pending_consent).delete(oauth::end_consent),
         )
         .route("/auth-providers", get(providers::list_providers))
         .route("/auth-providers/{provider}", put(providers::set_provider))

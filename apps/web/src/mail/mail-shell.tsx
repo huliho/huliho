@@ -25,7 +25,9 @@ import { useMailCache } from "../cache/use-mail-cache";
 import { useLocale } from "../i18n/locale";
 import { useLayout } from "../shell/breakpoints";
 import { DEFAULT_READING_PANE } from "../theme/appearance";
+import { prefetchAccountMenu } from "./account-switcher";
 import { rememberLastAccount } from "./last-account";
+import { prefetchThreadPane } from "./reading-pane";
 import { ShellFrame } from "./shell-frame";
 import { openedFromMailbox } from "./thread-history";
 import type { TreeState } from "./tree";
@@ -64,6 +66,12 @@ export function MailShell() {
   useEffect(() => {
     rememberLastAccount(accountId);
   }, [accountId]);
+  // The chunks of the reading pane and the account menu are fetched
+  // once the shell stands, ahead of the first open of either.
+  useEffect(() => {
+    void prefetchThreadPane();
+    void prefetchAccountMenu();
+  }, []);
   const accounts = list.data?.accounts ?? [];
   const account = accounts.find((row) => row.id === accountId);
   if (account === undefined) {
