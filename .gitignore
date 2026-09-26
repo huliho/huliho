@@ -12,6 +12,8 @@ storybook-static/
 target/
 crates/imap-bridge/fuzz/corpus/
 crates/imap-bridge/fuzz/artifacts/
+crates/server/fuzz/corpus/
+crates/server/fuzz/artifacts/
 *.tsbuildinfo
 .turbo/
 coverage/

@@ -44,7 +44,8 @@ async fn every_response_carries_the_security_headers() {
         let headers = response.headers();
         assert_eq!(
             headers.get("content-security-policy").unwrap(),
-            "default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; \
+             frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
             "csp on {path}"
         );
         assert_eq!(headers.get("x-content-type-options").unwrap(), "nosniff");

@@ -15,6 +15,7 @@ path = "src/main.rs"
 live-targets = []
 
 [dependencies]
+ammonia = "4.2.0"
 argon2 = "0.6.0"
 axum = "0.8.9"
 axum-extra = { version = "0.12.6", features = ["cookie"] }
@@ -50,8 +51,10 @@ webpki-roots = "1.0.9"
 async-imap = { version = "0.11.3", default-features = false, features = ["runtime-tokio"] }
 axum-server = { version = "0.8.0", features = ["tls-rustls-no-provider"] }
 base64 = "0.23.1"
+html5ever = "0.40.1"
 http-body-util = "0.1.5"
 huliho-imap-bridge = { version = "0.0.0", path = "../imap-bridge", features = ["test-support"] }
+proptest = "1.11.0"
 rcgen = "0.14.10"
 tempfile = "3.27.0"
 tokio = { version = "1.53.1", features = ["test-util"] }

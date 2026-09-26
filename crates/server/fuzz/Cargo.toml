@@ -1,0 +1,23 @@
+[package]
+name = "huliho-server-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# The root workspace globs crates/*, so this package names its own.
+[workspace]
+
+[dependencies]
+huliho-server = { path = ".." }
+libfuzzer-sys = "0.4.13"
+
+[[bin]]
+name = "sanitize"
+path = "fuzz_targets/sanitize.rs"
+test = false
+doc = false
+bench = false

@@ -23,6 +23,7 @@ use huliho_server::cli::{self, Command};
 use huliho_server::config::{CONFIG_PATH_VAR, Config, ConfigError, DEFAULT_CONFIG_PATH};
 use huliho_server::gate::{Gate, Reconnect};
 use huliho_server::jmap::Endpoints;
+use huliho_server::mail::sanitize::Sanitizer;
 use huliho_server::oauth::Consents;
 use huliho_server::rate::RateLimiter;
 use huliho_server::secrets::{InstanceSecret, Keys};
@@ -100,6 +101,7 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         upstream,
         consents: Arc::new(Consents::default()),
         endpoints: Arc::new(Endpoints::default()),
+        sanitizer: Arc::new(Sanitizer::new(config.public_url.as_ref())),
         bridge_store,
         bridge: Arc::new(OnceLock::new()),
     };

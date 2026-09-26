@@ -8,6 +8,7 @@
 //! For an IMAP account the in-process bridge answers the same routes.
 
 mod endpoints;
+mod request;
 mod session;
 
 use std::sync::Arc;
@@ -19,6 +20,7 @@ use serde_json::{Map, Value};
 use url::{Host, Url};
 
 pub use endpoints::Endpoints;
+pub(crate) use request::{Wants, inspect};
 pub(crate) use session::urls;
 
 use crate::accounts::{self, Account, AccountSettings, Credential};

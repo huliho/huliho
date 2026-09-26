@@ -37,6 +37,14 @@ precedence = "override"
 SPDX-FileCopyrightText = "Copyright (C) 2026 Eric Kochen"
 SPDX-License-Identifier = "AGPL-3.0-only"
 
+# The DOMPurify expectation fixtures, taken under the Apache-2.0 half of
+# their dual license.
+[[annotations]]
+path = ["crates/server/tests/xss/dompurify-expect.json"]
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (c) Cure53 and other contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
 [[annotations]]
 path = [
   "apps/web/src/assets/fonts/hanken-grotesk-*.woff2",

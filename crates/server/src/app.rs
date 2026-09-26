@@ -27,8 +27,9 @@ const LICENSE_TEXT: &str = include_str!("../../../LICENSE");
 
 const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 
-/// Same-origin only; the mail rendering pipeline adds its own sandbox
-/// on top of this policy. The web preview serves the same file.
+/// Same-origin, with inline styles and `data:` images admitted for the
+/// mail frame, whose own document narrows the policy again. The web
+/// preview serves the same file.
 const CONTENT_SECURITY_POLICY: &str = include_str!("csp.txt").trim_ascii();
 
 /// Two years with subdomains; the preload token is the operator's call.

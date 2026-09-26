@@ -97,7 +97,21 @@ cut to core and mail and its two request limits are at most the
 proxy's own.
 `POST /api/jmap/{id}` forwards a Request object to the API endpoint
 that session object named, with the account's credential added on the
-way and the answer handed back as the server sent it. A request body
+way and the answer handed back as the server sent it, with one
+exception: an `Email/get` that asks for body values comes back with
+every `text/html` value its `htmlBody` names sanitized, for a native
+account and a bridge account alike, so no sender's HTML reaches the
+browser unsanitized. Such a request is refused before anything connects
+when its `properties` list lacks `htmlBody`, when it sets
+`fetchAllBodyValues` or when a result reference stands in for one of
+those arguments; an `Email/parse` that would carry body values is
+refused the same way. The sanitizer keeps structure, text, lists,
+tables, inline marks, images and style blocks; it drops scripts, event
+handlers, forms, embedded documents, head content and foreign
+namespaces, sets every link to open in a new tab without an opener and
+admits `http`, `https` and `mailto` on a link and `http`, `https`,
+`cid` and a `data:image/` URL on an image, never a relative URL, a URL
+on the instance's own host or a path under `/api/`. A request body
 of one MiB at most, an answer of sixteen MiB at most, one timeout per
 upstream request and four requests in flight per account; a fifth one
 gets the JMAP `limit` error at once. The API endpoint an upstream
@@ -114,7 +128,9 @@ the theme, the density and the locale, each from a fixed list of words.
 Configuration is one TOML file; unknown keys are rejected. Top-level
 keys are the `listen` address, the `assets` directory and the optional
 `public_url`, the base URL the instance is reached on, which the
-provider sign-in needs for its redirect URI. `[storage]`
+provider sign-in needs for its redirect URI and the sanitizer reads as
+the instance's own host, so no mail can name an image or a link there.
+`[storage]`
 holds the data directory `path` (default `data`) and `[events]` holds
 the event log `retention_days` (default 365). `[auth]` holds the
 `secret_file` path plus the session `idle_timeout_minutes` and
@@ -133,4 +149,7 @@ when it is absent.
 The binary is `huliho`; without a subcommand it serves. Build and test
 from the workspace root: `cargo build` and `cargo test --workspace`.
 `cargo test -p huliho-server --features live-targets` adds the tests
-that need the compose targets and the public internet.
+that need the compose targets and the public internet. The XSS corpus
+under `tests/xss/` runs on every test run; `cargo build
+--manifest-path crates/server/fuzz/Cargo.toml` builds the fuzz target
+for the sanitizer, run with cargo-fuzz on a nightly toolchain.

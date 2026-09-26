@@ -39,6 +39,7 @@ use crate::bridge::{self, ServerBridge};
 use crate::gate::{Gate, Reconnect};
 use crate::ids::UserId;
 use crate::jmap::{Endpoints, JMAP_REQUEST_LIMIT, Proxy};
+use crate::mail::sanitize::Sanitizer;
 use crate::oauth::Consents;
 use crate::rate::RateLimiter;
 use crate::secrets::Keys;
@@ -82,6 +83,8 @@ pub struct ApiState {
     pub gate: Gate,
     /// What the JMAP proxy keeps per account, one process wide.
     pub endpoints: Arc<Endpoints>,
+    /// The mail sanitizer, built once from the public URL.
+    pub sanitizer: Arc<Sanitizer>,
     /// The bridge's own connection to the database, opened with the
     /// store.
     pub bridge_store: Arc<huliho_imap_bridge::store::Store>,
