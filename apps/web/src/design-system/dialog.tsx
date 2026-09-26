@@ -18,6 +18,8 @@ interface DialogProps {
   failure?: string | undefined;
   // Focus lands here on open; the least destructive action goes first.
   initialFocus?: RefObject<HTMLElement | null> | undefined;
+  // The narrow measure for a question, the wide one for a table.
+  size?: "narrow" | "wide" | undefined;
   children: ReactNode;
 }
 
@@ -29,6 +31,7 @@ export function Dialog({
   description,
   failure,
   initialFocus,
+  size = "narrow",
   children,
 }: DialogProps) {
   return (
@@ -43,7 +46,11 @@ export function Dialog({
     >
       <BaseDialog.Portal>
         <BaseDialog.Backdrop className={styles.backdrop} />
-        <BaseDialog.Popup className={styles.popup} initialFocus={initialFocus ?? true}>
+        <BaseDialog.Popup
+          className={styles.popup}
+          data-size={size}
+          initialFocus={initialFocus ?? true}
+        >
           <BaseDialog.Title className={styles.title}>{title}</BaseDialog.Title>
           {description !== undefined && (
             <BaseDialog.Description className={styles.description}>

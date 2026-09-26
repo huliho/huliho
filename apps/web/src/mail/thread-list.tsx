@@ -4,23 +4,23 @@
 
 import { firstSyncOf } from "@huliho/core";
 import type { FirstSync, ListRow, MailCache, Mailbox } from "@huliho/core";
-import { useImperativeHandle, useRef, useState } from "react";
+import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, Ref, RefObject } from "react";
 
-import { useCommand } from "../commands/use-command";
 import { ErrorState } from "../design-system/error-state";
 import spoken from "../design-system/spoken.module.css";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
-import { FirstSyncBlock } from "./first-sync";
+import { useListCommands } from "./list-commands";
 import { keyHandler, useCursor } from "./list-cursor";
+import { ListFoot } from "./list-foot";
 import type { ListCursor } from "./list-cursor";
 import { useMarker } from "./list-marker";
 import type { ListMarker } from "./list-marker";
 import { pagesFor, useListVirtualizer } from "./list-virtualizer";
 import type { VirtualList } from "./list-virtualizer";
 import { OfflineBanner } from "./offline-banner";
-import { REVEAL_KEY, Viewport } from "./thread-grid";
+import { Viewport } from "./thread-grid";
 import { EdgeRow } from "./thread-list-item";
 import { pageOf, rowAt, useThreadPages } from "./use-thread-pages";
 import { useRowHeight } from "./use-token-px";
@@ -31,8 +31,6 @@ import styles from "./thread-list.module.css";
 const SYNC_EDGE_ROWS = 3;
 // Still rows that stand in for the list while its first page loads.
 const LOADING_ROWS = 8;
-// The key that opens the cursor's row from anywhere, as Enter does in the grid.
-const OPEN_KEY = "o";
 
 // What a control outside the list may ask of it.
 export interface ListHandle {
@@ -97,30 +95,6 @@ function factsOf(pages: ListPages, mailbox: Mailbox): Facts {
     state: stateOf(pages.first),
   };
   return { ...facts, isEmpty: isEmptyList(facts) };
-}
-
-interface Commands {
-  rowCount: number;
-  pending: number;
-  active: number;
-  goTo: (index: number) => void;
-  open: () => void;
-  reveal: () => void;
-}
-
-// j and k move the cursor from anywhere on the screen and o opens its
-// row; the dot key brings new mail in while some waits.
-function useListCommands({ rowCount, pending, active, goTo, open, reveal }: Commands): void {
-  const next = (): void => {
-    goTo(active + 1);
-  };
-  const previous = (): void => {
-    goTo(active - 1);
-  };
-  useCommand(rowCount > 0 ? { id: "list.next", key: "j", run: next } : null);
-  useCommand(rowCount > 0 ? { id: "list.previous", key: "k", run: previous } : null);
-  useCommand(rowCount > 0 ? { id: "list.open", key: OPEN_KEY, run: open } : null);
-  useCommand(pending > 0 ? { id: "list.reveal", key: REVEAL_KEY, run: reveal } : null);
 }
 
 function LoadingRows({ locale }: { locale: Locale }) {
@@ -261,7 +235,15 @@ function useListControls(props: ControlsProps): ListControls {
     cursor,
     markerRef,
   });
-  useListCommands({ rowCount, pending, active: cursor.active, goTo, open, reveal: actions.reveal });
+  useListCommands({
+    locale,
+    rowCount,
+    pending,
+    active: cursor.active,
+    goTo,
+    open,
+    reveal: actions.reveal,
+  });
   return {
     cursor,
     list,
@@ -283,18 +265,31 @@ function focusStandIn(list: HTMLDivElement | null): void {
 }
 
 // The handle a control outside the list gets: the focus goes onto the
-// first row while the grid stands, else onto what stands in for it.
+// first row while the grid stands, else onto what stands in for it and
+// on to the first row once the grid lands, while the focus still rests
+// in the list.
 function useListHandle(
   ref: Ref<ListHandle> | undefined,
   listRef: RefObject<HTMLDivElement | null>,
   gridStands: boolean,
   focusFirst: () => void,
 ): void {
+  const wantedRef = useRef(false);
+  useEffect(() => {
+    if (!wantedRef.current || !gridStands) {
+      return;
+    }
+    wantedRef.current = false;
+    if (listRef.current?.contains(document.activeElement) === true) {
+      focusFirst();
+    }
+  }, [gridStands, listRef, focusFirst]);
   useImperativeHandle(ref, () => ({
     focus: () => {
       if (gridStands) {
         focusFirst();
       } else {
+        wantedRef.current = true;
         focusStandIn(listRef.current);
       }
     },
@@ -304,7 +299,8 @@ function useListHandle(
 // The threads of one mailbox as a virtualized grid over the pages the
 // cache serves: one tab stop that the arrow keys, j and k move and
 // Enter, o or a click opens, the marker for new mail, the offline strip
-// and the first-sync foot.
+// and the foot, where the first sync shows its progress and the key
+// hints stand otherwise.
 export function ThreadList({ ref, ...props }: ThreadListProps) {
   const { locale, today, cache, accountId, mailbox, online, openThreadId, empty, onOpen } = props;
   const listRef = useRef<HTMLDivElement>(null);
@@ -359,7 +355,7 @@ export function ThreadList({ ref, ...props }: ThreadListProps) {
           onReveal={controls.reveal}
         />
       )}
-      <FirstSyncBlock locale={locale} progress={facts.firstSync} />
+      <ListFoot locale={locale} progress={facts.firstSync} />
     </div>
   );
 }

@@ -7,9 +7,12 @@ import type { RefObject } from "react";
 
 export const ROW_HEIGHT_TOKEN = "--hhx-row-height";
 export const TOOLBAR_HEIGHT_TOKEN = "--hhx-toolbar-height";
+// The key-hint strip at the foot of the list.
+export const FOOT_HEIGHT_TOKEN = "--hhx-foot-height";
 // The comfortable values, until the tokens are read from the stylesheet.
 export const ROW_HEIGHT_FALLBACK_PX = 52;
 export const TOOLBAR_HEIGHT_FALLBACK_PX = 44;
+export const FOOT_HEIGHT_FALLBACK_PX = 36;
 
 // A length token as the density resolves it on the element, in CSS
 // pixels: read on mount and again when the density on the document

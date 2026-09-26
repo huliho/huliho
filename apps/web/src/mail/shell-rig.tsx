@@ -16,11 +16,16 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import { dispatchKey } from "../commands/registry";
+import { stubWidthQueries } from "../shell/width-queries-rig";
 import { ACCOUNTS, PROBE_INTERVAL_MINUTES } from "./fixtures";
 import { InboxRedirect } from "./inbox-redirect";
 import { MailShell } from "./mail-shell";
 import { MailboxPane } from "./mailbox-pane";
-import { ROW_HEIGHT_FALLBACK_PX, TOOLBAR_HEIGHT_FALLBACK_PX } from "./use-token-px";
+import {
+  FOOT_HEIGHT_FALLBACK_PX,
+  ROW_HEIGHT_FALLBACK_PX,
+  TOOLBAR_HEIGHT_FALLBACK_PX,
+} from "./use-token-px";
 
 // The rig the shell tests render in: the mail routes on a memory
 // history, the accounts the guard would have fetched and the boxes
@@ -110,9 +115,10 @@ export function command(key: string): void {
   });
 }
 
-// The list's height at `count` rows under its header, at the fallback sizes jsdom leaves.
+// The list's height at `count` rows between its header and its foot, at
+// the fallback sizes jsdom leaves.
 export function rows(count: number): number {
-  return TOOLBAR_HEIGHT_FALLBACK_PX + count * ROW_HEIGHT_FALLBACK_PX;
+  return TOOLBAR_HEIGHT_FALLBACK_PX + FOOT_HEIGHT_FALLBACK_PX + count * ROW_HEIGHT_FALLBACK_PX;
 }
 
 // The boxes and the media queries of the shell for every test of the
@@ -134,16 +140,7 @@ export function mockShellBox(): void {
       return this.getAttribute("role") === "separator" ? 0 : VIEW_HEIGHT_PX;
     });
     vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(FRAME_HEIGHT_PX);
-    vi.stubGlobal("matchMedia", (query: string) => ({
-      matches: layout.wide,
-      media: query,
-      addEventListener() {
-        return undefined;
-      },
-      removeEventListener() {
-        return undefined;
-      },
-    }));
+    stubWidthQueries(layout);
   });
   afterEach(() => {
     cleanup();

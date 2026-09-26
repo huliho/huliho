@@ -57,6 +57,15 @@ function rowAt(page: Page, index: number): Locator {
   return grid(page).locator(`[aria-rowindex="${String(index)}"]`);
 }
 
+// The end edge of an element's box on the block axis, in whole pixels.
+async function bottomOf(locator: Locator): Promise<number> {
+  const box = await locator.boundingBox();
+  if (box === null) {
+    throw new Error("the element has no box");
+  }
+  return Math.round(box.y + box.height);
+}
+
 // The corpus the default mailboxes get, as the mock builds it.
 const CORPUS = corpusFor(MAILBOXES);
 const INBOX_LIST = CORPUS.lists.get(INBOX_ID) ?? { ids: [], exemplars: [] };
@@ -168,6 +177,7 @@ test("a first sync shows its progress at the foot with still rows after the last
 test("a list that fails to load says so while the tree stands, and Try again brings it", async ({
   page,
 }) => {
+  await page.setViewportSize(VIEWPORTS[1]);
   let failing = true;
   await mockSignedIn(page);
   await mockMail(page);
@@ -176,6 +186,11 @@ test("a list that fails to load says so while the tree stands, and Try again bri
   await page.goto("/mail/acc-1/mb-inbox");
   await expect(page.getByRole("alert")).toContainText("Couldn’t load your mail.");
   await expect(page.getByRole("treeitem")).toHaveCount(MAILBOXES.length);
+  // The key hints keep the foot of the pane, under the error box.
+  const main = page.getByRole("main");
+  const strip = main.locator("p", { hasText: "shortcuts" });
+  await expect(strip).toBeVisible();
+  expect(await bottomOf(strip)).toBe(await bottomOf(main));
   failing = false;
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(rowAt(page, 1)).toBeVisible();

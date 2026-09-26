@@ -15,6 +15,7 @@ import {
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+import { dispatchKey } from "../commands/registry";
 import { AccountSwitcher, prefetchAccountMenu } from "./account-switcher";
 import {
   ACCOUNTS,
@@ -182,4 +183,20 @@ test("Sign out runs the sign-out", async () => {
   await openMenu();
   fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
   expect(signOut).toHaveBeenCalledOnce();
+});
+
+test("the switch command opens the menu from anywhere and Escape closes it", async () => {
+  renderSwitcher();
+  await screen.findByRole("button", { name: /Fastmail/ });
+  act(() => {
+    dispatchKey(new KeyboardEvent("keydown", { key: "L", ctrlKey: true, shiftKey: true }));
+  });
+  const menu = await screen.findByRole("menu");
+  expect(screen.getByRole("button", { name: /Fastmail/ }).getAttribute("aria-expanded")).toBe(
+    "true",
+  );
+  fireEvent.keyDown(menu, { key: "Escape" });
+  await vi.waitFor(() => {
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
 });

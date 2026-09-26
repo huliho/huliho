@@ -5,11 +5,12 @@
 import { Toast } from "@base-ui/react/toast";
 import type { ReactNode } from "react";
 
+import { KeyCaps } from "../commands/key-caps";
+import type { Chord } from "../commands/keys";
 import { useCommand } from "../commands/use-command";
 import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
-import { Kbd } from "./kbd";
 import styles from "./toast.module.css";
 
 // Undo over confirm: a destructive action waits this long before it is final.
@@ -17,7 +18,7 @@ export const UNDO_WINDOW_MS = 5_000;
 const MS_PER_SECOND = 1_000;
 // Toasts stack instead of hiding: a hidden toast is inert and its undo out of reach.
 const TOAST_LIMIT = Number.POSITIVE_INFINITY;
-const UNDO_KEY = "z";
+const UNDO_KEYS: readonly Chord[] = [{ key: "z" }];
 
 export interface ToastData {
   undo?: () => void;
@@ -41,7 +42,7 @@ function UndoHint({ locale }: { locale: Locale }) {
   }).format(UNDO_WINDOW_MS / MS_PER_SECOND);
   return (
     <span className={styles.hint}>
-      <Kbd>{UNDO_KEY}</Kbd>
+      <KeyCaps keys={UNDO_KEYS} />
       <span aria-hidden="true">·</span>
       <span>{seconds}</span>
       <span className={styles.paused}>{m.toast_paused({}, { locale })}</span>
@@ -54,7 +55,17 @@ function ToastItem({ toast }: { toast: Toast.Root.ToastObject<ToastData> }) {
   const undo = toast.data?.undo;
   // A closing toast lets go of the key, so the next undo can take it.
   const claimsKey = undo !== undefined && toast.transitionStatus !== "ending";
-  useCommand(claimsKey ? { id: "undo", key: UNDO_KEY, run: undo } : null);
+  useCommand(
+    claimsKey
+      ? {
+          id: "undo",
+          label: m.undo_action({}, { locale }),
+          group: "act",
+          keys: UNDO_KEYS,
+          run: undo,
+        }
+      : null,
+  );
   return (
     <Toast.Root toast={toast} className={styles.toast}>
       <Toast.Content className={styles.content}>

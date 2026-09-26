@@ -6,9 +6,9 @@ import { firstSyncOf } from "@huliho/core";
 import type { ListRow, Mailbox } from "@huliho/core";
 import { accountsQueryOptions, mailboxesQueryOptions } from "@huliho/state";
 import { useQuery } from "@tanstack/react-query";
-import { Link, Navigate, useNavigate, useParams } from "@tanstack/react-router";
-import { useRef, useState } from "react";
-import type { ReactNode, Ref } from "react";
+import { Link, Navigate, useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode, Ref, RefObject } from "react";
 
 import { useRetryAccount } from "../accounts/use-retry-account";
 import { mailCache, pollCache } from "../cache/client";
@@ -19,8 +19,9 @@ import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { useOnline } from "../shell/use-online";
+import { ListFoot } from "./list-foot";
 import { OfflineBanner } from "./offline-banner";
-import { markedFromMailbox } from "./thread-history";
+import { markedFromMailbox, unmarkedForList, wantsListFocus } from "./thread-history";
 import { ThreadList } from "./thread-list";
 import type { ListHandle } from "./thread-list";
 import { ThreadListBanner } from "./thread-list-banner";
@@ -141,9 +142,12 @@ function useOpenThread(
 // to the empty state where there is no list; one that moved on stays.
 function afterResume(list: ListHandle | null, empty: HTMLDivElement | null, held: boolean): void {
   pollCache();
-  if (!held) {
-    return;
+  if (held) {
+    focusList(list, empty);
   }
+}
+
+function focusList(list: ListHandle | null, empty: HTMLDivElement | null): void {
   if (list === null) {
     empty?.focus();
   } else {
@@ -151,11 +155,42 @@ function afterResume(list: ListHandle | null, empty: HTMLDivElement | null, held
   }
 }
 
+interface JumpFocus {
+  accountId: string;
+  mailboxId: string;
+  list: RefObject<ListHandle | null>;
+  empty: RefObject<HTMLDivElement | null>;
+}
+
+// The focus follows a jump once the pane draws the mailbox the router
+// already names. The entry then loses its mark, so only the jump itself
+// moves the focus.
+function useJumpFocus({ accountId, mailboxId, list, empty }: JumpFocus): void {
+  const navigate = useNavigate();
+  const path = `/mail/${accountId}/${mailboxId}`;
+  const target = useLocation({
+    select: (location) =>
+      wantsListFocus(location.state) ? `${location.state.key ?? ""}:${location.pathname}` : null,
+  });
+  useEffect(() => {
+    if (target === null || !target.endsWith(`:${path}`)) {
+      return;
+    }
+    focusList(list.current, empty.current);
+    void navigate({
+      to: "/mail/$accountId/$mailboxId",
+      params: { accountId, mailboxId },
+      replace: true,
+      state: unmarkedForList,
+    });
+  }, [target, path, accountId, mailboxId, list, empty, navigate]);
+}
+
 // The list pane of one mailbox. A mailbox the tree lacks goes back to
 // the account's inbox; one the tree knows as empty says so without a
-// fetch; every other one gets the list, a fresh one per mailbox so the
-// cursor, the pages and the scroll start over with it. The banner of a
-// stopped account stands over either.
+// fetch, with the foot the list has; every other one gets the list, a
+// fresh one per mailbox so the cursor, the pages and the scroll start
+// over with it. The banner of a stopped account stands over either.
 export function MailboxPane() {
   const locale = useLocale();
   const today = useToday();
@@ -168,6 +203,7 @@ export function MailboxPane() {
   const banner = useAccountBanner(locale, accountId, online, (held) => {
     afterResume(listRef.current, emptyRef.current, held);
   });
+  useJumpFocus({ accountId, mailboxId, list: listRef, empty: emptyRef });
   const open = useOpenThread(accountId, mailboxId, threadId);
   if (!tree.isSuccess) {
     return null;
@@ -191,6 +227,7 @@ export function MailboxPane() {
         {banner}
         <OfflineBanner locale={locale} online={online} />
         {empty}
+        <ListFoot locale={locale} progress={null} />
       </>
     );
   }

@@ -5,9 +5,11 @@
 import { JmapError } from "@huliho/core";
 import type { AccountRow, ListPage, Mailbox, ThreadDetail } from "@huliho/core";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { Lease } from "../cache/coordinator";
+import { COMMANDS } from "../commands/fixtures";
+import { registerCommand } from "../commands/registry";
 import { ACCOUNTS, EXPIRED, MAILBOXES, MAILBOXES_EMPTY_INBOX, STOPPED } from "./fixtures";
 import { mockShellBox, renderShell } from "./shell-rig";
 
@@ -37,6 +39,7 @@ const STOPPED_SENTENCE =
 const STILL_STOPPED_SENTENCE =
   "Still couldn’t reach the server. The connection is checked again every 15 minutes.";
 const OFFLINE_SENTENCE = "Offline: showing cached mail. The connection comes back on its own.";
+const cleanups: (() => void)[] = [];
 
 // The account card at the top of the sidebar, by the address it shows.
 function card(address: string): HTMLElement {
@@ -70,6 +73,12 @@ beforeEach(async () => {
   page.mockReset();
   page.mockResolvedValue(INBOX_PAGE);
   polled.mockClear();
+});
+
+afterEach(() => {
+  for (const off of cleanups.splice(0)) {
+    off();
+  }
 });
 
 test("a stopped account shows the banner over the list; a pass removes it, says so and hands the focus to the first row", async () => {
@@ -237,4 +246,14 @@ test("an empty mailbox keeps the banner and the offline strip; a pass hands the 
   await vi.waitFor(() => {
     expect(document.activeElement?.textContent).toContain("Inbox is empty.");
   });
+});
+
+test("a mailbox the tree knows as empty carries the key-hint strip at its foot", async () => {
+  for (const command of COMMANDS.filter((entry) => entry.id === "shortcuts.open")) {
+    cleanups.push(registerCommand(command));
+  }
+  renderShell("/mail/acc-1/mb-verbouwing");
+  expect(await screen.findByText("Verbouwing is empty.")).toBeDefined();
+  expect(screen.getByText("?").parentElement?.textContent).toBe("? shortcuts");
+  expect(screen.queryByText("move")).toBeNull();
 });

@@ -9,13 +9,15 @@ import { ChevronLeft, X } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
+import { KeyCaps } from "../commands/key-caps";
+import { ESCAPE } from "../commands/keys";
+import type { Chord } from "../commands/keys";
 import { useCommand } from "../commands/use-command";
 import { Button } from "../design-system/button";
 import { cx } from "../design-system/cx";
 import { EmptyState } from "../design-system/empty-state";
 import { ErrorState } from "../design-system/error-state";
 import iconButton from "../design-system/icon-button.module.css";
-import { Kbd } from "../design-system/kbd";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { MessageCard } from "./message-card";
@@ -28,7 +30,7 @@ import styles from "./thread-pane.module.css";
 export type PanePosition = "right" | "bottom" | "screen";
 
 // The key that closes the thread, shown beside the way back.
-const CLOSE_KEY = "Esc";
+const CLOSE_KEYS: readonly Chord[] = [ESCAPE];
 
 export interface ThreadPaneProps {
   locale: Locale;
@@ -78,7 +80,7 @@ function Toolbar({ locale, position, mailbox, keyHints, onClose }: ToolbarProps)
       <button type="button" className={styles.back} aria-label={label} onClick={onClose}>
         <ChevronLeft className={cx(iconButton.icon, styles.chevron)} aria-hidden="true" />
         <span>{name}</span>
-        {keyHints && <Kbd spoken={false}>{CLOSE_KEY}</Kbd>}
+        {keyHints && <KeyCaps keys={CLOSE_KEYS} spoken={false} />}
       </button>
     </div>
   );
@@ -174,7 +176,13 @@ export function ThreadPane(props: ThreadPaneProps) {
   const query = useQuery(threadQueryOptions(cache, accountId, threadId));
   const titleRef = useRef<HTMLHeadingElement>(null);
   const focusedForRef = useRef<string | null>(null);
-  useCommand({ id: "thread.close", key: "Escape", run: onClose });
+  useCommand({
+    id: "thread.close",
+    label: m.thread_close({}, { locale }),
+    group: "navigate",
+    keys: CLOSE_KEYS,
+    run: onClose,
+  });
   useLayoutEffect(() => {
     const title = titleRef.current;
     if (title === null || focusedForRef.current === threadId) {

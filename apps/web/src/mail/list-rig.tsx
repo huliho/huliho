@@ -20,6 +20,7 @@ import type { JSXElementConstructor, ReactNode } from "react";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import { dispatchKey } from "../commands/registry";
+import { stubWidthQueries } from "../shell/width-queries-rig";
 import {
   FASTMAIL,
   FIXED_NOW,
@@ -217,10 +218,14 @@ export function invalidateWindows(client: QueryClient): Promise<void> {
   );
 }
 
+const layout = { wide: true };
+
 // The scroll box has a size in the test, which jsdom gives no element; a
-// box under a hidden ancestor has none, as in a browser.
+// box under a hidden ancestor has none, as in a browser. The width
+// queries answer for the desktop layout, where the key hints show.
 export function mockListBox(): void {
   beforeEach(() => {
+    layout.wide = true;
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
       this: HTMLElement,
     ) {
@@ -231,6 +236,7 @@ export function mockListBox(): void {
       configurable: true,
       value: vi.fn<() => void>(),
     });
+    stubWidthQueries(layout);
   });
   afterEach(() => {
     cleanup();

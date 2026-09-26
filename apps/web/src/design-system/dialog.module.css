@@ -10,12 +10,16 @@
   transition: opacity var(--hhx-duration-overlay) var(--hhx-ease);
 }
 
+/* The popup keeps the sides' clearance from the visible viewport on every
+   edge; what does not fit scrolls inside it, under the focus it holds. */
 .popup {
   position: fixed;
   inset: 0;
   margin: auto;
   inline-size: min(var(--hhx-measure-narrow), calc(100% - var(--hhx-space-6)));
   block-size: fit-content;
+  max-block-size: calc(100dvh - var(--hhx-space-6));
+  overflow: auto;
   display: grid;
   gap: var(--hhx-space-3);
   padding: var(--hhx-space-5);
@@ -25,6 +29,10 @@
   box-shadow: 0 0 0 var(--hhx-halo-width) var(--hh-accent-tint);
   color: var(--hh-text);
   transition: opacity var(--hhx-duration-overlay) var(--hhx-ease);
+}
+
+.popup[data-size="wide"] {
+  inline-size: min(var(--hhx-measure-wide), calc(100% - var(--hhx-space-6)));
 }
 
 .backdrop[data-starting-style],

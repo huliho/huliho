@@ -26,6 +26,7 @@ import { useLocale } from "../i18n/locale";
 import { useLayout } from "../shell/breakpoints";
 import { DEFAULT_READING_PANE } from "../theme/appearance";
 import { prefetchAccountMenu } from "./account-switcher";
+import { useJumpCommands } from "./jump-commands";
 import { rememberLastAccount } from "./last-account";
 import { prefetchThreadPane } from "./reading-pane";
 import { ShellFrame } from "./shell-frame";
@@ -49,8 +50,9 @@ function treeState(query: UseQueryResult<Mailbox[]>): TreeState {
 
 // The mail screen of one account: it leases the worker the accounts of
 // the session and the mailbox it shows, remembers the account for the
-// next visit and draws the frame around the route's pane, with the
-// thread the address names where the reading pane preference puts it.
+// next visit, registers the jump to each mailbox and draws the frame
+// around the route's pane, with the thread the address names where the
+// reading pane preference puts it.
 export function MailShell() {
   const locale = useLocale();
   const layout = useLayout();
@@ -63,6 +65,7 @@ export function MailShell() {
   const tree = useQuery(mailboxesQueryOptions(mailCache, accountId));
   const preferences = useQuery(preferencesQueryOptions);
   useMailCache(mailboxId === undefined ? null : { accountId, mailboxId });
+  useJumpCommands(tree.data ?? null, { accountId, mailboxId, locale });
   useEffect(() => {
     rememberLastAccount(accountId);
   }, [accountId]);
