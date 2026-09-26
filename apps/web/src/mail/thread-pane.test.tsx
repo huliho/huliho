@@ -214,18 +214,18 @@ test("as a screen the title is the page's heading and the way back names the mai
   expect(document.activeElement).toBe(title);
   const back = screen.getByRole("button", { name: "Back to Inbox" });
   expect(back.textContent).toContain("Inbox");
-  expect(back.textContent).toContain("Esc");
+  expect(back.textContent).toContain("esc");
   fireEvent.click(back);
   expect(onClose).toHaveBeenCalledOnce();
   cleanup();
   renderPane(THREAD, { position: "screen", keyHints: false });
   await screen.findByRole("heading", { level: 1 });
-  expect(screen.getByRole("button", { name: "Back to Inbox" }).textContent).not.toContain("Esc");
+  expect(screen.getByRole("button", { name: "Back to Inbox" }).textContent).not.toContain("esc");
   cleanup();
   // A tree without the mailbox leaves the way back its bare word.
   renderPane(THREAD, { position: "screen", open: { ...OPEN, mailbox: undefined } });
   await screen.findByRole("heading", { level: 1 });
-  expect(screen.getByRole("button", { name: "Back" }).textContent).toBe("BackEsc");
+  expect(screen.getByRole("button", { name: "Back" }).textContent).toBe("Backesc");
 });
 
 test("the thread loads, fails with Try again and says when it is gone", async () => {

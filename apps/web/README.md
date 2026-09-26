@@ -14,9 +14,19 @@ once before either. The test script disables Node's own experimental
 localStorage global, which would otherwise shadow the jsdom one that
 the locale strategy reads.
 
-Single-key commands (Escape closes settings, `z` undoes) come from one
-registry in `src/commands`; the root layout installs its listener and
-hosts the toast viewport, so a toast outlives the route that opened it.
+Every keyboard command comes from one registry in `src/commands`: a
+command carries its keys, a label and a group. The keys are one key, a
+combination on the platform's command modifier or `g` followed by a
+letter, which the registry waits one second for. The root layout
+installs the key listener and hosts the toast viewport, so a toast
+outlives the route that opened it. Single keys never fire while typing;
+a dialog or a menu keeps every key to itself. Behind every signed-in
+screen stand the command palette (Cmd/Ctrl+K) and the shortcut overlay
+(`?`). The palette lists every registered command by group with the
+ones last run first, narrows on a query and runs the highlighted one
+once it has closed and given the focus back; the overlay lists the
+same commands with their keys. Both come as one chunk fetched when the
+layout mounts.
 A revoke on the sessions page leaves the list at once and reaches the
 server only when its undo toast has run out. If the page closes first,
 the request goes out on page hide with `keepalive`.
@@ -116,6 +126,12 @@ tree: the six roles in a fixed order,
 then the folders with their depth. The tree is one tab stop: the arrow
 keys move inside it and Tab leaves it. Mailbox names are the server's
 words; the counts are unread mail, and drafts for the drafts folder.
+Each mailbox has a jump, `g` then its letter: the six roles keep fixed
+letters and a folder takes the first free letter of its name, shown
+beside it at the desktop width; a folder without one is reached
+through the palette. A jump puts the focus on the list's first row.
+Cmd/Ctrl+Shift+L opens the account menu at the tablet and desktop
+widths, where the switcher is on the screen.
 
 Under the header sits the thread list, a grid over the pages the cache
 serves, rendered only where it is in view, so a mailbox of fifty
@@ -135,11 +151,14 @@ Retry, whose outcome lands in the same sentence; a pass says so, hands
 the focus to the first row and fades the banner. A
 mailbox still fetching its headers shows its progress at the foot of
 the pane, with still rows after the last synced one; the worker polls
-closer while such a sync runs. A render failure in one pane stays in
+closer while such a sync runs. Otherwise the foot holds a strip of key
+hints read from the registry, where a keyboard is likely: at the
+tablet and desktop widths. A render failure in one pane stays in
 that pane. The add-account card and the settings screens each load as
-a chunk of their own on their first visit; the thread pane and the
-account menu load as chunks when the shell mounts, the still cards or
-a plain trigger standing in until they land.
+a chunk of their own on their first visit; the thread pane, the
+account menu and the command surfaces load as chunks when the shell or
+the layout mounts, the still cards or a plain trigger standing in until
+they land.
 
 Enter, `o` or a click opens a row's thread at
 `/mail/{accountId}/{mailboxId}/{threadId}`, where the reading pane

@@ -17,6 +17,11 @@ body {
   line-height: var(--hhx-leading);
 }
 
+/* The app's own stacking context: a popup portaled after it paints above everything in it. */
+#root {
+  isolation: isolate;
+}
+
 img,
 svg,
 video {

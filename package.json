@@ -148,9 +148,16 @@
         "!apps/web/dist/assets/pages-*.js",
         "!apps/web/dist/assets/add-account-*.js",
         "!apps/web/dist/assets/thread-pane-*.js",
-        "!apps/web/dist/assets/account-menu-*.js"
+        "!apps/web/dist/assets/account-menu-*.js",
+        "!apps/web/dist/assets/overlays-*.js"
       ],
       "limit": "250 kB",
+      "gzip": true
+    },
+    {
+      "name": "command overlays chunk",
+      "path": "apps/web/dist/assets/overlays-*.js",
+      "limit": "100 kB",
       "gzip": true
     },
     {

@@ -11,6 +11,8 @@ import { useLayoutEffect } from "react";
 import type { ReactNode } from "react";
 import { expect, test, vi } from "vitest";
 
+import { COMMANDS } from "../commands/fixtures";
+import { registerCommand } from "../commands/registry";
 import { FASTMAIL, INBOX_ID, INBOX_PAGE, fixtureCache, pageOf } from "./fixtures";
 import {
   ROW_PX,
@@ -201,12 +203,33 @@ test("a list mounted with new mail waiting gets its sentence after the commit th
   expect(inCommits.some(addsTo(region))).toBe(false);
 });
 
+test("the key hints stand at the foot while the list has rows, the marker's dot among them", async () => {
+  const cache = withPage(pageOf(undefined, NEW_MAIL));
+  renderList({ cache });
+  await screen.findByRole("grid");
+  expect(screen.getByText("j/k").parentElement?.textContent).toBe("j/k move");
+  expect(screen.getByText("o").parentElement?.textContent).toBe("o open");
+  expect(screen.queryByText("shortcuts")).toBeNull();
+  cleanup();
+  // A list found empty keeps the strip, with the hints of the commands that still stand.
+  const offs = COMMANDS.filter((entry) => entry.id === "shortcuts.open").map(registerCommand);
+  renderList({ cache: fixtureCache({}) });
+  await screen.findByText("nothing here");
+  expect(screen.queryByText("move")).toBeNull();
+  expect(screen.getByText("?").parentElement?.textContent).toBe("? shortcuts");
+  for (const off of offs) {
+    off();
+  }
+});
+
 test("a first sync shows its sentence once and its count beside three still rows", async () => {
   renderList({ mailbox: syncingInbox() });
   await screen.findByRole("grid");
   const foot = screen.getByText(FIRST_SYNC_SENTENCE);
   expect(foot.getAttribute("role")).toBe("status");
   expect(screen.getByText("1,240 of 18,532")).toBeDefined();
+  // The block takes the foot; the hints wait for the sync to end.
+  expect(screen.queryByText("move")).toBeNull();
   const grid = screen.getByRole("grid");
   expect(grid.getAttribute("aria-rowcount")).toBe(String(INBOX_PAGE.rows.length));
   // The list is three rows taller than its rows; the ones in reach are drawn still.

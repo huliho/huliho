@@ -101,6 +101,52 @@ test("a mailbox opened after another starts at its first row", async () => {
   });
 });
 
+test("g then a letter jumps to that mailbox with the focus on its first row", async () => {
+  const router = renderShell("/mail/acc-1/mb-inbox");
+  await screen.findByRole("grid", { name: "Conversations" });
+  command("g");
+  command("d");
+  await vi.waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/mb-drafts");
+  });
+  expect(await screen.findByRole("heading", { level: 1, name: "Drafts" })).toBeDefined();
+  await vi.waitFor(() => {
+    expect(document.activeElement?.getAttribute("aria-rowindex")).toBe("1");
+  });
+  // A folder jumps by the letter the tree shows for it.
+  command("g");
+  command("f");
+  await vi.waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/mb-facturen");
+  });
+});
+
+test("a back onto a mailbox a jump opened leaves the focus where it is", async () => {
+  const router = renderShell("/mail/acc-1/mb-inbox");
+  await screen.findByRole("grid", { name: "Conversations" });
+  command("g");
+  command("d");
+  await vi.waitFor(() => {
+    expect(document.activeElement?.getAttribute("aria-rowindex")).toBe("1");
+  });
+  expect(router.state.location.pathname).toBe("/mail/acc-1/mb-drafts");
+  fireEvent.click(screen.getByRole("treeitem", { name: "Sent" }));
+  await screen.findByRole("heading", { level: 1, name: "Sent" });
+  const card = screen.getByRole("button", { name: (name) => name.includes("sanne@fastmail.com") });
+  act(() => {
+    card.focus();
+  });
+  act(() => {
+    router.history.back();
+  });
+  await screen.findByRole("heading", { level: 1, name: "Drafts" });
+  await vi.waitFor(() => {
+    const stop = screen.getByRole("grid").querySelector('[role="row"][tabindex="0"]');
+    expect(stop?.getAttribute("aria-rowindex")).toBe("1");
+  });
+  expect(document.activeElement).toBe(card);
+});
+
 test("an account opened without a mailbox goes to its inbox", async () => {
   const router = renderShell("/mail/acc-1");
   await vi.waitFor(() => {
@@ -299,7 +345,7 @@ test("a phone opens the thread as a screen whatever the preference says", async 
   expect(screen.queryByRole("complementary")).toBeNull();
   expect(screen.queryByRole("separator")).toBeNull();
   expect(document.querySelector("main")?.hasAttribute("inert")).toBe(true);
-  expect(screen.getByRole("button", { name: "Back to Inbox" }).textContent).not.toContain("Esc");
+  expect(screen.getByRole("button", { name: "Back to Inbox" }).textContent).not.toContain("esc");
 });
 
 test("the design's default is clamped when the frame leaves less room", async () => {

@@ -5,6 +5,7 @@
 import type { ListRow } from "@huliho/core";
 import type { KeyboardEvent, MouseEvent, RefObject } from "react";
 
+import type { Chord } from "../commands/keys";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import type { ListCursor } from "./list-cursor";
@@ -16,7 +17,7 @@ import { rowAt } from "./use-thread-pages";
 import styles from "./thread-list.module.css";
 
 // The key that brings new mail in; the marker shows it.
-export const REVEAL_KEY = ".";
+export const REVEAL_KEYS: readonly Chord[] = [{ key: "." }];
 
 interface GridProps {
   locale: Locale;
@@ -108,7 +109,7 @@ export function Viewport(props: ViewportProps) {
           ref={markerRef}
           locale={locale}
           count={pending}
-          keyHint={REVEAL_KEY}
+          keys={REVEAL_KEYS}
           onReveal={onReveal}
         />
       )}
