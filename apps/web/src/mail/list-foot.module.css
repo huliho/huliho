@@ -1,0 +1,9 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* The foot keeps the end of the pane, whatever stands above it. */
+.foot {
+  flex: none;
+  margin-block-start: auto;
+}

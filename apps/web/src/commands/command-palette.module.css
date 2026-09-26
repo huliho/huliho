@@ -1,0 +1,149 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--hh-bg);
+  opacity: var(--hhx-scrim-opacity);
+  transition: opacity var(--hhx-duration-overlay) var(--hhx-ease);
+}
+
+/* The palette hangs from the top, so a list that shrinks as the query
+   narrows it never moves the input under the hands. */
+.popup {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-start: var(--hhx-palette-top);
+  display: flex;
+  flex-direction: column;
+  inline-size: min(var(--hhx-measure-wide), calc(100% - var(--hhx-space-6)));
+  max-block-size: calc(100dvh - 2 * var(--hhx-palette-top));
+  margin-inline: auto;
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-overlay);
+  background: var(--hh-surface);
+  box-shadow: 0 0 0 var(--hhx-halo-width) var(--hh-accent-tint);
+  color: var(--hh-text);
+  overflow: hidden;
+  transition: opacity var(--hhx-duration-overlay) var(--hhx-ease);
+}
+
+.backdrop[data-starting-style],
+.backdrop[data-ending-style],
+.popup[data-starting-style],
+.popup[data-ending-style] {
+  opacity: 0;
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-3);
+  padding: var(--hhx-space-3) var(--hhx-space-4);
+  border-block-end: var(--hhx-border-width) solid var(--hh-border);
+}
+
+.icon {
+  flex: none;
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
+  color: var(--hh-text-muted);
+}
+
+.input {
+  flex: 1;
+  min-inline-size: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--hh-text);
+  font: inherit;
+  font-size: var(--hhx-type-3);
+}
+
+.input::placeholder {
+  color: var(--hh-text-muted);
+}
+
+.list {
+  flex: 1;
+  min-block-size: 0;
+  padding: var(--hhx-space-1);
+  overflow: auto;
+}
+
+.groupLabel {
+  padding: var(--hhx-space-2) var(--hhx-space-3) var(--hhx-space-1);
+  font-size: var(--hhx-type-1);
+  letter-spacing: var(--hhx-tracking-caps);
+  text-transform: uppercase;
+  color: var(--hh-text-muted);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-3);
+  min-block-size: var(--hhx-hit-target);
+  padding: var(--hhx-space-2) var(--hhx-space-3);
+  border-radius: var(--hhx-radius-field);
+  cursor: default;
+}
+
+/* The highlighted row is the inset frame plus the tint, as a selected
+   row is in the list. With custom colors stripped the frame is drawn as
+   an outline, which adds nothing to the row's box. */
+.item[data-highlighted] {
+  background: var(--hh-accent-tint);
+  box-shadow: inset 0 0 0 var(--hhx-border-width-selected) var(--hh-accent);
+}
+
+@media (forced-colors: active) {
+  .item[data-highlighted] {
+    outline: var(--hhx-border-width-selected) solid currentColor;
+    outline-offset: calc(-1 * var(--hhx-border-width-selected));
+  }
+}
+
+.label {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  margin: 0;
+  padding: var(--hhx-space-4);
+  color: var(--hh-text-muted);
+}
+
+/* The status region stays in the DOM, empty and without a footprint. */
+.empty:empty {
+  padding: 0;
+}
+
+.foot {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hhx-space-4);
+  margin: 0;
+  padding: var(--hhx-space-2) var(--hhx-space-4);
+  border-block-start: var(--hhx-border-width) solid var(--hh-border);
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .popup {
+    transition: none;
+  }
+}

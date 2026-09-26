@@ -75,6 +75,8 @@
   --hhx-hit-target: 28px;
   --hhx-pane-padding: 16px;
   --hhx-toolbar-height: 44px;
+  /* The key-hint strip at the foot of the list, counted in the list's height above the pane. */
+  --hhx-foot-height: 36px;
 
   --hhx-tracking-caps: 0.06em;
   /* The box of text that is read out and never drawn: the smallest one a screen reader keeps. */
@@ -83,6 +85,8 @@
   --hhx-avatar-size: 32px;
   --hhx-measure-narrow: 400px;
   --hhx-measure-wide: 760px;
+  /* The command palette hangs this far from the top of the visible viewport. */
+  --hhx-palette-top: 15dvh;
   --hhx-sheet-width: 960px;
   --hhx-swatch-min: 160px;
   /* The least a row's text column gets before its actions wrap under it. */
@@ -118,6 +122,7 @@
   --hhx-hit-target: 44px;
   --hhx-pane-padding: 16px;
   --hhx-toolbar-height: 56px;
+  --hhx-foot-height: 40px;
 }
 
 /* A touchscreen gets touch density at every width; a mouse-only device keeps its density. */
@@ -132,6 +137,7 @@
     --hhx-hit-target: 44px;
     --hhx-pane-padding: 16px;
     --hhx-toolbar-height: 56px;
+    --hhx-foot-height: 40px;
   }
 }
 

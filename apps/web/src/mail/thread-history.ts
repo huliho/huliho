@@ -15,3 +15,19 @@ export function markedFromMailbox<State extends object>(
 export function openedFromMailbox(state: object): boolean {
   return "fromMailbox" in state && state.fromMailbox === true;
 }
+
+// The mark a mailbox opened by a jump carries: the focus goes into its
+// list, where the keys that jumped were pressed. The pane spends the
+// mark once the focus moved, so a later visit to the entry (a reload, a
+// back or a forward) moves nothing.
+export function markedForList<State extends object>(state: State): State & { focusList: true } {
+  return { ...state, focusList: true };
+}
+
+export function unmarkedForList(state: object): object {
+  return Object.fromEntries(Object.entries(state).filter(([key]) => key !== "focusList"));
+}
+
+export function wantsListFocus(state: object): boolean {
+  return "focusList" in state && state.focusList === true;
+}

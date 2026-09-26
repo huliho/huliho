@@ -1,0 +1,52 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* One column per group; on a narrow screen they stack. */
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--hhx-measure-narrow) / 2), 1fr));
+  gap: var(--hhx-space-5);
+}
+
+.column {
+  display: grid;
+  align-content: start;
+  gap: var(--hhx-space-2);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--hhx-type-1);
+  font-weight: 400;
+  letter-spacing: var(--hhx-tracking-caps);
+  text-transform: uppercase;
+  color: var(--hh-text-muted);
+}
+
+.rows {
+  display: grid;
+  gap: var(--hhx-space-2);
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--hhx-space-3);
+}
+
+.term {
+  min-inline-size: 0;
+}
+
+.keys {
+  flex: none;
+  margin: 0;
+}
+
+.note {
+  margin: var(--hhx-space-2) 0 0;
+  color: var(--hh-text-muted);
+}

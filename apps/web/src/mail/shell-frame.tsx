@@ -23,6 +23,8 @@ import { Sidebar } from "./sidebar";
 import type { PanePosition } from "./thread-pane";
 import type { TreeState } from "./tree";
 import {
+  FOOT_HEIGHT_FALLBACK_PX,
+  FOOT_HEIGHT_TOKEN,
   ROW_HEIGHT_FALLBACK_PX,
   ROW_HEIGHT_TOKEN,
   TOOLBAR_HEIGHT_FALLBACK_PX,
@@ -59,11 +61,12 @@ interface ListSize {
   choose: (size: number | null) => void;
 }
 
-// The density's row and toolbar heights, which size the list below the
-// pane in rows.
+// The density's row, toolbar and foot heights, which size the list
+// above the pane in rows.
 interface Heights {
   row: number;
   toolbar: number;
+  foot: number;
 }
 
 interface SeamProps {
@@ -183,8 +186,8 @@ function useRoom(panels: Panels, position: PanePosition): number {
 
 // The list's size at the two split positions: the device's choice or
 // the design's default, clamped to the room the frame leaves. Beside
-// the pane that is a width; above it a height in rows under the header,
-// at the density's row and toolbar heights.
+// the pane that is a width; above it a height in rows between the
+// header and the foot, at the density's row, toolbar and foot heights.
 function useListSize(panels: Panels, position: PanePosition): ListSize {
   const [listWidth, chooseWidth] = useListWidth();
   const [listHeight, chooseHeight] = useListHeight();
@@ -192,10 +195,12 @@ function useListSize(panels: Panels, position: PanePosition): ListSize {
   const heights: Heights = {
     row: useTokenPx(panels.frame, ROW_HEIGHT_TOKEN, ROW_HEIGHT_FALLBACK_PX),
     toolbar: useTokenPx(panels.frame, TOOLBAR_HEIGHT_TOKEN, TOOLBAR_HEIGHT_FALLBACK_PX),
+    foot: useTokenPx(panels.frame, FOOT_HEIGHT_TOKEN, FOOT_HEIGHT_FALLBACK_PX),
   };
   if (position === "bottom") {
-    const bounds = boundsFor(heights.toolbar + LIST_MIN_ROWS * heights.row, room);
-    const fallback = heights.toolbar + LIST_DEFAULT_ROWS * heights.row;
+    const fixed = heights.toolbar + heights.foot;
+    const bounds = boundsFor(fixed + LIST_MIN_ROWS * heights.row, room);
+    const fallback = fixed + LIST_DEFAULT_ROWS * heights.row;
     return {
       value: clamp(listHeight ?? fallback, bounds),
       bounds,

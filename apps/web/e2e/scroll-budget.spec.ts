@@ -207,8 +207,23 @@ async function keyToPaint(page: Page, key: string): Promise<number> {
 }
 
 // The keys of the list, then Enter, which opens the row and puts the
-// focus on the thread's title, then Escape, which brings it back.
-const MEASURED_KEYS = ["j", "k", "ArrowDown", "ArrowUp", "End", "Home", "Enter", "Escape"];
+// focus on the thread's title, then Escape, which brings it back; after
+// those the palette's key and the overlay's, each with the Escape that
+// closes it.
+const MEASURED_KEYS = [
+  "j",
+  "k",
+  "ArrowDown",
+  "ArrowUp",
+  "End",
+  "Home",
+  "Enter",
+  "Escape",
+  "ControlOrMeta+k",
+  "Escape",
+  "?",
+  "Escape",
+];
 
 test("a key moves the focus within the interaction budget on the long list", async ({ page }) => {
   await page.setViewportSize(VIEWPORTS[1]);

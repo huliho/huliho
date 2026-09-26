@@ -5,12 +5,16 @@
 import { Link, Outlet, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 
+import { ESCAPE } from "../commands/keys";
+import type { Chord } from "../commands/keys";
 import { useCommand } from "../commands/use-command";
 import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
 import { useSidebarShown } from "./layout";
 import { SETTINGS_ENTRIES, SettingsNav } from "./settings-nav";
 import styles from "./settings-page.module.css";
+
+const CLOSE_KEYS: readonly Chord[] = [ESCAPE];
 
 export function SettingsPage() {
   const locale = useLocale();
@@ -21,7 +25,9 @@ export function SettingsPage() {
   const page = SETTINGS_ENTRIES.find((entry) => matchRoute({ to: entry.to }) !== false);
   useCommand({
     id: "settings.close",
-    key: "Escape",
+    label: m.command_settings_close({}, { locale }),
+    group: "app",
+    keys: CLOSE_KEYS,
     run: () => {
       void navigate({ to: "/" });
     },
