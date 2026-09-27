@@ -7,19 +7,17 @@
 //! bytes, the disposition toward the download and the headers that
 //! keep a blob from rendering anywhere but where the app puts it.
 
-use std::sync::Arc;
-
 use axum::extract::{FromRequestParts, Path, Query, State};
 use axum::http::header::{CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, RANGE};
 use axum::http::request::Parts;
 use axum::http::{HeaderValue, StatusCode};
 use axum::response::Response;
 use serde::Deserialize;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::sync::OwnedSemaphorePermit;
 
 use super::jmap::running;
 use super::reconnect::scoped;
-use super::{ApiError, ApiState, Caller, internal};
+use super::{ApiError, ApiState, Caller, internal, permit};
 use crate::accounts::AccountKind;
 use crate::ids::AccountId;
 use crate::jmap::{BlobAsk, BlobError, Proxy};
@@ -81,7 +79,13 @@ pub(super) async fn download(
     let account_id = AccountId::from(path.id.clone());
     let scope = scoped(&state, caller, &account_id).await?;
     let account = running(&state, &scope).await?;
-    let lane = lane(state.endpoints.downloads(&account_id)).await?;
+    // A place in the account's download lane, waited for as long as a
+    // stalled stream is waited for.
+    let lane = permit(
+        state.endpoints.downloads(&account_id),
+        DOWNLOAD_IDLE_TIMEOUT,
+    )
+    .await?;
     let ask = BlobAsk {
         account_id: &path.account_id,
         blob_id: &path.blob_id,
@@ -99,18 +103,6 @@ pub(super) async fn download(
         strict: state.privacy_strict,
     };
     respond(blob, &shape, lane)
-}
-
-/// A place in the account's download lane, waited for as long as a
-/// stalled stream is waited for; past that the browser asks again.
-async fn lane(downloads: Arc<Semaphore>) -> Result<OwnedSemaphorePermit, ApiError> {
-    match tokio::time::timeout(DOWNLOAD_IDLE_TIMEOUT, downloads.acquire_owned()).await {
-        Ok(Ok(permit)) => Ok(permit),
-        Ok(Err(closed)) => Err(internal(closed)),
-        Err(_elapsed) => Err(ApiError::RateLimited {
-            retry_after_ms: i64::try_from(DOWNLOAD_IDLE_TIMEOUT.as_millis()).unwrap_or(i64::MAX),
-        }),
-    }
 }
 
 /// The blob as the browser gets it: typed by its first bytes, cut
@@ -187,21 +179,5 @@ mod tests {
         assert!(matches!(ApiError::from(failed), ApiError::UpstreamFailed));
         let cut = BlobError::from(AttemptError::from(ProbeError::Unreachable(String::new())));
         assert!(matches!(ApiError::from(cut), ApiError::UpstreamUnreachable));
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_lane_is_taken_at_once_or_refused_after_the_wait_with_a_retry_after() {
-        let free = Arc::new(Semaphore::new(1));
-        let permit = lane(Arc::clone(&free)).await.unwrap();
-        assert_eq!(free.available_permits(), 0);
-        drop(permit);
-        assert_eq!(free.available_permits(), 1);
-        let taken = Arc::new(Semaphore::new(0));
-        let refused = lane(taken).await.unwrap_err();
-        let expected = i64::try_from(DOWNLOAD_IDLE_TIMEOUT.as_millis()).unwrap();
-        assert!(matches!(
-            refused,
-            ApiError::RateLimited { retry_after_ms } if retry_after_ms == expected
-        ));
     }
 }

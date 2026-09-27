@@ -188,6 +188,21 @@ async fn three_redirects_are_followed_and_a_fourth_is_refused() {
     assert!(hops[3].ends_with("/hop/3"));
 }
 
+#[tokio::test]
+async fn the_client_without_redirects_hands_the_redirect_back() {
+    let server = TlsServer::start(app()).await;
+    let upstream = Upstream::with_dns(&server.config(true), dns_at(&server, &[HOST])).unwrap();
+    let response = upstream
+        .http_no_redirect()
+        .get(url(&server, HOST, "/three/0"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(response.headers()[header::LOCATION], "/three/1");
+    assert_eq!(server.requests().len(), 1);
+}
+
 #[test]
 fn a_ca_file_the_roots_cannot_use_fails_the_start() {
     let empty = tempfile::NamedTempFile::new().unwrap();

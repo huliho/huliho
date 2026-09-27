@@ -145,6 +145,25 @@ one download gets ten minutes in all; a `Range` from byte zero answers
 the range; a range that reaches the end of the blob, an undeclared
 length or any other range answers the whole blob with 200. The route
 serves native accounts; an IMAP account answers `upstream_unsupported`.
+`GET /api/remote-image?url=` fetches an image a message links, on the
+reader's behalf and with nothing of theirs on the request. The URL
+stays within 2048 bytes, carries no user information and names a host
+rather than an address; an `http` URL is fetched over `https` on the
+same host. That host and the target of every redirect after it, three
+at most, pass the pinned resolver and the private-network rule before
+anything connects. A URL off the other rules answers `invalid_request`
+without a lookup; a host inside a private network answers it after one
+lookup and no connect. The request carries a fixed `User-Agent`
+and no cookie, authorization or referrer; each attempt gets ten
+seconds. The bytes are read up to 5 MiB and refused past it with
+`too_large`. They must carry the signature of one of the six raster
+types and the answer names that type; bytes without one answer
+`not_an_image` and a host that answers anything else
+`upstream_unreachable`. The image comes back with the blob headers
+above. A session may fetch 400 images at once and 120 a minute after
+that; past that the route answers 429. Thirty-two images, each read
+within 5 MiB, are fetched and buffered at once per process; a fetch
+past that waits ten seconds for a slot before it answers 429.
 `GET /api/preferences` and `PUT /api/preferences/{key}` read and write
 the reading pane position, the theme, the density, the locale, the font
 size, the line height and the dark-mode treatment of messages, each from

@@ -23,9 +23,10 @@ use huliho_server::cli::{self, Command};
 use huliho_server::config::{CONFIG_PATH_VAR, Config, ConfigError, DEFAULT_CONFIG_PATH};
 use huliho_server::gate::{Gate, Reconnect};
 use huliho_server::jmap::Endpoints;
+use huliho_server::mail::remote::{REMOTE_FETCHES_IN_FLIGHT, REMOTE_IMAGE_RATE};
 use huliho_server::mail::sanitize::Sanitizer;
 use huliho_server::oauth::Consents;
-use huliho_server::rate::RateLimiter;
+use huliho_server::rate::{Buckets, RateLimiter};
 use huliho_server::secrets::{InstanceSecret, Keys};
 use huliho_server::session::SessionTimeouts;
 use huliho_server::store::Store;
@@ -95,6 +96,8 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         keys: Arc::new(Keys::derive(&secret)),
         timeouts,
         limiter: Arc::new(RateLimiter::default()),
+        remote_images: Arc::new(Buckets::new(REMOTE_IMAGE_RATE)),
+        remote_fetches: Arc::new(tokio::sync::Semaphore::new(REMOTE_FETCHES_IN_FLIGHT)),
         verify_gate: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_VERIFICATIONS)),
         probe_interval_minutes: config.upstream.probe_interval_minutes,
         public_url: config.public_url.clone(),

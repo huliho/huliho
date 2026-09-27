@@ -16,6 +16,7 @@ mod password;
 mod preferences;
 mod providers;
 mod reconnect;
+mod remote_image;
 mod sender_policies;
 mod sessions;
 mod users;
@@ -23,6 +24,7 @@ mod users;
 use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU32;
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use axum::Router;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRequestParts, Request};
@@ -32,7 +34,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use axum_extra::extract::cookie::CookieJar;
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use url::Url;
 
 use error::{ApiError, internal};
@@ -43,7 +45,7 @@ use crate::ids::UserId;
 use crate::jmap::{Endpoints, JMAP_REQUEST_LIMIT, Proxy};
 use crate::mail::sanitize::Sanitizer;
 use crate::oauth::Consents;
-use crate::rate::RateLimiter;
+use crate::rate::{Buckets, RateLimiter};
 use crate::secrets::Keys;
 use crate::session::{self, SESSION_COOKIE, Session, SessionTimeouts};
 use crate::store::Store;
@@ -73,6 +75,11 @@ pub struct ApiState {
     pub keys: Arc<Keys>,
     pub timeouts: SessionTimeouts,
     pub limiter: Arc<RateLimiter>,
+    /// The allowance of remote images per session, one process wide.
+    pub remote_images: Arc<Buckets>,
+    /// Remote images in flight, one process wide; bounds the memory
+    /// their buffers hold.
+    pub remote_fetches: Arc<Semaphore>,
     pub verify_gate: Arc<Semaphore>,
     /// From the config; the account list tells the page.
     pub probe_interval_minutes: NonZeroU32,
@@ -172,6 +179,7 @@ pub fn router(state: ApiState) -> Router {
             "/jmap/{id}/download/{account_id}/{blob_id}/{name}",
             get(download::download),
         )
+        .route("/remote-image", get(remote_image::fetch))
         .route("/preferences", get(preferences::list_preferences))
         .route("/preferences/{key}", put(preferences::set_preference))
         .route("/sender-policies", get(sender_policies::list_policies))
@@ -333,4 +341,42 @@ fn session_token(jar: &CookieJar) -> Result<String, ApiError> {
     jar.get(SESSION_COOKIE)
         .map(|cookie| cookie.value().to_owned())
         .ok_or(ApiError::Unauthenticated)
+}
+
+/// A place behind `gate`, waited for as long as `patience`; past that
+/// the browser asks again after the same wait.
+async fn permit(
+    gate: Arc<Semaphore>,
+    patience: Duration,
+) -> Result<OwnedSemaphorePermit, ApiError> {
+    match tokio::time::timeout(patience, gate.acquire_owned()).await {
+        Ok(Ok(permit)) => Ok(permit),
+        Ok(Err(closed)) => Err(internal(closed)),
+        Err(_elapsed) => Err(ApiError::RateLimited {
+            retry_after_ms: i64::try_from(patience.as_millis()).unwrap_or(i64::MAX),
+        }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PATIENCE: Duration = Duration::from_secs(20);
+
+    #[tokio::test(start_paused = true)]
+    async fn a_permit_is_taken_at_once_or_refused_after_the_wait_with_a_retry_after() {
+        let free = Arc::new(Semaphore::new(1));
+        let held = permit(Arc::clone(&free), PATIENCE).await.unwrap();
+        assert_eq!(free.available_permits(), 0);
+        drop(held);
+        assert_eq!(free.available_permits(), 1);
+        let taken = Arc::new(Semaphore::new(0));
+        let refused = permit(taken, PATIENCE).await.unwrap_err();
+        let expected = i64::try_from(PATIENCE.as_millis()).unwrap();
+        assert!(matches!(
+            refused,
+            ApiError::RateLimited { retry_after_ms } if retry_after_ms == expected
+        ));
+    }
 }
