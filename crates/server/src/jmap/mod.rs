@@ -7,6 +7,7 @@
 //! within its limits and reports every outcome to the connection gate.
 //! For an IMAP account the in-process bridge answers the same routes.
 
+mod download;
 mod endpoints;
 mod request;
 mod session;
@@ -19,6 +20,7 @@ use reqwest::{Response, StatusCode};
 use serde_json::{Map, Value};
 use url::{Host, Url};
 
+pub use download::{BlobAsk, BlobError, expand};
 pub use endpoints::Endpoints;
 pub(crate) use request::{Wants, inspect};
 pub(crate) use session::urls;
@@ -26,7 +28,7 @@ pub(crate) use session::urls;
 use crate::accounts::{self, Account, AccountSettings, Credential};
 use crate::discovery::Address;
 use crate::events::Actor;
-use crate::gate::{AttemptError, Reconnect};
+use crate::gate::{AttemptError, Fault, Reconnect};
 use crate::ids::AccountId;
 use crate::probe::{self, MAX_SESSION_BYTES, ProbeError};
 use crate::scope::Scope;
@@ -78,11 +80,10 @@ struct Stored {
     credential: Credential,
 }
 
-/// The session object for the browser and the API endpoint the
-/// upstream named.
+/// The session object for the browser and what the upstream named.
 struct Fetched {
     session: Vec<u8>,
-    api_url: Url,
+    urls: endpoints::UpstreamUrls,
 }
 
 impl Proxy {
@@ -129,7 +130,12 @@ impl Proxy {
         scope: &Scope,
         outcome: &Result<T, AttemptError>,
     ) -> Result<(), AttemptError> {
-        let fault = outcome.as_ref().err().map(AttemptError::fault);
+        self.observed(scope, outcome.as_ref().err().map(AttemptError::fault))
+            .await
+    }
+
+    /// One outcome to the gate, signed by the scope's user.
+    async fn observed(&self, scope: &Scope, fault: Option<Fault>) -> Result<(), AttemptError> {
         let actor = Actor::User(scope.user_id().clone());
         self.wiring.gate.observe(scope, &actor, fault).await
     }
@@ -191,42 +197,65 @@ impl Proxy {
             .map_err(|_| unsupported("the answer is not a session object"))?;
         let named = session::rewrite(&mut object, &stored.account_id)
             .ok_or_else(|| unsupported("the session object names no API endpoint"))?;
-        let api_url = self.api_endpoint(&stored.session_url, &named).await?;
-        self.endpoints.remember(&stored.account_id, api_url.clone());
+        let urls = endpoints::UpstreamUrls {
+            api_url: self
+                .checked_endpoint(&stored.session_url, &named.api_url)
+                .await?,
+            download_url: named.download_url,
+        };
+        self.endpoints.remember(&stored.account_id, urls.clone());
         let session =
             serde_json::to_vec(&object).map_err(|error| AttemptError::Store(error.into()))?;
-        Ok(Fetched { session, api_url })
+        Ok(Fetched { session, urls })
     }
 
-    /// The API endpoint the session object named, as a target this
-    /// instance may reach: HTTPS on a named host without user
-    /// information, outside the private networks.
-    async fn api_endpoint(&self, session_url: &Url, named: &str) -> Result<Url, AttemptError> {
-        let url = session_url
+    /// A URL the upstream named, as a target this instance may reach:
+    /// HTTPS on a named host without user information, outside the
+    /// private networks.
+    async fn checked_endpoint(&self, base: &Url, named: &str) -> Result<Url, AttemptError> {
+        let url = base
             .join(named)
-            .map_err(|_| unsupported("the API endpoint is not a URL"))?;
+            .map_err(|_| unsupported("the upstream names a URL that does not parse"))?;
         let host = match url.host() {
             Some(Host::Domain(host)) => host.to_owned(),
-            _ => return Err(unsupported("the API endpoint names no host")),
+            _ => return Err(unsupported("the upstream names a URL without a host")),
         };
-        let bare = url.username().is_empty() && url.password().is_none();
-        if url.scheme() != "https" || !bare {
-            return Err(unsupported("the API endpoint is not a plain https URL"));
+        let anonymous = url.username().is_empty() && url.password().is_none();
+        if url.scheme() != "https" || !anonymous {
+            return Err(unsupported(
+                "the upstream names a URL that is not plain https",
+            ));
         }
         let port = url
             .port_or_known_default()
-            .ok_or_else(|| unsupported("the API endpoint names no port"))?;
+            .ok_or_else(|| unsupported("the upstream names a URL without a port"))?;
         self.wiring
             .upstream
             .resolve(&host, port)
             .await
             .map_err(|error| match error {
                 UpstreamError::PrivateNetwork { .. } => unsupported(
-                    "the API endpoint lies inside a network this instance does not reach",
+                    "the upstream names a URL inside a network this instance does not reach",
                 ),
-                _ => ProbeError::Unreachable("the API endpoint does not resolve".to_owned()).into(),
+                _ => ProbeError::Unreachable(
+                    "the upstream names a URL that does not resolve".to_owned(),
+                )
+                .into(),
             })?;
         Ok(url)
+    }
+
+    /// The upstream's URLs, remembered or fetched now with the
+    /// credential in hand.
+    async fn upstream_urls(
+        &self,
+        stored: &Stored,
+        credential: &Credential,
+    ) -> Result<endpoints::UpstreamUrls, AttemptError> {
+        match self.endpoints.upstream_urls(&stored.account_id) {
+            Some(urls) => Ok(urls),
+            None => Ok(self.fetch_with(stored, credential).await?.urls),
+        }
     }
 
     async fn post(
@@ -238,10 +267,7 @@ impl Proxy {
         let credential = self
             .live_credential(scope, stored.credential.clone())
             .await?;
-        let api_url = match self.endpoints.api_url(&stored.account_id) {
-            Some(url) => url,
-            None => self.fetch_with(stored, &credential).await?.api_url,
-        };
+        let api_url = self.upstream_urls(stored, &credential).await?.api_url;
         let request = self
             .wiring
             .upstream

@@ -5,12 +5,23 @@
 //! Server-side per-user preferences and per-sender policies.
 
 use rusqlite::{OptionalExtension, params};
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 use crate::ids::text_enum;
 use crate::scope::Scope;
 use crate::store::{Store, StoreError, now_ms};
+
+/// Policy rows one user may hold; a second device reads them as one
+/// list, so the list stays one answer.
+pub const MAX_SENDER_POLICIES: usize = 5000;
+
+/// The longest address a policy is keyed on: the 320 octets of a
+/// local part, the at sign and a domain.
+pub const MAX_SENDER_BYTES: usize = 320;
+
+/// An authserv-id is a domain name at most (RFC 8601 section 2.5).
+pub const MAX_AUTHSERV_BYTES: usize = 255;
 
 /// Addresses one per-sender policy value.
 #[derive(Debug, Clone, Copy)]
@@ -27,12 +38,23 @@ text_enum!(
         Theme => "theme",
         Density => "density",
         Locale => "locale",
+        FontSize => "fontSize",
+        LineHeight => "lineHeight",
+        DarkMail => "darkMail",
     }
 );
 
 impl PreferenceKey {
     /// Every key the API lists.
-    pub const ALL: [Self; 4] = [Self::ReadingPane, Self::Theme, Self::Density, Self::Locale];
+    pub const ALL: [Self; 7] = [
+        Self::ReadingPane,
+        Self::Theme,
+        Self::Density,
+        Self::Locale,
+        Self::FontSize,
+        Self::LineHeight,
+        Self::DarkMail,
+    ];
 
     /// The key behind its word; `None` off the list.
     #[must_use]
@@ -54,8 +76,47 @@ impl PreferenceKey {
             Self::Theme => &["system", "light", "dark"],
             Self::Density => &["comfortable", "compact"],
             Self::Locale => &["en", "nl"],
+            Self::FontSize => &["default", "large", "larger"],
+            Self::LineHeight => &["default", "relaxed", "loose"],
+            Self::DarkMail => &["adapt", "original"],
         }
     }
+}
+
+text_enum!(
+    /// The policies the sender-policy API reads and writes.
+    PolicyName {
+        RemoteContent => "remoteContent",
+    }
+);
+
+impl PolicyName {
+    /// Every policy the API lists.
+    pub const ALL: [Self; 1] = [Self::RemoteContent];
+
+    /// The policy behind its word; `None` off the list.
+    #[must_use]
+    pub fn from_word(word: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|name| name.as_str() == word)
+    }
+}
+
+/// The remote-content grant for one sender: the authserv-id of the
+/// message's topmost Authentication-Results header at the grant, none
+/// when the message carried no such header.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RemoteContentPolicy {
+    pub allow: bool,
+    pub authserv: Option<String>,
+}
+
+/// One listed policy row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SenderPolicy {
+    pub sender: String,
+    pub key: PolicyName,
+    pub value: RemoteContentPolicy,
 }
 
 /// Writes one preference value for the scope's user.
@@ -134,12 +195,14 @@ pub fn preferences(
         .collect()
 }
 
-/// Writes one per-sender policy value for the scope's user.
+/// Writes one per-sender policy value for the scope's user; a new row
+/// past [`MAX_SENDER_POLICIES`] is refused, an update of a row that
+/// stands is not.
 ///
 /// # Errors
 ///
-/// Returns an error when the value does not encode or the database
-/// fails.
+/// Returns [`StoreError::PolicyLimit`] past the bound and an error
+/// when the value does not encode or the database fails.
 pub fn set_sender_policy<T: Serialize>(
     store: &Store,
     scope: &Scope,
@@ -148,6 +211,20 @@ pub fn set_sender_policy<T: Serialize>(
 ) -> Result<(), StoreError> {
     let encoded = serde_json::to_string(value)?;
     store.write(|transaction| {
+        let held: usize = transaction.query_row(
+            "SELECT COUNT(*) FROM sender_policies WHERE user_id = ?1",
+            [scope.user_id().as_str()],
+            |row| row.get(0),
+        )?;
+        let standing: bool = transaction.query_row(
+            "SELECT EXISTS (SELECT 1 FROM sender_policies
+                            WHERE user_id = ?1 AND sender = ?2 AND key = ?3)",
+            [scope.user_id().as_str(), key.sender, key.name],
+            |row| row.get(0),
+        )?;
+        if held >= MAX_SENDER_POLICIES && !standing {
+            return Err(StoreError::PolicyLimit);
+        }
         transaction.execute(
             "INSERT INTO sender_policies (user_id, sender, key, value, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5)
@@ -190,6 +267,61 @@ pub fn sender_policy<T: DeserializeOwned>(
     decode(stored)
 }
 
+/// Every listed policy of the scope's user, by sender and key; a row
+/// under a key off the list stays out.
+///
+/// # Errors
+///
+/// Returns an error when a stored value does not decode or the
+/// database fails.
+pub fn sender_policies(store: &Store, scope: &Scope) -> Result<Vec<SenderPolicy>, StoreError> {
+    let rows: Vec<(String, String, String)> = store.read(|connection| {
+        let mut statement = connection.prepare(
+            "SELECT sender, key, value FROM sender_policies
+             WHERE user_id = ?1 ORDER BY sender, key LIMIT ?2",
+        )?;
+        let rows = statement
+            .query_map(
+                params![scope.user_id().as_str(), MAX_SENDER_POLICIES],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })?;
+    rows.into_iter()
+        .filter_map(|(sender, key, encoded)| {
+            PolicyName::from_word(&key).map(|key| (sender, key, encoded))
+        })
+        .map(|(sender, key, encoded)| {
+            Ok(SenderPolicy {
+                sender,
+                key,
+                value: serde_json::from_str(&encoded)?,
+            })
+        })
+        .collect()
+}
+
+/// Removes one per-sender policy row of the scope's user; a row that
+/// is not there leaves nothing to do.
+///
+/// # Errors
+///
+/// Returns an error when the database fails.
+pub fn remove_sender_policy(
+    store: &Store,
+    scope: &Scope,
+    key: PolicyKey<'_>,
+) -> Result<(), StoreError> {
+    store.write(|transaction| {
+        transaction.execute(
+            "DELETE FROM sender_policies WHERE user_id = ?1 AND sender = ?2 AND key = ?3",
+            [scope.user_id().as_str(), key.sender, key.name],
+        )?;
+        Ok(())
+    })
+}
+
 fn decode<T: DeserializeOwned>(stored: Option<String>) -> Result<Option<T>, StoreError> {
     stored
         .map(|value| serde_json::from_str(&value))
@@ -213,5 +345,25 @@ mod tests {
         }
         assert_eq!(PreferenceKey::from_word("compose_size"), None);
         assert!(!PreferenceKey::Locale.accepts("en-XA"));
+        assert!(!PreferenceKey::FontSize.accepts("small"));
+        assert!(!PreferenceKey::DarkMail.accepts("Adapt"));
+    }
+
+    #[test]
+    fn a_policy_name_is_found_by_its_word_and_its_value_takes_the_shape_alone() {
+        assert_eq!(
+            PolicyName::from_word("remoteContent"),
+            Some(PolicyName::RemoteContent)
+        );
+        assert_eq!(PolicyName::from_word("remote_content"), None);
+        let grant: RemoteContentPolicy =
+            serde_json::from_str(r#"{"allow":true,"authserv":"mx.example"}"#).unwrap();
+        assert_eq!(grant.authserv.as_deref(), Some("mx.example"));
+        let unpinned: RemoteContentPolicy = serde_json::from_str(r#"{"allow":true}"#).unwrap();
+        assert_eq!(unpinned.authserv, None);
+        assert!(
+            serde_json::from_str::<RemoteContentPolicy>(r#"{"allow":true,"authserv":null,"x":1}"#)
+                .is_err()
+        );
     }
 }

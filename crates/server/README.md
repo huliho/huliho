@@ -121,9 +121,40 @@ reports to the gate without the account lock: a rejected credential
 stops the account at once; refused connections count once per
 ten-second window and stop it after five windows; a server error of
 the upstream's own decides nothing; a stopped account answers
-`still_stopped` before anything connects. `GET /api/preferences` and
-`PUT /api/preferences/{key}` read and write the reading pane position,
-the theme, the density and the locale, each from a fixed list of words.
+`still_stopped` before anything connects.
+`GET /api/jmap/{id}/download/{accountId}/{blobId}/{name}?type=` is
+the route the rewritten `downloadUrl` names. For a native account it
+expands the template the upstream session object named with those
+four values, checks the result like the API endpoint and streams the
+upstream's answer with the account's credential added. The type of
+the answer comes from the blob's first bytes: one of the six raster
+types a browser renders, asked as that type, answers inline with that
+type; every other blob, an SVG or a text file included, answers
+`application/octet-stream` as an attachment, whatever the sender or
+the request said. Every blob answer carries `nosniff`, a policy that
+renders and fetches nothing, `Cross-Origin-Resource-Policy:
+same-origin`, `Referrer-Policy: no-referrer` and a day of private
+caching, or `no-store` under `[privacy] strict`. A blob whose declared
+size passes 64 MiB is refused before its first byte and an undeclared
+one that runs past it breaks off; two downloads stream at once per
+account beside the request cap; a third waits for a lane for twenty
+seconds before it answers 429; an upstream gets twenty seconds to
+answer with its headers and twenty seconds per chunk after that, and
+one download gets ten minutes in all; a `Range` from byte zero answers
+206 with exactly those bytes when the blob's declared length runs past
+the range; a range that reaches the end of the blob, an undeclared
+length or any other range answers the whole blob with 200. The route
+serves native accounts; an IMAP account answers `upstream_unsupported`.
+`GET /api/preferences` and `PUT /api/preferences/{key}` read and write
+the reading pane position, the theme, the density, the locale, the font
+size, the line height and the dark-mode treatment of messages, each from
+a fixed list of words. `GET /api/sender-policies` lists the signed-in
+user's per-sender policies, up to five thousand rows; `PUT
+/api/sender-policies/{sender}` writes one, the sender lowercased and at
+most 320 bytes, the key `remoteContent` with a value `{ "allow": true,
+"authserv": <id or null> }`; `DELETE
+/api/sender-policies/{sender}/{key}` removes one. `GET /api/session`
+carries `privacyStrict`, the instance's `[privacy] strict` setting.
 
 Configuration is one TOML file; unknown keys are rejected. Top-level
 keys are the `listen` address, the `assets` directory and the optional
@@ -141,7 +172,10 @@ upstream may resolve to, written as CIDRs. It is empty by default.
 roots. `probe_interval_minutes` says how often a stopped account is
 checked for recovery, fifteen by default. Discovery and the credential
 check read the network rules and the CA file; the account list reports
-the probe interval and the probe runs at it. The file path comes from `HULIHO_CONFIG` and
+the probe interval and the probe runs at it. `[privacy]` holds
+`strict` (default `false`): the client then keeps its cache in memory
+only and blob answers carry `no-store`. The file path comes from
+`HULIHO_CONFIG` and
 that file must exist. Without the variable the server reads
 `huliho.toml` from the working directory and falls back to the defaults
 when it is absent.
@@ -150,6 +184,6 @@ The binary is `huliho`; without a subcommand it serves. Build and test
 from the workspace root: `cargo build` and `cargo test --workspace`.
 `cargo test -p huliho-server --features live-targets` adds the tests
 that need the compose targets and the public internet. The XSS corpus
-under `tests/xss/` runs on every test run; `cargo build
---manifest-path crates/server/fuzz/Cargo.toml` builds the fuzz target
-for the sanitizer, run with cargo-fuzz on a nightly toolchain.
+under `tests/xss/` runs on every test run; `cargo build --manifest-path
+crates/server/fuzz/Cargo.toml` builds the fuzz targets for the sanitizer
+and the download template, run with cargo-fuzz on a nightly toolchain.

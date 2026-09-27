@@ -45,6 +45,7 @@ pub fn api_state(store: Arc<Store>) -> ApiState {
         )),
         probe_interval_minutes: UpstreamConfig::default().probe_interval_minutes,
         public_url: None,
+        privacy_strict: false,
         upstream: Arc::new(Upstream::new(&UpstreamConfig::default()).unwrap()),
         consents: Arc::new(Consents::default()),
         endpoints: Arc::new(Endpoints::default()),

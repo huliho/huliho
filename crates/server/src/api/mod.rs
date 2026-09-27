@@ -7,6 +7,7 @@
 mod accounts;
 mod consent_page;
 mod discover;
+mod download;
 mod error;
 mod jmap;
 mod login;
@@ -15,6 +16,7 @@ mod password;
 mod preferences;
 mod providers;
 mod reconnect;
+mod sender_policies;
 mod sessions;
 mod users;
 
@@ -76,6 +78,9 @@ pub struct ApiState {
     pub probe_interval_minutes: NonZeroU32,
     /// From the config; without it no sign-in provider is available.
     pub public_url: Option<Url>,
+    /// From the config; the session answer carries it and a blob answer
+    /// is never stored by the browser under it.
+    pub privacy_strict: bool,
     pub upstream: Arc<Upstream>,
     /// The consents in flight, one process wide.
     pub consents: Arc<Consents>,
@@ -163,8 +168,21 @@ pub fn router(state: ApiState) -> Router {
             "/jmap/{id}",
             post(jmap::request).layer(DefaultBodyLimit::max(JMAP_REQUEST_LIMIT)),
         )
+        .route(
+            "/jmap/{id}/download/{account_id}/{blob_id}/{name}",
+            get(download::download),
+        )
         .route("/preferences", get(preferences::list_preferences))
         .route("/preferences/{key}", put(preferences::set_preference))
+        .route("/sender-policies", get(sender_policies::list_policies))
+        .route(
+            "/sender-policies/{sender}",
+            put(sender_policies::set_policy),
+        )
+        .route(
+            "/sender-policies/{sender}/{key}",
+            delete(sender_policies::remove_policy),
+        )
         .route("/users", get(users::list_users).post(users::create_user))
         .route("/users/{id}/password-reset", post(users::reset_password))
         .layer(axum::middleware::from_fn(require_csrf_header))

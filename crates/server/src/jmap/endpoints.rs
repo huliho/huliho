@@ -3,8 +3,9 @@
 // Additional terms apply, see NOTICE.
 
 //! What the proxy keeps per account between requests: the cap on the
-//! requests in flight (the native path and the bridge alike) and the
-//! upstream API endpoint the session object named.
+//! requests in flight (the native path and the bridge alike), the cap
+//! on the downloads in flight and what the upstream session object
+//! named.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -14,24 +15,35 @@ use url::Url;
 
 use super::MAX_CONCURRENT_REQUESTS;
 use crate::ids::AccountId;
+use crate::mail::download::MAX_CONCURRENT_DOWNLOADS;
 
-/// What the proxy keeps per account: the requests in flight and the
-/// upstream API endpoint its session object named.
+/// What the proxy keeps per account.
 #[derive(Default)]
 pub struct Endpoints {
     memory: Mutex<HashMap<AccountId, Endpoint>>,
 }
 
+/// What the upstream session object named, checked and remembered: the
+/// API endpoint and the download template as the upstream wrote it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct UpstreamUrls {
+    pub api_url: Url,
+    pub download_url: Option<String>,
+}
+
 struct Endpoint {
     requests: Arc<Semaphore>,
-    api_url: Option<Url>,
+    /// Beside the request cap, so a long download starves no request.
+    downloads: Arc<Semaphore>,
+    urls: Option<UpstreamUrls>,
 }
 
 impl Default for Endpoint {
     fn default() -> Self {
         Self {
             requests: Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS)),
-            api_url: None,
+            downloads: Arc::new(Semaphore::new(MAX_CONCURRENT_DOWNLOADS)),
+            urls: None,
         }
     }
 }
@@ -47,19 +59,27 @@ impl Endpoints {
         requests.try_acquire_owned().ok()
     }
 
+    /// The account's download lane, which a caller waits on for a
+    /// permit.
+    #[must_use]
+    pub fn downloads(&self, account_id: &AccountId) -> Arc<Semaphore> {
+        let mut memory = self.memory();
+        Arc::clone(&memory.entry(account_id.clone()).or_default().downloads)
+    }
+
     /// Drops what the proxy remembers of an account once its row left.
     pub fn forget(&self, account_id: &AccountId) {
         self.memory().remove(account_id);
     }
 
-    pub(super) fn api_url(&self, account_id: &AccountId) -> Option<Url> {
+    pub(super) fn upstream_urls(&self, account_id: &AccountId) -> Option<UpstreamUrls> {
         self.memory()
             .get(account_id)
-            .and_then(|endpoint| endpoint.api_url.clone())
+            .and_then(|endpoint| endpoint.urls.clone())
     }
 
-    pub(super) fn remember(&self, account_id: &AccountId, api_url: Url) {
-        self.memory().entry(account_id.clone()).or_default().api_url = Some(api_url);
+    pub(super) fn remember(&self, account_id: &AccountId, urls: UpstreamUrls) {
+        self.memory().entry(account_id.clone()).or_default().urls = Some(urls);
     }
 
     fn memory(&self) -> MutexGuard<'_, HashMap<AccountId, Endpoint>> {
@@ -70,6 +90,13 @@ impl Endpoints {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn named(api_url: &str) -> UpstreamUrls {
+        UpstreamUrls {
+            api_url: api_url.parse().unwrap(),
+            download_url: Some("https://api.example.test/jmap/download/{blobId}".to_owned()),
+        }
+    }
 
     #[test]
     fn a_fifth_permit_on_one_account_is_refused_and_another_account_is_untouched() {
@@ -88,14 +115,29 @@ mod tests {
     }
 
     #[test]
-    fn a_remembered_endpoint_leaves_with_the_account() {
+    fn the_download_lane_holds_two_beside_the_request_cap() {
+        let endpoints = Endpoints::default();
+        let alpha = AccountId::from("alpha".to_owned());
+        let lane = endpoints.downloads(&alpha);
+        assert_eq!(lane.available_permits(), MAX_CONCURRENT_DOWNLOADS);
+        let held: Vec<_> = (0..MAX_CONCURRENT_DOWNLOADS)
+            .map(|_| lane.clone().try_acquire_owned().unwrap())
+            .collect();
+        assert!(lane.clone().try_acquire_owned().is_err());
+        assert!(endpoints.enter(&alpha).is_some());
+        drop(held);
+        assert!(Arc::ptr_eq(&lane, &endpoints.downloads(&alpha)));
+    }
+
+    #[test]
+    fn what_the_upstream_named_leaves_with_the_account() {
         let endpoints = Endpoints::default();
         let account = AccountId::from("alpha".to_owned());
-        let url: Url = "https://api.example.test/jmap/api".parse().unwrap();
-        assert_eq!(endpoints.api_url(&account), None);
-        endpoints.remember(&account, url.clone());
-        assert_eq!(endpoints.api_url(&account), Some(url));
+        assert_eq!(endpoints.upstream_urls(&account), None);
+        let urls = named("https://api.example.test/jmap/api");
+        endpoints.remember(&account, urls.clone());
+        assert_eq!(endpoints.upstream_urls(&account), Some(urls));
         endpoints.forget(&account);
-        assert_eq!(endpoints.api_url(&account), None);
+        assert_eq!(endpoints.upstream_urls(&account), None);
     }
 }

@@ -29,6 +29,12 @@ pub(super) struct PreferencesView {
     density: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     locale: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    font_size: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    line_height: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dark_mail: Option<String>,
 }
 
 impl PreferencesView {
@@ -38,6 +44,9 @@ impl PreferencesView {
             PreferenceKey::Theme => &mut self.theme,
             PreferenceKey::Density => &mut self.density,
             PreferenceKey::Locale => &mut self.locale,
+            PreferenceKey::FontSize => &mut self.font_size,
+            PreferenceKey::LineHeight => &mut self.line_height,
+            PreferenceKey::DarkMail => &mut self.dark_mail,
         };
         *slot = Some(word);
     }
