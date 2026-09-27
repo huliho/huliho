@@ -73,6 +73,8 @@ pub struct Upstream {
     pinned: Pinned,
     tls: Arc<rustls::ClientConfig>,
     http: reqwest::Client,
+    /// The same client answering a redirect instead of following it.
+    no_redirect: reqwest::Client,
 }
 
 impl Upstream {
@@ -97,16 +99,14 @@ impl Upstream {
             rule: NetworkRule::new(&config.allow_private_networks),
         };
         let tls = Arc::new(tls_config(config.additional_ca_file.as_deref())?);
-        let http = reqwest::Client::builder()
-            .tls_backend_preconfigured((*tls).clone())
-            .https_only(true)
-            .no_proxy()
-            .connect_timeout(ATTEMPT_TIMEOUT)
-            .timeout(ATTEMPT_TIMEOUT)
-            .redirect(redirect_policy())
-            .dns_resolver(Arc::new(pinned.clone()))
-            .build()?;
-        Ok(Self { pinned, tls, http })
+        let http = client(&tls, &pinned, redirect_policy())?;
+        let no_redirect = client(&tls, &pinned, redirect::Policy::none())?;
+        Ok(Self {
+            pinned,
+            tls,
+            http,
+            no_redirect,
+        })
     }
 
     #[must_use]
@@ -119,6 +119,13 @@ impl Upstream {
     #[must_use]
     pub fn http(&self) -> &reqwest::Client {
         &self.http
+    }
+
+    /// The HTTPS client that hands a redirect back instead of following
+    /// it, for a caller that checks every hop itself.
+    #[must_use]
+    pub fn http_no_redirect(&self) -> &reqwest::Client {
+        &self.no_redirect
     }
 
     /// The trust every outbound connection validates against: the
@@ -149,6 +156,24 @@ impl Upstream {
             })
             .collect())
     }
+}
+
+/// An HTTPS client on the shared trust and the pinned resolver: TLS
+/// only, twenty seconds per request, redirects as `redirects` has them.
+fn client(
+    tls: &Arc<rustls::ClientConfig>,
+    pinned: &Pinned,
+    redirects: redirect::Policy,
+) -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::Client::builder()
+        .tls_backend_preconfigured((**tls).clone())
+        .https_only(true)
+        .no_proxy()
+        .connect_timeout(ATTEMPT_TIMEOUT)
+        .timeout(ATTEMPT_TIMEOUT)
+        .redirect(redirects)
+        .dns_resolver(Arc::new(pinned.clone()))
+        .build()
 }
 
 /// The built-in roots plus the instance's CA file.

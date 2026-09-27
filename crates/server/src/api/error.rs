@@ -33,6 +33,7 @@ pub(super) enum ApiError {
     ProviderNotConfigured,
     StillStopped { cause: StopCause },
     TooLarge,
+    NotAnImage,
     UpstreamCredentials,
     UpstreamUnreachable,
     UpstreamInsecure,
@@ -57,6 +58,7 @@ impl ApiError {
             Self::ProviderNotConfigured => "provider_not_configured",
             Self::StillStopped { .. } => "still_stopped",
             Self::TooLarge => "too_large",
+            Self::NotAnImage => "not_an_image",
             Self::UpstreamCredentials => "upstream_credentials",
             Self::UpstreamUnreachable => "upstream_unreachable",
             Self::UpstreamInsecure => "upstream_insecure",
@@ -85,6 +87,7 @@ impl ApiError {
                 StatusCode::CONFLICT
             }
             Self::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+            Self::NotAnImage => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }

@@ -13,9 +13,10 @@ use huliho_server::api::ApiState;
 use huliho_server::config::{AuthConfig, UpstreamConfig};
 use huliho_server::gate::Gate;
 use huliho_server::jmap::Endpoints;
+use huliho_server::mail::remote::{REMOTE_FETCHES_IN_FLIGHT, REMOTE_IMAGE_RATE};
 use huliho_server::mail::sanitize::Sanitizer;
 use huliho_server::oauth::Consents;
-use huliho_server::rate::RateLimiter;
+use huliho_server::rate::{Buckets, RateLimiter};
 use huliho_server::secrets::{InstanceSecret, Keys};
 use huliho_server::session::SessionTimeouts;
 use huliho_server::store::Store;
@@ -40,6 +41,8 @@ pub fn api_state(store: Arc<Store>) -> ApiState {
         keys: Arc::new(keys()),
         timeouts: SessionTimeouts::from(&AuthConfig::default()),
         limiter: Arc::new(RateLimiter::default()),
+        remote_images: Arc::new(Buckets::new(REMOTE_IMAGE_RATE)),
+        remote_fetches: Arc::new(tokio::sync::Semaphore::new(REMOTE_FETCHES_IN_FLIGHT)),
         verify_gate: Arc::new(tokio::sync::Semaphore::new(
             huliho_server::api::MAX_CONCURRENT_VERIFICATIONS,
         )),
