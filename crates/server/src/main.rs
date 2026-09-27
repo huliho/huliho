@@ -98,6 +98,7 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         verify_gate: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_VERIFICATIONS)),
         probe_interval_minutes: config.upstream.probe_interval_minutes,
         public_url: config.public_url.clone(),
+        privacy_strict: config.privacy.strict,
         upstream,
         consents: Arc::new(Consents::default()),
         endpoints: Arc::new(Endpoints::default()),

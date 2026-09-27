@@ -15,7 +15,7 @@ use axum::http::{Method, Request, StatusCode, header};
 use tower::ServiceExt;
 
 use common::router_on;
-use huliho_server::api::MAX_CONCURRENT_VERIFICATIONS;
+use huliho_server::api::{ApiState, MAX_CONCURRENT_VERIFICATIONS};
 use huliho_server::store::Store;
 use huliho_server::{auth, identity};
 use signin::{LOGIN, PASSWORD, body_text, login_request, sign_in, store_with_account, with_cookie};
@@ -61,6 +61,24 @@ async fn a_session_resolves_to_its_user_and_organization() {
     assert!(body.contains(LOGIN));
     assert!(body.contains("\"role\":\"owner\""));
     assert!(body.contains("\"organization\""));
+    assert!(body.contains("\"privacyStrict\":false"), "{body}");
+}
+
+#[tokio::test]
+async fn a_strict_instance_says_so_on_the_session_answer() {
+    let api = common::api_state(store_with_account());
+    let router = common::router_with(ApiState {
+        privacy_strict: true,
+        ..api
+    });
+    let cookie = sign_in(&router).await;
+    let response = router
+        .oneshot(with_cookie(Method::GET, "/api/session", &cookie))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_text(response).await;
+    assert!(body.contains("\"privacyStrict\":true"), "{body}");
 }
 
 #[tokio::test]

@@ -60,6 +60,7 @@ pub struct Config {
     pub events: EventsConfig,
     pub auth: AuthConfig,
     pub upstream: UpstreamConfig,
+    pub privacy: PrivacyConfig,
 }
 
 impl Default for Config {
@@ -72,8 +73,18 @@ impl Default for Config {
             events: EventsConfig::default(),
             auth: AuthConfig::default(),
             upstream: UpstreamConfig::default(),
+            privacy: PrivacyConfig::default(),
         }
     }
+}
+
+/// What the instance keeps off the reader's device: under `strict` the
+/// client holds its cache in memory only and blob answers are never
+/// stored by the browser.
+#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, default)]
+pub struct PrivacyConfig {
+    pub strict: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -225,7 +236,7 @@ mod tests {
 
     #[test]
     fn values_override_defaults() {
-        let toml = "listen = \"0.0.0.0:9000\"\nassets = \"web\"\npublic_url = \"https://mail.example.com\"\n\n[storage]\npath = \"volume\"\n\n[events]\nretention_days = 30\n\n[auth]\nsecret_file = \"secret\"\nidle_timeout_minutes = 30\nabsolute_timeout_minutes = 60\n\n[upstream]\nallow_private_networks = [\"127.0.0.0/8\", \"::1/128\"]\nadditional_ca_file = \"data/dev-certs/ca.pem\"\nprobe_interval_minutes = 5";
+        let toml = "listen = \"0.0.0.0:9000\"\nassets = \"web\"\npublic_url = \"https://mail.example.com\"\n\n[storage]\npath = \"volume\"\n\n[events]\nretention_days = 30\n\n[auth]\nsecret_file = \"secret\"\nidle_timeout_minutes = 30\nabsolute_timeout_minutes = 60\n\n[upstream]\nallow_private_networks = [\"127.0.0.0/8\", \"::1/128\"]\nadditional_ca_file = \"data/dev-certs/ca.pem\"\nprobe_interval_minutes = 5\n\n[privacy]\nstrict = true";
         let config = Config::parse(Path::new(ABSENT_PATH), toml).unwrap();
         assert_eq!(config.listen, "0.0.0.0:9000".parse().unwrap());
         assert_eq!(config.assets, PathBuf::from("web"));
@@ -245,6 +256,20 @@ mod tests {
             Some(PathBuf::from("data/dev-certs/ca.pem"))
         );
         assert_eq!(config.upstream.probe_interval_minutes.get(), 5);
+        assert!(config.privacy.strict);
+    }
+
+    #[test]
+    fn privacy_is_not_strict_by_default_and_takes_no_other_key() {
+        assert!(!Config::default().privacy.strict);
+        assert!(
+            !Config::parse(Path::new(ABSENT_PATH), "[privacy]")
+                .unwrap()
+                .privacy
+                .strict
+        );
+        assert!(Config::parse(Path::new(ABSENT_PATH), "[privacy]\nsurprise = true").is_err());
+        assert!(Config::parse(Path::new(ABSENT_PATH), "[privacy]\nstrict = \"yes\"").is_err());
     }
 
     #[test]

@@ -21,13 +21,17 @@ axum = "0.8.9"
 axum-extra = { version = "0.12.6", features = ["cookie"] }
 base16ct = { version = "1.0.0", features = ["alloc"] }
 chacha20poly1305 = "0.11.0"
+futures-util = { version = "0.3.34", default-features = false }
 getrandom = "0.4.3"
 hickory-resolver = "0.26.2"
 hkdf = "0.13.0"
 hmac = "0.13.0"
 huliho-imap-bridge = { version = "0.0.0", path = "../imap-bridge" }
+icu_properties = { version = "2.3.0", default-features = false, features = ["compiled_data"] }
+infer = { version = "0.22.0", default-features = false }
 ipnet = { version = "2.12.1", features = ["serde"] }
 oauth2 = { version = "5.0.0", default-features = false }
+percent-encoding = "2.3.2"
 quick-xml = { version = "0.42.0", features = ["overlapped-lists", "serialize"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
@@ -52,6 +56,7 @@ async-imap = { version = "0.11.3", default-features = false, features = ["runtim
 axum-server = { version = "0.8.0", features = ["tls-rustls-no-provider"] }
 base64 = "0.23.1"
 html5ever = "0.40.1"
+http-body = "1.1.0"
 http-body-util = "0.1.5"
 huliho-imap-bridge = { version = "0.0.0", path = "../imap-bridge", features = ["test-support"] }
 proptest = "1.11.0"

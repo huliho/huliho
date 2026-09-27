@@ -29,7 +29,8 @@ const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 
 /// Same-origin, with inline styles and `data:` images admitted for the
 /// mail frame, whose own document narrows the policy again. The web
-/// preview serves the same file.
+/// preview serves the same file. A blob answer carries a policy of its
+/// own, which this one leaves standing.
 const CONTENT_SECURITY_POLICY: &str = include_str!("csp.txt").trim_ascii();
 
 /// Two years with subdomains; the preload token is the operator's call.
@@ -46,9 +47,9 @@ pub fn router(assets: &Path, api: ApiState) -> Router {
         .nest("/api", api::router(api.clone()))
         .merge(api::browser_router(api))
         .fallback_service(spa)
-        .layer(response_header(
+        .layer(SetResponseHeaderLayer::if_not_present(
             header::CONTENT_SECURITY_POLICY,
-            CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(CONTENT_SECURITY_POLICY),
         ))
         .layer(response_header(header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
         .layer(response_header(header::REFERRER_POLICY, "no-referrer"))

@@ -147,7 +147,7 @@ async fn sanitized(
 
 /// The row as it stands; a stopped account answers 409 with its cause
 /// before anything connects, whatever its kind.
-async fn running(state: &ApiState, scope: &Scope) -> Result<Account, ApiError> {
+pub(super) async fn running(state: &ApiState, scope: &Scope) -> Result<Account, ApiError> {
     let (store, scope) = (Arc::clone(&state.store), scope.clone());
     let account = tokio::task::spawn_blocking(move || accounts::get(&store, &scope))
         .await

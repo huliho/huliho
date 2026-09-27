@@ -125,6 +125,9 @@ pub(super) struct SessionInfo {
     /// registers one and the public URL is set.
     sign_in_providers: Vec<OauthProvider>,
     password_change_required: bool,
+    /// The instance's `[privacy] strict` setting, read before the client
+    /// opens any store.
+    privacy_strict: bool,
 }
 
 pub(super) async fn current_session(
@@ -133,6 +136,7 @@ pub(super) async fn current_session(
 ) -> Result<Json<SessionInfo>, ApiError> {
     let store = Arc::clone(&state.store);
     let public_url = state.public_url.clone();
+    let privacy_strict = state.privacy_strict;
     let info = tokio::task::spawn_blocking(move || -> Result<SessionInfo, ApiError> {
         let scope = scope::resolve(&store, &auth.session.user_id, None)?;
         let user = identity::user(&store, &scope)?;
@@ -151,6 +155,7 @@ pub(super) async fn current_session(
             },
             sign_in_providers,
             password_change_required: auth.session.password_change_required,
+            privacy_strict,
         })
     })
     .await

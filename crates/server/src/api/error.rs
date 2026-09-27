@@ -32,6 +32,7 @@ pub(super) enum ApiError {
     RateLimited { retry_after_ms: i64 },
     ProviderNotConfigured,
     StillStopped { cause: StopCause },
+    TooLarge,
     UpstreamCredentials,
     UpstreamUnreachable,
     UpstreamInsecure,
@@ -55,6 +56,7 @@ impl ApiError {
             Self::RateLimited { .. } => "rate_limited",
             Self::ProviderNotConfigured => "provider_not_configured",
             Self::StillStopped { .. } => "still_stopped",
+            Self::TooLarge => "too_large",
             Self::UpstreamCredentials => "upstream_credentials",
             Self::UpstreamUnreachable => "upstream_unreachable",
             Self::UpstreamInsecure => "upstream_insecure",
@@ -82,6 +84,7 @@ impl ApiError {
             Self::LoginTaken | Self::ProviderNotConfigured | Self::StillStopped { .. } => {
                 StatusCode::CONFLICT
             }
+            Self::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -141,7 +144,7 @@ impl From<StoreError> for ApiError {
         match error {
             StoreError::NotFound => Self::NotFound,
             StoreError::Forbidden => Self::Forbidden,
-            StoreError::CurrentSession => Self::InvalidRequest,
+            StoreError::CurrentSession | StoreError::PolicyLimit => Self::InvalidRequest,
             StoreError::LoginTaken => Self::LoginTaken,
             StoreError::DataDirectory { .. }
             | StoreError::Database(_)

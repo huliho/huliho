@@ -7,9 +7,12 @@
 use serde::{Deserialize, Serialize};
 
 use huliho_server::identity::{self, User};
-use huliho_server::prefs::{self, PolicyKey, PreferenceKey};
+use huliho_server::prefs::{
+    self, MAX_SENDER_POLICIES, PolicyKey, PolicyName, PreferenceKey, RemoteContentPolicy,
+    SenderPolicy,
+};
 use huliho_server::scope::{self, Scope};
-use huliho_server::store::Store;
+use huliho_server::store::{Store, StoreError};
 
 fn store() -> Store {
     Store::in_memory().expect("in-memory store opens")
@@ -144,4 +147,92 @@ fn sender_policies_stay_with_their_user() {
     prefs::set_sender_policy(&store, &scope_of(&store, &alpha), key, &true).unwrap();
     let read = prefs::sender_policy::<bool>(&store, &scope_of(&store, &beta), key).unwrap();
     assert_eq!(read, None);
+}
+
+fn grant(authserv: Option<&str>) -> RemoteContentPolicy {
+    RemoteContentPolicy {
+        allow: true,
+        authserv: authserv.map(str::to_owned),
+    }
+}
+
+#[test]
+fn the_listed_policies_come_back_by_sender_and_the_rest_stays_out() {
+    let store = store();
+    let user = personal(&store, "mira@example.com");
+    let scope = scope_of(&store, &user);
+    assert!(prefs::sender_policies(&store, &scope).unwrap().is_empty());
+    let remote = |sender| PolicyKey {
+        sender,
+        name: PolicyName::RemoteContent.as_str(),
+    };
+    prefs::set_sender_policy(&store, &scope, remote("shop@example.com"), &grant(None)).unwrap();
+    prefs::set_sender_policy(
+        &store,
+        &scope,
+        remote("news@example.com"),
+        &grant(Some("mx.example")),
+    )
+    .unwrap();
+    let other = PolicyKey {
+        sender: "news@example.com",
+        name: "remote_content",
+    };
+    prefs::set_sender_policy(&store, &scope, other, &true).unwrap();
+    assert_eq!(
+        prefs::sender_policies(&store, &scope).unwrap(),
+        [
+            SenderPolicy {
+                sender: "news@example.com".to_owned(),
+                key: PolicyName::RemoteContent,
+                value: grant(Some("mx.example")),
+            },
+            SenderPolicy {
+                sender: "shop@example.com".to_owned(),
+                key: PolicyName::RemoteContent,
+                value: grant(None),
+            },
+        ]
+    );
+    prefs::remove_sender_policy(&store, &scope, remote("news@example.com")).unwrap();
+    prefs::remove_sender_policy(&store, &scope, remote("gone@example.com")).unwrap();
+    let listed = prefs::sender_policies(&store, &scope).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].sender, "shop@example.com");
+}
+
+#[test]
+fn a_user_holds_five_thousand_policies_and_an_update_still_lands_past_that() {
+    let store = store();
+    let user = personal(&store, "mira@example.com");
+    let scope = scope_of(&store, &user);
+    let senders: Vec<String> = (0..MAX_SENDER_POLICIES)
+        .map(|index| format!("s{index}@example.com"))
+        .collect();
+    for sender in &senders {
+        let key = PolicyKey {
+            sender,
+            name: PolicyName::RemoteContent.as_str(),
+        };
+        prefs::set_sender_policy(&store, &scope, key, &grant(None)).unwrap();
+    }
+    let extra = PolicyKey {
+        sender: "one-more@example.com",
+        name: PolicyName::RemoteContent.as_str(),
+    };
+    assert!(matches!(
+        prefs::set_sender_policy(&store, &scope, extra, &grant(None)),
+        Err(StoreError::PolicyLimit)
+    ));
+    let standing = PolicyKey {
+        sender: &senders[3],
+        name: PolicyName::RemoteContent.as_str(),
+    };
+    prefs::set_sender_policy(&store, &scope, standing, &grant(Some("mx.example"))).unwrap();
+    assert_eq!(
+        prefs::sender_policies(&store, &scope).unwrap().len(),
+        MAX_SENDER_POLICIES
+    );
+    let other = personal(&store, "noor@example.com");
+    prefs::set_sender_policy(&store, &scope_of(&store, &other), extra, &grant(None)).unwrap();
 }

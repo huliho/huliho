@@ -28,9 +28,17 @@ const ENFORCED: [(&str, usize); 2] = [
     ("maxConcurrentRequests", MAX_CONCURRENT_REQUESTS),
 ];
 
+/// What the upstream session object named before the rewrite: its API
+/// endpoint and, when it has one, its download template.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Named {
+    pub api_url: String,
+    pub download_url: Option<String>,
+}
+
 /// The four URLs of an account's endpoint on this instance, relative to
-/// it, by the name the session object gives each: `apiUrl` here, the
-/// other three on the routes later features add.
+/// it, by the name the session object gives each: `apiUrl` and
+/// `downloadUrl` here, the other two on the routes later features add.
 pub(crate) fn urls(account_id: &AccountId) -> [(&'static str, String); 4] {
     let id = account_id.as_str();
     [
@@ -49,10 +57,14 @@ pub(crate) fn urls(account_id: &AccountId) -> [(&'static str, String); 4] {
     ]
 }
 
-/// Rewrites `session` for the browser and answers the API endpoint the
-/// upstream named; `None` when the object names none.
-pub(super) fn rewrite(session: &mut Map<String, Value>, account_id: &AccountId) -> Option<String> {
+/// Rewrites `session` for the browser and answers what the upstream
+/// named; `None` when the object names no API endpoint.
+pub(super) fn rewrite(session: &mut Map<String, Value>, account_id: &AccountId) -> Option<Named> {
     let api_url = session.get("apiUrl")?.as_str()?.to_owned();
+    let download_url = session
+        .get("downloadUrl")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     for (name, url) in urls(account_id) {
         session.insert(name.to_owned(), Value::String(url));
     }
@@ -67,7 +79,10 @@ pub(super) fn rewrite(session: &mut Map<String, Value>, account_id: &AccountId) 
             carried_only(account.get_mut("accountCapabilities"));
         }
     }
-    Some(api_url)
+    Some(Named {
+        api_url,
+        download_url,
+    })
 }
 
 /// Keeps the entries keyed by a carried capability; a value that is not
@@ -141,10 +156,10 @@ mod tests {
         AccountId::from("a1".to_owned())
     }
 
-    fn rewritten() -> (Map<String, Value>, String) {
+    fn rewritten() -> (Map<String, Value>, Named) {
         let mut session: Map<String, Value> = serde_json::from_str(UPSTREAM).unwrap();
-        let api_url = rewrite(&mut session, &account()).unwrap();
-        (session, api_url)
+        let named = rewrite(&mut session, &account()).unwrap();
+        (session, named)
     }
 
     fn keys(value: &Value) -> Vec<&str> {
@@ -157,9 +172,15 @@ mod tests {
     }
 
     #[test]
-    fn the_four_urls_point_at_the_proxy_and_the_upstream_endpoint_comes_back() {
-        let (session, api_url) = rewritten();
-        assert_eq!(api_url, "https://api.example.test/jmap/api");
+    fn the_four_urls_point_at_the_proxy_and_the_upstream_ones_come_back() {
+        let (session, named) = rewritten();
+        assert_eq!(named.api_url, "https://api.example.test/jmap/api");
+        assert_eq!(
+            named.download_url.as_deref(),
+            Some(
+                "https://api.example.test/jmap/download/{accountId}/{blobId}/{name}?accept={type}"
+            )
+        );
         assert_eq!(session["apiUrl"], "/api/jmap/a1");
         assert_eq!(
             session["downloadUrl"],
@@ -219,6 +240,20 @@ mod tests {
         assert_eq!(rewrite(&mut bare, &account()), None);
         let mut odd: Map<String, Value> = serde_json::from_str(r#"{"apiUrl":7}"#).unwrap();
         assert_eq!(rewrite(&mut odd, &account()), None);
+    }
+
+    #[test]
+    fn a_session_object_without_a_download_template_names_none() {
+        let mut lean: Map<String, Value> = serde_json::from_str(
+            r#"{"apiUrl":"https://api.example.test/jmap/api","downloadUrl":7}"#,
+        )
+        .unwrap();
+        let named = rewrite(&mut lean, &account()).unwrap();
+        assert_eq!(named.download_url, None);
+        assert_eq!(
+            lean["downloadUrl"],
+            "/api/jmap/a1/download/{accountId}/{blobId}/{name}?type={type}"
+        );
     }
 
     #[test]

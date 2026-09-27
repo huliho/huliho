@@ -66,6 +66,8 @@ pub enum StoreError {
     CurrentSession,
     #[error("that sign-in name is taken")]
     LoginTaken,
+    #[error("the user holds as many sender policies as one may")]
+    PolicyLimit,
 }
 
 /// Handle to the embedded database; all access goes through it.
