@@ -1,0 +1,104 @@
+---
+source: crates/imap-bridge/tests/email_bodies.rs
+expression: email
+---
+{
+  "attachments": [
+    {
+      "blobId": "e1-1_2_2",
+      "charset": null,
+      "cid": "logo@example.test",
+      "disposition": "inline",
+      "language": null,
+      "location": null,
+      "name": "logo.png",
+      "partId": "1.2.2",
+      "size": 12,
+      "type": "image/png"
+    },
+    {
+      "blobId": "e1-2",
+      "charset": null,
+      "cid": null,
+      "disposition": "attachment",
+      "language": null,
+      "location": null,
+      "name": "rapport café.pdf",
+      "partId": "2",
+      "size": 8,
+      "type": "application/pdf"
+    },
+    {
+      "blobId": "e1-3",
+      "charset": null,
+      "cid": null,
+      "disposition": "attachment",
+      "language": null,
+      "location": null,
+      "name": "inner.eml",
+      "partId": "3",
+      "size": 90,
+      "type": "message/rfc822"
+    }
+  ],
+  "bodyStructure": {
+    "blobId": null,
+    "charset": null,
+    "cid": null,
+    "disposition": null,
+    "language": null,
+    "location": null,
+    "name": null,
+    "partId": null,
+    "size": 205,
+    "type": "multipart/mixed"
+  },
+  "bodyValues": {
+    "1.1": {
+      "isEncodingProblem": false,
+      "isTruncated": false,
+      "value": "Hello there"
+    },
+    "1.2.1": {
+      "isEncodingProblem": false,
+      "isTruncated": false,
+      "value": "<html><body><p>Hello <b>there</b></p><img src=\"cid:logo@example.test\"></body></html>"
+    }
+  },
+  "header:Authentication-Results:asRaw:all": [
+    " mx.example.test; dkim=pass header.d=example.test"
+  ],
+  "header:Authentication-Results:asText": "mx.example.test; dkim=pass header.d=example.test",
+  "header:X-Missing": null,
+  "header:x-missing:all": [],
+  "htmlBody": [
+    {
+      "blobId": "e1-1_2_1",
+      "charset": "utf-8",
+      "cid": null,
+      "disposition": null,
+      "language": null,
+      "location": null,
+      "name": null,
+      "partId": "1.2.1",
+      "size": 84,
+      "type": "text/html"
+    }
+  ],
+  "id": "e1",
+  "subject": "Message 1",
+  "textBody": [
+    {
+      "blobId": "e1-1_1",
+      "charset": "utf-8",
+      "cid": null,
+      "disposition": null,
+      "language": null,
+      "location": null,
+      "name": null,
+      "partId": "1.1",
+      "size": 11,
+      "type": "text/plain"
+    }
+  ]
+}

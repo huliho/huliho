@@ -7,18 +7,17 @@
 
 use std::collections::BTreeMap;
 
-use async_imap::imap_proto::{
-    AttributeValue, BodyContentCommon, BodyStructure, MessageSection, Response, SectionPath,
-};
+use async_imap::imap_proto::{AttributeValue, MessageSection, Response, SectionPath};
 use time::OffsetDateTime;
 use time::format_description::FormatItem;
 use time::macros::format_description;
 
+use super::structure::tree;
 use super::{Room, Selection, modseq, wire_name};
 use crate::dates::utc_date;
 use crate::session::{
-    BodyPart, FetchItems, FetchedMessage, GmailItems, MAX_FETCH_MESSAGES, MAX_HEADER_BYTES,
-    MESSAGE_LIMIT, SessionError, UidRange,
+    FetchItems, FetchedMessage, GmailItems, MAX_FETCH_MESSAGES, MAX_HEADER_BYTES, MESSAGE_LIMIT,
+    SessionError, UidRange,
 };
 
 /// The header fields the Email object is built from (RFC 8621 section
@@ -38,13 +37,6 @@ const MAX_LABELS: usize = 64;
 
 /// The longest flag kept, the keyword length of RFC 8621 section 4.1.1.
 const MAX_FLAG_BYTES: usize = 255;
-
-/// The parts kept of one BODYSTRUCTURE; a message past it goes without
-/// a structure.
-const MAX_BODY_PARTS: usize = 1024;
-
-/// The longest media type word kept (RFC 6838 section 4.2).
-const MAX_MEDIA_TYPE_BYTES: usize = 127;
 
 /// INTERNALDATE as RFC 3501 section 9 writes it, the day padded with a
 /// space.
@@ -123,7 +115,7 @@ pub(super) fn message(
             AttributeValue::Flags(found) => flags = kept_flags(found),
             AttributeValue::InternalDate(text) => received_at = Some(internal_date(text)?),
             AttributeValue::Rfc822Size(value) => size = Some(*value),
-            AttributeValue::BodyStructure(body) => structure = body_tree(body),
+            AttributeValue::BodyStructure(body) => structure = tree(body),
             AttributeValue::BodySection {
                 section: Some(SectionPath::Full(MessageSection::Header)),
                 data,
@@ -201,54 +193,10 @@ fn internal_date(text: &str) -> Result<i64, SessionError> {
         ))
 }
 
-/// The tree in the bridge's own type; `None` past `MAX_BODY_PARTS`. The
-/// guard under the client library bounds its depth.
-fn body_tree(body: &BodyStructure<'_>) -> Option<BodyPart> {
-    let mut room = MAX_BODY_PARTS;
-    part(body, &mut room)
-}
-
-fn part(body: &BodyStructure<'_>, room: &mut usize) -> Option<BodyPart> {
-    *room = room.checked_sub(1)?;
-    Some(match body {
-        BodyStructure::Multipart { common, bodies, .. } => BodyPart::Multipart {
-            subtype: word(&common.ty.subtype),
-            parts: bodies
-                .iter()
-                .map(|body| part(body, room))
-                .collect::<Option<_>>()?,
-        },
-        BodyStructure::Basic { common, other, .. }
-        | BodyStructure::Text { common, other, .. }
-        | BodyStructure::Message { common, other, .. } => leaf(common, other.octets),
-    })
-}
-
-fn leaf(common: &BodyContentCommon<'_>, bytes: u32) -> BodyPart {
-    BodyPart::Leaf {
-        media_type: word(&common.ty.ty),
-        subtype: word(&common.ty.subtype),
-        attachment: common
-            .disposition
-            .as_ref()
-            .is_some_and(|disposition| disposition.ty.eq_ignore_ascii_case("attachment")),
-        bytes,
-    }
-}
-
-/// A media type word in lower case, cut at `MAX_MEDIA_TYPE_BYTES` on a
-/// character border.
-fn word(text: &str) -> String {
-    let mut end = text.len().min(MAX_MEDIA_TYPE_BYTES);
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    text[..end].to_ascii_lowercase()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::{BodyPart, Disposition, Leaf, Multipart};
 
     const HEADER: &str = "Subject: hi\r\n\r\n";
 
@@ -281,23 +229,31 @@ mod tests {
         assert_eq!(message.header, HEADER.as_bytes());
         assert_eq!(
             message.structure,
-            Some(BodyPart::Multipart {
+            Some(BodyPart::Multipart(Multipart {
                 subtype: "mixed".to_owned(),
                 parts: vec![
-                    BodyPart::Leaf {
+                    BodyPart::Leaf(Leaf {
                         media_type: "text".to_owned(),
                         subtype: "plain".to_owned(),
-                        attachment: false,
+                        encoding: "7bit".to_owned(),
                         bytes: 1,
-                    },
-                    BodyPart::Leaf {
+                        lines: Some(1),
+                        ..Leaf::default()
+                    }),
+                    BodyPart::Leaf(Leaf {
                         media_type: "application".to_owned(),
                         subtype: "pdf".to_owned(),
-                        attachment: true,
+                        encoding: "base64".to_owned(),
                         bytes: 9,
-                    },
+                        disposition: Some(Disposition {
+                            kind: "attachment".to_owned(),
+                            parameters: Vec::new(),
+                        }),
+                        ..Leaf::default()
+                    }),
                 ],
-            })
+                ..Multipart::default()
+            }))
         );
     }
 
@@ -365,13 +321,6 @@ mod tests {
     }
 
     #[test]
-    fn a_media_type_word_is_cut_by_bytes_on_a_character_border() {
-        let cut = word(&"\u{e9}".repeat(MAX_MEDIA_TYPE_BYTES));
-        assert_eq!(cut.len(), MAX_MEDIA_TYPE_BYTES - 1);
-        assert_eq!(word("TEXT"), "text");
-    }
-
-    #[test]
     fn a_date_the_format_refuses_or_no_utc_date_can_render_fails_the_line() {
         for date in [
             "31-Feb-1996 02:44:25 -0700",
@@ -403,16 +352,5 @@ mod tests {
         let kept = kept_flags(&flags);
         assert_eq!(kept.len(), MAX_FLAGS);
         assert_eq!(kept[1], "k2");
-    }
-
-    #[test]
-    fn a_structure_past_the_part_limit_is_dropped_whole() {
-        let leaf = "(\"TEXT\" \"PLAIN\" NIL NIL NIL \"7BIT\" 1 1)";
-        let structure =
-            |leaves: usize| format!("BODYSTRUCTURE ({} \"MIXED\")", leaf.repeat(leaves));
-        let inside = read(&line(&format!("{ITEMS} {}", structure(MAX_BODY_PARTS - 1))));
-        assert!(inside.unwrap().unwrap().structure.is_some());
-        let past = read(&line(&format!("{ITEMS} {}", structure(MAX_BODY_PARTS))));
-        assert_eq!(past.unwrap().unwrap().structure, None);
     }
 }

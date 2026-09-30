@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! `Email/get` over a synced folder: the objects as a snapshot and
-//! every refusal the method answers.
+//! `Email/get` over a synced folder: the objects as a snapshot, the body
+//! lists the default set carries and every refusal the method answers.
 
 mod stable_ids;
 mod sync_rig;
@@ -67,7 +67,8 @@ async fn email_get_answers_the_metadata_and_the_header_properties_rfc8621_4_2() 
     rig.sync("INBOX").await;
     let ids = rig.created(0);
     let answer = get(&rig, &json!({ "accountId": ACCOUNT, "ids": ids })).await;
-    // The previews were fetched and kept, which is one state of its own.
+    // The previews were fetched and kept, which is one state of its own;
+    // the bodies of the default set were read and not kept.
     assert_eq!(answer["state"], "3");
     assert_eq!(answer["notFound"], json!([]));
     insta::assert_json_snapshot!(stable(&rig, &answer["list"]));
@@ -106,15 +107,11 @@ async fn email_get_refuses_what_it_cannot_serve_rfc8620_3_6_2() {
             "requestTooLarge",
         ),
         (
-            json!({ "accountId": ACCOUNT, "ids": ids, "properties": ["textBody"] }),
+            json!({ "accountId": ACCOUNT, "ids": ids, "properties": ["value"] }),
             "invalidArguments",
         ),
         (
-            json!({ "accountId": ACCOUNT, "ids": ids, "properties": ["htmlBody"] }),
-            "invalidArguments",
-        ),
-        (
-            json!({ "accountId": ACCOUNT, "ids": ids, "fetchAllBodyValues": true }),
+            json!({ "accountId": ACCOUNT, "ids": ids, "fetchBodies": true }),
             "invalidArguments",
         ),
         (

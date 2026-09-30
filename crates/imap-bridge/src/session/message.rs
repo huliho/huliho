@@ -13,6 +13,19 @@ pub const MAX_FETCH_MESSAGES: usize = 500;
 /// a few KiB even with hundreds of recipients.
 pub const MAX_HEADER_BYTES: usize = 64 * 1024;
 
+/// The bytes one window of a part asks for: one literal well under the
+/// byte bound of a response, so a message of any size never lifts it.
+pub const BODY_WINDOW_BYTES: u32 = 512 * 1024;
+
+/// The longest text kept of one field of a part: a name, an id, a
+/// description, a location or one parameter value. A file name runs to
+/// a few hundred bytes; the rest is a sender padding a structure.
+pub const MAX_PART_FIELD_BYTES: usize = 4096;
+
+/// The parameters and the languages kept per part; a part carries a
+/// handful.
+pub const MAX_PART_FIELDS: usize = 32;
+
 /// A mailbox opened read-only with EXAMINE (RFC 3501 section 6.3.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Selected {
@@ -80,25 +93,126 @@ pub struct FetchedMessage {
     pub gmail: Option<GmailItems>,
 }
 
-/// What the attachment test and the choice of a preview part need of a
-/// MIME tree, every word in lower case.
+/// One part of a MIME tree as BODYSTRUCTURE describes it (RFC 3501
+/// section 7.4.2), every media word in lower case. A message inside a
+/// message is a leaf: its own tree is never read (RFC 8621 section
+/// 4.1.4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BodyPart {
-    Leaf {
-        /// The top-level media type, `text` for one.
-        media_type: String,
-        /// The subtype, `plain` or `html` for one.
-        subtype: String,
-        /// Whether the disposition is `attachment`.
-        attachment: bool,
-        /// The size of the part in its transfer encoding.
-        bytes: u32,
-    },
-    Multipart {
-        /// `related` for one.
-        subtype: String,
-        parts: Vec<BodyPart>,
-    },
+    Leaf(Leaf),
+    Multipart(Multipart),
+}
+
+/// A part that holds content.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Leaf {
+    /// The top-level media type, `text` for one.
+    pub media_type: String,
+    /// The subtype, `plain` or `html` for one.
+    pub subtype: String,
+    /// The parameters of the type as the server spells them.
+    pub parameters: Vec<(String, String)>,
+    /// Content-ID as written, angle brackets included.
+    pub id: Option<String>,
+    pub description: Option<String>,
+    /// The transfer encoding in lower case, `base64` for one.
+    pub encoding: String,
+    /// The size of the part in its transfer encoding.
+    pub bytes: u32,
+    /// The line count a text or message part carries.
+    pub lines: Option<u32>,
+    pub disposition: Option<Disposition>,
+    pub language: Option<Vec<String>>,
+    pub location: Option<String>,
+}
+
+impl Leaf {
+    /// Whether the sender marked the part as an attachment.
+    #[must_use]
+    pub fn is_attachment(&self) -> bool {
+        self.disposition
+            .as_ref()
+            .is_some_and(|disposition| disposition.kind == "attachment")
+    }
+
+    /// A `text/plain` or `text/html` part that is not an attachment.
+    #[must_use]
+    pub fn is_text_body(&self) -> bool {
+        self.media_type == "text"
+            && (self.subtype == "plain" || self.subtype == "html")
+            && !self.is_attachment()
+    }
+}
+
+/// A part that holds other parts.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Multipart {
+    /// `related` for one.
+    pub subtype: String,
+    pub parameters: Vec<(String, String)>,
+    pub disposition: Option<Disposition>,
+    pub language: Option<Vec<String>>,
+    pub location: Option<String>,
+    pub parts: Vec<BodyPart>,
+}
+
+#[cfg(test)]
+impl Multipart {
+    /// A multipart of that subtype over the parts, for the tests.
+    pub(crate) fn of(subtype: &str, parts: Vec<BodyPart>) -> BodyPart {
+        BodyPart::Multipart(Self {
+            subtype: subtype.to_owned(),
+            parts,
+            ..Self::default()
+        })
+    }
+}
+
+/// Content-Disposition (RFC 2183): the kind in lower case and its
+/// parameters as the server spells them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Disposition {
+    pub kind: String,
+    pub parameters: Vec<(String, String)>,
+}
+
+#[cfg(test)]
+impl Disposition {
+    /// An attachment without parameters, for the tests.
+    pub(crate) fn attachment() -> Self {
+        Self {
+            kind: "attachment".to_owned(),
+            parameters: Vec::new(),
+        }
+    }
+}
+
+/// What one structure fetch answered: the tree and the header fields
+/// asked beside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Structure {
+    /// `None` for a message with more parts than the bridge keeps.
+    pub tree: Option<BodyPart>,
+    /// The fields asked for, cut at `MAX_HEADER_BYTES`; empty when none
+    /// were.
+    pub header: Vec<u8>,
+}
+
+/// One window of a part: `bytes` from `offset`, `BODY_WINDOW_BYTES` at
+/// most (RFC 3501 section 6.4.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PartWindow {
+    pub offset: u32,
+    pub bytes: u32,
+}
+
+/// One window of one part of one message, asked by a partial fetch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PartAsk<'a> {
+    pub uid: u32,
+    /// `TEXT` for a message that is one part, a part number otherwise.
+    pub section: &'a str,
+    pub window: PartWindow,
 }
 
 /// The flag fetches one command may answer with; a server that sends

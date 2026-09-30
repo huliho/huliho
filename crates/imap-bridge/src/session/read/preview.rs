@@ -57,7 +57,7 @@ fn push_run(set: &mut String, (first, last): (u32, u32)) {
 
 /// A part number is digits with dots between them; anything else never
 /// reaches a command line.
-fn is_part_number(path: &str) -> bool {
+pub(super) fn is_part_number(path: &str) -> bool {
     path.split('.')
         .all(|level| !level.is_empty() && level.bytes().all(|byte| byte.is_ascii_digit()))
 }

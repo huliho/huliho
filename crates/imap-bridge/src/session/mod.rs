@@ -6,6 +6,7 @@
 //! a swap costs one module. The causes below serve the SMTP check too.
 
 mod capability;
+mod error;
 #[cfg(feature = "test-support")]
 pub mod fuzzing;
 mod guard;
@@ -15,22 +16,25 @@ mod read;
 
 use std::collections::BTreeSet;
 use std::future::Future;
-use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use thiserror::Error;
 use tokio_rustls::rustls::ClientConfig;
-use tokio_rustls::rustls::pki_types::InvalidDnsNameError;
 
+pub use error::SessionError;
+pub(crate) use error::io_error;
 pub use guard::{MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
 pub use imap::ImapSession;
 pub use message::{
-    BodyPart, FetchItems, FetchedMessage, FlagFetch, Flagged, GmailItems, MAX_FETCH_MESSAGES,
-    MAX_FLAGGED, MAX_HEADER_BYTES, MAX_PREVIEW_TEXT_BYTES, MAX_PREVIEWS, MESSAGE_LIMIT,
-    PREVIEW_HEADER_BYTES, PreviewAsk, PreviewBytes, Selected, UidRange,
+    BODY_WINDOW_BYTES, BodyPart, Disposition, FetchItems, FetchedMessage, FlagFetch, Flagged,
+    GmailItems, Leaf, MAX_FETCH_MESSAGES, MAX_FLAGGED, MAX_HEADER_BYTES, MAX_PART_FIELD_BYTES,
+    MAX_PART_FIELDS, MAX_PREVIEW_TEXT_BYTES, MAX_PREVIEWS, MESSAGE_LIMIT, Multipart,
+    PREVIEW_HEADER_BYTES, PartAsk, PartWindow, PreviewAsk, PreviewBytes, Selected, Structure,
+    UidRange,
 };
+pub use read::MAX_TREE_BYTES;
+pub(crate) use read::sendable_field;
 
 /// One connect attempt or one step of a command gets this long: the
 /// whole command where the client library runs it, each response where
@@ -142,44 +146,6 @@ pub struct StatusEntry {
 pub struct Listing {
     pub entries: Vec<ListEntry>,
     pub statuses: Vec<StatusEntry>,
-}
-
-/// Why a step of an IMAP or SMTP session failed. No variant carries a
-/// credential.
-#[derive(Debug, Error)]
-pub enum SessionError {
-    #[error("no address to connect to")]
-    NoAddress,
-    #[error("cannot connect: {0}")]
-    Connect(#[source] io::Error),
-    #[error("the host is not a valid server name")]
-    ServerName(#[source] InvalidDnsNameError),
-    #[error("TLS failed: {0}")]
-    Tls(#[source] io::Error),
-    #[error("the server does not offer STARTTLS")]
-    StarttlsAbsent,
-    #[error("the server refused STARTTLS")]
-    StarttlsRefused,
-    #[error("the server took too long")]
-    Timeout,
-    #[error("the server closed the connection")]
-    Closed,
-    #[error("the server refused the credential")]
-    CredentialRejected,
-    #[error("the server offers no way to sign in with this credential")]
-    AuthUnavailable,
-    /// The server could not judge the credential: a subsystem behind it
-    /// is down (RFC 5530 section 3, `UNAVAILABLE`).
-    #[error("the server cannot sign anyone in right now")]
-    Unavailable,
-    /// A tagged NO outside the sign-in (RFC 3501 section 7.1.2).
-    #[error("the server answered NO")]
-    Refused,
-    /// The text is fixed at the call site, never the server's own words.
-    #[error("the server does not speak the protocol as expected: {0}")]
-    Protocol(&'static str),
-    #[error("read or write failed: {0}")]
-    Io(#[source] io::Error),
 }
 
 /// The seam over the client library. Every step runs within the timeout
@@ -342,6 +308,50 @@ pub trait Session: Sized + Send {
         ask: &PreviewAsk<'_>,
     ) -> impl Future<Output = Result<Vec<PreviewBytes>, SessionError>> + Send;
 
+    /// `UID FETCH` of BODYSTRUCTURE and the named header fields of one
+    /// message in one command (RFC 3501 section 6.4.5), the fields as a
+    /// partial fetch. `None` when the message answered no line.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`]; `Protocol` as well, before anything is
+    /// sent, when no mailbox is selected or a field name cannot go on a
+    /// command line. A response past a bound of the guard fails the same
+    /// way; the session must then be dropped.
+    fn uid_structure(
+        &mut self,
+        uid: u32,
+        fields: &[String],
+    ) -> impl Future<Output = Result<Option<Structure>, SessionError>> + Send;
+
+    /// `UID FETCH` of the named header fields of one message alone, as a
+    /// partial fetch. `None` when the message answered no line.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::uid_structure`]; `Protocol` as well when no field
+    /// is named.
+    fn uid_header_fields(
+        &mut self,
+        uid: u32,
+        fields: &[String],
+    ) -> impl Future<Output = Result<Option<Vec<u8>>, SessionError>> + Send;
+
+    /// `UID FETCH` of one window of one part of one message, a partial
+    /// fetch of `BODY.PEEK[<section>]`: the bytes that arrived, cut at
+    /// the window. `None` when the message answered no line.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`]; `Protocol` as well, before anything is
+    /// sent, when no mailbox is selected or the section is neither
+    /// `TEXT` nor a part number; a window past `BODY_WINDOW_BYTES` is
+    /// refused the same way.
+    fn uid_part(
+        &mut self,
+        ask: &PartAsk<'_>,
+    ) -> impl Future<Output = Result<Option<Vec<u8>>, SessionError>> + Send;
+
     /// NOOP (RFC 3501 section 6.1.2): whether a connection kept from an
     /// earlier use still answers.
     ///
@@ -359,48 +369,9 @@ pub trait Session: Sized + Send {
     fn logout(self) -> impl Future<Output = Result<(), SessionError>> + Send;
 }
 
-/// Bytes a client library cannot parse arrive under the kind `Other`
-/// and a connection that ends mid-response as an unexpected end; a
-/// bound of the guard travels inside the error.
-pub(crate) fn io_error(error: io::Error) -> SessionError {
-    let limit = error
-        .get_ref()
-        .and_then(|inner| inner.downcast_ref::<guard::Limit>());
-    if let Some(limit) = limit {
-        return SessionError::Protocol(limit.words());
-    }
-    match error.kind() {
-        io::ErrorKind::Other => SessionError::Protocol("the answer could not be parsed"),
-        io::ErrorKind::UnexpectedEof => SessionError::Closed,
-        _ => SessionError::Io(error),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_bound_of_the_guard_reads_as_a_protocol_failure_in_fixed_words() {
-        for (limit, words) in [
-            (guard::Limit::Nesting, "the answer nests too deep"),
-            (guard::Limit::Size, "the answer passes the byte limit"),
-            (
-                guard::Limit::Structure,
-                "the answer passes the structure limit",
-            ),
-            (
-                guard::Limit::Literal,
-                "the answer holds a literal in free text",
-            ),
-        ] {
-            let error = io_error(limit.into());
-            assert!(
-                matches!(error, SessionError::Protocol(found) if found == words),
-                "{error}"
-            );
-        }
-    }
 
     #[test]
     fn a_capability_matches_without_regard_to_case_rfc9051_9_note_1() {

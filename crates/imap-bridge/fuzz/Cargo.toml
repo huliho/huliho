@@ -16,6 +16,13 @@ huliho-imap-bridge = { path = "..", features = ["test-support"] }
 libfuzzer-sys = "0.4.13"
 
 [[bin]]
+name = "body_bytes"
+path = "fuzz_targets/body_bytes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "headers"
 path = "fuzz_targets/headers.rs"
 test = false

@@ -6,7 +6,7 @@
 //! attachment mark, header bytes nobody vetted and names in modified
 //! UTF-7.
 
-use huliho_imap_bridge::session::{BodyPart, FetchedMessage};
+use huliho_imap_bridge::session::{BodyPart, Disposition, FetchedMessage, Leaf, Multipart};
 use huliho_imap_bridge::sync::{headers, mapping};
 use huliho_imap_bridge::utf7;
 use proptest::prelude::*;
@@ -49,12 +49,16 @@ fn leaf(media_type: &str, attachment: bool) -> BodyPart {
 }
 
 fn typed(media_type: &str, subtype: &str, attachment: bool) -> BodyPart {
-    BodyPart::Leaf {
+    BodyPart::Leaf(Leaf {
         media_type: media_type.to_owned(),
         subtype: subtype.to_owned(),
-        attachment,
         bytes: PART_BYTES,
-    }
+        disposition: attachment.then(|| Disposition {
+            kind: "attachment".to_owned(),
+            parameters: Vec::new(),
+        }),
+        ..Leaf::default()
+    })
 }
 
 /// A tree of multiparts over the given leaves.
@@ -64,9 +68,12 @@ fn tree(leaves: impl Strategy<Value = BodyPart> + 'static) -> impl Strategy<Valu
             prop::sample::select(vec!["mixed", "alternative", "related"]),
             prop::collection::vec(inner, 1..4),
         )
-            .prop_map(|(subtype, parts)| BodyPart::Multipart {
-                subtype: subtype.to_owned(),
-                parts,
+            .prop_map(|(subtype, parts)| {
+                BodyPart::Multipart(Multipart {
+                    subtype: subtype.to_owned(),
+                    parts,
+                    ..Multipart::default()
+                })
             })
     })
 }
@@ -74,8 +81,8 @@ fn tree(leaves: impl Strategy<Value = BodyPart> + 'static) -> impl Strategy<Valu
 /// Whether any leaf of the tree is sent as an attachment.
 fn holds_one(part: &BodyPart) -> bool {
     match part {
-        BodyPart::Leaf { attachment, .. } => *attachment,
-        BodyPart::Multipart { parts, .. } => parts.iter().any(holds_one),
+        BodyPart::Leaf(leaf) => leaf.is_attachment(),
+        BodyPart::Multipart(multipart) => multipart.parts.iter().any(holds_one),
     }
 }
 
@@ -93,9 +100,12 @@ fn message(flags: Vec<String>, header: Vec<u8>) -> FetchedMessage {
 
 #[test]
 fn an_inline_image_counts_outside_a_related_body_only_rfc8621_4_1_4() {
-    let under = |subtype: &str| BodyPart::Multipart {
-        subtype: subtype.to_owned(),
-        parts: vec![leaf("text", false), leaf("image", false)],
+    let under = |subtype: &str| {
+        BodyPart::Multipart(Multipart {
+            subtype: subtype.to_owned(),
+            parts: vec![leaf("text", false), leaf("image", false)],
+            ..Multipart::default()
+        })
     };
     assert!(!mapping::has_attachment(&[], Some(&under("related"))));
     assert!(mapping::has_attachment(&[], Some(&under("mixed"))));

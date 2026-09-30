@@ -6,11 +6,13 @@
 //! untagged line parsed here up to the tagged answer, so nothing the
 //! server volunteers is lost.
 
+mod body;
 mod fetch;
 mod flags;
 mod list;
 mod preview;
 mod select;
+mod structure;
 
 use std::time::Duration;
 
@@ -21,11 +23,14 @@ use tokio::time::timeout;
 use super::imap::{Stream, Wire, command_error};
 use super::{SessionError, io_error};
 
+pub(crate) use body::sendable_field;
+pub(super) use body::{uid_header_fields, uid_part, uid_structure};
 pub(super) use fetch::uid_fetch;
 pub(super) use flags::uid_flags;
 pub(super) use list::{list, lsub, status};
 pub(super) use preview::uid_previews;
 pub(super) use select::{examine, uid_list};
+pub use structure::MAX_TREE_BYTES;
 
 type Signed = async_imap::Session<Stream>;
 
@@ -211,6 +216,13 @@ pub(super) fn line(bytes: &[u8]) {
     let _ = list::keep(&mut crate::session::Listing::default(), &response);
     if let Response::Fetch(_, attributes) = &response {
         let _ = fetch::message(attributes);
+        let _ = body::structure(attributes);
+        let _ = body::header_of(attributes);
+        let window = crate::session::PartWindow {
+            offset: 0,
+            bytes: crate::session::BODY_WINDOW_BYTES,
+        };
+        let _ = body::part_of(attributes, "1", window);
     }
 }
 

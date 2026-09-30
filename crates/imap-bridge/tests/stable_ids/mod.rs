@@ -14,6 +14,10 @@ use crate::sync_rig::Rig;
 /// The scripted size of a message is this much above its UID.
 const SIZE_ABOVE_UID: u64 = 1000;
 
+/// The letter, then the 36 characters of hyphenated UUID text; a blob
+/// id carries a hyphen and the part number after it.
+const ID_LENGTH: usize = 37;
+
 /// A name per id from Email objects that carry `id`, `size` and
 /// `threadId`: the email `e<uid>`, its thread `t<uid>` after the lowest
 /// UID it holds and the INBOX by its name.
@@ -31,12 +35,17 @@ pub fn names(rig: &Rig, emails: &[Value]) -> HashMap<String, String> {
 }
 
 /// Every string in `value` that names an id, as a value or as a key,
-/// becomes the name.
+/// becomes the name; a blob id of a part keeps its part number after
+/// the name.
 pub fn rename(value: &mut Value, names: &HashMap<String, String>) {
     match value {
         Value::String(text) => {
             if let Some(name) = names.get(text.as_str()) {
                 text.clone_from(name);
+            } else if let Some((id, part)) = blob(text)
+                && let Some(name) = names.get(id)
+            {
+                *text = format!("{name}-{part}");
             }
         }
         Value::Array(items) => items.iter_mut().for_each(|item| rename(item, names)),
@@ -52,4 +61,10 @@ pub fn rename(value: &mut Value, names: &HashMap<String, String>) {
         }
         _ => {}
     }
+}
+
+/// The email id and the part number of a blob id.
+fn blob(text: &str) -> Option<(&str, &str)> {
+    let (id, rest) = text.split_at_checked(ID_LENGTH)?;
+    Some((id, rest.strip_prefix('-')?))
 }

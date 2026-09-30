@@ -11,6 +11,7 @@ use std::fmt::Write as _;
 use super::fetch;
 use super::folder::Folder;
 use super::mailboxes::{Mailboxes, Refusal, unquote};
+use super::parts::Part;
 
 /// Where the scripted Gmail ids start, so no UID reads as one.
 const GMAIL_ID_BASE: u64 = 1_000_000_000_000;
@@ -29,6 +30,8 @@ pub struct Message {
     pub structure: String,
     /// The one text part of the message, as the wire carries it.
     pub body: String,
+    /// The numbered parts of a multipart message; empty for one part.
+    pub parts: Vec<Part>,
     /// The Content-Type of that part.
     pub content_type: String,
     /// Its Content-Transfer-Encoding, where the message names one.
@@ -44,11 +47,17 @@ pub struct Message {
     pub thrid: u64,
 }
 
-/// A text/plain body.
+/// A text/plain body of a dozen bytes.
 pub const PLAIN: &str = "(\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 12 1)";
 
 /// An attached PDF.
 const PDF: &str = "(\"APPLICATION\" \"PDF\" (\"NAME\" \"a.pdf\") NIL NIL \"BASE64\" 9 NIL (\"ATTACHMENT\" (\"FILENAME\" \"a.pdf\")))";
+
+/// A text/plain leaf of `bytes` bytes.
+#[must_use]
+pub fn plain_leaf(bytes: usize) -> String {
+    format!("(\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" {bytes} 1)")
+}
 
 /// A text/html leaf of `bytes` bytes.
 #[must_use]
@@ -58,9 +67,10 @@ pub fn html_leaf(bytes: usize) -> String {
 
 impl Message {
     /// A seen plain-text message whose header, date and body follow
-    /// from the UID.
+    /// from the UID; the structure states the body's size.
     #[must_use]
     pub fn new(uid: u32) -> Self {
+        let body = format!("Body of message {uid}.");
         Self {
             uid,
             flags: vec!["\\Seen".to_owned()],
@@ -69,8 +79,9 @@ impl Message {
             header: format!(
                 "From: Sanne <sanne@example.test>\r\nTo: mo@example.test\r\nSubject: Message {uid}\r\nMessage-ID: <m{uid}@example.test>\r\n\r\n"
             ),
-            structure: PLAIN.to_owned(),
-            body: format!("Body of message {uid}."),
+            structure: plain_leaf(body.len()),
+            body,
+            parts: Vec::new(),
             content_type: "text/plain; charset=utf-8".to_owned(),
             transfer_encoding: None,
             modseq: 1,
@@ -108,7 +119,7 @@ impl Message {
     #[must_use]
     pub fn with_attachment(self) -> Self {
         Self {
-            structure: format!("({PLAIN}{PDF} \"MIXED\")"),
+            structure: format!("({}{PDF} \"MIXED\")", plain_leaf(self.body.len())),
             ..self
         }
     }
@@ -184,6 +195,10 @@ pub struct Behavior {
     /// A connection closes instead of answering once it has answered
     /// this many UID FETCH commands.
     pub drops_after: Option<usize>,
+    /// A body fetch that names this UID answers NO.
+    pub refuses_body_of: Option<u32>,
+    /// Every window answer names this origin octet whatever was asked.
+    pub misplaced_origin: Option<usize>,
     /// The lowest this many messages leave the folder behind the first
     /// UID SEARCH answer of a connection, an EXPUNGE line for each (RFC
     /// 3501 section 7.4.1).

@@ -7,6 +7,8 @@
 //! a partial fetch asks (RFC 3501 section 6.4.5), the Gmail items where
 //! the extension is on.
 
+mod body;
+
 use std::fmt::Write as _;
 
 use super::folder::Folder;
@@ -15,6 +17,8 @@ use super::messages::{Behavior, Message};
 
 /// What one UID FETCH asked for.
 enum Asked {
+    /// The structure, the header fields or a window of a section.
+    Body(body::BodyAsked),
     /// The header items of the sync, BODYSTRUCTURE and the Gmail items
     /// where named.
     Headers {
@@ -71,12 +75,26 @@ pub(super) fn answer(
                 lines.push_str(&preview_line(message, sections));
             }
         }
+        Asked::Body(asked) => {
+            if found
+                .iter()
+                .any(|message| behavior.refuses_body_of == Some(message.uid))
+            {
+                return Err(Refusal::No);
+            }
+            for message in found {
+                lines.push_str(&body::line(message, asked, behavior.misplaced_origin));
+            }
+        }
     }
     Ok(lines)
 }
 
 /// Reads the items into what was asked.
 fn asked(items: &str) -> Option<Asked> {
+    if let Some(asked) = body::asked(items) {
+        return Some(Asked::Body(asked));
+    }
     let flags = items
         .strip_prefix("(UID FLAGS)")
         .map(|rest| (false, rest))

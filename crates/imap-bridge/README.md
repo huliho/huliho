@@ -135,10 +135,11 @@ trait: `connect(key)` answers a signed-in session or a typed failure,
 so the bridge never sees a credential and never resolves a host.
 `runtime::Link` keeps one conversation per account between requests
 behind a lock, checks a kept session with NOOP before it is used again
-and drops it after a failure. Only a refresh and a preview fetch take
-the conversation; a request that reads the cache never waits on IMAP,
-and a server that is down costs nothing but the refresh: the cache
-answers as it stands.
+and drops it after a failure. Only a refresh, a preview fetch and a
+body fetch take the conversation; a request that reads the cache never
+waits on IMAP, and a server that is down costs nothing but the refresh
+for the stored properties: the cache answers as it stands, while a
+body ask answers `serverUnavailable`.
 
 `runtime::Bridge` runs the accounts the host registers: one store, one
 sealer and one connector for all of them and, per account, the
@@ -147,7 +148,7 @@ whose first sync is not done, in tree order. The task takes one batch
 per turn on the conversation and hands it back, so a request gets in
 between, selects the folder afresh before every batch and puts one
 deadline (`runtime::CONVERSATION_DEADLINE`, sixty seconds) around a
-batch, a refresh and a preview fetch. A session that fails or runs past
+batch, a refresh, a preview fetch and a body fetch. A session that fails or runs past
 the deadline is dropped; a fresh one resumes the same sync after a
 pause, and the slice whose fetch was cut short is fetched again. A
 folder whose failures pass `runtime::FOLDER_FAILURE_BOUND` waits for the
@@ -205,6 +206,44 @@ first 256 characters (`PREVIEW_CHARS`) are kept in the blob as one
 state, each email logged as updated. A message stored without its
 structure serves an empty preview and asks for nothing.
 
+A body comes from the server when a message is opened; nothing of it
+is stored. An `Email/get` that asks a body property or a `header:`
+form runs twice: the first pass notes which messages it needs, the
+request fetches them on the account's conversation under the deadline
+and the second pass answers, every call after it run again so a
+reference into its answer resolves; a call that asks only then gets a
+third pass and no more. Per message one `UID FETCH` brings
+BODYSTRUCTURE and the header fields named, the fields as a partial
+fetch of 64 KiB. The tree becomes the EmailBodyPart tree of RFC 8621
+section 4.1.4 with the part number as `partId`, the three lists follow
+the walk that section suggests and a part's `blobId` is the email id,
+a hyphen and its number with underscores for dots; a message inside a
+message is a leaf. The text parts the fetch flags name come in windows
+of 512 KiB (`session::BODY_WINDOW_BYTES`) up to the client's
+`maxBodyValueBytes` and never past 8 MiB (`jmap::MAX_BODY_VALUE_BYTES`),
+each window one literal under the byte bound. Once the conversation is
+given back, the MIME header written from the structure and the windows
+decode through mail-parser off the runtime, line endings fold to LF
+and a value cut at its cap or short of its part is marked truncated.
+One request fetches 32 windows at most, 16 MiB on the wire, what the
+proxy admits of a native server's answer
+(`jmap::MAX_BODY_WINDOWS`); a value the budget does not reach is empty
+and marked truncated. A call reads the server for four messages at
+most (`jmap::MAX_BODIES_IN_GET`) whatever it asks of them and names 32
+header fields at most (`jmap::MAX_HEADER_FIELDS`); a tree keeps 64 KiB
+of fields at most (`session::MAX_TREE_BYTES`), since a literal in a
+BODYSTRUCTURE lies outside the guard's structure bound. A message the server cannot describe
+within the bounds answers one `application/octet-stream` part over the
+whole message, named `message.eml` and listed as its one attachment;
+the messages after it are read on a fresh session, two such sessions
+per pass of a request at most, shared by every body ask of the pass,
+the messages left after the second absent. A message the server does
+not hold is `notFound`; a server out of
+reach, a NO on a message's own fetch and a window answer the bridge
+cannot read answer `serverUnavailable` for the call. The `header:` forms serve
+Raw and Text, each with `:all`; the Text form is refused for the
+structured fields of RFC 5322 and RFC 2369.
+
 The rows live in `bridge_` tables inside the host's database.
 `store::MIGRATIONS` carries their schema for the host's migration list
 as two migrations, the tables and then the index on the message ids by
@@ -216,8 +255,8 @@ ten thousand rows. `jmap::handle` runs a Request object (RFC 8620
 section 3.3) against those rows and answers `Mailbox/get`,
 `Mailbox/changes`, `Email/get`, `Email/query`, `Email/changes`,
 `Thread/get`, `Thread/changes` and `Core/echo`. `Email/get` serves the
-metadata, the header properties and the preview; a body property is an
-unknown one until bodies arrive. `Email/query` serves the filter
+metadata, the header properties and the preview from the rows, the
+body properties and the `header:` forms from the server. `Email/query` serves the filter
 `inMailbox`, the sort `receivedAt` either way, a window by position or
 by anchor, the total on request and one email per thread on request,
 two hundred ids at most (`jmap::QUERY_LIMIT`); any other filter or sort
@@ -245,9 +284,10 @@ SMTP servers the tests run against: a fresh certificate per server, one
 answer per command and a record of every line received. Its IMAP script
 carries a mailbox model with LIST-EXTENDED, LIST-STATUS, SPECIAL-USE
 and CONDSTORE as switches and a message model behind EXAMINE, NOOP,
-UID SEARCH and UID FETCH, the flags alone with CHANGEDSINCE and the
-two sections of a preview cut as the partial fetch asks included, whose
-misbehavior is a switch as well: volunteered lines, a connection that
+UID SEARCH and UID FETCH, the flags alone with CHANGEDSINCE, the two
+sections of a preview cut as the partial fetch asks, the structure with
+a set of header fields, the fields alone and one window of one section
+included, whose misbehavior is a switch as well: volunteered lines, a connection that
 drops, a MODSEQ item, a NO in raw UTF-8, messages that leave between
 two searches, the Gmail items volunteered unasked plus an EXAMINE answer
 without EXISTS. Its `Mailboxes`
@@ -261,7 +301,8 @@ relabel a message or move it between stores as a second client would.
 `testing::TestConnector` signs a
 user in on such a server or refuses every connection.
 `testing::seal::TestSealer` binds a blob to its row without a cipher.
-`session::fuzzing` is what the fuzz targets in `fuzz/` call.
+`session::fuzzing` and `jmap::fuzzing` are what the fuzz targets in
+`fuzz/` call.
 Build them with
 `cargo build --manifest-path crates/imap-bridge/fuzz/Cargo.toml` and run
 one with cargo-fuzz on a nightly toolchain.
