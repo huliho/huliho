@@ -6,11 +6,17 @@
 //! object out (RFC 8620 sections 3.3 and 3.4), the methods answered
 //! from the store. A `/changes` call refreshes the account first when a
 //! refresh is due; an `Email/get` that asks for previews the rows lack
-//! fetches them and answers again.
+//! or for bodies fetches them and answers again, with every call after
+//! it.
 
+mod bodies;
+mod body;
 mod changes;
 mod email;
+#[cfg(feature = "test-support")]
+pub mod fuzzing;
 mod get;
+mod headers;
 mod mailbox;
 mod previews;
 mod query;
@@ -18,6 +24,7 @@ mod references;
 mod request;
 mod session;
 mod thread;
+mod values;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -30,10 +37,13 @@ use thiserror::Error;
 use crate::seal::Sealer;
 use crate::store::{AccountKey, EmailId, MailboxId, Store, StoreError};
 
+pub use body::MAX_BODIES_IN_GET;
+pub use headers::MAX_HEADER_FIELDS;
 pub use previews::PREVIEW_BATCH;
 pub use query::QUERY_LIMIT;
 pub use request::handle;
 pub use session::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, Urls, session_object};
+pub use values::{MAX_BODY_VALUE_BYTES, MAX_BODY_WINDOWS};
 
 /// A Request object of one MiB at most, room for an `Email/set` with a
 /// body once one exists.
@@ -149,6 +159,12 @@ pub(crate) struct Context<'a> {
     /// The emails an `Email/get` wanted a preview for that the rows do
     /// not hold yet.
     missing_previews: RefCell<Vec<EmailId>>,
+    /// What an `Email/get` wants of the messages on the server, noted
+    /// on the first pass.
+    body_ask: RefCell<Option<bodies::BodyAsk>>,
+    /// What the server holds of them, set for the call on a later pass;
+    /// `None` on the first.
+    bodies: RefCell<Option<&'a bodies::Bodies>>,
 }
 
 impl Context<'_> {
@@ -176,6 +192,9 @@ pub(crate) enum MethodError {
     UnsupportedSort,
     AnchorNotFound,
     ServerFail,
+    /// The server behind the account did not answer in time; the same
+    /// call may succeed later (RFC 8620 section 3.6.2).
+    ServerUnavailable,
 }
 
 impl MethodError {
@@ -191,6 +210,7 @@ impl MethodError {
             Self::UnsupportedSort => "unsupportedSort",
             Self::AnchorNotFound => "anchorNotFound",
             Self::ServerFail => "serverFail",
+            Self::ServerUnavailable => "serverUnavailable",
         };
         let mut object = Map::new();
         object.insert("type".to_owned(), Value::from(kind));
@@ -301,6 +321,7 @@ mod tests {
             (MethodError::UnsupportedFilter, "unsupportedFilter"),
             (MethodError::UnsupportedSort, "unsupportedSort"),
             (MethodError::AnchorNotFound, "anchorNotFound"),
+            (MethodError::ServerUnavailable, "serverUnavailable"),
         ] {
             assert_eq!(error.object()["type"], kind);
         }

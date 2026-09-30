@@ -343,7 +343,9 @@ async fn a_connection_the_connector_refuses_fails_no_call() {
     let answer = changes(&down, "Email", synced).await;
     assert_eq!(lengths(&answer), (0, 0, 0));
     assert_eq!(answer["newState"], synced.to_string());
-    let arguments = json!({ "accountId": ACCOUNT, "ids": ids });
+    // The stored properties by name; the default set carries the body
+    // lists, which only the server can answer.
+    let arguments = json!({ "accountId": ACCOUNT, "ids": ids, "properties": ["preview"] });
     let emails = down.call(&json!(["Email/get", arguments, "c1"])).await;
     assert_eq!(emails["state"], synced.to_string());
     let previews: Vec<&Value> = emails["list"]

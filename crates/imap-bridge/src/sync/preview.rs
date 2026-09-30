@@ -41,27 +41,22 @@ pub fn part(structure: &BodyPart) -> Option<PreviewPart> {
 /// number (RFC 3501 section 6.4.5).
 fn walk(part: &BodyPart, number: &mut Vec<usize>, leaves: &mut Vec<PreviewPart>) {
     match part {
-        BodyPart::Multipart { parts, .. } => {
-            for (index, child) in parts.iter().enumerate() {
+        BodyPart::Multipart(multipart) => {
+            for (index, child) in multipart.parts.iter().enumerate() {
                 number.push(index + 1);
                 walk(child, number, leaves);
                 number.pop();
             }
         }
-        BodyPart::Leaf {
-            media_type,
-            subtype,
-            attachment: false,
-            bytes,
-        } if media_type == "text" && (subtype == "plain" || subtype == "html") => {
+        BodyPart::Leaf(leaf) if leaf.is_text_body() => {
             let levels: Vec<String> = number.iter().map(usize::to_string).collect();
             leaves.push(PreviewPart {
                 path: levels.join("."),
-                html: subtype == "html",
-                bytes: *bytes,
+                html: leaf.subtype == "html",
+                bytes: leaf.bytes,
             });
         }
-        BodyPart::Leaf { .. } => {}
+        BodyPart::Leaf(_) => {}
     }
 }
 
@@ -106,21 +101,20 @@ pub fn text(header: &[u8], start: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::{Disposition, Leaf, Multipart};
 
     fn leaf(subtype: &str, attachment: bool, bytes: u32) -> BodyPart {
-        BodyPart::Leaf {
+        BodyPart::Leaf(Leaf {
             media_type: "text".to_owned(),
             subtype: subtype.to_owned(),
-            attachment,
             bytes,
-        }
+            disposition: attachment.then(Disposition::attachment),
+            ..Leaf::default()
+        })
     }
 
     fn multipart(subtype: &str, parts: Vec<BodyPart>) -> BodyPart {
-        BodyPart::Multipart {
-            subtype: subtype.to_owned(),
-            parts,
-        }
+        Multipart::of(subtype, parts)
     }
 
     #[test]

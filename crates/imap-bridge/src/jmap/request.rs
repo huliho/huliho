@@ -3,14 +3,17 @@
 // Additional terms apply, see NOTICE.
 
 //! One Request object run against an account: every call in order off
-//! the runtime, a refresh ahead of a `/changes` call and a second pass
-//! over the `Email/get` calls whose previews were fetched in between.
+//! the runtime, a refresh ahead of a `/changes` call and a later pass
+//! over the calls from the first `Email/get` whose previews or bodies
+//! were fetched in between.
 
 use std::cell::RefCell;
 
 use serde_json::Value;
 
+use super::bodies::{self, Bodies, BodyAsk};
 use super::previews::{self, PREVIEW_BATCH};
+use super::values::MAX_BODY_WINDOWS;
 use super::{
     Context, Invocation, MAX_CALLS_IN_REQUEST, MAX_SIZE_REQUEST, Request, RequestError, Response,
     Using, references, run, using,
@@ -19,6 +22,12 @@ use crate::mailboxes::SyncError;
 use crate::runtime::{Connector, Link};
 use crate::store::{EmailId, MailboxId, StoreError};
 use crate::sync::Cache;
+
+/// The passes one request may take: the first, one for what its calls
+/// fetched and one for a call whose reference into a fetched answer
+/// resolved only then. A need left after the last pass answers
+/// `serverUnavailable`.
+const MAX_PASSES: usize = 3;
 
 /// A sync failure inside a request: the store's and the task's count,
 /// the session's never, since the cache answers as it stands.
@@ -34,8 +43,10 @@ fn sync_failed(error: SyncError) -> Result<(), RequestError> {
 /// object as JSON, its `sessionState` the value the host derived for the
 /// session object. A `/changes` call has the account refreshed first
 /// when a refresh is due; an `Email/get` that asks for previews the rows
-/// lack has them fetched and runs again. Neither waits on a server that
-/// is down: the cache answers as it stands.
+/// lack or for bodies has them fetched and runs again, with every call
+/// after it, at most `MAX_PASSES` passes in all. Neither waits on a
+/// server that is down: the cache answers as it stands and a body it
+/// does not hold answers `serverUnavailable`.
 ///
 /// # Errors
 ///
@@ -71,21 +82,22 @@ pub async fn handle<C: Connector>(
     if let Some(viewed) = answered.viewed.take() {
         link.view(viewed);
     }
-    if !answered.missing.is_empty() {
-        let mut ids: Vec<EmailId> = Vec::new();
-        for (_, found) in &answered.missing {
-            for id in found {
-                if !ids.contains(id) && ids.len() < PREVIEW_BATCH {
-                    ids.push(id.clone());
-                }
-            }
+    let mut windows = MAX_BODY_WINDOWS;
+    for _ in 1..MAX_PASSES {
+        if answered.needs.is_empty() {
+            break;
         }
-        if let Err(error) = previews::fill(cache, link, ids).await {
-            sync_failed(error)?;
-        }
-        let indexes: Vec<usize> = answered.missing.iter().map(|(index, _)| *index).collect();
-        let again = Some((answered.responses, indexes));
-        answered = off_runtime(cache, using, &calls, again).await?;
+        let needs = std::mem::take(&mut answered.needs);
+        let reruns = fetched(cache, link, needs, &mut windows).await?;
+        let first = reruns.iter().map(|(index, _)| *index).min().unwrap_or(0);
+        let mut bodies = std::mem::take(&mut answered.bodies);
+        bodies.extend(reruns);
+        let again = Again {
+            responses: answered.responses,
+            first,
+            bodies,
+        };
+        answered = off_runtime(cache, using, &calls, Some(again)).await?;
     }
     let response = Response {
         method_responses: answered.responses,
@@ -95,16 +107,83 @@ pub async fn handle<C: Connector>(
     serde_json::to_vec(&response).map_err(|error| RequestError::Store(StoreError::Encoding(error)))
 }
 
+/// What a call left for the request to fetch before it runs again.
+enum Need {
+    /// The emails whose preview the rows lack.
+    Previews(Vec<EmailId>),
+    Bodies(BodyAsk),
+}
+
+/// The calls to run again, by index, with the bodies fetched for each.
+type Reruns = Vec<(usize, Option<Bodies>)>;
+
+/// Fetches what the needs name: the previews of every call at once,
+/// then the bodies per call within the windows the request may still
+/// spend. Which calls run again, with their bodies.
+async fn fetched<C: Connector>(
+    cache: &Cache,
+    link: &Link<C>,
+    needs: Vec<(usize, Need)>,
+    windows: &mut usize,
+) -> Result<Reruns, RequestError> {
+    let mut ids: Vec<EmailId> = Vec::new();
+    let mut asks: Vec<(usize, BodyAsk)> = Vec::new();
+    let mut reruns: Reruns = Vec::new();
+    for (index, need) in needs {
+        if !reruns.iter().any(|(found, _)| *found == index) {
+            reruns.push((index, None));
+        }
+        match need {
+            Need::Previews(found) => {
+                for id in found {
+                    if !ids.contains(&id) && ids.len() < PREVIEW_BATCH {
+                        ids.push(id);
+                    }
+                }
+            }
+            Need::Bodies(ask) => asks.push((index, ask)),
+        }
+    }
+    if !ids.is_empty()
+        && let Err(error) = previews::fill(cache, link, ids).await
+    {
+        sync_failed(error)?;
+    }
+    if !asks.is_empty() {
+        let specs: Vec<BodyAsk> = asks.iter().map(|(_, ask)| ask.clone()).collect();
+        let bodies = match bodies::fill(cache, link, &specs, windows).await {
+            Ok(bodies) => bodies,
+            Err(error) => {
+                sync_failed(error)?;
+                specs.iter().map(|_| Bodies::new()).collect()
+            }
+        };
+        for ((index, _), fetched) in asks.into_iter().zip(bodies) {
+            if let Some((_, slot)) = reruns.iter_mut().find(|(found, _)| *found == index) {
+                *slot = Some(fetched);
+            }
+        }
+    }
+    Ok(reruns)
+}
+
 /// What one pass over the calls produced.
 struct Answered {
     responses: Vec<Invocation>,
     viewed: Option<MailboxId>,
-    /// Per call that asked, the emails whose preview the rows lack.
-    missing: Vec<(usize, Vec<EmailId>)>,
+    /// Per call that asked, what it left to fetch.
+    needs: Vec<(usize, Need)>,
+    /// The bodies fetched so far, for the next pass.
+    bodies: Reruns,
 }
 
-/// The responses to run again in place, by index.
-type Again = Option<(Vec<Invocation>, Vec<usize>)>;
+/// A later pass: the responses so far, the first call to run again and
+/// the bodies fetched for every call that asked so far.
+struct Again {
+    responses: Vec<Invocation>,
+    first: usize,
+    bodies: Reruns,
+}
 
 /// Runs the calls on a blocking thread, since every method reads SQLite
 /// and opens blobs.
@@ -112,7 +191,7 @@ async fn off_runtime(
     cache: &Cache,
     using: Using,
     calls: &[Invocation],
-    again: Again,
+    again: Option<Again>,
 ) -> Result<Answered, RequestError> {
     let (cache, calls) = (cache.clone(), calls.to_vec());
     tokio::task::spawn_blocking(move || answer(&cache, using, &calls, again))
@@ -120,9 +199,13 @@ async fn off_runtime(
         .map_err(|_join| RequestError::Task)
 }
 
-/// Every call in order, or the named ones again with the earlier
-/// responses standing, so a reference into one still resolves.
-fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Again) -> Answered {
+/// Every call in order, or every call from the first one that fetched
+/// again with the earlier responses standing: a call after it may
+/// reference its answer; every method answers from the cache as it
+/// stands, so a call before the first fetched one keeps its response.
+/// A call whose fetch ran asks no more; one run again for its
+/// reference may.
+fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again>) -> Answered {
     let context = Context {
         store: &cache.store,
         sealer: cache.sealer.as_ref(),
@@ -131,32 +214,46 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Again) -> An
         budget: references::Budget::full(),
         viewed: RefCell::new(None),
         missing_previews: RefCell::new(Vec::new()),
+        body_ask: RefCell::new(None),
+        bodies: RefCell::new(None),
     };
-    let (mut responses, rerun) = match again {
-        Some((responses, indexes)) => (responses, Some(indexes)),
-        None => (Vec::with_capacity(calls.len()), None),
+    let (mut responses, first, bodies) = match again {
+        Some(again) => (again.responses, Some(again.first), again.bodies),
+        None => (Vec::with_capacity(calls.len()), None, Vec::new()),
     };
-    let mut missing = Vec::new();
+    let mut needs = Vec::new();
     for (index, call) in calls.iter().enumerate() {
-        match &rerun {
-            Some(indexes) if !indexes.contains(&index) => continue,
-            _ => {}
+        if let Some(first) = first {
+            if index < first {
+                continue;
+            }
+            let fetched = bodies.iter().find(|(found, _)| *found == index);
+            *context.bodies.borrow_mut() = fetched.and_then(|(_, bodies)| bodies.as_ref());
         }
         let response = run(&context, call, &responses[..index]);
-        let found = std::mem::take(&mut *context.missing_previews.borrow_mut());
-        if !found.is_empty() && rerun.is_none() {
-            missing.push((index, found));
+        let previews = std::mem::take(&mut *context.missing_previews.borrow_mut());
+        let ask = context.body_ask.borrow_mut().take();
+        if !bodies.iter().any(|(found, _)| *found == index) {
+            if !previews.is_empty() {
+                needs.push((index, Need::Previews(previews)));
+            }
+            if let Some(ask) = ask {
+                needs.push((index, Need::Bodies(ask)));
+            }
         }
-        if rerun.is_some() {
+        if first.is_some() {
             responses[index] = response;
         } else {
             responses.push(response);
         }
     }
+    let viewed = context.viewed.take();
+    drop(context);
     Answered {
         responses,
-        viewed: context.viewed.take(),
-        missing,
+        viewed,
+        needs,
+        bodies,
     }
 }
 

@@ -124,14 +124,13 @@ pub fn has_attachment(flags: &[String], structure: Option<&BodyPart>) -> bool {
 /// count, outside the inline images of a multipart/related body.
 fn attaches(part: &BodyPart, related: bool) -> bool {
     match part {
-        BodyPart::Multipart { subtype, parts } => parts
+        BodyPart::Multipart(multipart) => multipart
+            .parts
             .iter()
-            .any(|part| attaches(part, subtype == "related")),
-        BodyPart::Leaf {
-            attachment: true, ..
-        } => true,
-        BodyPart::Leaf { media_type, .. } => {
-            media_type != "text" && !(related && media_type == "image")
+            .any(|part| attaches(part, multipart.subtype == "related")),
+        BodyPart::Leaf(leaf) => {
+            leaf.is_attachment()
+                || (leaf.media_type != "text" && !(related && leaf.media_type == "image"))
         }
     }
 }

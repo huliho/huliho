@@ -4,8 +4,10 @@ expression: "stable(&rig, &answer[\"list\"])"
 ---
 [
   {
+    "attachments": [],
     "bcc": null,
     "blobId": "e1",
+    "bodyValues": {},
     "cc": null,
     "from": [
       {
@@ -14,6 +16,20 @@ expression: "stable(&rig, &answer[\"list\"])"
       }
     ],
     "hasAttachment": false,
+    "htmlBody": [
+      {
+        "blobId": "e1-1",
+        "charset": "utf-8",
+        "cid": null,
+        "disposition": null,
+        "language": null,
+        "location": null,
+        "name": null,
+        "partId": "1",
+        "size": 18,
+        "type": "text/plain"
+      }
+    ],
     "id": "e1",
     "inReplyTo": null,
     "keywords": {
@@ -33,6 +49,20 @@ expression: "stable(&rig, &answer[\"list\"])"
     "sentAt": null,
     "size": 1001,
     "subject": "Message 1",
+    "textBody": [
+      {
+        "blobId": "e1-1",
+        "charset": "utf-8",
+        "cid": null,
+        "disposition": null,
+        "language": null,
+        "location": null,
+        "name": null,
+        "partId": "1",
+        "size": 18,
+        "type": "text/plain"
+      }
+    ],
     "threadId": "t1",
     "to": [
       {
@@ -42,6 +72,20 @@ expression: "stable(&rig, &answer[\"list\"])"
     ]
   },
   {
+    "attachments": [
+      {
+        "blobId": "e2-2",
+        "charset": null,
+        "cid": null,
+        "disposition": "attachment",
+        "language": null,
+        "location": null,
+        "name": "a.pdf",
+        "partId": "2",
+        "size": 9,
+        "type": "application/pdf"
+      }
+    ],
     "bcc": [
       {
         "email": "audit@example.test",
@@ -49,6 +93,7 @@ expression: "stable(&rig, &answer[\"list\"])"
       }
     ],
     "blobId": "e2",
+    "bodyValues": {},
     "cc": [
       {
         "email": "kim@example.test",
@@ -62,6 +107,20 @@ expression: "stable(&rig, &answer[\"list\"])"
       }
     ],
     "hasAttachment": true,
+    "htmlBody": [
+      {
+        "blobId": "e2-1",
+        "charset": "utf-8",
+        "cid": null,
+        "disposition": null,
+        "language": null,
+        "location": null,
+        "name": null,
+        "partId": "1",
+        "size": 18,
+        "type": "text/plain"
+      }
+    ],
     "id": "e2",
     "inReplyTo": [
       "m1@example.test"
@@ -97,6 +156,20 @@ expression: "stable(&rig, &answer[\"list\"])"
     "sentAt": "2026-09-01T07:30:00Z",
     "size": 1002,
     "subject": "Café om drie uur",
+    "textBody": [
+      {
+        "blobId": "e2-1",
+        "charset": "utf-8",
+        "cid": null,
+        "disposition": null,
+        "language": null,
+        "location": null,
+        "name": null,
+        "partId": "1",
+        "size": 18,
+        "type": "text/plain"
+      }
+    ],
     "threadId": "t1",
     "to": [
       {
@@ -110,11 +183,27 @@ expression: "stable(&rig, &answer[\"list\"])"
     ]
   },
   {
+    "attachments": [],
     "bcc": null,
     "blobId": "e3",
+    "bodyValues": {},
     "cc": null,
     "from": null,
     "hasAttachment": false,
+    "htmlBody": [
+      {
+        "blobId": "e3-1",
+        "charset": "utf-8",
+        "cid": null,
+        "disposition": null,
+        "language": null,
+        "location": null,
+        "name": null,
+        "partId": "1",
+        "size": 18,
+        "type": "text/plain"
+      }
+    ],
     "id": "e3",
     "inReplyTo": null,
     "keywords": {
@@ -133,6 +222,20 @@ expression: "stable(&rig, &answer[\"list\"])"
     "sentAt": null,
     "size": 1003,
     "subject": null,
+    "textBody": [
+      {
+        "blobId": "e3-1",
+        "charset": "utf-8",
+        "cid": null,
+        "disposition": null,
+        "language": null,
+        "location": null,
+        "name": null,
+        "partId": "1",
+        "size": 18,
+        "type": "text/plain"
+      }
+    ],
     "threadId": "t3",
     "to": null
   }

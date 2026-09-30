@@ -29,6 +29,7 @@ time = { version = "0.3.55", default-features = false, features = ["formatting",
 tokio = { version = "1.53.1", features = ["io-util", "net", "rt", "sync", "time"] }
 tokio-rustls = { version = "0.26.5", default-features = false, features = ["logging", "ring", "tls12"] }
 tracing = "0.1.44"
+unicode-normalization = "0.1.25"
 uuid = { version = "1.26.1", features = ["v4"] }
 
 [dev-dependencies]

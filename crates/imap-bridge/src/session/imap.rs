@@ -4,6 +4,8 @@
 
 //! The session on async-imap over tokio-rustls.
 
+mod auth;
+
 use std::fmt;
 use std::io;
 use std::net::SocketAddr;
@@ -12,7 +14,7 @@ use std::time::Duration;
 
 use async_imap::error::Error as ImapError;
 use async_imap::imap_proto::{Response, Status};
-use async_imap::{Authenticator, Client, Connection};
+use async_imap::{Client, Connection};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::time::{error::Elapsed, timeout};
@@ -21,20 +23,17 @@ use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::pki_types::ServerName;
 
+use self::auth::{Xoauth2, auth_error};
 use super::capability::{Tags, capabilities_of};
 use super::guard::Guarded;
 use super::{
-    Capabilities, FetchItems, FetchedMessage, FlagFetch, Flagged, ListReturn, Listing, PreviewAsk,
-    PreviewBytes, Selected, Session, SessionError, StatusEntry, StatusItems, Target, TlsMode,
-    UidRange, io_error, read,
+    Capabilities, FetchItems, FetchedMessage, FlagFetch, Flagged, ListReturn, Listing, PartAsk,
+    PreviewAsk, PreviewBytes, Selected, Session, SessionError, StatusEntry, StatusItems, Structure,
+    Target, TlsMode, UidRange, io_error, read,
 };
 
 pub(super) type Stream = Guarded<TlsStream<TcpStream>>;
 type Attempt = Result<async_imap::Session<Stream>, (ImapError, Client<Stream>)>;
-
-/// The response code of a server whose sign-in backend is down (RFC 5530
-/// section 3); the client library folds it into the text of its error.
-const UNAVAILABLE_CODE: &str = "[UNAVAILABLE]";
 
 /// The stream types the client library accepts.
 pub(super) trait Wire: AsyncRead + AsyncWrite + Unpin + Send + fmt::Debug {}
@@ -210,6 +209,29 @@ impl Session for ImapSession {
         read::uid_previews(&mut self.selection()?, ask, room).await
     }
 
+    async fn uid_structure(
+        &mut self,
+        uid: u32,
+        fields: &[String],
+    ) -> Result<Option<Structure>, SessionError> {
+        let room = self.room();
+        read::uid_structure(&mut self.selection()?, uid, fields, room).await
+    }
+
+    async fn uid_header_fields(
+        &mut self,
+        uid: u32,
+        fields: &[String],
+    ) -> Result<Option<Vec<u8>>, SessionError> {
+        let room = self.room();
+        read::uid_header_fields(&mut self.selection()?, uid, fields, room).await
+    }
+
+    async fn uid_part(&mut self, ask: &PartAsk<'_>) -> Result<Option<Vec<u8>>, SessionError> {
+        let room = self.room();
+        read::uid_part(&mut self.selection()?, ask, room).await
+    }
+
     async fn noop(&mut self) -> Result<(), SessionError> {
         let room = self.room();
         read::noop(&mut self.selection()?, room).await
@@ -267,20 +289,6 @@ impl ImapSession {
             }
             Err(_elapsed) => Err(SessionError::Timeout),
         }
-    }
-}
-
-/// The SASL XOAUTH2 exchange: the identity once, then an empty line so
-/// the server's error challenge ends in its NO.
-struct Xoauth2 {
-    initial: Option<String>,
-}
-
-impl Authenticator for Xoauth2 {
-    type Response = String;
-
-    fn process(&mut self, _challenge: &[u8]) -> String {
-        self.initial.take().unwrap_or_default()
     }
 }
 
@@ -351,22 +359,6 @@ async fn run<T: Wire>(
         .map_err(command_error)
 }
 
-/// A NO answers the credential, unless its code says the server could
-/// not judge it; a BAD is about the command.
-fn auth_error(error: ImapError) -> SessionError {
-    match error {
-        ImapError::No(text) if unavailable(&text) => SessionError::Unavailable,
-        ImapError::No(_) | ImapError::Validate(_) => SessionError::CredentialRejected,
-        ImapError::Bad(_) => SessionError::Protocol("the sign-in command was not accepted"),
-        other => command_error(other),
-    }
-}
-
-/// A response code is an atom, so its case is the server's choice.
-fn unavailable(text: &str) -> bool {
-    text.to_ascii_uppercase().contains(UNAVAILABLE_CODE)
-}
-
 /// The server's own words never travel: a server that has just seen a
 /// credential could echo it.
 pub(super) fn command_error(error: ImapError) -> SessionError {
@@ -377,50 +369,5 @@ pub(super) fn command_error(error: ImapError) -> SessionError {
         ImapError::Bad(_) => SessionError::Protocol("the server answered BAD"),
         ImapError::Parse(_) => SessionError::Protocol("the answer could not be parsed"),
         _ => SessionError::Protocol("the command was not accepted"),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The client library's text for a tagged NO: the code it parsed
-    /// (it knows none from RFC 5530) and the information verbatim.
-    fn no(information: &str) -> ImapError {
-        ImapError::No(format!("code: None, info: Some({information:?})"))
-    }
-
-    #[test]
-    fn a_no_with_the_unavailable_code_is_not_a_verdict_on_the_credential_rfc5530_3() {
-        for text in [
-            "[UNAVAILABLE] Temporary authentication failure.",
-            "[unavailable] backend down",
-        ] {
-            assert!(
-                matches!(auth_error(no(text)), SessionError::Unavailable),
-                "{text}"
-            );
-        }
-        for text in [
-            "[AUTHENTICATIONFAILED] Authentication failed.",
-            "Authentication failed.",
-        ] {
-            assert!(
-                matches!(auth_error(no(text)), SessionError::CredentialRejected),
-                "{text}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_no_to_any_other_command_is_a_refusal_and_a_bad_a_protocol_failure_rfc3501_7_1_2() {
-        assert!(matches!(
-            command_error(no("not now")),
-            SessionError::Refused
-        ));
-        assert!(matches!(
-            command_error(ImapError::Bad("unknown command".to_owned())),
-            SessionError::Protocol("the server answered BAD")
-        ));
     }
 }

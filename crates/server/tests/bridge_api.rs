@@ -39,17 +39,31 @@ use tokio::time::sleep;
 /// The messages in the inbox of the model.
 const INBOX_MAIL: u32 = 3;
 
+/// The HTML body of the first message; the pass removes its handler and script.
+const HOSTILE: &str = "<p onclick=\"top.__x=1\">Hi</p><script>top.__x=1</script>";
+
+/// The cap the client asks of a body value, 4 MiB as the bridge tests ask it.
+const CLIENT_CAP: u64 = 4 * 1024 * 1024;
+
 /// How often and how long a test looks for the account to stop or for
 /// the runtime to sit still.
 const LOOK: Duration = Duration::from_millis(25);
 const LOOKS: usize = 40;
 
-/// The model: an inbox with mail and the English folders, every
-/// extension on.
+/// The model: an inbox whose first message is HTML, the English folders, every extension on.
 fn model() -> Mailboxes {
+    let mail = (1..=INBOX_MAIL)
+        .map(|uid| {
+            if uid == 1 {
+                Message::new(uid).html(HOSTILE)
+            } else {
+                Message::new(uid)
+            }
+        })
+        .collect();
     Mailboxes::new(
         vec![
-            Folder::new("INBOX").with_mail((1..=INBOX_MAIL).map(Message::new).collect()),
+            Folder::new("INBOX").with_mail(mail),
             Folder::special("Drafts", "\\Drafts"),
             Folder::special("Sent", "\\Sent"),
             Folder::special("Junk", "\\Junk"),
@@ -332,11 +346,11 @@ async fn removing_the_account_stops_its_runtime_and_removes_the_bridge_rows() {
     assert_eq!(instance.logins(), logins, "the runtime connected again");
 }
 
-/// The bridge answers a body property with `invalidArguments`; the pass
-/// walks that answer and leaves it, and a body ask the pass cannot
-/// serve is refused on this path as on the native one.
+/// The bridge reads the message from the server and the pass cleans its
+/// HTML value on the way out; a body ask the pass cannot serve is
+/// refused on this path as on the native one.
 #[tokio::test]
-async fn a_body_ask_takes_the_sanitizer_pass_and_its_refusal_like_a_native_one() {
+async fn a_body_ask_reads_the_message_through_the_bridge_and_the_sanitizer_pass() {
     let instance = instance().await;
     let id = instance.add_account(PASSWORD);
     let cookie = instance.sign_in().await;
@@ -345,18 +359,41 @@ async fn a_body_ask_takes_the_sanitizer_pass_and_its_refusal_like_a_native_one()
         "{:?}",
         instance.fake.lines()
     );
+    let (_, listed) = instance.call(&cookie, &id, mailboxes(&id)).await;
+    let inbox = listed["list"][0]["id"].clone();
+    let query = json!([
+        "Email/query",
+        { "accountId": id, "filter": { "inMailbox": inbox } },
+        "c1"
+    ]);
+    let (_, window) = instance.call(&cookie, &id, query).await;
     let ask = json!(["Email/get", {
         "accountId": id,
-        "ids": ["e1"],
+        "ids": window["ids"],
         "properties": ["id", "subject", "textBody", "htmlBody", "attachments", "bodyValues"],
-        "fetchHTMLBodyValues": true
+        "fetchTextBodyValues": true, "fetchHTMLBodyValues": true,
+        "maxBodyValueBytes": CLIENT_CAP
     }, "c1"]);
     let (status, answer) = instance.request(&cookie, &id, &using(&[ask])).await;
     assert_eq!(status, StatusCode::OK, "{answer}");
     let response = &answer["methodResponses"][0];
-    assert_eq!(response[0], "error");
-    assert_eq!(response[1]["type"], "invalidArguments");
-    assert_eq!(response[2], "c1");
+    assert_eq!(response[0], "Email/get", "{response}");
+    let list = response[1]["list"].as_array().unwrap();
+    assert_eq!(list.len(), usize::try_from(INBOX_MAIL).unwrap());
+    let hostile = list
+        .iter()
+        .find(|email| email["subject"] == "Message 1")
+        .unwrap();
+    assert_eq!(hostile["htmlBody"][0]["type"], "text/html");
+    assert_eq!(hostile["htmlBody"][0]["partId"], "1");
+    assert_eq!(hostile["bodyValues"]["1"]["value"], "<p>Hi</p>");
+    let plain = list
+        .iter()
+        .find(|email| email["subject"] == "Message 3")
+        .unwrap();
+    assert_eq!(plain["textBody"][0]["type"], "text/plain");
+    assert_eq!(plain["bodyValues"]["1"]["value"], "Body of message 3.");
+    assert_eq!(plain["attachments"], json!([]));
     let refused = json!(["Email/get", {
         "accountId": id,
         "ids": ["e1"],
