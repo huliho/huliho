@@ -13,7 +13,8 @@ use crate::ids::{AccountId, UserId};
 use crate::scope::{self, Scope};
 use crate::store::{Store, StoreError};
 
-/// Every IMAP account of the instance, oldest first.
+/// Every IMAP account of the instance, oldest first; rows created in
+/// the same millisecond follow their ids.
 ///
 /// # Errors
 ///
@@ -58,6 +59,8 @@ pub fn owner_scope(store: &Store, account_id: &AccountId) -> Result<Option<Scope
 
 #[cfg(test)]
 mod tests {
+    use rusqlite::params;
+
     use super::*;
     use crate::accounts::{
         self, AccountSettings, Credential, Endpoint, NewAccount, Provider, TlsMode,
@@ -104,8 +107,38 @@ mod tests {
         }
     }
 
+    /// A fixed `created_at` the tests assign, so the order they assert
+    /// never comes from the clock.
+    const CREATED_AT: i64 = 1_700_000_000_000;
+
+    /// Sets the row's `created_at`, the age the list sorts on.
+    fn set_created_at(store: &Store, id: &AccountId, created_at: i64) {
+        store
+            .write(|transaction| {
+                transaction.execute(
+                    "UPDATE accounts SET created_at = ?1 WHERE id = ?2",
+                    params![created_at, id.as_str()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    /// Sets the row's `id`, the tiebreak between rows of one age.
+    fn set_id(store: &Store, id: &AccountId, new_id: &str) {
+        store
+            .write(|transaction| {
+                transaction.execute(
+                    "UPDATE accounts SET id = ?1 WHERE id = ?2",
+                    params![new_id, id.as_str()],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
     #[test]
-    fn the_imap_rows_of_every_user_list_and_each_names_its_owner() {
+    fn the_imap_rows_of_every_user_list_oldest_first_and_each_names_its_owner() {
         let store = Store::in_memory().unwrap();
         let (_, mira) = identity::create_personal_user(&store, "mira@example.com").unwrap();
         let (_, noor) = identity::create_personal_user(&store, "noor@example.com").unwrap();
@@ -115,12 +148,14 @@ mod tests {
         accounts::add(&store, &keys(), &mira_scope, &jmap("mira@example.net")).unwrap();
         let second =
             accounts::add(&store, &keys(), &noor_scope, &imap("noor@example.com")).unwrap();
+        set_created_at(&store, &first.id, CREATED_AT + 1);
+        set_created_at(&store, &second.id, CREATED_AT);
         let accounts = imap_accounts(&store).unwrap();
         let listed: Vec<&str> = accounts
             .iter()
             .map(|account| account.address.as_str())
             .collect();
-        assert_eq!(listed, ["mira@example.com", "noor@example.com"]);
+        assert_eq!(listed, ["noor@example.com", "mira@example.com"]);
         let owner = owner_scope(&store, &second.id).unwrap().unwrap();
         assert_eq!(owner.user_id(), &noor.id);
         assert_eq!(owner.account_id(), Some(&second.id));
@@ -133,5 +168,22 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn imap_rows_of_one_millisecond_follow_their_ids() {
+        let store = Store::in_memory().unwrap();
+        let (_, mira) = identity::create_personal_user(&store, "mira@example.com").unwrap();
+        let scope = scope::resolve(&store, &mira.id, None).unwrap();
+        let one = accounts::add(&store, &keys(), &scope, &imap("one@example.com")).unwrap();
+        let two = accounts::add(&store, &keys(), &scope, &imap("two@example.com")).unwrap();
+        set_created_at(&store, &one.id, CREATED_AT);
+        set_created_at(&store, &two.id, CREATED_AT);
+        // The row added last gets the lower id.
+        set_id(&store, &one.id, "b");
+        set_id(&store, &two.id, "a");
+        let accounts = imap_accounts(&store).unwrap();
+        let listed: Vec<&str> = accounts.iter().map(|account| account.id.as_str()).collect();
+        assert_eq!(listed, ["a", "b"]);
     }
 }
