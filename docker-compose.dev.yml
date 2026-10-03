@@ -108,7 +108,7 @@ configs:
 
 services:
   certs:
-    image: alpine/openssl:3.5.8
+    image: alpine/openssl:3.5.9
     entrypoint: ["sh", "/certs-init"]
     configs:
       - source: certs-init
