@@ -6,15 +6,17 @@
 //! own in tree order on one conversation, a Gmail account holds two, a
 //! folder that fails every time is given up after the bound, a batch
 //! past the deadline costs its session alone, an idle conversation is
-//! logged out and a forgotten account takes no write.
+//! logged out and a forgotten account takes no write and breaks off the
+//! blob it was streaming.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use huliho_imap_bridge::blob::{BLOB_BUFFER_WINDOWS, BlobError};
 use huliho_imap_bridge::jmap::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY};
 use huliho_imap_bridge::runtime::{Bridge, FOLDER_FAILURE_BOUND, Registration, Timing};
-use huliho_imap_bridge::session::TlsMode;
+use huliho_imap_bridge::session::{BODY_WINDOW_BYTES, TlsMode};
 use huliho_imap_bridge::store::{AccountKey, MailboxFacts, Store, StoreError};
 use huliho_imap_bridge::sync::SYNC_BATCH;
 use huliho_imap_bridge::testing::imap::{FakeImap, HOST, Script};
@@ -34,6 +36,9 @@ const STEP: Duration = Duration::from_secs(2);
 /// How often and how long a test looks for the sync to finish.
 const LOOK: Duration = Duration::from_millis(25);
 const LOOKS: usize = 800;
+
+/// A limit above every blob of these tests.
+const BLOB_LIMIT: u64 = 64 * 1024 * 1024;
 
 /// Clocks a test does not wait for.
 fn quick() -> Timing {
@@ -340,4 +345,46 @@ async fn a_forgotten_account_stops_its_task_and_takes_no_write() {
     assert!(matches!(refused, Err(StoreError::Forgotten)), "{refused:?}");
     sleep(Duration::from_millis(400)).await;
     assert_eq!(rig.received(" LOGIN "), logins, "the task connected again");
+}
+
+#[tokio::test]
+async fn a_forgotten_account_breaks_off_the_blob_it_was_streaming() {
+    // A message of more windows than a blob reads ahead of its reader.
+    let windows = 2 * (1 + BLOB_BUFFER_WINDOWS);
+    let wide = Message {
+        body: "w".repeat(windows * usize::try_from(BODY_WINDOW_BYTES).unwrap()),
+        ..Message::new(1)
+    };
+    let model = Mailboxes::new(
+        vec![Folder::new("INBOX").with_mail(vec![wide])],
+        Extension::all(),
+    );
+    let rig = Rig::start(model, false, quick()).await;
+    assert!(rig.wait_done().await, "{:?}", rig.fake.lines());
+    let inbox = rig.mailbox("INBOX").await["id"].take();
+    let query = json!([
+        "Email/query",
+        { "accountId": ACCOUNT, "filter": { "inMailbox": inbox } },
+        "c1"
+    ]);
+    let (answer, _) = rig.call(&query).await;
+    let email = answer["ids"][0].as_str().unwrap();
+    let mut blob = rig
+        .bridge
+        .blob(&rig.registration, email, BLOB_LIMIT)
+        .await
+        .unwrap();
+    assert!(
+        rig.wait_received("BODY.PEEK[]", 1 + BLOB_BUFFER_WINDOWS)
+            .await
+    );
+    rig.bridge.forget(&key()).await;
+    let mut last = None;
+    while let Some(chunk) = blob.next().await {
+        last = Some(chunk.map(|bytes| bytes.len()));
+    }
+    assert!(
+        matches!(last, Some(Err(BlobError::Unavailable))),
+        "{last:?}"
+    );
 }

@@ -16,6 +16,10 @@ use super::parts::Part;
 /// Where the scripted Gmail ids start, so no UID reads as one.
 const GMAIL_ID_BASE: u64 = 1_000_000_000_000;
 
+/// The size a scripted message states is this much above its UID, so a
+/// test reads the UID back from the size.
+pub const SIZE_ABOVE_UID: u32 = 1000;
+
 /// One message a folder holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Message {
@@ -75,7 +79,7 @@ impl Message {
             uid,
             flags: vec!["\\Seen".to_owned()],
             internal_date: format!("01-Jan-2026 00:{:02}:{:02} +0000", uid / 60 % 60, uid % 60),
-            size: 1000 + uid,
+            size: SIZE_ABOVE_UID + uid,
             header: format!(
                 "From: Sanne <sanne@example.test>\r\nTo: mo@example.test\r\nSubject: Message {uid}\r\nMessage-ID: <m{uid}@example.test>\r\n\r\n"
             ),

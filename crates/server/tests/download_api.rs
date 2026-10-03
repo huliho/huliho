@@ -7,6 +7,7 @@
 //! request.
 
 mod answers;
+mod blob_answers;
 mod common;
 mod download_rig;
 mod fake_dns;
@@ -20,9 +21,8 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
-use download_rig::{
-    BLOB, BLOB_HEADERS, NAME, assert_blob_headers, bearer, download, downloads, instance, path,
-};
+use blob_answers::{BLOB_HEADERS, assert_blob_headers, download};
+use download_rig::{BLOB, NAME, bearer, downloads, instance, path};
 use huliho_imap_bridge::testing::{CLOSED, TOKEN};
 use huliho_server::accounts::{self, StopCause};
 use huliho_server::api::ApiState;

@@ -404,19 +404,3 @@ async fn a_body_ask_reads_the_message_through_the_bridge_and_the_sanitizer_pass(
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     assert_eq!(body["error"], "invalid_request");
 }
-
-/// The bridge serves no blob, so the download route the session object
-/// names refuses an IMAP account without connecting.
-#[tokio::test]
-async fn the_download_route_refuses_a_bridge_account() {
-    let instance = instance().await;
-    let id = instance.add_account(PASSWORD);
-    let cookie = instance.sign_in().await;
-    let logins = instance.logins();
-    let uri = format!("/api/jmap/{id}/download/{id}/e1/photo.png?type=image/png");
-    let request = with_cookie(Method::GET, &uri, &cookie);
-    let (status, body) = answer(&instance.router, request).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert_eq!(body["error"], "upstream_unsupported");
-    assert_eq!(instance.logins(), logins);
-}

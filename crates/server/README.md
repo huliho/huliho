@@ -143,8 +143,22 @@ answer with its headers and twenty seconds per chunk after that, and
 one download gets ten minutes in all; a `Range` from byte zero answers
 206 with exactly those bytes when the blob's declared length runs past
 the range; a range that reaches the end of the blob, an undeclared
-length or any other range answers the whole blob with 200. The route
-serves native accounts; an IMAP account answers `upstream_unsupported`.
+length or any other range answers the whole blob with 200. For an IMAP
+account the bridge reads the blob from the server in windows: the whole
+message under its email id, a part under its blob id with the transfer
+encoding undone. Such a blob declares no length, since an IMAP server
+states the size of a message as it counts it, which may be an estimate,
+while the size of a part is that of its transfer encoding: the answer
+carries no `Content-Length` and a range answers the whole blob. A blob
+whose stated size passes 64 MiB is refused before a window is read. An
+id that names no blob of the account answers `not_found`, as does any
+account id on the path but the account's own. A server the bridge
+cannot read answers `upstream_failed`; one that fails mid-stream breaks
+the download off. The same lanes hold. The ten minutes start before the
+bridge is asked, so the wait for the account's conversation counts; the
+first window answers within the bridge's own deadline for a turn of
+sixty seconds and every chunk after it within the twenty seconds of
+the route.
 `GET /api/remote-image?url=` fetches an image a message links, on the
 reader's behalf and with nothing of theirs on the request. The URL
 stays within 2048 bytes, carries no user information and names a host
