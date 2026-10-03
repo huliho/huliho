@@ -4,7 +4,8 @@
 
 //! The body path of the scripted server: BODYSTRUCTURE with or without
 //! a set of header fields, the fields alone and one window of one
-//! section, cut as the partial fetch asks (RFC 3501 section 6.4.5).
+//! section or of the whole message, cut as the partial fetch asks (RFC
+//! 3501 section 6.4.5).
 
 use std::fmt::Write as _;
 
@@ -21,9 +22,10 @@ pub(super) enum BodyAsked {
     },
     /// The named header fields alone, cut to `bytes`.
     Fields { fields: String, bytes: usize },
-    /// `bytes` of one section from `offset`; both ends move to a
-    /// character border, since the scripted server carries text and a
-    /// part on the wire is base64, quoted-printable or ASCII.
+    /// `bytes` of one section from `offset`, the empty section being
+    /// the whole message; both ends move to a character border, since
+    /// the scripted server carries text and a part on the wire is
+    /// base64, quoted-printable or ASCII.
     Window {
         section: String,
         offset: usize,
@@ -197,6 +199,14 @@ mod tests {
             })
         );
         assert_eq!(
+            asked("(UID BODY.PEEK[]<0.524288>)"),
+            Some(BodyAsked::Window {
+                section: String::new(),
+                offset: 0,
+                bytes: 524_288,
+            })
+        );
+        assert_eq!(
             asked("(UID BODY.PEEK[1.MIME]<0.4096> BODY.PEEK[1]<0.2048>)"),
             None
         );
@@ -228,6 +238,27 @@ mod tests {
             line(&message, &past, None),
             "* 7 FETCH (UID 7 BODY[9]<0> {0}\r\n)\r\n"
         );
+        // The whole message opens with its header.
+        let opening = "Authentication-Results: ";
+        let whole = BodyAsked::Window {
+            section: String::new(),
+            offset: 0,
+            bytes: opening.len(),
+        };
+        assert_eq!(
+            line(&message, &whole, None),
+            format!(
+                "* 7 FETCH (UID 7 BODY[]<0> {{{}}}\r\n{opening})\r\n",
+                opening.len()
+            )
+        );
+        assert!(
+            message
+                .raw()
+                .ends_with("--part 3\r\nSubject: Attached\r\n\r\nInner\r\n")
+        );
+        let plain = Message::new(2);
+        assert_eq!(plain.raw(), format!("{}{}", plain.header, plain.body));
         let fields = line(
             &message,
             &BodyAsked::Fields {

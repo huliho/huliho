@@ -206,11 +206,12 @@ pub struct PartWindow {
     pub bytes: u32,
 }
 
-/// One window of one part of one message, asked by a partial fetch.
+/// One window of one section of one message, asked by a partial fetch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PartAsk<'a> {
     pub uid: u32,
-    /// `TEXT` for a message that is one part, a part number otherwise.
+    /// Empty for the whole message, `TEXT` for a message that is one
+    /// part, a part number otherwise.
     pub section: &'a str,
     pub window: PartWindow,
 }

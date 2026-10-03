@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! The bytes of a blob on their way to the browser: the head that
+//! The bytes of a blob on their way to the browser, from a native
+//! upstream's answer or from the bridge's windows: the head that
 //! decides the type, then the rest under a patience per chunk and a
 //! bound on the whole, cut where a range ends and broken off where the
 //! bound is passed. The body holds the account's download lane until
@@ -13,9 +14,11 @@ use std::time::Duration;
 
 use axum::body::{Body, Bytes};
 use futures_util::stream;
+use huliho_imap_bridge::blob::Blob as BridgeBlob;
 use reqwest::Response;
 use thiserror::Error;
 use tokio::sync::OwnedSemaphorePermit;
+use tokio::time::Instant;
 
 use super::detect::DETECT_BYTES;
 use super::download::{BLOB_DOWNLOAD_LIMIT, DOWNLOAD_IDLE_TIMEOUT};
@@ -35,12 +38,59 @@ pub const BOUNDS: Bounds = Bounds {
     limit: BLOB_DOWNLOAD_LIMIT,
 };
 
+/// Where the bytes of a blob come from.
+pub enum Source {
+    /// The answer of a native account's upstream; its request carries
+    /// the patience with the whole download.
+    Upstream(Response),
+    /// The windows the bridge reads of an IMAP account's message, until
+    /// the patience with the whole download ends; the route starts that
+    /// clock before it asks for the blob.
+    Bridge { blob: BridgeBlob, until: Instant },
+}
+
+impl Source {
+    /// The length the source declares. A bridge blob declares none: an
+    /// IMAP server states the size of a message as it counts it, at
+    /// times as an estimate, while the size of a part is that of its
+    /// transfer encoding.
+    fn declared(&self) -> Option<u64> {
+        match self {
+            Self::Upstream(response) => response.content_length(),
+            Self::Bridge { .. } => None,
+        }
+    }
+
+    /// The next bytes; `None` at the end of the blob.
+    async fn next(&mut self) -> Result<Option<Bytes>, StreamError> {
+        match self {
+            Self::Upstream(response) => response
+                .chunk()
+                .await
+                .map_err(|_failed| StreamError::Failed),
+            Self::Bridge { blob, until } => {
+                // The clock comes first: a window that waits ready would
+                // otherwise go out however long ago the time ran out.
+                if Instant::now() >= *until {
+                    return Err(StreamError::Stalled);
+                }
+                match tokio::time::timeout_at(*until, blob.next()).await {
+                    Err(_elapsed) => Err(StreamError::Stalled),
+                    Ok(None) => Ok(None),
+                    Ok(Some(Ok(bytes))) => Ok(Some(Bytes::from(bytes))),
+                    Ok(Some(Err(_failed))) => Err(StreamError::Failed),
+                }
+            }
+        }
+    }
+}
+
 /// A blob with its first bytes in hand and the rest still to stream.
 pub struct Blob {
     /// The first bytes, enough for the type.
     pub head: Vec<u8>,
-    pub response: Response,
-    /// The length the upstream declared.
+    source: Source,
+    /// The length the source declared.
     pub declared: Option<u64>,
 }
 
@@ -67,18 +117,18 @@ impl From<StreamError> for io::Error {
 /// # Errors
 ///
 /// Returns the reason a chunk did not arrive.
-pub async fn open(mut response: Response, bounds: &Bounds) -> Result<Blob, StreamError> {
-    let declared = response.content_length();
+pub async fn open(mut source: Source, bounds: &Bounds) -> Result<Blob, StreamError> {
+    let declared = source.declared();
     let mut head = Vec::new();
     while head.len() < DETECT_BYTES {
-        match chunk(&mut response, bounds).await? {
+        match chunk(&mut source, bounds).await? {
             Some(bytes) => head.extend_from_slice(&bytes),
             None => break,
         }
     }
     Ok(Blob {
         head,
-        response,
+        source,
         declared,
     })
 }
@@ -90,7 +140,7 @@ pub async fn open(mut response: Response, bounds: &Bounds) -> Result<Blob, Strea
 pub fn body(blob: Blob, bounds: Bounds, cut: Option<u64>, lane: OwnedSemaphorePermit) -> Body {
     let flow = Flow {
         pending: Some(Bytes::from(blob.head)),
-        response: blob.response,
+        source: blob.source,
         bounds,
         cut,
         sent: 0,
@@ -102,7 +152,7 @@ pub fn body(blob: Blob, bounds: Bounds, cut: Option<u64>, lane: OwnedSemaphorePe
 
 struct Flow {
     pending: Option<Bytes>,
-    response: Response,
+    source: Source,
     bounds: Bounds,
     cut: Option<u64>,
     sent: u64,
@@ -116,7 +166,7 @@ async fn step(mut flow: Flow) -> Option<(Result<Bytes, io::Error>, Flow)> {
     }
     let next = match flow.pending.take() {
         Some(head) => Some(head),
-        None => match chunk(&mut flow.response, &flow.bounds).await {
+        None => match chunk(&mut flow.source, &flow.bounds).await {
             Ok(next) => next,
             Err(error) => return Some(broken(flow, error)),
         },
@@ -142,11 +192,10 @@ fn len(bytes: &Bytes) -> u64 {
 }
 
 /// One chunk within the patience; `None` at the end of the body.
-async fn chunk(response: &mut Response, bounds: &Bounds) -> Result<Option<Bytes>, StreamError> {
-    tokio::time::timeout(bounds.idle, response.chunk())
+async fn chunk(source: &mut Source, bounds: &Bounds) -> Result<Option<Bytes>, StreamError> {
+    tokio::time::timeout(bounds.idle, source.next())
         .await
         .map_err(|_elapsed| StreamError::Stalled)?
-        .map_err(|_failed| StreamError::Failed)
 }
 
 #[cfg(test)]
@@ -157,11 +206,19 @@ mod tests {
     use http_body::Frame;
     use http_body_util::combinators::BoxBody;
     use http_body_util::{BodyExt, Full, Limited, StreamBody};
-    use tokio::sync::Semaphore;
+    use huliho_imap_bridge::blob::BlobError as BridgeBlobError;
+    use tokio::sync::{Semaphore, mpsc};
 
     use super::*;
 
     const PATIENCE: Duration = Duration::from_secs(5);
+
+    /// What a scripted bridge blob gets in all: three chunks that each
+    /// arrive within the patience fit, a fourth does not.
+    const TOTAL: Duration = Duration::from_secs(15);
+
+    /// The pause between the chunks of a slow bridge blob.
+    const SLOW: Duration = Duration::from_secs(4);
 
     fn bounds(limit: u64) -> Bounds {
         Bounds {
@@ -170,12 +227,12 @@ mod tests {
         }
     }
 
-    fn answer(body: reqwest::Body) -> Response {
-        Response::from(axum::http::Response::new(body))
+    fn answer(body: reqwest::Body) -> Source {
+        Source::Upstream(Response::from(axum::http::Response::new(body)))
     }
 
     /// A body arriving in the given chunks.
-    fn chunked(chunks: &[&'static [u8]]) -> Response {
+    fn chunked(chunks: &[&'static [u8]]) -> Source {
         let frames: Vec<Result<Frame<Bytes>, Infallible>> = chunks
             .iter()
             .map(|chunk| Ok(Frame::data(Bytes::from_static(chunk))))
@@ -299,6 +356,66 @@ mod tests {
         >()));
         let outcome = open(answer(reqwest::Body::wrap(stalled)), &bounds(u64::MAX)).await;
         assert!(matches!(outcome, Err(StreamError::Stalled)));
+    }
+
+    /// A bridge blob of that many chunks, each `pause` after the one
+    /// before; it then fails or ends.
+    fn bridged(chunks: usize, fails: bool, pause: Duration) -> Source {
+        let (sender, receiver) = mpsc::channel(1);
+        tokio::spawn(async move {
+            for _ in 0..chunks {
+                tokio::time::sleep(pause).await;
+                if sender.send(Ok(Some(vec![b'w'; 600]))).await.is_err() {
+                    return;
+                }
+            }
+            let end = if fails {
+                Err(BridgeBlobError::Unavailable)
+            } else {
+                Ok(None)
+            };
+            let _unread = sender.send(end).await;
+        });
+        Source::Bridge {
+            blob: BridgeBlob::scripted(receiver),
+            until: Instant::now() + TOTAL,
+        }
+    }
+
+    /// The body of a bridge blob, read to its end or to what broke it off.
+    async fn streamed(source: Source) -> Result<Vec<u8>, String> {
+        let blob = open(source, &bounds(u64::MAX)).await.unwrap();
+        assert_eq!((blob.head.len(), blob.declared), (600, None));
+        let (_, permit) = lane();
+        collected(body(blob, bounds(u64::MAX), None, permit)).await
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_bridge_blob_declares_no_length_and_breaks_off_on_a_failure_or_past_its_total() {
+        let whole = streamed(bridged(2, false, Duration::ZERO)).await;
+        assert_eq!(whole.unwrap().len(), 1200);
+        let failed = streamed(bridged(1, true, Duration::ZERO)).await;
+        assert!(failed.unwrap_err().contains("could not be read"));
+        // Every chunk arrives within the patience, the fourth past the total.
+        let slow = streamed(bridged(4, false, SLOW)).await;
+        assert!(slow.unwrap_err().contains("stalled"));
+        let fits = streamed(bridged(3, false, SLOW)).await;
+        assert_eq!(fits.unwrap().len(), 1800);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_reader_that_comes_late_to_a_bridge_blob_finds_its_total_run_out() {
+        // The second chunk waits ready while the reader stays away past
+        // the total; only the head, read before that, still goes out.
+        let source = bridged(3, false, Duration::ZERO);
+        let blob = open(source, &bounds(u64::MAX)).await.unwrap();
+        tokio::time::sleep(TOTAL).await;
+        let (_, permit) = lane();
+        let mut late = body(blob, bounds(u64::MAX), None, permit);
+        let head = late.frame().await.unwrap().unwrap();
+        assert_eq!(head.into_data().unwrap().len(), 600);
+        let after = late.frame().await.unwrap();
+        assert!(after.unwrap_err().to_string().contains("stalled"));
     }
 
     #[test]

@@ -5,6 +5,7 @@
 //! Translates JMAP Mail semantics (RFC 8620, RFC 8621) to `IMAP4rev1`
 //! (RFC 3501) with its extensions and SMTP submission (RFC 6409).
 
+pub mod blob;
 mod dates;
 pub mod gmail;
 pub mod jmap;

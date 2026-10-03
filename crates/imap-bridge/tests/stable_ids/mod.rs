@@ -7,12 +7,10 @@
 
 use std::collections::HashMap;
 
+use huliho_imap_bridge::testing::messages::SIZE_ABOVE_UID;
 use serde_json::Value;
 
 use crate::sync_rig::Rig;
-
-/// The scripted size of a message is this much above its UID.
-const SIZE_ABOVE_UID: u64 = 1000;
 
 /// The letter, then the 36 characters of hyphenated UUID text; a blob
 /// id carries a hyphen and the part number after it.
@@ -26,7 +24,7 @@ pub fn names(rig: &Rig, emails: &[Value]) -> HashMap<String, String> {
     emails.sort_by_key(|email| email["size"].as_u64());
     let mut names = HashMap::from([(rig.folder("INBOX").id.to_string(), "INBOX".to_owned())]);
     for email in emails {
-        let uid = email["size"].as_u64().unwrap() - SIZE_ABOVE_UID;
+        let uid = email["size"].as_u64().unwrap() - u64::from(SIZE_ABOVE_UID);
         names.insert(email["id"].as_str().unwrap().to_owned(), format!("e{uid}"));
         let thread = email["threadId"].as_str().unwrap().to_owned();
         names.entry(thread).or_insert(format!("t{uid}"));

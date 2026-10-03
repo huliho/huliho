@@ -31,6 +31,7 @@ pub use changes::{CHANGES_HORIZON, Change, ChangeKind, ChangesSince, ObjectType}
 pub use emails::{Batch, EmailFacts, EmailRow, EmailSnapshot};
 pub use folders::{REMATCH_LIMIT, Standing};
 pub use gmail::GmailFacts;
+pub(crate) use ids::ID_LENGTH;
 pub use ids::{AccountKey, EmailId, MailboxId, ThreadId};
 pub use mailboxes::{Counts, MailboxFacts, MailboxRow, MailboxSnapshot};
 pub use personal::{Address, Personal, PreviewPart};
