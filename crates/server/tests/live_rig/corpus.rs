@@ -30,6 +30,17 @@ const SECONDS_PER_MINUTE: u32 = 60;
 
 const DOMAIN: &str = "live.example";
 
+/// What the rich message says in its HTML part, the image it shows and
+/// the attachment it carries.
+pub const RICH_WORDS: &str = "Hello from the rich message";
+pub const RICH_IMAGE_CID: &str = "logo@live.example";
+pub const RICH_IMAGE_NAME: &str = "logo.png";
+pub const RICH_NOTES_NAME: &str = "notes.txt";
+pub const RICH_NOTES: &str = "Notes of the rich message.";
+
+/// A PNG of one transparent pixel under base64.
+const PIXEL_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
 /// This run's mark: the moment it started, in milliseconds.
 fn run() -> &'static str {
     static RUN: OnceLock<String> = OnceLock::new();
@@ -88,9 +99,10 @@ impl Seed {
         )
     }
 
-    /// The message as APPEND takes it.
-    pub fn rfc5322(self) -> String {
-        let mut message = format!(
+    /// The header fields every shape of the message shares, through
+    /// MIME-Version.
+    fn header(self) -> String {
+        let mut header = format!(
             "From: Sanne <sanne@{DOMAIN}>\r\nTo: mo@{DOMAIN}\r\nSubject: {}\r\nDate: {}\r\nMessage-ID: {}\r\n",
             self.subject(),
             self.date(),
@@ -98,17 +110,34 @@ impl Seed {
         );
         if self.root() != self.0 {
             let parent = Seed(self.root()).message_id();
-            let _ = write!(message, "In-Reply-To: {parent}\r\nReferences: {parent}\r\n");
+            let _ = write!(header, "In-Reply-To: {parent}\r\nReferences: {parent}\r\n");
         }
         let _ = write!(
-            message,
-            "{}: {}\r\n{RUN_HEADER}: {}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody of message {}.\r\n",
+            header,
+            "{}: {}\r\n{RUN_HEADER}: {}\r\nMIME-Version: 1.0\r\n",
             MARKER.0,
             MARKER.1,
-            run(),
-            self.0
+            run()
         );
-        message
+        header
+    }
+
+    /// The message as APPEND takes it.
+    pub fn rfc5322(self) -> String {
+        format!(
+            "{}Content-Type: text/plain; charset=utf-8\r\n\r\nBody of message {}.\r\n",
+            self.header(),
+            self.0
+        )
+    }
+
+    /// The same message with an HTML body that carries a script and an
+    /// image by `cid:`, the image beside it and a text attachment.
+    pub fn rich(self) -> String {
+        format!(
+            "{}Content-Type: multipart/mixed; boundary=\"mixed\"\r\n\r\n--mixed\r\nContent-Type: multipart/related; boundary=\"related\"\r\n\r\n--related\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<html><body><p>{RICH_WORDS}</p><script>top.x=1</script><img src=\"cid:{RICH_IMAGE_CID}\"></body></html>\r\n--related\r\nContent-Type: image/png\r\nContent-ID: <{RICH_IMAGE_CID}>\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: inline; filename=\"{RICH_IMAGE_NAME}\"\r\n\r\n{PIXEL_PNG}\r\n--related--\r\n--mixed\r\nContent-Type: text/plain; name=\"{RICH_NOTES_NAME}\"\r\nContent-Disposition: attachment; filename=\"{RICH_NOTES_NAME}\"\r\n\r\n{RICH_NOTES}\r\n--mixed--\r\n",
+            self.header()
+        )
     }
 }
 

@@ -42,7 +42,7 @@ pub use connector::{Counting, TestConnector};
 pub use folder::Folder;
 pub use imap::FakeImap;
 pub use mailboxes::{Extension, Mailboxes};
-pub use messages::{Behavior, Message};
+pub use messages::{Behavior, Message, Storing};
 pub use parts::Part;
 pub use record::Recorder;
 pub use replay::Replayer;

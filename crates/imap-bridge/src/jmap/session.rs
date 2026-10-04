@@ -11,7 +11,10 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
-use super::{MAX_CALLS_IN_REQUEST, MAX_CONCURRENT_REQUESTS, MAX_OBJECTS_IN_GET, MAX_SIZE_REQUEST};
+use super::{
+    MAX_CALLS_IN_REQUEST, MAX_CONCURRENT_REQUESTS, MAX_OBJECTS_IN_GET, MAX_OBJECTS_IN_SET,
+    MAX_SIZE_REQUEST,
+};
 use crate::runtime::Registration;
 use crate::store::StoreError;
 
@@ -32,9 +35,6 @@ const MAX_MAILBOX_NAME_BYTES: u32 = 255;
 /// No upload route exists, so uploads read as zero.
 const MAX_SIZE_UPLOAD: u32 = 0;
 const MAX_CONCURRENT_UPLOAD: u32 = 0;
-
-/// No `/set` method exists, so nothing can be set.
-const MAX_OBJECTS_IN_SET: u32 = 0;
 
 /// The one collation RFC 8620 section 2 requires of every server.
 const COLLATION: &str = "i;unicode-casemap";
@@ -82,10 +82,11 @@ struct AccountObject {
     account_capabilities: BTreeMap<&'static str, Value>,
 }
 
-/// The session object for one account as JSON: read-only until a write
-/// method exists, the vendor capability on the account, the state as
-/// the host derived it from what the object is built from. Nothing here
-/// touches the store, so the object never moves with the cache.
+/// The session object for one account as JSON: writable, since
+/// `Email/set` takes keywords, the vendor capability on the account, the
+/// state as the host derived it from what the object is built from.
+/// Nothing here touches the store, so the object never moves with the
+/// cache.
 ///
 /// # Errors
 ///
@@ -114,7 +115,7 @@ pub fn session_object(
     let account = AccountObject {
         name: address.to_owned(),
         is_personal: true,
-        is_read_only: true,
+        is_read_only: false,
         account_capabilities,
     };
     let object = SessionObject {

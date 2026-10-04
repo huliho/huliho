@@ -140,6 +140,25 @@ proptest! {
     }
 
     #[test]
+    fn a_keyword_is_stored_as_the_flag_that_reads_back_as_it_rfc8621_4_1_1(
+        index in 0..SYSTEM.len(),
+        text in prop_oneof!["[!-~]{0,40}", "[\\x00-\\x{ff}]{0,40}"],
+    ) {
+        let (flag, keyword) = SYSTEM[index];
+        prop_assert_eq!(mapping::flag(keyword), flag);
+        prop_assert!(mapping::is_system_flag(flag));
+        let Some(keyword) = mapping::canonical_keyword(&text) else {
+            prop_assert!(!is_keyword(&text.to_ascii_lowercase()));
+            return Ok(());
+        };
+        prop_assert_eq!(&keyword, &text.to_ascii_lowercase());
+        let stored = mapping::flag(&keyword);
+        prop_assert!(!mapping::is_system_flag(&stored) || keyword.starts_with('$'));
+        let back = mapping::keywords(std::slice::from_ref(&stored));
+        prop_assert_eq!(back.keys().collect::<Vec<_>>(), [&keyword]);
+    }
+
+    #[test]
     fn a_deleted_message_gives_no_facts_whatever_else_it_carries(
         mask in any::<u32>(),
         others in prop::collection::vec("[a-zA-Z$\\\\]{1,8}", 0..4),

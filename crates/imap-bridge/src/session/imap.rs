@@ -28,8 +28,8 @@ use super::capability::{Tags, capabilities_of};
 use super::guard::Guarded;
 use super::{
     Capabilities, FetchItems, FetchedMessage, FlagFetch, Flagged, ListReturn, Listing, PartAsk,
-    PreviewAsk, PreviewBytes, Selected, Session, SessionError, StatusEntry, StatusItems, Structure,
-    Target, TlsMode, UidRange, io_error, read,
+    PreviewAsk, PreviewBytes, Selected, Session, SessionError, StatusEntry, StatusItems, StoreAsk,
+    Structure, Target, TlsMode, UidRange, Writable, io_error, read, write,
 };
 
 pub(super) type Stream = Guarded<TlsStream<TcpStream>>;
@@ -164,18 +164,18 @@ impl Session for ImapSession {
     }
 
     async fn examine(&mut self, mailbox: &str) -> Result<Selected, SessionError> {
-        // A server may select before it fails, so the room grows first.
-        self.selected = Some(read::Count::default());
+        let opened = self.open(read::Access::ReadOnly, mailbox).await;
+        self.opened(opened.and_then(|opened| opened.selected()))
+    }
+
+    async fn select(&mut self, mailbox: &str) -> Result<Writable, SessionError> {
+        let opened = self.open(read::Access::ReadWrite, mailbox).await;
+        self.opened(opened.and_then(read::Opened::writable))
+    }
+
+    async fn uid_store(&mut self, ask: &StoreAsk<'_>) -> Result<(), SessionError> {
         let room = self.room();
-        let outcome = match self.selection() {
-            Ok(mut selection) => read::examine(&mut selection, mailbox, room).await,
-            Err(error) => Err(error),
-        };
-        // RFC 3501 section 6.3.1: after a failure no mailbox is selected.
-        if outcome.is_err() {
-            self.selected = None;
-        }
-        outcome
+        write::uid_store(&mut self.selection()?, ask, room).await
     }
 
     async fn uid_list(&mut self) -> Result<Vec<u32>, SessionError> {
@@ -262,6 +262,27 @@ impl ImapSession {
 
     fn room(&self) -> read::Room {
         read::Room::new(self.step, self.selected.is_some())
+    }
+
+    /// EXAMINE or SELECT. A server may select before it fails, so the
+    /// room grows first.
+    async fn open(
+        &mut self,
+        access: read::Access,
+        mailbox: &str,
+    ) -> Result<read::Opened, SessionError> {
+        self.selected = Some(read::Count::default());
+        let room = self.room();
+        read::open(&mut self.selection()?, access, mailbox, room).await
+    }
+
+    /// What an open came to; after a failure no mailbox is selected
+    /// (RFC 3501 section 6.3.1).
+    fn opened<T>(&mut self, outcome: Result<T, SessionError>) -> Result<T, SessionError> {
+        if outcome.is_err() {
+            self.selected = None;
+        }
+        outcome
     }
 
     /// The signed-in session the read commands run on, with the count

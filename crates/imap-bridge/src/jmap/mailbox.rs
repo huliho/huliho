@@ -147,15 +147,16 @@ fn object(row: &MailboxRow, snapshot: &MailboxSnapshot, wanted: &[&str]) -> Valu
         .into()
 }
 
-/// The rights of a read-only account: reading where the mailbox can be
-/// selected, nothing else until a write method exists.
+/// The rights of an account whose one write is a keyword: reading
+/// where the mailbox can be selected, `$seen` and every other keyword
+/// on its emails, nothing else until a method for it exists.
 fn rights(selectable: bool) -> Value {
     json!({
         "mayReadItems": selectable,
         "mayAddItems": false,
         "mayRemoveItems": false,
-        "maySetSeen": false,
-        "maySetKeywords": false,
+        "maySetSeen": true,
+        "maySetKeywords": true,
         "mayCreateChild": false,
         "mayRename": false,
         "mayDelete": false,

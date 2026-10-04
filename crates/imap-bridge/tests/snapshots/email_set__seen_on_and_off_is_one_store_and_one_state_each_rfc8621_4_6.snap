@@ -1,0 +1,17 @@
+---
+source: crates/imap-bridge/tests/email_set.rs
+expression: "stable(&set, &on).await"
+---
+{
+  "accountId": "a1",
+  "created": null,
+  "destroyed": null,
+  "newState": "3",
+  "notCreated": null,
+  "notDestroyed": null,
+  "notUpdated": null,
+  "oldState": "2",
+  "updated": {
+    "e1": null
+  }
+}

@@ -4,7 +4,8 @@
 
 //! The read commands on the raw path: one tagged command, every
 //! untagged line parsed here up to the tagged answer, so nothing the
-//! server volunteers is lost.
+//! server volunteers is lost. The write commands run through the same
+//! reader.
 
 mod body;
 mod fetch;
@@ -24,12 +25,12 @@ use super::imap::{Stream, Wire, command_error};
 use super::{SessionError, io_error};
 
 pub(crate) use body::sendable_field;
-pub(super) use body::{uid_header_fields, uid_part, uid_structure};
+pub(super) use body::{ATOM_SPECIALS, uid_header_fields, uid_part, uid_structure};
 pub(super) use fetch::uid_fetch;
 pub(super) use flags::uid_flags;
 pub(super) use list::{list, lsub, status};
-pub(super) use preview::uid_previews;
-pub(super) use select::{examine, uid_list};
+pub(super) use preview::{sequence_set, uid_previews};
+pub(super) use select::{Access, Opened, open, uid_list};
 pub use structure::MAX_TREE_BYTES;
 
 type Signed = async_imap::Session<Stream>;
@@ -70,7 +71,7 @@ impl Room {
     }
 
     /// The bounds of an answer that carries `lines` of its own.
-    fn bounds(self, lines: usize) -> Bounds {
+    pub(super) fn bounds(self, lines: usize) -> Bounds {
         Bounds {
             step: self.step,
             max_lines: lines + self.spare,
@@ -121,7 +122,7 @@ pub(super) struct Selection<'a> {
 
 impl Selection<'_> {
     /// As [`collect`], the count noted ahead of `visit`.
-    async fn collect(
+    pub(super) async fn collect(
         &mut self,
         command: &str,
         bounds: Bounds,
@@ -138,7 +139,7 @@ impl Selection<'_> {
     }
 
     /// The count of the selected mailbox.
-    fn messages(&self) -> Result<u32, SessionError> {
+    pub(super) fn messages(&self) -> Result<u32, SessionError> {
         let count = self.count.as_deref();
         count
             .map(|count| count.0)
@@ -214,6 +215,7 @@ pub(super) fn line(bytes: &[u8]) {
         return;
     };
     let _ = list::keep(&mut crate::session::Listing::default(), &response);
+    let _ = select::Opened::default().note(&response, Access::ReadWrite);
     if let Response::Fetch(_, attributes) = &response {
         let _ = fetch::message(attributes);
         let _ = body::structure(attributes);

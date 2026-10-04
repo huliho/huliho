@@ -7,6 +7,10 @@
 
 use super::messages::Message;
 
+/// The flags a folder keeps for good unless a test says otherwise: the
+/// system flags and any keyword.
+pub const PERMANENT_FLAGS: &str = "\\Answered \\Flagged \\Deleted \\Seen \\Draft \\*";
+
 /// One folder the server lists.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Folder {
@@ -28,6 +32,10 @@ pub struct Folder {
     pub uid_next: u32,
     pub uid_validity: u32,
     pub highest_modseq: u64,
+    /// The flags the PERMANENTFLAGS code of a SELECT names, as the wire
+    /// carries them; `None` leaves the code out. A STORE of any other
+    /// flag answers NO.
+    pub permanent: Option<&'static str>,
     /// The mail EXAMINE, UID SEARCH and UID FETCH answer from; the
     /// counts above are what STATUS says and may differ on purpose.
     pub mail: Vec<Message>,
@@ -49,6 +57,7 @@ impl Folder {
             uid_next: 1,
             uid_validity: 1,
             highest_modseq: 1,
+            permanent: Some(PERMANENT_FLAGS),
             mail: Vec::new(),
         }
     }
@@ -123,6 +132,18 @@ impl Folder {
             .attributes
             .iter()
             .any(|attribute| attribute.eq_ignore_ascii_case("\\Noselect"))
+    }
+
+    /// Whether a STORE of the flag lasts here: the folder names the
+    /// flag or, for a keyword, `\*` (RFC 3501 section 7.1).
+    pub(super) fn keeps(&self, flag: &str) -> bool {
+        let Some(permanent) = self.permanent else {
+            return true;
+        };
+        let mut named = permanent.split(' ');
+        named.any(|found| {
+            found.eq_ignore_ascii_case(flag) || (found == "\\*" && !flag.starts_with('\\'))
+        })
     }
 
     /// The highest UID the folder holds.

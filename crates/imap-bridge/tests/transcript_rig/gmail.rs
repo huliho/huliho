@@ -39,6 +39,11 @@ const PORT: u16 = 993;
 /// this is the wait after the edit and between two looks for it.
 pub const SETTLE: Duration = Duration::from_secs(2);
 
+/// The pause after each seeded message: Gmail stamps an append with its
+/// own arrival time to the second, so two inside one second would tie
+/// in every window by date.
+const APPEND_GAP: Duration = Duration::from_millis(1100);
+
 /// The folder a delivery lands in.
 const INBOX: &str = "INBOX";
 
@@ -217,6 +222,7 @@ pub async fn seed_account(editor: &mut Editor) {
     within(editor.create(LABEL)).await.unwrap();
     for message in seeds() {
         deliver(editor, message.number).await;
+        sleep(APPEND_GAP).await;
     }
 }
 
@@ -235,6 +241,14 @@ async fn uid_of(editor: &mut Editor, number: u32) -> u32 {
     let uids = within(editor.uid_search(&query)).await.unwrap();
     assert_eq!(uids.len(), 1, "{query}");
     uids.into_iter().next().unwrap()
+}
+
+/// Whether the second client finds the message with that number among
+/// the seen ones of All Mail.
+pub async fn seen(editor: &mut Editor, stores: &Stores, number: u32) -> bool {
+    within(editor.select(&stores.all_mail)).await.unwrap();
+    let query = format!("SEEN HEADER Message-ID {}", seed(number).message_id());
+    !within(editor.uid_search(&query)).await.unwrap().is_empty()
 }
 
 /// One edit as a second client makes it, then the wait for Gmail to

@@ -4,14 +4,15 @@
 
 //! The label model at the store: any label set on a row yields exactly
 //! those mailboxes and back, a row in Spam carries its store alone, a
-//! row whose UID left waits for another store to claim it and a message
-//! without its items is stored as a folder account stores it.
+//! row whose UID left waits for another store to claim it, a message
+//! without its items is stored as a folder account stores it and a
+//! keyword written to a row updates every mailbox it is a member of.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use huliho_imap_bridge::store::{
     AccountKey, Advance, Batch, ChangeKind, EmailFacts, EmailId, FlagChange, GmailFacts,
-    MailboxFacts, MailboxId, ObjectType, Personal, Standing, Store, Synced,
+    KeywordChange, MailboxFacts, MailboxId, ObjectType, Personal, Standing, Store, Synced,
 };
 use huliho_imap_bridge::testing::seal::TestSealer;
 use proptest::prelude::*;
@@ -318,4 +319,70 @@ fn an_id_another_live_uid_of_the_folder_holds_leaves_the_second_message_out() {
     let high = [facts(3, &[], HIGH_MSGID), facts(4, &[], HIGH_MSGID + 1)];
     let state = write(&store, all_mail, &high);
     assert_eq!(logged(&store, ObjectType::Email, state - 1).len(), 2);
+}
+
+#[test]
+fn a_keyword_write_is_one_state_with_the_email_and_every_mailbox_of_it_updated() {
+    let (store, ids) = listed();
+    let all_mail = &ids[ALL_MAIL];
+    let state = write(&store, all_mail, &[facts(1, &["\\Inbox", "Work"], MSGID)]);
+    let id = created(&store, 0);
+    let (read_at, rows) = store
+        .keyword_rows(&key(), &[id.as_str(), "e-none"])
+        .unwrap();
+    assert_eq!((read_at, rows.len()), (state, 1));
+    assert_eq!((&rows[0].folder, rows[0].uid), (all_mail, Some(1)));
+    let change = |uid: u32, add: &[&str], remove: &[&str]| KeywordChange {
+        id: id.clone(),
+        folder: all_mail.clone(),
+        uid,
+        add: add.iter().map(|keyword| (*keyword).to_owned()).collect(),
+        remove: remove.iter().map(|keyword| (*keyword).to_owned()).collect(),
+    };
+    let written = store
+        .write_keywords(&key(), &[change(1, &["$flagged"], &["$seen"])])
+        .unwrap();
+    assert_eq!((written.before, written.after), (state, state + 1));
+    assert!(written.gone.is_empty());
+    let kept = &store.keyword_rows(&key(), &[id.as_str()]).unwrap().1[0];
+    assert_eq!(kept.keywords.keys().collect::<Vec<_>>(), ["$flagged"]);
+    let updated = (id.to_string(), ChangeKind::Updated);
+    assert_eq!(logged(&store, ObjectType::Email, state), [updated]);
+    let mut mailboxes: Vec<String> = logged(&store, ObjectType::Mailbox, state)
+        .into_iter()
+        .map(|(mailbox, _)| mailbox)
+        .collect();
+    mailboxes.sort();
+    let mut expected: Vec<String> = [ALL_MAIL, "\\Inbox", "Work"]
+        .iter()
+        .map(|name| ids[*name].to_string())
+        .collect();
+    expected.sort();
+    assert_eq!(mailboxes, expected);
+    // The same keywords again move no state; a row that lies under
+    // another UID by then is left as it is and named.
+    let again = store
+        .write_keywords(
+            &key(),
+            &[change(1, &["$flagged"], &[]), change(2, &["x"], &[])],
+        )
+        .unwrap();
+    assert_eq!((again.before, again.after), (state + 1, state + 1));
+    assert_eq!(again.gone.as_slice(), std::slice::from_ref(&id));
+    // Another account neither reads the row nor writes it.
+    let other = AccountKey::new("a2");
+    assert!(
+        store
+            .keyword_rows(&other, &[id.as_str()])
+            .unwrap()
+            .1
+            .is_empty()
+    );
+    let foreign = store
+        .write_keywords(&other, &[change(1, &["x"], &["$flagged"])])
+        .unwrap();
+    assert_eq!((foreign.after, foreign.gone), (0, vec![id.clone()]));
+    let kept = &store.keyword_rows(&key(), &[id.as_str()]).unwrap().1[0];
+    assert_eq!(kept.keywords.keys().collect::<Vec<_>>(), ["$flagged"]);
+    assert_eq!(store.state(&key()).unwrap(), state + 1);
 }

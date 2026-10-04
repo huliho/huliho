@@ -10,6 +10,7 @@
 use std::fmt::Write as _;
 
 use huliho_imap_bridge::testing::mailboxes::{ALL_MAIL, SPAM};
+use huliho_imap_bridge::testing::parts::part;
 use huliho_imap_bridge::testing::record::fixed::{FIXED_DOMAIN, fixed_subject};
 use huliho_imap_bridge::testing::{Mailboxes, Message};
 
@@ -28,6 +29,11 @@ pub const DELIVERED: u32 = 6;
 
 /// The message whose body runs past the preview ask.
 pub const LONG: u32 = 4;
+
+/// The message that carries an attachment, its name and its content.
+pub const ATTACHED: u32 = 3;
+pub const ATTACHMENT_NAME: &str = "notes.txt";
+pub const ATTACHMENT: &str = "notes";
 
 /// The one word the long body repeats.
 const LONG_WORD: &str = "word ";
@@ -63,7 +69,7 @@ pub fn seed(number: u32) -> Seed {
         number,
         seen: number != SEEDED,
         reply_to: (number == 2).then_some(1),
-        attachment: number == 3,
+        attachment: number == ATTACHED,
         body,
     }
 }
@@ -126,7 +132,7 @@ impl Seed {
         let header = self.header();
         if self.attachment {
             return format!(
-                "{header}Content-Type: multipart/mixed; boundary=\"b1\"\r\n\r\n--b1\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{}\r\n--b1\r\nContent-Type: text/plain; name=\"notes.txt\"\r\nContent-Disposition: attachment; filename=\"notes.txt\"\r\n\r\nnotes\r\n--b1--\r\n",
+                "{header}Content-Type: multipart/mixed; boundary=\"b1\"\r\n\r\n--b1\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{}\r\n--b1\r\nContent-Type: text/plain; name=\"{ATTACHMENT_NAME}\"\r\nContent-Disposition: attachment; filename=\"{ATTACHMENT_NAME}\"\r\n\r\n{ATTACHMENT}\r\n--b1--\r\n",
                 self.body
             );
         }
@@ -145,7 +151,8 @@ impl Seed {
         );
         let structure = if self.attachment {
             format!(
-                "({text}(\"TEXT\" \"PLAIN\" (\"NAME\" \"notes.txt\") NIL NIL \"7BIT\" 5 1 NIL (\"ATTACHMENT\" (\"FILENAME\" \"notes.txt\"))) \"MIXED\")"
+                "({text}(\"TEXT\" \"PLAIN\" (\"NAME\" \"{ATTACHMENT_NAME}\") NIL NIL \"7BIT\" {} 1 NIL (\"ATTACHMENT\" (\"FILENAME\" \"{ATTACHMENT_NAME}\"))) \"MIXED\")",
+                ATTACHMENT.len()
             )
         } else {
             text
@@ -164,6 +171,9 @@ impl Seed {
             ..Message::new(self.number)
         }
         .flagged(&flags);
+        if self.attachment {
+            message.parts = vec![part("1", &self.body), part("2", ATTACHMENT)];
+        }
         if let Some(parent) = self.reply_to {
             message = message.in_thread(Message::new(parent).thrid);
         }

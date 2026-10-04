@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! The message model of the scripted IMAP server: EXAMINE, UID SEARCH
-//! over a window of sequence numbers, NOOP and UID FETCH over the mail
-//! of a folder, with the ways a server misbehaves as switches.
+//! The message model of the scripted IMAP server: EXAMINE, SELECT, UID
+//! SEARCH over a window of sequence numbers, NOOP, UID FETCH and UID
+//! STORE over the mail of a folder, with the ways a server misbehaves
+//! as switches.
 
 use std::fmt::Write as _;
 
@@ -215,24 +216,58 @@ pub struct Behavior {
     /// The UID FETCH with this index on a connection never gets an
     /// answer; the connection holds until the client gives up.
     pub stalls_at: Option<usize>,
+    /// What a UID STORE comes to.
+    pub storing: Storing,
+    /// The STOREs a connection takes as usual before `storing` holds.
+    pub storing_from: usize,
+}
+
+/// How the server takes a UID STORE.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Storing {
+    /// The flags change and the tagged OK follows.
+    #[default]
+    Stores,
+    /// NO, with nothing changed.
+    Refuses,
+    /// BAD, with nothing changed.
+    Bad,
+    /// The connection closes instead of answering.
+    Drops,
+    /// No answer ever comes; the connection holds.
+    Stalls,
 }
 
 /// What one connection remembers between commands.
 #[derive(Debug, Default)]
 pub(super) struct Conversation {
     selected: Option<String>,
+    /// Whether a SELECT opened the selected mailbox; a STORE needs one.
+    writable: bool,
     fetches: usize,
+    stores: usize,
     searched: bool,
 }
 
 impl Conversation {
-    /// Whether this command is the UID FETCH the behavior never answers.
+    /// Whether this command is the UID FETCH or a UID STORE the
+    /// behavior never answers.
     pub(super) fn stalls(&self, command: &str, behavior: Behavior) -> bool {
-        command.starts_with("UID FETCH ") && behavior.stalls_at == Some(self.fetches)
+        (command.starts_with("UID FETCH ") && behavior.stalls_at == Some(self.fetches))
+            || (command.starts_with("UID STORE ") && self.storing(behavior) == Storing::Stalls)
     }
 
-    /// The answer to EXAMINE, NOOP or a UID command; `None` closes the
-    /// connection.
+    /// How the next UID STORE of this connection is taken.
+    fn storing(&self, behavior: Behavior) -> Storing {
+        if self.stores < behavior.storing_from {
+            Storing::Stores
+        } else {
+            behavior.storing
+        }
+    }
+
+    /// The answer to EXAMINE, SELECT, NOOP or a UID command; `None`
+    /// closes the connection.
     pub(super) fn answer(
         &mut self,
         mailboxes: &Mailboxes,
@@ -241,7 +276,20 @@ impl Conversation {
     ) -> Option<String> {
         let behavior = mailboxes.behavior;
         let reply = if let Some(rest) = command.strip_prefix("EXAMINE ") {
-            self.examine(mailboxes, rest)
+            self.open(mailboxes, rest, false)
+        } else if let Some(rest) = command.strip_prefix("SELECT ") {
+            self.open(mailboxes, rest, true)
+        } else if let Some(rest) = command.strip_prefix("UID STORE ") {
+            let storing = self.storing(behavior);
+            self.stores += 1;
+            if storing == Storing::Drops {
+                return None;
+            }
+            match self.store(mailboxes, rest, storing) {
+                Ok(lines) => Some(lines),
+                Err(Refusal::Bad) => return Some(format!("{tag} BAD not offered\r\n")),
+                Err(Refusal::No) => None,
+            }
         } else if command == "NOOP" {
             Some(String::new())
         } else if let Some(window) = command.strip_prefix("UID SEARCH ") {
@@ -273,13 +321,50 @@ impl Conversation {
         })
     }
 
-    fn examine(&mut self, mailboxes: &Mailboxes, rest: &str) -> Option<String> {
+    /// `UID STORE <set> +FLAGS.SILENT (<flags>)` or `-FLAGS.SILENT` on
+    /// the mailbox a SELECT opened: NO on one an EXAMINE opened, for a
+    /// flag the folder does not keep and where the behavior refuses, BAD
+    /// where it says so.
+    fn store(
+        &self,
+        mailboxes: &Mailboxes,
+        rest: &str,
+        storing: Storing,
+    ) -> Result<String, Refusal> {
+        if storing == Storing::Bad {
+            return Err(Refusal::Bad);
+        }
+        let (set, items) = rest.split_once(' ').ok_or(Refusal::Bad)?;
+        let (add, flags) = match items.split_once("FLAGS.SILENT (") {
+            Some(("+", flags)) => (true, flags),
+            Some(("-", flags)) => (false, flags),
+            _ => return Err(Refusal::Bad),
+        };
+        let flags: Vec<&str> = flags
+            .strip_suffix(')')
+            .ok_or(Refusal::Bad)?
+            .split(' ')
+            .collect();
+        let selected = self.selected.as_deref().filter(|_| self.writable);
+        selected
+            .filter(|_| storing != Storing::Refuses)
+            .and_then(|name| mailboxes.store(name, (set, &flags), add))
+            .ok_or(Refusal::No)
+    }
+
+    /// EXAMINE or SELECT; a SELECT names the flags the folder keeps.
+    fn open(&mut self, mailboxes: &Mailboxes, rest: &str, writable: bool) -> Option<String> {
         let (name, _) = unquote(rest)?;
         let folder = mailboxes
             .folders()
             .into_iter()
             .find(|folder| folder.name == name)?;
         self.selected = Some(name);
+        self.writable = writable;
+        let permanent = match folder.permanent.filter(|_| writable) {
+            Some(flags) => format!("* OK [PERMANENTFLAGS ({flags})] Flags permitted\r\n"),
+            None => String::new(),
+        };
         let exists = if mailboxes.behavior.no_exists {
             String::new()
         } else {
@@ -291,7 +376,7 @@ impl Conversation {
             String::new()
         };
         Some(format!(
-            "* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n{exists}* 0 RECENT\r\n* OK [UIDVALIDITY {}] UIDs valid\r\n* OK [UIDNEXT {}] Predicted next UID\r\n{modseq}",
+            "* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n{permanent}{exists}* 0 RECENT\r\n* OK [UIDVALIDITY {}] UIDs valid\r\n* OK [UIDNEXT {}] Predicted next UID\r\n{modseq}",
             folder.uid_validity, folder.uid_next
         ))
     }

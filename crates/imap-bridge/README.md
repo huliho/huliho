@@ -136,10 +136,11 @@ so the bridge never sees a credential and never resolves a host.
 `runtime::Link` keeps one conversation per account between requests
 behind a lock, checks a kept session with NOOP before it is used again
 and drops it after a failure. Only a refresh, a preview fetch, a body
-fetch and a window of a blob take the conversation; a request that
-reads the cache never waits on IMAP, and a server that is down costs
-nothing but the refresh for the stored properties: the cache answers as
-it stands, while a body ask answers `serverUnavailable`.
+fetch, a keyword write and a window of a blob take the conversation; a
+request that reads the cache never waits on IMAP, and a server that is
+down costs nothing but the refresh for the stored properties: the cache
+answers as it stands, while a body ask and a keyword write answer
+`serverUnavailable`.
 
 `runtime::Bridge` runs the accounts the host registers: one store, one
 sealer and one connector for all of them and, per account, the
@@ -148,8 +149,8 @@ whose first sync is not done, in tree order. The task takes one batch
 per turn on the conversation and hands it back, so a request gets in
 between, selects the folder afresh before every batch and puts one
 deadline (`runtime::CONVERSATION_DEADLINE`, sixty seconds) around a
-batch, a refresh, a preview fetch, a body fetch and a window of a
-blob. A session that fails or runs past
+batch, a refresh, a preview fetch, a body fetch, a keyword write and a
+window of a blob. A session that fails or runs past
 the deadline is dropped; a fresh one resumes the same sync after a
 pause, and the slice whose fetch was cut short is fetched again. A
 folder whose failures pass `runtime::FOLDER_FAILURE_BOUND` waits for the
@@ -281,6 +282,49 @@ the session standing and the blob unavailable; any other failure costs
 the session as well. An error is the last thing a blob answers. The
 bridge hands bytes: the host decides their media type and disposition.
 
+`Email/set` (RFC 8621 section 4.6) writes keywords and nothing else. An
+update patches `keywords/<keyword>` with true to set it and null to
+take it off, or names the whole `keywords` object. A create and a
+destroy answer `forbidden` per object, any other property and any other
+value `invalidProperties` with the paths, a call over more than five
+hundred objects `requestTooLarge` (`jmap::MAX_OBJECTS_IN_SET`).
+`ifInState` is checked before anything is sent. A keyword is stored as
+its flag (RFC 8621 section 4.1.1): the four system keywords as `\Seen`,
+`\Flagged`, `\Answered` and `\Draft`, any other as an atom. The write
+runs between two passes over the request, on the account's conversation
+under its lock and deadline: per store folder a SELECT, then one
+`UID STORE` with `+FLAGS.SILENT` or `-FLAGS.SILENT` per set of messages
+that gain or lose the same flags, a hundred UIDs per command at most
+(`session::MAX_STORE_UIDS`). The lock is held from the state check
+until the rows are written, so two requests that name one state never
+both store. The writes of one round share the deadline: once it is
+over, a later write of that round sends nothing and answers
+`serverUnavailable`. The calls of a request answer in order (RFC 8620 section
+3.10): a write behind a call that is no write of the same round waits
+for the pass after it, and a write the three passes of a request leave
+no room for answers `serverUnavailable` with nothing stored. On a Gmail
+account the folder is the store the row was fetched from. A flag the
+PERMANENTFLAGS of the folder do not name is never sent: a system flag
+answers `forbidden`, a keyword without `\*` there `invalidProperties`
+with the path as the patch wrote it. A SELECT that names more than 1024
+permanent flags is read as a protocol failure; an EXAMINE passes the
+list over. What the server took is written
+as one state: the keywords of each row that differs, its email as
+updated and every mailbox it is a member of as updated too, since its
+counts moved; `oldState` and `newState` are the states around that
+write. A SELECT or a STORE the server refuses answers `serverFail` for
+its updates and keeps the session; an answer the bridge cannot read
+answers `serverFail` too and costs the session; a server out of
+reach, a lost connection, the deadline, a folder renumbered since the
+sync and a row no UID names answer `serverUnavailable`. None of them
+writes a row, while a set of messages the server took before the failure is
+kept. An update that both sets and clears keywords is two commands; a
+failure between them leaves the first on the server until the next
+refresh reads it. An update that names more than 4 KiB of keywords
+answers `tooManyKeywords`. The refresh after a write finds the rows
+equal to the flags and logs no email; the mailbox pass logs the folder,
+since its unseen count moved.
+
 The rows live in `bridge_` tables inside the host's database.
 `store::MIGRATIONS` carries their schema for the host's migration list
 as two migrations, the tables and then the index on the message ids by
@@ -290,8 +334,9 @@ The state string is a per-account counter; every change writes a row
 to a log that the three `/changes` methods read, kept for the newest
 ten thousand rows. `jmap::handle` runs a Request object (RFC 8620
 section 3.3) against those rows and answers `Mailbox/get`,
-`Mailbox/changes`, `Email/get`, `Email/query`, `Email/changes`,
-`Thread/get`, `Thread/changes` and `Core/echo`. `Email/get` serves the
+`Mailbox/changes`, `Email/get`, `Email/set`, `Email/query`,
+`Email/changes`, `Thread/get`, `Thread/changes` and `Core/echo`.
+`Email/get` serves the
 metadata, the header properties and the preview from the rows, the
 body properties and the `header:` forms from the server. `Email/query` serves the filter
 `inMailbox`, the sort `receivedAt` either way, a window by position or
@@ -320,14 +365,16 @@ The `test-support` feature exposes `testing`, the scripted IMAP and
 SMTP servers the tests run against: a fresh certificate per server, one
 answer per command and a record of every line received. Its IMAP script
 carries a mailbox model with LIST-EXTENDED, LIST-STATUS, SPECIAL-USE
-and CONDSTORE as switches and a message model behind EXAMINE, NOOP,
-UID SEARCH and UID FETCH, the flags alone with CHANGEDSINCE, the two
+and CONDSTORE as switches and a message model behind EXAMINE, SELECT
+with the PERMANENTFLAGS of the folder, NOOP, UID SEARCH, UID STORE and
+UID FETCH, the flags alone with CHANGEDSINCE, the two
 sections of a preview cut as the partial fetch asks, the structure with
 a set of header fields, the fields alone and one window of one section
 or of the whole message
 included, whose misbehavior is a switch as well: volunteered lines, a connection that
 drops, a MODSEQ item, a NO in raw UTF-8, messages that leave between
-two searches, the Gmail items volunteered unasked plus an EXAMINE answer
+two searches, the Gmail items volunteered unasked, a STORE that is
+refused, answered BAD, dropped or never answered plus an EXAMINE answer
 without EXISTS. Its `Mailboxes`
 stand in for a second client between two passes: a message appended,
 one expunged by UID, the flags of one replaced, the counts and the

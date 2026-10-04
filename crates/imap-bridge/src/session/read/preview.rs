@@ -23,7 +23,7 @@ const ENCODING_FIELDS: &str = "CONTENT-TYPE CONTENT-TRANSFER-ENCODING";
 
 /// The UIDs as a sequence set, runs folded into ranges (RFC 3501 section
 /// 9).
-fn sequence_set(uids: &[u32]) -> String {
+pub(in crate::session) fn sequence_set(uids: &[u32]) -> String {
     let mut sorted = uids.to_vec();
     sorted.sort_unstable();
     sorted.dedup();

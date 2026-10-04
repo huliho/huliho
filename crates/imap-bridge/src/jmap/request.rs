@@ -5,7 +5,8 @@
 //! One Request object run against an account: every call in order off
 //! the runtime, a refresh ahead of a `/changes` call and a later pass
 //! over the calls from the first `Email/get` whose previews or bodies
-//! were fetched in between.
+//! were fetched in between or the first `Email/set` whose keywords were
+//! stored there.
 
 use std::cell::RefCell;
 
@@ -13,10 +14,11 @@ use serde_json::Value;
 
 use super::bodies::{self, Bodies, BodyAsk};
 use super::previews::{self, PREVIEW_BATCH};
+use super::set::{Outcome, SetAsk};
 use super::values::MAX_BODY_WINDOWS;
 use super::{
     Context, Invocation, MAX_CALLS_IN_REQUEST, MAX_SIZE_REQUEST, Request, RequestError, Response,
-    Using, references, run, using,
+    Using, references, run, using, write,
 };
 use crate::mailboxes::SyncError;
 use crate::runtime::{Connector, Link};
@@ -24,9 +26,10 @@ use crate::store::{EmailId, MailboxId, StoreError};
 use crate::sync::Cache;
 
 /// The passes one request may take: the first, one for what its calls
-/// fetched and one for a call whose reference into a fetched answer
-/// resolved only then. A need left after the last pass answers
-/// `serverUnavailable`.
+/// fetched or stored and one for a call whose reference into such an
+/// answer resolved only then or whose write waited behind another call.
+/// A need left after the last pass answers `serverUnavailable`, a write
+/// among them with nothing stored.
 const MAX_PASSES: usize = 3;
 
 /// A sync failure inside a request: the store's and the task's count,
@@ -44,9 +47,11 @@ fn sync_failed(error: SyncError) -> Result<(), RequestError> {
 /// session object. A `/changes` call has the account refreshed first
 /// when a refresh is due; an `Email/get` that asks for previews the rows
 /// lack or for bodies has them fetched and runs again, with every call
-/// after it, at most `MAX_PASSES` passes in all. Neither waits on a
-/// server that is down: the cache answers as it stands and a body it
-/// does not hold answers `serverUnavailable`.
+/// after it, at most `MAX_PASSES` passes in all; an `Email/set` has its
+/// keywords stored and answers on the next pass the same way. None
+/// waits on a server that is down: the cache answers as it stands, a
+/// body it does not hold answers `serverUnavailable` and an update that
+/// could not be stored says so.
 ///
 /// # Errors
 ///
@@ -90,12 +95,12 @@ pub async fn handle<C: Connector>(
         let needs = std::mem::take(&mut answered.needs);
         let reruns = fetched(cache, link, needs, &mut windows).await?;
         let first = reruns.iter().map(|(index, _)| *index).min().unwrap_or(0);
-        let mut bodies = std::mem::take(&mut answered.bodies);
-        bodies.extend(reruns);
+        let mut brought = std::mem::take(&mut answered.brought);
+        brought.extend(reruns);
         let again = Again {
             responses: answered.responses,
             first,
-            bodies,
+            brought,
         };
         answered = off_runtime(cache, using, &calls, Some(again)).await?;
     }
@@ -107,19 +112,42 @@ pub async fn handle<C: Connector>(
     serde_json::to_vec(&response).map_err(|error| RequestError::Store(StoreError::Encoding(error)))
 }
 
-/// What a call left for the request to fetch before it runs again.
+/// What a call left for the request to fetch or store before it runs
+/// again.
 enum Need {
     /// The emails whose preview the rows lack.
     Previews(Vec<EmailId>),
     Bodies(BodyAsk),
+    Write(SetAsk),
 }
 
-/// The calls to run again, by index, with the bodies fetched for each.
-type Reruns = Vec<(usize, Option<Bodies>)>;
+/// What the request brought one call between two passes.
+enum Brought {
+    /// Previews, which the rows hold from then on.
+    Rows,
+    Bodies(Bodies),
+    Written(Outcome),
+}
 
-/// Fetches what the needs name: the previews of every call at once,
-/// then the bodies per call within the windows the request may still
-/// spend. Which calls run again, with their bodies.
+/// The calls to run again, by index, with what was brought for each.
+type Reruns = Vec<(usize, Brought)>;
+
+/// Hands a call what was brought for it.
+fn bring(reruns: &mut Reruns, index: usize, brought: Brought) {
+    if let Some((_, slot)) = reruns.iter_mut().find(|(found, _)| *found == index) {
+        *slot = brought;
+    }
+}
+
+/// Brings what the needs name: the keywords of the `Email/set` calls
+/// that stand in a row from the first call with a need, in their order,
+/// the previews of every call at once, then the bodies per call within
+/// the windows the request may still spend. Which calls run again, with
+/// what each was brought. A call answers what the calls before it left
+/// and nothing of the calls behind it (RFC 8620 section 3.10): the next
+/// pass runs every call from that first one again, so a write behind a
+/// call that is no write of this round is left for the pass after it,
+/// where its call notes it again.
 async fn fetched<C: Connector>(
     cache: &Cache,
     link: &Link<C>,
@@ -129,9 +157,20 @@ async fn fetched<C: Connector>(
     let mut ids: Vec<EmailId> = Vec::new();
     let mut asks: Vec<(usize, BodyAsk)> = Vec::new();
     let mut reruns: Reruns = Vec::new();
+    // Where the next write of the row stands; the needs come in the
+    // order of their calls.
+    let mut row = needs.first().map(|(index, _)| *index);
+    // The deadline the writes of this round share.
+    let mut until = None;
     for (index, need) in needs {
+        let write = matches!(need, Need::Write(_));
+        let in_row = write && row == Some(index);
+        row = in_row.then_some(index + 1);
+        if write && !in_row {
+            continue;
+        }
         if !reruns.iter().any(|(found, _)| *found == index) {
-            reruns.push((index, None));
+            reruns.push((index, Brought::Rows));
         }
         match need {
             Need::Previews(found) => {
@@ -142,6 +181,10 @@ async fn fetched<C: Connector>(
                 }
             }
             Need::Bodies(ask) => asks.push((index, ask)),
+            Need::Write(ask) => match write::apply(cache, link, &ask, &mut until).await {
+                Ok(outcome) => bring(&mut reruns, index, Brought::Written(outcome)),
+                Err(error) => sync_failed(error)?,
+            },
         }
     }
     if !ids.is_empty()
@@ -159,9 +202,7 @@ async fn fetched<C: Connector>(
             }
         };
         for ((index, _), fetched) in asks.into_iter().zip(bodies) {
-            if let Some((_, slot)) = reruns.iter_mut().find(|(found, _)| *found == index) {
-                *slot = Some(fetched);
-            }
+            bring(&mut reruns, index, Brought::Bodies(fetched));
         }
     }
     Ok(reruns)
@@ -171,18 +212,18 @@ async fn fetched<C: Connector>(
 struct Answered {
     responses: Vec<Invocation>,
     viewed: Option<MailboxId>,
-    /// Per call that asked, what it left to fetch.
+    /// Per call that asked, what it left to fetch or store.
     needs: Vec<(usize, Need)>,
-    /// The bodies fetched so far, for the next pass.
-    bodies: Reruns,
+    /// What was brought so far, for the next pass.
+    brought: Reruns,
 }
 
 /// A later pass: the responses so far, the first call to run again and
-/// the bodies fetched for every call that asked so far.
+/// what was brought for every call that asked so far.
 struct Again {
     responses: Vec<Invocation>,
     first: usize,
-    bodies: Reruns,
+    brought: Reruns,
 }
 
 /// Runs the calls on a blocking thread, since every method reads SQLite
@@ -203,8 +244,8 @@ async fn off_runtime(
 /// again with the earlier responses standing: a call after it may
 /// reference its answer; every method answers from the cache as it
 /// stands, so a call before the first fetched one keeps its response.
-/// A call whose fetch ran asks no more; one run again for its
-/// reference may.
+/// A call something was brought for asks no more, so nothing is stored
+/// twice; one run again for its reference may.
 fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again>) -> Answered {
     let context = Context {
         store: &cache.store,
@@ -216,29 +257,41 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
         missing_previews: RefCell::new(Vec::new()),
         body_ask: RefCell::new(None),
         bodies: RefCell::new(None),
+        set_ask: RefCell::new(None),
+        written: RefCell::new(None),
     };
-    let (mut responses, first, bodies) = match again {
-        Some(again) => (again.responses, Some(again.first), again.bodies),
+    let (mut responses, first, brought) = match again {
+        Some(again) => (again.responses, Some(again.first), again.brought),
         None => (Vec::with_capacity(calls.len()), None, Vec::new()),
     };
     let mut needs = Vec::new();
     for (index, call) in calls.iter().enumerate() {
-        if let Some(first) = first {
-            if index < first {
-                continue;
-            }
-            let fetched = bodies.iter().find(|(found, _)| *found == index);
-            *context.bodies.borrow_mut() = fetched.and_then(|(_, bodies)| bodies.as_ref());
+        if first.is_some_and(|first| index < first) {
+            continue;
         }
+        let had = brought.iter().find(|(found, _)| *found == index);
+        let had = had.map(|(_, brought)| brought);
+        *context.bodies.borrow_mut() = match had {
+            Some(Brought::Bodies(bodies)) => Some(bodies),
+            _ => None,
+        };
+        *context.written.borrow_mut() = match had {
+            Some(Brought::Written(outcome)) => Some(outcome),
+            _ => None,
+        };
         let response = run(&context, call, &responses[..index]);
         let previews = std::mem::take(&mut *context.missing_previews.borrow_mut());
         let ask = context.body_ask.borrow_mut().take();
-        if !bodies.iter().any(|(found, _)| *found == index) {
+        let set = context.set_ask.borrow_mut().take();
+        if had.is_none() {
             if !previews.is_empty() {
                 needs.push((index, Need::Previews(previews)));
             }
             if let Some(ask) = ask {
                 needs.push((index, Need::Bodies(ask)));
+            }
+            if let Some(ask) = set {
+                needs.push((index, Need::Write(ask)));
             }
         }
         if first.is_some() {
@@ -253,7 +306,7 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
         responses,
         viewed,
         needs,
-        bodies,
+        brought,
     }
 }
 

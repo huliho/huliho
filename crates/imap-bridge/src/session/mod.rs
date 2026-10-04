@@ -13,6 +13,7 @@ mod guard;
 mod imap;
 mod message;
 mod read;
+mod write;
 
 use std::collections::BTreeSet;
 use std::future::Future;
@@ -29,12 +30,13 @@ pub use imap::ImapSession;
 pub use message::{
     BODY_WINDOW_BYTES, BodyPart, Disposition, FetchItems, FetchedMessage, FlagFetch, Flagged,
     GmailItems, Leaf, MAX_FETCH_MESSAGES, MAX_FLAGGED, MAX_HEADER_BYTES, MAX_PART_FIELD_BYTES,
-    MAX_PART_FIELDS, MAX_PREVIEW_TEXT_BYTES, MAX_PREVIEWS, MESSAGE_LIMIT, Multipart,
-    PREVIEW_HEADER_BYTES, PartAsk, PartWindow, PreviewAsk, PreviewBytes, Selected, Structure,
-    UidRange,
+    MAX_PART_FIELDS, MAX_PREVIEW_TEXT_BYTES, MAX_PREVIEWS, MAX_STORE_UIDS, MESSAGE_LIMIT,
+    Multipart, PREVIEW_HEADER_BYTES, PartAsk, PartWindow, PreviewAsk, PreviewBytes, Selected,
+    StoreAsk, Structure, UidRange, Writable,
 };
 pub use read::MAX_TREE_BYTES;
 pub(crate) use read::sendable_field;
+pub use write::MAX_COMMAND_BYTES;
 
 /// One connect attempt or one step of a command gets this long: the
 /// whole command where the client library runs it, each response where
@@ -249,6 +251,35 @@ pub trait Session: Sized + Send {
         &mut self,
         mailbox: &str,
     ) -> impl Future<Output = Result<Selected, SessionError>> + Send;
+
+    /// SELECT of one mailbox by its wire name (RFC 3501 section 6.3.1):
+    /// read-write, for the write path alone, with the flags a STORE
+    /// there changes for good.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::examine`], EXISTS aside; `Protocol` as well when
+    /// the answer names more permanent flags than the bridge keeps.
+    fn select(
+        &mut self,
+        mailbox: &str,
+    ) -> impl Future<Output = Result<Writable, SessionError>> + Send;
+
+    /// `UID STORE` of flags on messages of the selected mailbox, silent
+    /// (RFC 3501 section 6.4.6). A server passes over a UID the mailbox
+    /// does not hold.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`]; `Protocol` as well, before anything is
+    /// sent, when no mailbox is selected, the ask names no message, more
+    /// than `MAX_STORE_UIDS` or no flag, a flag is neither a system flag
+    /// a keyword maps to nor an atom or the command would pass
+    /// `MAX_COMMAND_BYTES`.
+    fn uid_store(
+        &mut self,
+        ask: &StoreAsk<'_>,
+    ) -> impl Future<Output = Result<(), SessionError>> + Send;
 
     /// Every UID of the selected mailbox, highest first. It asks `UID
     /// SEARCH` for one window of sequence numbers at a time (RFC 3501

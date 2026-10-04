@@ -125,6 +125,23 @@ pub async fn seed(editor: &mut Editor, from: u32, through: u32) {
     }
 }
 
+/// Appends the corpus message of that number in its rich shape.
+pub async fn seed_rich(editor: &mut Editor, number: u32) {
+    let message = Seed(number);
+    let date = format!("\"{}\"", message.internal_date());
+    within(editor.append(INBOX, None, Some(&date), message.rich()))
+        .await
+        .unwrap();
+}
+
+/// Whether this connection finds the corpus message among the seen
+/// ones of the inbox.
+pub async fn seen(editor: &mut Editor, number: u32) -> bool {
+    within(editor.select(INBOX)).await.unwrap();
+    let query = format!("SEEN HEADER Message-ID \"{}\"", Seed(number).message_id());
+    !within(editor.uid_search(&query)).await.unwrap().is_empty()
+}
+
 /// The UID of the corpus message with that number; the inbox stays
 /// selected.
 async fn uid_of(editor: &mut Editor, number: u32) -> u32 {

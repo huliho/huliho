@@ -4,10 +4,13 @@
 
 //! The steps of the Gmail scenario suite: the mailbox list with its
 //! roles, the first sync of the stores, an inbox window, thread
-//! grouping, the properties and previews of the seeded mail, then what
-//! a second client changes: a delivery, a flag, a label, a move to Spam
+//! grouping, the properties and previews of the seeded mail, a message
+//! opened with its body and its blobs and marked read, then what a
+//! second client changes: a delivery, a flag, a label, a move to Spam
 //! and a deletion. Every assertion holds against the live account, the
 //! scripted server and a transcript of either.
+
+mod reading;
 
 use std::collections::HashMap;
 
@@ -78,6 +81,9 @@ impl Scenario {
         self.threads().await;
         self.properties().await;
         self.previews().await;
+        self.body().await;
+        self.download().await;
+        self.mark_read().await;
         self.delivery().await;
         self.flag().await;
         self.label().await;

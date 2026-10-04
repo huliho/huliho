@@ -27,9 +27,9 @@ const FIELDS_BYTES: usize = MAX_HEADER_BYTES;
 const TEXT_SECTION: &str = "TEXT";
 
 /// The bytes an IMAP atom may not hold (RFC 3501 section 9) beside the
-/// controls and the space; a field name holding one never reaches a
-/// command line.
-const ATOM_SPECIALS: &[u8] = b"(){%*\"\\]";
+/// controls and the space; a field name or a flag holding one never
+/// reaches a command line.
+pub(in crate::session) const ATOM_SPECIALS: &[u8] = b"(){%*\"\\]";
 
 /// Whether a header field name goes on a command line as it is: printable
 /// ASCII without the colon (RFC 5322 section 3.6.8) and without an atom

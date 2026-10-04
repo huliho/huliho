@@ -159,7 +159,7 @@ async fn the_session_object_of_a_bridge_account_carries_the_vendor_capability_an
         [HULIHO_CAPABILITY, MAIL_CAPABILITY]
     );
     assert_eq!(session["primaryAccounts"][MAIL_CAPABILITY], id);
-    assert_eq!(session["accounts"][&id]["isReadOnly"], true);
+    assert_eq!(session["accounts"][&id]["isReadOnly"], false);
     assert_eq!(session["username"], ADDRESS);
     let core = &session["capabilities"][CORE_CAPABILITY];
     assert_eq!(core["maxConcurrentRequests"], MAX_CONCURRENT_REQUESTS);

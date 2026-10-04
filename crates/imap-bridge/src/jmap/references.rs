@@ -129,15 +129,35 @@ fn pointer(
         budget.charge_object(response)?;
         return Ok(Value::Object(response.clone()));
     }
-    let tokens: Vec<String> = path
+    let tokens: Option<Vec<String>> = path
         .strip_prefix('/')
         .ok_or(NOTHING_THERE)?
         .split('/')
-        .map(|token| token.replace("~1", "/").replace("~0", "~"))
+        .map(unescaped)
         .collect();
+    let tokens = tokens.ok_or(NOTHING_THERE)?;
     let (first, rest) = tokens.split_first().ok_or(NOTHING_THERE)?;
     let value = response.get(first.as_str()).ok_or(NOTHING_THERE)?;
     walk(value, rest, budget)
+}
+
+/// One token of a JSON pointer with its escapes undone (RFC 6901
+/// sections 3 and 4): `~1` is `/` and `~0` is `~`. `None` for a `~`
+/// that opens neither.
+pub(super) fn unescaped(token: &str) -> Option<String> {
+    let mut name = String::with_capacity(token.len());
+    let mut chars = token.chars();
+    while let Some(c) = chars.next() {
+        name.push(match c {
+            '~' => match chars.next()? {
+                '0' => '~',
+                '1' => '/',
+                _ => return None,
+            },
+            other => other,
+        });
+    }
+    Some(name)
 }
 
 /// Every copy is charged first: a target before its clone, the array a
@@ -264,14 +284,22 @@ mod tests {
 
     #[test]
     fn the_pointer_walks_indexes_escapes_and_the_root_rfc6901() {
-        let Value::Object(value) = json!({ "a/b": [ { "~": 1 }, { "~": 2 } ], "list": [] }) else {
+        let Value::Object(value) =
+            json!({ "a/b": [ { "~": 1 }, { "~": 2 } ], "list": [], "x~2": 3 })
+        else {
             unreachable!()
         };
         let budget = Budget::full();
         assert_eq!(pointer(&value, "/a~1b/0/~0", &budget), Ok(json!(1)));
         assert_eq!(pointer(&value, "/a~1b/1/~0", &budget), Ok(json!(2)));
         assert_eq!(pointer(&value, "/a~1b/*/~0", &budget), Ok(json!([1, 2])));
-        for refused in ["/a~1b/9", "/a~1b/+1", "/a~1b/01", "/a~1b/0/~0/*"] {
+        // A `~` that opens no escape names nothing, also where a key
+        // holds that very text.
+        let broken = ["/a~1b/0/~", "/x~2"];
+        for refused in ["/a~1b/9", "/a~1b/+1", "/a~1b/01", "/a~1b/0/~0/*"]
+            .into_iter()
+            .chain(broken)
+        {
             assert_eq!(
                 pointer(&value, refused, &budget),
                 Err(NOTHING_THERE),

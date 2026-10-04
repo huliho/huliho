@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use huliho_imap_bridge::blob;
 use huliho_imap_bridge::jmap::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, handle};
 use huliho_imap_bridge::mailboxes::{self, SyncError};
 use huliho_imap_bridge::runtime::Link;
@@ -36,6 +37,9 @@ pub const ACCOUNT: &str = "gmail";
 /// The sessions one folder may cost before the suite gives up.
 const MAX_SESSIONS: usize = 20;
 
+/// A limit above every blob of the corpus.
+const BLOB_LIMIT: u64 = 1024 * 1024;
+
 /// How the bridge reaches the server: the trust, where it is, who signs
 /// in and how long one step may take.
 #[derive(Clone)]
@@ -57,7 +61,7 @@ enum Server {
 /// The cache, the link and the way to the server.
 pub struct Suite {
     pub cache: Cache,
-    pub link: Link<TestConnector>,
+    pub link: Arc<Link<TestConnector>>,
     connection: Connection,
     server: Server,
 }
@@ -111,10 +115,22 @@ impl Suite {
                 key: AccountKey::new(ACCOUNT),
                 gmail: true,
             },
-            link: Link::with_interval(connector, Duration::ZERO),
+            link: Arc::new(Link::with_interval(connector, Duration::ZERO)),
             connection,
             server,
         }
+    }
+
+    /// One blob read whole, as text.
+    pub async fn blob(&self, blob_id: &str) -> String {
+        let mut blob = blob::open(&self.cache, &self.link, blob_id, BLOB_LIMIT)
+            .await
+            .unwrap();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = blob.next().await {
+            bytes.extend(chunk.unwrap());
+        }
+        String::from_utf8(bytes).unwrap()
     }
 
     /// Whether the answers come from a transcript, where a body text
