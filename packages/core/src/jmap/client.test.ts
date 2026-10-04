@@ -36,6 +36,7 @@ test("the session comes from the account's route and names the upstream account,
     firstSync: true,
     maxCallsInRequest: 16,
     maxObjectsInGet: 500,
+    maxObjectsInSet: 500,
     state: "s1",
   });
 });

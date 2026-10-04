@@ -62,6 +62,8 @@ export function landEmails(
     }
   }
   batch.emails = { put: patched, remove: changes.destroyed };
+  // A destroyed email takes its stored body with it.
+  batch.bodies = { ...batch.bodies, remove: changes.destroyed };
   batch.states = { ...batch.states, Email: changes.newState };
   folded.listMoved ||= changes.created.length > 0 || changes.destroyed.length > 0;
 }

@@ -50,6 +50,12 @@ export function fitsHostName(text: string): boolean {
   return hostLabels(text) !== null;
 }
 
+// A host name in its ASCII lowercase form, so two spellings of one
+// name compare equal; null for anything that is not a plain name.
+export function asciiHostName(text: string): string | null {
+  return hostLabels(text)?.join(".") ?? null;
+}
+
 // Mirrors the server's reading of an address, so a typo never costs a
 // round trip: bounded, one @ between two parts, no whitespace or
 // control character and a domain of at least two plain labels.

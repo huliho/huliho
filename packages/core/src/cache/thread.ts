@@ -15,6 +15,7 @@ import type { EmailHeader } from "../jmap/schemas";
 import type { ThreadDetail } from "./api";
 import { PREVIEW_BATCH } from "./limits";
 import { fetchInChunks, stateAnswerSchema, threadRow } from "./members";
+import { land } from "./overlay";
 import type { MailStore, ThreadRow } from "./store";
 
 const threadAnswerSchema = getAnswerSchema(threadSchema);
@@ -92,20 +93,24 @@ export async function readThread(
   const held = await store.emails(accountId, thread.emailIds);
   const wanted = thread.emailIds.filter((id) => (held.get(id)?.preview ?? "") === "");
   const headers = await fetchHeaders(client, wanted);
-  for (const header of headers) {
-    held.set(header.id, header);
-  }
   // The row learns the state of every member it lacked.
   const row = threadRow(thread, new Map(headers.map((header) => [header.id, header])), thread);
-  if (headers.length > 0 || fetched !== null) {
-    await store.commit(accountId, {
-      emails: { put: headers },
-      threads: { put: [row] },
-      states: fetched?.states ?? {},
-    });
+  if (headers.length === 0 && fetched === null) {
+    return detailOf(row, held);
   }
+  await land(store, accountId, {
+    emails: { put: headers },
+    threads: { put: [row] },
+    states: fetched?.states ?? {},
+  });
+  // What landed is read back, since a pending change may lie over it.
+  const landed = (await store.threads(accountId, [threadId])).get(threadId) ?? row;
+  return detailOf(landed, await store.emails(accountId, landed.emailIds));
+}
+
+function detailOf(thread: ThreadRow, held: ReadonlyMap<string, EmailHeader>): ThreadDetail {
   return {
-    thread: row,
+    thread,
     emails: Object.fromEntries(
       thread.emailIds.flatMap((id): [string, EmailHeader][] => {
         const header = held.get(id);

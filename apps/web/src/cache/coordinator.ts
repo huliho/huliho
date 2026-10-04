@@ -45,7 +45,7 @@ export const LEASE_MS = 150_000;
 // windows back and forth costs one request.
 const FOCUS_POLL_GAP_MS = 10_000;
 
-const EVERY_AREA = ["mailboxes", "emails", "threads", "queries"] as const;
+const EVERY_AREA = ["mailboxes", "emails", "threads", "queries", "bodies", "pending"] as const;
 
 // The mailbox one tab is looking at.
 export interface Watch {
@@ -111,6 +111,9 @@ function held(store: MailStore, gate: Promise<unknown>): MailStore {
     query: (accountId, mailboxId) => store.query(accountId, mailboxId),
     queries: (accountId) => store.queries(accountId),
     state: (accountId, type) => store.state(accountId, type),
+    body: (accountId, emailId) => store.body(accountId, emailId),
+    bodySizes: () => store.bodySizes(),
+    pending: (accountId) => store.pending(accountId),
     commit: async (accountId, batch) => {
       await gate;
       await store.commit(accountId, batch);

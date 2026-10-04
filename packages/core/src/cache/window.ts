@@ -17,6 +17,7 @@ import {
 import type { EmailHeader, EmailState, Invocation } from "../jmap/schemas";
 import { WINDOW_SIZE } from "./limits";
 import { fetchStates, stateAnswerSchema, threadRow } from "./members";
+import { land } from "./overlay";
 import type { MailStore, QueryRow, ThreadRow } from "./store";
 
 const headerAnswerSchema = getAnswerSchema(emailHeaderSchema);
@@ -190,7 +191,7 @@ export async function queryWindow(
   }
   const fetched = await fetchPage(client, store, { mailboxId, held, page });
   const row = withPage(held ?? emptyRow(mailboxId), page, fetched);
-  await store.commit(client.accountId, {
+  await land(store, client.accountId, {
     emails: { put: fetched.emails },
     threads: { put: fetched.threads },
     queries: { put: [row] },

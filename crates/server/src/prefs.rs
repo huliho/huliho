@@ -102,8 +102,9 @@ impl PolicyName {
 }
 
 /// The remote-content grant for one sender: the authserv-id of the
-/// message's topmost Authentication-Results header at the grant, none
-/// when the message carried no such header.
+/// message's topmost Authentication-Results header at the grant, the
+/// empty string when that header named no server and none when the
+/// message carried no such header.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RemoteContentPolicy {

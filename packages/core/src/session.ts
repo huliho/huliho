@@ -26,6 +26,8 @@ export const sessionInfoSchema = z.object({
   signInProviders: z.array(signInProviderSchema),
   // True for a session opened with a one-time password, until the change lands.
   passwordChangeRequired: z.boolean(),
+  // True on an instance whose setting keeps mail off the device's disk.
+  privacyStrict: z.boolean(),
 });
 
 export type SignInProvider = z.infer<typeof signInProviderSchema>;

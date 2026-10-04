@@ -111,6 +111,24 @@ async fn a_grant_round_trips_with_its_pin_lowercased_and_leaves_on_delete() {
 }
 
 #[tokio::test]
+async fn a_pin_of_a_header_without_a_server_name_stays_apart_from_no_pin() {
+    let router = router_on(store_with_account());
+    let cookie = sign_in(&router).await;
+    let (status, text) = put(&router, &cookie, SENDER, &grant(Some(""))).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{text}");
+    let (status, text) = put(&router, &cookie, "shop@example.com", &grant(None)).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{text}");
+    let (_, policies) = listed(&router, &cookie).await;
+    assert_eq!(
+        policies,
+        json!([
+            { "sender": SENDER, "key": "remoteContent", "value": { "allow": true, "authserv": "" } },
+            { "sender": "shop@example.com", "key": "remoteContent", "value": { "allow": true, "authserv": null } }
+        ])
+    );
+}
+
+#[tokio::test]
 async fn a_sender_a_key_or_a_value_off_the_shape_is_refused() {
     let router = router_on(store_with_account());
     let cookie = sign_in(&router).await;

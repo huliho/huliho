@@ -19,6 +19,7 @@ const SESSION_BODY = {
   organization: { id: "org-1", name: "mira@example.com" },
   signInProviders: [],
   passwordChangeRequired: false,
+  privacyStrict: false,
 };
 
 const SIGNED_OUT_BODY = { error: "unauthenticated" };

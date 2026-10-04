@@ -57,6 +57,11 @@ export class JmapError extends Error {
   }
 }
 
+// What a server answers while the mail behind it is out of reach
+// (RFC 8620 section 3.6.2); it reads as the network does, so the
+// caller tries again.
+export const SERVER_UNAVAILABLE = "serverUnavailable";
+
 // A method that answered an error (RFC 8620 section 3.6.2) where the
 // caller needed its value.
 export class MethodFailure extends Error {
@@ -82,6 +87,7 @@ export interface JmapSession {
   firstSync: boolean;
   maxCallsInRequest: number;
   maxObjectsInGet: number;
+  maxObjectsInSet: number;
   state: string;
 }
 
@@ -161,6 +167,7 @@ function sessionOf(object: SessionObject): JmapSession {
     firstSync: vendor,
     maxCallsInRequest: core.maxCallsInRequest,
     maxObjectsInGet: core.maxObjectsInGet,
+    maxObjectsInSet: core.maxObjectsInSet,
     state: object.state,
   };
 }

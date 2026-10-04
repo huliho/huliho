@@ -5,31 +5,18 @@
 import type { EmailHeader } from "../jmap/schemas";
 import { z } from "../schema";
 import type { FakeJmap } from "./fake-jmap";
-
-// The Huliho account id the client is built on, and the upstream id
-// the session object names for it.
-export const ACCOUNT = "acc-1";
-export const UPSTREAM = "u1";
+import { MethodError, UPSTREAM } from "./fake-wire";
+import type { Args } from "./fake-wire";
+import { bodyOf, emailSet } from "./fake-writes";
 
 export type Kind = "created" | "updated" | "destroyed";
 export type Type = "Mailbox" | "Email" | "Thread";
-export type Args = Record<string, unknown>;
-export type Invocation = [string, Args, string];
 
 export interface Change {
   sequence: number;
   type: Type;
   id: string;
   kind: Kind;
-}
-
-export class MethodError extends Error {
-  readonly type: string;
-
-  constructor(type: string) {
-    super(type);
-    this.type = type;
-  }
 }
 
 const getArgsSchema = z.object({
@@ -67,7 +54,7 @@ function parse<Value extends { accountId: string }>(schema: z.ZodType<Value>, ar
   return read.data;
 }
 
-// The seven methods the cache calls, answered from the fake's maps.
+// The methods the cache calls, answered from the fake's maps.
 export class FakeMethods {
   private readonly server: FakeJmap;
   private readonly vendor: boolean;
@@ -84,6 +71,7 @@ export class FakeMethods {
       ["Email/get", (raw) => this.emailGet(raw)],
       ["Email/query", (raw) => this.emailQuery(raw)],
       ["Email/changes", (raw) => this.changes("Email", raw)],
+      ["Email/set", (raw) => emailSet(this.server, raw)],
       ["Thread/get", (raw) => this.threadGet(raw)],
       ["Thread/changes", (raw) => this.changes("Thread", raw)],
     ]);
@@ -136,7 +124,10 @@ export class FakeMethods {
     const wanted = asked ?? [];
     const list = wanted.flatMap((id) => {
       const row = this.server.emails.get(id);
-      return row === undefined ? [] : [pick(row, properties)];
+      if (row === undefined) {
+        return [];
+      }
+      return [pick({ ...row, ...bodyOf(this.server, row, raw) }, properties)];
     });
     return {
       accountId: UPSTREAM,
@@ -308,7 +299,7 @@ function collapse(rows: readonly EmailHeader[]): string[] {
     .map((row) => row.id);
 }
 
-function pick(row: EmailHeader, properties: readonly string[] | null): Args {
+function pick(row: Args, properties: readonly string[] | null): Args {
   if (properties === null) {
     return { ...row };
   }

@@ -8,6 +8,7 @@ export const queryKeys = {
   accounts: ["accounts"],
   consent: ["consent"],
   preferences: ["preferences"],
+  senderPolicies: ["senderPolicies"],
   session: ["session"],
   sessions: ["sessions"],
   users: ["users"],
