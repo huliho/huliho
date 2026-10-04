@@ -14,6 +14,7 @@ use tokio::task::JoinHandle;
 
 use super::worker;
 use super::{Connector, GMAIL_CONNECTIONS, Link, SYNC_PARALLELISM, Timing, Wire};
+use crate::blob::{self, Blob, BlobError};
 use crate::jmap::{self, RequestError};
 use crate::seal::Sealer;
 use crate::store::{AccountKey, Store};
@@ -51,9 +52,10 @@ struct Entry<C: Connector> {
 pub(super) struct Account<C: Connector> {
     pub(super) cache: Cache,
     pub(super) session_state: String,
-    /// The conversation a request takes for a refresh or a preview
-    /// fetch; the header sync shares it, one batch per turn.
-    pub(super) link: Link<Arc<C>>,
+    /// The conversation a request takes for a refresh, a preview fetch
+    /// or a body fetch and a blob takes for each of its windows; the
+    /// header sync shares it, one batch per turn.
+    pub(super) link: Arc<Link<Arc<C>>>,
     /// A conversation of the header sync's own, where the account may
     /// hold a second connection.
     pub(super) own: Option<tokio::sync::Mutex<Wire<Arc<C>>>>,
@@ -126,9 +128,26 @@ impl<C: Connector + 'static> Bridge<C> {
         jmap::handle(&account.cache, &account.link, body, &account.session_state).await
     }
 
-    /// Stops the account's runtime: its task ends and the store writes
-    /// nothing more for the key, so the host can delete the rows in the
-    /// transaction that removes the account.
+    /// One blob of the account, started when it was not: a whole
+    /// message or one of its parts, within `limit` octets.
+    ///
+    /// # Errors
+    ///
+    /// As [`blob::open`].
+    pub async fn blob(
+        &self,
+        registration: &Registration,
+        blob_id: &str,
+        limit: u64,
+    ) -> Result<Blob, BlobError> {
+        let account = self.account(registration);
+        blob::open(&account.cache, &account.link, blob_id, limit).await
+    }
+
+    /// Stops the account's runtime: its task ends, a blob still on its
+    /// way breaks off and the store writes nothing more for the key, so
+    /// the host can delete the rows in the transaction that removes the
+    /// account.
     pub async fn forget(&self, key: &AccountKey) {
         let entry = self.accounts().remove(key);
         self.store.forget(key);
@@ -154,7 +173,7 @@ impl<C: Connector + 'static> Bridge<C> {
                 gmail: registration.gmail,
             },
             session_state: registration.session_state.clone(),
-            link: Link::with_timing(connector, self.timing),
+            link: Arc::new(Link::with_timing(connector, self.timing)),
             own,
         });
         let task = tokio::spawn(worker::run(

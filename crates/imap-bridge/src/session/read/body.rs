@@ -3,9 +3,9 @@
 // Additional terms apply, see NOTICE.
 
 //! The body path of one message: its structure with a set of header
-//! fields, the fields alone and one window of one part (RFC 3501
-//! section 6.4.5). Every item is a partial fetch, so what a sender wrote
-//! arrives inside literals the ask bounds.
+//! fields, the fields alone and one window of one part or of the whole
+//! message (RFC 3501 section 6.4.5). Every item is a partial fetch, so
+//! what a sender wrote arrives inside literals the ask bounds.
 
 use async_imap::imap_proto::{AttributeValue, MessageSection, Response, SectionPath};
 
@@ -111,7 +111,7 @@ pub(in crate::session) async fn uid_header_fields(
     Ok(found)
 }
 
-/// One window of one part of one message, cut at the bytes asked;
+/// One window of one section of one message, cut at the bytes asked;
 /// `None` when no line came back for the UID.
 pub(in crate::session) async fn uid_part(
     selection: &mut Selection<'_>,
@@ -120,7 +120,7 @@ pub(in crate::session) async fn uid_part(
 ) -> Result<Option<Vec<u8>>, SessionError> {
     selection.messages()?;
     let (uid, section, window) = (ask.uid, ask.section, ask.window);
-    if section != TEXT_SECTION && !is_part_number(section) {
+    if !section.is_empty() && section != TEXT_SECTION && !is_part_number(section) {
         return Err(SessionError::Protocol("a part number holds other bytes"));
     }
     if window.bytes > BODY_WINDOW_BYTES {
@@ -197,10 +197,10 @@ pub(super) fn part_of(
 ) -> Result<Option<Vec<u8>>, SessionError> {
     let found = attributes.iter().find_map(|attribute| match attribute {
         AttributeValue::BodySection {
-            section: Some(path),
+            section: path,
             index,
             data,
-        } if names(path, section) => Some((*index, data)),
+        } if names(path.as_ref(), section) => Some((*index, data)),
         _ => None,
     });
     let Some((index, data)) = found else {
@@ -213,16 +213,17 @@ pub(super) fn part_of(
     Ok(Some(cut(data.as_deref().unwrap_or_default(), keep)))
 }
 
-/// Whether the section on the line is the one asked: `TEXT` or the
-/// part number written with its dots.
-fn names(path: &SectionPath, section: &str) -> bool {
+/// Whether the section on the line is the one asked: none for the
+/// whole message, `TEXT` or the part number written with its dots.
+fn names(path: Option<&SectionPath>, section: &str) -> bool {
     match path {
-        SectionPath::Full(MessageSection::Text) => section == TEXT_SECTION,
-        SectionPath::Part(numbers, None) => {
+        None => section.is_empty(),
+        Some(SectionPath::Full(MessageSection::Text)) => section == TEXT_SECTION,
+        Some(SectionPath::Part(numbers, None)) => {
             let written: Vec<String> = numbers.iter().map(u32::to_string).collect();
             written.join(".") == section
         }
-        _ => false,
+        Some(_) => false,
     }
 }
 
@@ -313,8 +314,13 @@ mod tests {
             part_of(&unmarked, "1.2", first).unwrap(),
             Some(b"ab".to_vec())
         );
+        let whole = read("* 1 FETCH (UID 7 BODY[]<4> {3}\r\nabc)\r\n");
+        assert_eq!(part_of(&whole, "", window).unwrap(), Some(b"ab".to_vec()));
+        assert_eq!(part_of(&whole, "TEXT", window).unwrap(), None);
+        assert_eq!(part_of(&text, "", window).unwrap(), None);
         let flags = read("* 1 FETCH (UID 7 FLAGS (\\Seen))\r\n");
         assert_eq!(part_of(&flags, "1.2", window).unwrap(), None);
+        assert_eq!(part_of(&flags, "", window).unwrap(), None);
         assert_eq!(header_section(&flags), None);
         assert_eq!(uid_of(&text), Some(7));
     }

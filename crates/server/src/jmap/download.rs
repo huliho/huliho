@@ -18,7 +18,7 @@ use crate::gate::{AttemptError, Fault};
 use crate::mail::download::{
     BLOB_DOWNLOAD_LIMIT, DOWNLOAD_IDLE_TIMEOUT, DOWNLOAD_TOTAL_TIMEOUT, ENCODED,
 };
-use crate::mail::stream::{self, BOUNDS, Blob};
+use crate::mail::stream::{self, BOUNDS, Blob, Source};
 use crate::probe::{self, ProbeError};
 use crate::scope::Scope;
 
@@ -156,9 +156,12 @@ impl Proxy {
         {
             return Err(BlobError::TooLarge);
         }
-        stream::open(response, &BOUNDS).await.map_err(|_| {
-            AttemptError::from(ProbeError::Unreachable("the blob ended early".to_owned())).into()
-        })
+        stream::open(Source::Upstream(response), &BOUNDS)
+            .await
+            .map_err(|_| {
+                AttemptError::from(ProbeError::Unreachable("the blob ended early".to_owned()))
+                    .into()
+            })
     }
 }
 

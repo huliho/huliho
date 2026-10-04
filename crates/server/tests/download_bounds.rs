@@ -7,6 +7,7 @@
 //! one range it honors and the lanes an account has.
 
 mod answers;
+mod blob_answers;
 mod common;
 mod download_rig;
 mod fake_dns;
@@ -21,7 +22,8 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Method, Response, StatusCode, header};
-use download_rig::{NAME, assert_blob_headers, bearer, download, downloads, instance, path};
+use blob_answers::{assert_blob_headers, download};
+use download_rig::{NAME, bearer, downloads, instance, path};
 use huliho_server::ids::AccountId;
 use huliho_server::mail::detect::DETECT_BYTES;
 use huliho_server::mail::download::{BLOB_DOWNLOAD_LIMIT, MAX_CONCURRENT_DOWNLOADS};

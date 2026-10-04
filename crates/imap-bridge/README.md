@@ -135,11 +135,11 @@ trait: `connect(key)` answers a signed-in session or a typed failure,
 so the bridge never sees a credential and never resolves a host.
 `runtime::Link` keeps one conversation per account between requests
 behind a lock, checks a kept session with NOOP before it is used again
-and drops it after a failure. Only a refresh, a preview fetch and a
-body fetch take the conversation; a request that reads the cache never
-waits on IMAP, and a server that is down costs nothing but the refresh
-for the stored properties: the cache answers as it stands, while a
-body ask answers `serverUnavailable`.
+and drops it after a failure. Only a refresh, a preview fetch, a body
+fetch and a window of a blob take the conversation; a request that
+reads the cache never waits on IMAP, and a server that is down costs
+nothing but the refresh for the stored properties: the cache answers as
+it stands, while a body ask answers `serverUnavailable`.
 
 `runtime::Bridge` runs the accounts the host registers: one store, one
 sealer and one connector for all of them and, per account, the
@@ -148,7 +148,8 @@ whose first sync is not done, in tree order. The task takes one batch
 per turn on the conversation and hands it back, so a request gets in
 between, selects the folder afresh before every batch and puts one
 deadline (`runtime::CONVERSATION_DEADLINE`, sixty seconds) around a
-batch, a refresh, a preview fetch and a body fetch. A session that fails or runs past
+batch, a refresh, a preview fetch, a body fetch and a window of a
+blob. A session that fails or runs past
 the deadline is dropped; a fresh one resumes the same sync after a
 pause, and the slice whose fetch was cut short is fetched again. A
 folder whose failures pass `runtime::FOLDER_FAILURE_BOUND` waits for the
@@ -159,9 +160,10 @@ conversation for its sync. A conversation nobody used for five minutes
 next request. The host hands every account a `runtime::Registration`:
 its key, whether it is a Gmail account and the state its session object
 shows, which the host derives from what the object is built from, so
-the state never moves with the cache. `forget` stops an account's task
-and refuses every later write for its key, so the host deletes the rows
-(`store::remove_rows`) inside the transaction that removes the account.
+the state never moves with the cache. `forget` stops an account's task,
+breaks off a blob still on its way and refuses every later write for
+its key, so the host deletes the rows (`store::remove_rows`) inside the
+transaction that removes the account.
 
 Change detection is on demand until the server pushes. A `/changes`
 call refreshes the account at most once per thirty seconds
@@ -244,6 +246,41 @@ cannot read answer `serverUnavailable` for the call. The `header:` forms serve
 Raw and Text, each with `:all`; the Text form is refused for the
 structured fields of RFC 5322 and RFC 2369.
 
+A blob (RFC 8620 section 6.2) is the whole message under its email id
+or one part under the `blobId` its body part shows. `blob::open` reads
+one for the pair of a cache and a link; `Bridge::blob` runs it for an
+account. The id is computed and never stored: one that names no message
+of the account, no part of its message or a multipart is not found. The
+bytes come in the windows of a body value, each on a turn of its own on
+the conversation: the folder examined afresh, then one
+`BODY.PEEK[<section>]<offset.length>` with the empty section for the
+whole message. The conversation is free between two windows. A message
+streams as it lies on the server. A part streams with its transfer
+encoding undone through mail-parser's decoders: a base64 window is cut
+at its last whole quartet and a quoted-printable one at its last line
+break, what is left waits for the next window, so the edge of a window
+changes nothing in what a part decodes to. Bytes no encoder writes
+never fail a part: a byte outside the base64 alphabet is ignored (RFC
+2045 section 6.8), an `=` of quoted-printable that opens neither an
+escape nor a soft break is read as itself and every line break decodes
+to CRLF (section 6.7); a quoted-printable line past 1000 bytes is cut
+where it stands. Any other encoding
+leaves the bytes as they are. A blob ends at the first window the
+server cuts short. `open` reads the first window itself, so a blob that
+is not there or cannot be read fails before a byte is handed on. A task
+of its own reads the windows after it ahead of the reader, four at most
+(`blob::BLOB_BUFFER_WINDOWS`); it waits while they are unread and ends
+when the reader leaves, so a slow reader holds those windows beside the
+first one and never the conversation. A stream that stops without its
+closing step answers an error, so bytes cut short never read as a whole
+blob. The caller names a limit in octets.
+A message whose row states more and a part whose structure states more
+are refused before a window is read; a blob the server sends more of
+breaks off. A NO on a fetch and a folder whose UIDVALIDITY moved leave
+the session standing and the blob unavailable; any other failure costs
+the session as well. An error is the last thing a blob answers. The
+bridge hands bytes: the host decides their media type and disposition.
+
 The rows live in `bridge_` tables inside the host's database.
 `store::MIGRATIONS` carries their schema for the host's migration list
 as two migrations, the tables and then the index on the message ids by
@@ -287,6 +324,7 @@ and CONDSTORE as switches and a message model behind EXAMINE, NOOP,
 UID SEARCH and UID FETCH, the flags alone with CHANGEDSINCE, the two
 sections of a preview cut as the partial fetch asks, the structure with
 a set of header fields, the fields alone and one window of one section
+or of the whole message
 included, whose misbehavior is a switch as well: volunteered lines, a connection that
 drops, a MODSEQ item, a NO in raw UTF-8, messages that leave between
 two searches, the Gmail items volunteered unasked plus an EXAMINE answer
@@ -301,8 +339,10 @@ relabel a message or move it between stores as a second client would.
 `testing::TestConnector` signs a
 user in on such a server or refuses every connection.
 `testing::seal::TestSealer` binds a blob to its row without a cipher.
-`session::fuzzing` and `jmap::fuzzing` are what the fuzz targets in
-`fuzz/` call.
+`Blob::scripted` builds a blob from a channel, for a host that tests
+its own reader of one.
+`session::fuzzing`, `jmap::fuzzing` and `blob::fuzzing` are what the
+fuzz targets in `fuzz/` call.
 Build them with
 `cargo build --manifest-path crates/imap-bridge/fuzz/Cargo.toml` and run
 one with cargo-fuzz on a nightly toolchain.

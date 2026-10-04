@@ -11,6 +11,11 @@ use std::fmt;
 use rusqlite::types::{FromSql, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use uuid::fmt::Hyphenated;
+
+/// The length of every generated id: its type letter, then hyphenated
+/// UUID text.
+pub(crate) const ID_LENGTH: usize = 1 + Hyphenated::LENGTH;
 
 /// The host's name for an account; every bridge row carries it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -98,9 +103,6 @@ id_type!(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The letter, then the 36 characters of hyphenated UUID text.
-    const ID_LENGTH: usize = 37;
 
     fn inside_the_alphabet(c: char) -> bool {
         c.is_ascii_alphanumeric() || c == '-' || c == '_'

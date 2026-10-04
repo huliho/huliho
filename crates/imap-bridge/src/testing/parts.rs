@@ -3,10 +3,43 @@
 // Additional terms apply, see NOTICE.
 
 //! The parts of a multipart message on the scripted server: the bytes a
-//! fetch of each section answers, and the corpus message the body tests
-//! share.
+//! fetch of each section and of the whole message answers, the corpus
+//! message the body tests share and the content of a part past a
+//! window.
+
+use std::borrow::Cow;
+use std::fmt::Write as _;
+
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 
 use super::messages::Message;
+
+/// The longest line a sender writes of base64 (RFC 2045 section 6.8).
+const BASE64_LINE: usize = 76;
+
+/// The byte values varied content runs through, a prime so no window
+/// edge meets the same value twice in a row.
+const BYTE_VALUES: u8 = 251;
+
+/// Content of that many bytes, the byte values taken round and round.
+#[must_use]
+pub fn varied(bytes: usize) -> Vec<u8> {
+    (0..BYTE_VALUES).cycle().take(bytes).collect()
+}
+
+/// The content under base64 in lines of 76 symbols, as a sender writes
+/// a part.
+#[must_use]
+pub fn base64_lines(content: &[u8]) -> String {
+    let encoded = BASE64.encode(content);
+    let mut lines = String::new();
+    for line in encoded.as_bytes().chunks(BASE64_LINE) {
+        lines.push_str(&String::from_utf8_lossy(line));
+        lines.push_str("\r\n");
+    }
+    lines
+}
 
 /// One section of a message with the raw bytes a fetch of it answers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,17 +85,37 @@ impl Message {
         }
     }
 
-    /// The bytes of one section: the text of a one-part message, a
-    /// numbered part of a multipart one, `None` for a section the
-    /// message lacks.
-    pub(super) fn section(&self, section: &str) -> Option<&str> {
+    /// The whole message as a fetch of the empty section answers it:
+    /// the header, then the text of a one-part message or the parts of
+    /// a multipart one, each behind a line naming its section. The
+    /// bytes stand in for a message; the structure is scripted beside
+    /// them.
+    #[must_use]
+    pub fn raw(&self) -> String {
+        let mut raw = self.header.clone();
+        if self.parts.is_empty() {
+            raw.push_str(&self.body);
+        }
+        for part in &self.parts {
+            let _ = write!(raw, "--part {}\r\n{}\r\n", part.section, part.body);
+        }
+        raw
+    }
+
+    /// The bytes of one section: the whole message for the empty one,
+    /// the text of a one-part message, a numbered part of a multipart
+    /// one, `None` for a section the message lacks.
+    pub(super) fn section(&self, section: &str) -> Option<Cow<'_, str>> {
+        if section.is_empty() {
+            return Some(Cow::Owned(self.raw()));
+        }
         if section == TEXT_SECTION || (self.parts.is_empty() && section == "1") {
-            return Some(&self.body);
+            return Some(Cow::Borrowed(&self.body));
         }
         self.parts
             .iter()
             .find(|part| part.section == section)
-            .map(|part| part.body.as_str())
+            .map(|part| Cow::Borrowed(part.body.as_str()))
     }
 }
 

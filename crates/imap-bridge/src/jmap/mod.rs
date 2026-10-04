@@ -38,6 +38,7 @@ use crate::seal::Sealer;
 use crate::store::{AccountKey, EmailId, MailboxId, Store, StoreError};
 
 pub use body::MAX_BODIES_IN_GET;
+pub(crate) use body::leaf_of;
 pub use headers::MAX_HEADER_FIELDS;
 pub use previews::PREVIEW_BATCH;
 pub use query::QUERY_LIMIT;

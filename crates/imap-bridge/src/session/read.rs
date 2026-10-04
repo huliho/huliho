@@ -223,6 +223,7 @@ pub(super) fn line(bytes: &[u8]) {
             bytes: crate::session::BODY_WINDOW_BYTES,
         };
         let _ = body::part_of(attributes, "1", window);
+        let _ = body::part_of(attributes, "", window);
     }
 }
 

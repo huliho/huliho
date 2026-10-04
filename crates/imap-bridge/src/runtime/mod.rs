@@ -7,7 +7,8 @@
 //! syncs its folders in the background. The host hands out connections;
 //! the bridge never sees a credential and never resolves a host. A
 //! request takes the conversation only for a refresh, a preview fetch
-//! or a body fetch, so one that reads the cache never waits on IMAP.
+//! or a body fetch, so one that reads the cache never waits on IMAP; a
+//! blob takes it one window at a time.
 
 mod bridge;
 mod worker;
@@ -43,8 +44,9 @@ pub const GMAIL_CONNECTIONS: usize = 2;
 pub const SESSION_IDLE_CLOSE: Duration = Duration::from_mins(5);
 
 /// What one turn on the conversation may take: a refresh, a preview
-/// fetch, a body fetch or one batch of the header sync. It also bounds
-/// one UID FETCH answer, which has per-line timeouts alone.
+/// fetch, a body fetch, one window of a blob or one batch of the header
+/// sync. It also bounds one UID FETCH answer, which has per-line
+/// timeouts alone.
 pub const CONVERSATION_DEADLINE: Duration = Duration::from_secs(60);
 
 /// The accounts whose header sync runs at once, process wide.

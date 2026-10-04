@@ -13,6 +13,7 @@ use serde_json::{Map, Value, json};
 
 use super::MethodError;
 use super::values::charset;
+use crate::blob::part_blob_id;
 use crate::session::{BodyPart, Disposition, Leaf, Multipart};
 
 pub(super) use lists::{Node, leaves, lists};
@@ -89,13 +90,6 @@ pub(super) fn body_properties(named: Option<&[String]>) -> Result<Vec<&'static s
     Ok(wanted)
 }
 
-/// The blob id of a part: the email id, a hyphen and the part number
-/// with its dots as underscores, inside the alphabet of RFC 8620
-/// section 1.2.
-pub(super) fn blob_id(email: &str, part_id: &str) -> String {
-    format!("{email}-{}", part_id.replace('.', "_"))
-}
-
 /// The section a fetch names for a part: `TEXT` for the one part of a
 /// message that is one part, the part number otherwise.
 pub(super) fn fetch_section(root: &BodyPart, part_id: &str) -> String {
@@ -103,6 +97,16 @@ pub(super) fn fetch_section(root: &BodyPart, part_id: &str) -> String {
         BodyPart::Leaf(_) if part_id == LONE_PART => LONE_SECTION.to_owned(),
         _ => part_id.to_owned(),
     }
+}
+
+/// The leaf a part number names, with the section a fetch reads it by;
+/// `None` for a number the tree lacks and for one that names a
+/// multipart, which has no content of its own.
+pub(crate) fn leaf_of<'a>(root: &'a BodyPart, part_id: &str) -> Option<(&'a Leaf, String)> {
+    leaves(root)
+        .into_iter()
+        .find(|node| node.part_id == part_id)
+        .map(|node| (node.leaf, fetch_section(root, part_id)))
 }
 
 /// The structure of a message the bridge cannot describe: one part over
@@ -154,7 +158,7 @@ fn render(part: &BodyPart, part_id: &str, email: &str, wanted: &[&str]) -> Value
 fn leaf_pairs(leaf: &Leaf, part_id: &str, email: &str) -> Vec<(&'static str, Value)> {
     vec![
         ("partId", json!(part_id)),
-        ("blobId", json!(blob_id(email, part_id))),
+        ("blobId", json!(part_blob_id(email, part_id))),
         ("size", json!(leaf.bytes)),
         (
             "name",
@@ -273,9 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn a_blob_id_and_a_part_number_follow_the_section_and_the_lone_part_reads_as_text() {
-        assert_eq!(blob_id("e1", "1.2"), "e1-1_2");
-        assert_eq!(blob_id("e1", "1"), "e1-1");
+    fn a_part_number_follows_the_section_and_the_lone_part_reads_as_text() {
         assert_eq!(child_id("", 0), "1");
         assert_eq!(child_id("", 1), "2");
         assert_eq!(child_id("1", 0), "1.1");
@@ -285,6 +287,29 @@ mod tests {
         let mixed = Multipart::of("mixed", vec![lone.clone()]);
         assert_eq!(fetch_section(&mixed, "1"), "1");
         assert_eq!(fetch_section(&mixed, "1.2"), "1.2");
+    }
+
+    #[test]
+    fn a_part_number_names_its_leaf_with_the_section_and_a_multipart_names_none() {
+        let lone = BodyPart::Leaf(leaf("text", "plain", 5));
+        let (found, section) = leaf_of(&lone, "1").unwrap();
+        assert_eq!((found.bytes, section.as_str()), (5, "TEXT"));
+        assert_eq!(leaf_of(&lone, "2"), None);
+        let alternative = Multipart::of(
+            "alternative",
+            vec![lone, BodyPart::Leaf(leaf("text", "html", 9))],
+        );
+        let tree = Multipart::of(
+            "mixed",
+            vec![alternative, BodyPart::Leaf(leaf("image", "png", 30))],
+        );
+        let (found, section) = leaf_of(&tree, "1.2").unwrap();
+        assert_eq!((found.bytes, section.as_str()), (9, "1.2"));
+        let (found, section) = leaf_of(&tree, "2").unwrap();
+        assert_eq!((found.bytes, section.as_str()), (30, "2"));
+        for absent in ["1", "", "3", "1.3", "1.2.1", "01"] {
+            assert_eq!(leaf_of(&tree, absent), None, "{absent}");
+        }
     }
 
     #[test]

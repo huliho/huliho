@@ -337,16 +337,17 @@ pub trait Session: Sized + Send {
         fields: &[String],
     ) -> impl Future<Output = Result<Option<Vec<u8>>, SessionError>> + Send;
 
-    /// `UID FETCH` of one window of one part of one message, a partial
-    /// fetch of `BODY.PEEK[<section>]`: the bytes that arrived, cut at
-    /// the window. `None` when the message answered no line.
+    /// `UID FETCH` of one window of one section of one message, a
+    /// partial fetch of `BODY.PEEK[<section>]`: the bytes that arrived,
+    /// cut at the window. The empty section is the whole message.
+    /// `None` when the message answered no line.
     ///
     /// # Errors
     ///
     /// As [`Session::list`]; `Protocol` as well, before anything is
     /// sent, when no mailbox is selected or the section is neither
-    /// `TEXT` nor a part number; a window past `BODY_WINDOW_BYTES` is
-    /// refused the same way.
+    /// empty, `TEXT` nor a part number; a window past
+    /// `BODY_WINDOW_BYTES` is refused the same way.
     fn uid_part(
         &mut self,
         ask: &PartAsk<'_>,
