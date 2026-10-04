@@ -4,7 +4,9 @@
 
 // @vitest-environment node
 
+import type { EmailBody, PendingRow } from "@huliho/core";
 import { ACCOUNT, at, email, mailbox } from "@huliho/core/testing";
+import { Dexie } from "dexie";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -99,4 +101,113 @@ test("destroy empties the database for the next call", async () => {
   await store.commit(ACCOUNT, { states: { Email: "1" } });
   await store.destroy();
   expect(await store.state(ACCOUNT, "Email")).toBeNull();
+});
+
+const PART = {
+  partId: "1",
+  blobId: "b1",
+  size: 5,
+  name: null,
+  type: "text/plain",
+  charset: "utf-8",
+  disposition: null,
+  cid: null,
+  language: null,
+  location: null,
+};
+
+// A stored body of a chosen age and weight.
+function body(id: string, fetchedAt: number, bytes: number): EmailBody {
+  return {
+    id,
+    bodyStructure: PART,
+    textBody: [PART],
+    htmlBody: [PART],
+    attachments: [],
+    bodyValues: { "1": { value: "Hello", isEncodingProblem: false, isTruncated: false } },
+    authentication: { status: "absent" },
+    flowed: null,
+    large: false,
+    fetchedAt,
+    bytes,
+  };
+}
+
+const CHANGE: PendingRow = {
+  seq: 1,
+  type: "Email",
+  id: "e1",
+  patch: { "keywords/$seen": true },
+  inverse: { "keywords/$seen": null },
+  sentAt: null,
+};
+
+test("a body and the pending changes land under their account and leave by a batch", async () => {
+  await store.commit(ACCOUNT, {
+    bodies: { put: [body("e1", 10, 5)] },
+    pending: { put: [{ ...CHANGE, seq: 2 }, CHANGE] },
+  });
+  await store.commit(OTHER, { pending: { put: [CHANGE] } });
+  expect(await store.body(ACCOUNT, "e1")).toEqual(body("e1", 10, 5));
+  expect(await store.body(OTHER, "e1")).toBeNull();
+  expect((await store.pending(ACCOUNT)).map((row) => row.seq)).toEqual([1, 2]);
+  expect((await store.accounts()).toSorted()).toEqual([ACCOUNT, OTHER].toSorted());
+  await store.commit(ACCOUNT, { bodies: { remove: ["e1"] }, pending: { remove: [1] } });
+  expect(await store.body(ACCOUNT, "e1")).toBeNull();
+  expect(await store.pending(ACCOUNT)).toEqual([{ ...CHANGE, seq: 2 }]);
+  expect(await store.pending(OTHER)).toEqual([CHANGE]);
+  await store.commit(ACCOUNT, {
+    reset: ["bodies", "pending"],
+    bodies: { put: [body("e2", 1, 1)] },
+  });
+  expect(await store.pending(ACCOUNT)).toEqual([]);
+  expect((await store.bodySizes()).map((size) => size.id)).toEqual(["e2"]);
+});
+
+test("the order the eviction reads comes from the index, the oldest first across accounts", async () => {
+  await store.commit(ACCOUNT, { bodies: { put: [body("late", 20, 2), body("early", 10, 1)] } });
+  await store.commit(OTHER, { bodies: { put: [body("between", 15, 3)] } });
+  expect(await store.bodySizes()).toEqual([
+    { accountId: ACCOUNT, id: "early", fetchedAt: 10, bytes: 1 },
+    { accountId: OTHER, id: "between", fetchedAt: 15, bytes: 3 },
+    { accountId: ACCOUNT, id: "late", fetchedAt: 20, bytes: 2 },
+  ]);
+});
+
+test("a stored body or pending change that fails its schema is dropped and named", async () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  await store.commit(ACCOUNT, { pending: { put: [CHANGE] } });
+  await database.table("emailBodies").put({ accountId: ACCOUNT, id: "e1", row: { id: "e1" } });
+  await database.table("pendingChanges").put({ accountId: ACCOUNT, seq: 2, row: { seq: 2 } });
+  // A path that names no keyword would fail every later read of the log.
+  const moved = { ...CHANGE, seq: 3, patch: { "mailboxIds/archive": true } };
+  await database.table("pendingChanges").put({ accountId: ACCOUNT, seq: 3, row: moved });
+  expect(await store.body(ACCOUNT, "e1")).toBeNull();
+  expect(await store.pending(ACCOUNT)).toEqual([CHANGE]);
+  expect(error).toHaveBeenCalledWith(
+    "cache: a row in emailBodies failed its schema and was dropped",
+  );
+  expect(error).toHaveBeenCalledWith(
+    "cache: a row in pendingChanges failed its schema and was dropped",
+  );
+});
+
+test("a database of the first version keeps its rows and gains the two tables", async () => {
+  const options = { indexedDB: new IDBFactory(), IDBKeyRange };
+  const first = new Dexie("huliho-upgrade", options);
+  first.version(1).stores({
+    mailboxes: "[accountId+id], accountId",
+    emailHeaders: "[accountId+id], accountId",
+    threads: "[accountId+id], accountId",
+    queryCache: "[accountId+id], accountId",
+    meta: "[accountId+id], accountId",
+  });
+  await first.table("meta").put({ accountId: ACCOUNT, id: "Email", row: "7" });
+  first.close();
+  const upgraded = new MailDatabase("huliho-upgrade", options);
+  const reopened = new DexieMailStore(upgraded);
+  expect(await reopened.state(ACCOUNT, "Email")).toBe("7");
+  await reopened.commit(ACCOUNT, { bodies: { put: [body("e1", 1, 5)] } });
+  expect(await reopened.body(ACCOUNT, "e1")).toEqual(body("e1", 1, 5));
+  upgraded.close();
 });

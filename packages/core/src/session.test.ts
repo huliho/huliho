@@ -12,6 +12,7 @@ const SESSION_BODY = {
   organization: { id: "o1", name: "mira@example.com" },
   signInProviders: [],
   passwordChangeRequired: false,
+  privacyStrict: false,
 };
 
 function answer(status: number, body?: unknown, headers: Record<string, string> = {}): void {
@@ -52,6 +53,15 @@ test("the session lists the providers a consent can start with", async () => {
   answer(200, { ...SESSION_BODY, signInProviders: ["google"] });
   expect((await fetchSession())?.signInProviders).toEqual(["google"]);
   answer(200, { ...SESSION_BODY, signInProviders: ["yahoo"] });
+  await expect(fetchSession()).rejects.toThrow(/invalid/i);
+});
+
+test("the session says whether the instance keeps mail off the device and an answer without that word is refused", async () => {
+  answer(200, { ...SESSION_BODY, privacyStrict: true });
+  expect((await fetchSession())?.privacyStrict).toBe(true);
+  const { privacyStrict, ...silent } = SESSION_BODY;
+  expect(privacyStrict).toBe(false);
+  answer(200, silent);
   await expect(fetchSession()).rejects.toThrow(/invalid/i);
 });
 

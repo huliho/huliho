@@ -13,3 +13,10 @@ export const PREVIEW_BATCH = 100;
 // How many times one poll follows hasMoreChanges before it leaves the
 // rest to the next poll; the state reached is kept either way.
 export const CHANGES_ROUNDS_MAX = 8;
+
+// The bodies a store keeps; past it the ones fetched longest ago leave.
+export const BODY_CACHE_ROWS = 500;
+
+// The weight of body values a store keeps, 64 MiB; past it the same
+// bodies leave.
+export const BODY_CACHE_BYTES = 64 * 1024 * 1024;

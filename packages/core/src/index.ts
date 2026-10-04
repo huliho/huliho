@@ -35,22 +35,35 @@ export type {
   TlsMode,
 } from "./accounts";
 export { fitsAddress, fitsHostName } from "./address";
+export type { Authentication, AuthenticationResults, AuthVerdict } from "./auth-results";
 export type { MailCache, ThreadDetail } from "./cache/api";
+export { readBody } from "./cache/bodies";
 export { CHANGES_ROUNDS_MAX, PREVIEW_BATCH, WINDOW_SIZE } from "./cache/limits";
 export { syncMailboxes } from "./cache/mailboxes";
 export { MemoryMailStore } from "./cache/memory";
+export { applyPatch, flushPending } from "./cache/pending";
+export type { Flushed, Mutation } from "./cache/pending";
 export { applyChanges } from "./cache/poll";
 export type { AppliedChanges } from "./cache/poll";
 export { revealNewMail } from "./cache/refresh";
 export { firstSyncOf, listPage } from "./cache/rows";
 export type { FirstSync, ListPage, ListRow } from "./cache/rows";
-export { queryRowSchema, threadRowSchema } from "./cache/schemas";
+export {
+  emailBodySchema,
+  pendingRowSchema,
+  queryRowSchema,
+  threadRowSchema,
+} from "./cache/schemas";
 export type {
   Batch,
+  BodySize,
+  EmailBody,
+  EmailPatch,
   FreshPage,
   MailStore,
   MemberState,
   Page,
+  PendingRow,
   QueryRow,
   StoreArea,
   ThreadRow,
@@ -60,6 +73,7 @@ export { queryWindow } from "./cache/window";
 export type { WindowPage } from "./cache/window";
 export { CredentialError } from "./credentials";
 export type { CredentialFailureCode } from "./credentials";
+export type { EmailBodyPart, EmailBodyValue } from "./jmap/body";
 export type { ObjectType } from "./jmap/calls";
 export { JmapClient, JmapError, MethodFailure } from "./jmap/client";
 export type { JmapFailureCode, JmapSession } from "./jmap/client";
@@ -89,8 +103,24 @@ export type {
   ReadingPane,
   Theme,
 } from "./preferences";
+export { classifyImageUrl, remoteImageUrl } from "./remote";
+export type { ImageSource } from "./remote";
 export { ROLES, grantableRoles, mayManageUsers } from "./role";
 export type { Role } from "./role";
+export {
+  SenderPoliciesError,
+  allowRemoteContent,
+  blockRemoteContent,
+  fetchSenderPolicies,
+  grantFor,
+  grantLoads,
+  senderKey,
+} from "./sender-policies";
+export type {
+  RemoteContentGrant,
+  SenderPoliciesFailureCode,
+  SenderPolicy,
+} from "./sender-policies";
 export { fetchSession, sessionInfoSchema, signIn, signOut } from "./session";
 export type { SessionInfo, SignInProvider } from "./session";
 export {
@@ -101,6 +131,8 @@ export {
   sessionRowSchema,
 } from "./sessions";
 export type { Device, RevokeOptions, SessionRow } from "./sessions";
+export { unflow } from "./text/flowed";
+export type { QuotedLine } from "./text/flowed";
 export {
   USER_NAME_MAX_CHARS,
   UsersError,

@@ -3,6 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import type { z } from "../schema";
+import { BODY_PROPERTIES } from "./body";
 import { MethodFailure } from "./client";
 import type { MethodCall } from "./client";
 import { methodErrorSchema } from "./schemas";
@@ -18,6 +19,10 @@ export interface Reference {
   name: string;
   path: string;
 }
+
+// The changes to one object, by the path of each property (RFC 8620
+// section 5.3).
+export type PatchObject = Record<string, unknown>;
 
 // Where the ids of a query window start (RFC 8620 section 5.5).
 export type Start = { position: number } | { anchor: string; anchorOffset: number };
@@ -48,6 +53,15 @@ export interface Calls {
     id: string,
   ): MethodCall;
   changes(type: ObjectType, sinceState: string, id: string): MethodCall;
+  // One email with its body values, each cut at `maxBodyValueBytes`.
+  body(emailId: string, maxBodyValueBytes: number, id: string): MethodCall;
+  // The updates by object id; a null `ifInState` writes whatever the
+  // state is.
+  set(
+    type: Exclude<ObjectType, "Thread">,
+    changes: { update: Record<string, PatchObject>; ifInState: string | null },
+    id: string,
+  ): MethodCall;
 }
 
 export function callsFor(accountId: string): Calls {
@@ -78,6 +92,23 @@ export function callsFor(accountId: string): Calls {
     changes: (type, sinceState, id) => ({
       name: `${type}/changes`,
       arguments: { accountId, sinceState },
+      id,
+    }),
+    body: (emailId, maxBodyValueBytes, id) => ({
+      name: "Email/get",
+      arguments: {
+        accountId,
+        ids: [emailId],
+        properties: BODY_PROPERTIES,
+        fetchTextBodyValues: true,
+        fetchHTMLBodyValues: true,
+        maxBodyValueBytes,
+      },
+      id,
+    }),
+    set: (type, { update, ifInState }, id) => ({
+      name: `${type}/set`,
+      arguments: { accountId, ifInState, update },
       id,
     }),
   };

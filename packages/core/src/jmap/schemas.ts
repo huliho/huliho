@@ -55,10 +55,11 @@ export const setSchema = z.record(z.string(), z.literal(true));
 const utcDateSchema = z.iso.datetime();
 const dateSchema = z.iso.datetime({ offset: true });
 
-// The two core limits the client keeps to (RFC 8620 section 2).
+// The core limits the client keeps to (RFC 8620 section 2).
 export const coreLimitsSchema = z.object({
   maxCallsInRequest: z.number().int().positive(),
   maxObjectsInGet: z.number().int().positive(),
+  maxObjectsInSet: z.number().int().nonnegative(),
 });
 
 export const sessionObjectSchema = z.object({
@@ -160,6 +161,18 @@ export const queryAnswerSchema = z.object({
   ids: z.array(idSchema),
   total: countSchema.optional(),
   limit: z.number().int().positive().optional(),
+});
+
+// Why one object of a /set was not written (RFC 8620 section 5.3).
+const setErrorSchema = z.object({ type: z.string() });
+
+// The answer of a /set that updates (RFC 8620 section 5.3); a server may
+// leave an empty map out instead of naming it null.
+export const setAnswerSchema = z.object({
+  oldState: z.string().nullish(),
+  newState: z.string(),
+  updated: z.record(z.string(), z.unknown()).nullish(),
+  notUpdated: z.record(z.string(), setErrorSchema).nullish(),
 });
 
 // The problem details of a request that was not run (RFC 8620 section 3.6.1).

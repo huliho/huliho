@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import type { Authentication } from "../auth-results";
+import type { EmailBodyPart, EmailBodyValue } from "../jmap/body";
 import type { ObjectType } from "../jmap/calls";
 import type { EmailHeader, Mailbox, Thread } from "../jmap/schemas";
 
@@ -43,7 +45,54 @@ export interface QueryRow {
   fresh: FreshPage | null;
 }
 
-export type StoreArea = "mailboxes" | "emails" | "threads" | "queries";
+// The body of one email as the proxy answered it, its HTML values
+// sanitized there. The window builds what it renders from this row and
+// stores nothing of that.
+export interface EmailBody {
+  // The email id.
+  id: string;
+  bodyStructure: EmailBodyPart;
+  textBody: EmailBodyPart[];
+  htmlBody: EmailBodyPart[];
+  attachments: EmailBodyPart[];
+  bodyValues: Record<string, EmailBodyValue>;
+  // What the topmost Authentication-Results header says.
+  authentication: Authentication;
+  // Set when the message is one text part in the flowed format.
+  flowed: { delSp: boolean } | null;
+  // Whether the values were asked at the large cap.
+  large: boolean;
+  fetchedAt: number;
+  // The weight of the values, which the eviction counts.
+  bytes: number;
+}
+
+// Where one body stands in the eviction's order.
+export interface BodySize {
+  accountId: string;
+  id: string;
+  fetchedAt: number;
+  bytes: number;
+}
+
+// The keywords an email gains (true) and loses (null), by the path a
+// /set update names them with (RFC 8620 section 5.3).
+export type EmailPatch = Record<string, true | null>;
+
+// One change the server has not acknowledged: the patch the rows took
+// and the patch that takes it back.
+export interface PendingRow {
+  seq: number;
+  type: "Email";
+  // The email id.
+  id: string;
+  patch: EmailPatch;
+  inverse: EmailPatch;
+  // When a request last carried the patch, null before the first.
+  sentAt: number | null;
+}
+
+export type StoreArea = "mailboxes" | "emails" | "threads" | "queries" | "bodies" | "pending";
 
 // One atomic write: the areas that empty first, then what leaves, then
 // what lands, then the states.
@@ -53,6 +102,9 @@ export interface Batch {
   emails?: { put?: readonly EmailHeader[]; remove?: readonly string[] };
   threads?: { put?: readonly ThreadRow[]; remove?: readonly string[] };
   queries?: { put?: readonly QueryRow[]; remove?: readonly string[] };
+  bodies?: { put?: readonly EmailBody[]; remove?: readonly string[] };
+  // A pending row leaves by its sequence number.
+  pending?: { put?: readonly PendingRow[]; remove?: readonly number[] };
   states?: Partial<Record<ObjectType, string | null>>;
 }
 
@@ -66,5 +118,10 @@ export interface MailStore {
   query(accountId: string, mailboxId: string): Promise<QueryRow | null>;
   queries(accountId: string): Promise<QueryRow[]>;
   state(accountId: string, type: ObjectType): Promise<string | null>;
+  body(accountId: string, emailId: string): Promise<EmailBody | null>;
+  // Every body of every account, without its values.
+  bodySizes(): Promise<BodySize[]>;
+  // The unacknowledged changes of the account, oldest first.
+  pending(accountId: string): Promise<PendingRow[]>;
   commit(accountId: string, batch: Batch): Promise<void>;
 }

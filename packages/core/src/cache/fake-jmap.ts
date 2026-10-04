@@ -5,10 +5,15 @@
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
 import { CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY } from "../jmap/schemas";
 import { z } from "../schema";
-import { ACCOUNT, FakeMethods, MethodError, UPSTREAM } from "./fake-methods";
-import type { Args, Change, Invocation, Kind, Type } from "./fake-methods";
+import { FakeMethods } from "./fake-methods";
+import type { Change, Kind, Type } from "./fake-methods";
+import { ACCOUNT, MethodError, UPSTREAM } from "./fake-wire";
+import type { Args, Invocation } from "./fake-wire";
+import { passesProxy, recountMailboxes } from "./fake-writes";
+import type { FakeBody } from "./fake-writes";
 
-export { ACCOUNT, UPSTREAM } from "./fake-methods";
+export { ACCOUNT, UPSTREAM } from "./fake-wire";
+export type { FakeBody } from "./fake-writes";
 
 const JSON_TYPE = "application/json";
 const PROBLEM_TYPE = "application/problem+json";
@@ -53,8 +58,8 @@ export function mailbox(id: string, role: string | null = null): Mailbox {
       mayReadItems: true,
       mayAddItems: false,
       mayRemoveItems: false,
-      maySetSeen: false,
-      maySetKeywords: false,
+      maySetSeen: true,
+      maySetKeywords: true,
       mayCreateChild: false,
       mayRename: false,
       mayDelete: false,
@@ -119,12 +124,19 @@ export interface Recorded {
 export class FakeJmap {
   readonly mailboxes = new Map<string, Mailbox>();
   readonly emails = new Map<string, EmailHeader>();
+  readonly bodies = new Map<string, FakeBody>();
+  // The emails an Email/set refuses, each with its SetError type.
+  readonly refused = new Map<string, string>();
   readonly requests: Recorded[] = [];
   readonly queue: Response[] = [];
   changes: Change[] = [];
   sequence = 0;
   horizon = 0;
   maxObjectsInGet = 500;
+  maxObjectsInSet = 500;
+  readOnly = false;
+  // The server's own cap on a body value, whatever a request asks.
+  bodyValueCap = Number.POSITIVE_INFINITY;
   maxCallsInRequest = 16;
   queryLimit = 200;
   changesCap = Number.POSITIVE_INFINITY;
@@ -179,6 +191,11 @@ export class FakeJmap {
     this.note("Thread", held.threadId, left ? "updated" : "destroyed", false);
   }
 
+  // Every mailbox counts the emails the server holds.
+  recount(): void {
+    recountMailboxes(this, [...this.mailboxes.keys()]);
+  }
+
   // The log up to now is gone: a client behind it cannot calculate changes.
   forget(): void {
     this.changes = [];
@@ -210,13 +227,13 @@ export class FakeJmap {
     }
   }
 
-  // The proxy's own checks on a POST: the header every mutation carries
-  // and the JSON content type.
+  // The proxy's own checks on a POST: the header every mutation carries,
+  // the JSON content type and a body request its sanitizer can cover.
   private guarded(headers: Headers, body: unknown): Response {
     if (headers.get("x-requested-with") !== "huliho") {
       return json(403, { error: "missing_csrf_header" });
     }
-    if (headers.get("content-type") !== JSON_TYPE) {
+    if (headers.get("content-type") !== JSON_TYPE || !passesProxy(body)) {
       return json(400, { error: "invalid_request" });
     }
     return this.answer(body);
@@ -231,7 +248,7 @@ export class FakeJmap {
       maxConcurrentRequests: 4,
       maxCallsInRequest: this.maxCallsInRequest,
       maxObjectsInGet: this.maxObjectsInGet,
-      maxObjectsInSet: 0,
+      maxObjectsInSet: this.maxObjectsInSet,
       collationAlgorithms: ["i;unicode-casemap"],
     };
     const vendor = this.vendor ? { [HULIHO_CAPABILITY]: {} } : {};
@@ -241,7 +258,7 @@ export class FakeJmap {
         [UPSTREAM]: {
           name: "sanne@example.test",
           isPersonal: true,
-          isReadOnly: true,
+          isReadOnly: this.readOnly,
           accountCapabilities: { [MAIL_CAPABILITY]: {}, ...vendor },
         },
       },

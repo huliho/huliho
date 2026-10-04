@@ -18,6 +18,7 @@ const SESSION = {
   organization: { id: "org-1", name: "mira@example.com" },
   signInProviders: [],
   passwordChangeRequired: false,
+  privacyStrict: false,
 };
 
 // A hook that ends the session reaches the router, so its harness, one

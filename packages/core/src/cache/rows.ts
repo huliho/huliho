@@ -4,6 +4,7 @@
 
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
 import type { MemberState, ThreadRow } from "./store";
+import { SEEN } from "./unread";
 import type { WindowPage } from "./window";
 
 // One row of a list: the thread as this mailbox shows it, read from the
@@ -30,7 +31,6 @@ export interface FirstSync {
   total: number;
 }
 
-const SEEN = "$seen";
 const FLAGGED = "$flagged";
 
 function senderOf(email: EmailHeader): string | null {

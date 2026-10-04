@@ -92,7 +92,9 @@ The mail cache runs in a worker under `src/cache`: a shared worker
 (one per origin) or a dedicated worker per tab where the browser has
 none. It keeps the mailbox tree, the headers, the threads and the
 pages of each list in IndexedDB through Dexie: one database per origin
-with every row under its account id. Each account reconciles under a
+with every row under its account id. The database's second version
+adds a table for message bodies and one for the changes the server has
+not acknowledged. Each account reconciles under a
 Web Lock, so two workers on one database never interleave. The shell
 tells the worker which accounts the session holds and which mailbox
 the tab is looking at, renewed every thirty seconds while the tab

@@ -4,6 +4,7 @@
 
 import type { JmapClient } from "../jmap/client";
 import { WINDOW_SIZE } from "./limits";
+import { land } from "./overlay";
 import type { MailStore, QueryRow } from "./store";
 import { fetchAfter, fetchFirstPage, nothingFetched, pageOf } from "./window";
 import type { Fetched, Filler } from "./window";
@@ -71,7 +72,7 @@ export async function refreshFirstPage(
   const fetched = await fetchFirstPage(client, store, row.id);
   const refresh = refreshOf(row, fetched, await shownOf(store, client.accountId, row));
   const filler = await topUp(client, store, refresh);
-  await store.commit(client.accountId, {
+  await land(store, client.accountId, {
     emails: { put: [...fetched.emails, ...filler.emails] },
     threads: { put: [...fetched.threads, ...filler.threads] },
     queries: { put: [landed(refresh, filler.ids)] },

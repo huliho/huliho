@@ -4,7 +4,16 @@
 
 import type { ObjectType } from "../jmap/calls";
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
-import type { Batch, MailStore, QueryRow, StoreArea, ThreadRow } from "./store";
+import type {
+  Batch,
+  BodySize,
+  EmailBody,
+  MailStore,
+  PendingRow,
+  QueryRow,
+  StoreArea,
+  ThreadRow,
+} from "./store";
 
 const OBJECT_TYPES: readonly ObjectType[] = ["Mailbox", "Email", "Thread"];
 
@@ -17,6 +26,8 @@ interface Rows {
   emails: Map<string, EmailHeader>;
   threads: Map<string, ThreadRow>;
   queries: Map<string, QueryRow>;
+  bodies: Map<string, EmailBody>;
+  pending: Map<number, PendingRow>;
   states: Map<ObjectType, string>;
 }
 
@@ -26,6 +37,8 @@ function emptyRows(): Rows {
     emails: new Map(),
     threads: new Map(),
     queries: new Map(),
+    bodies: new Map(),
+    pending: new Map(),
     states: new Map(),
   };
 }
@@ -41,15 +54,20 @@ function pick<Row>(rows: Map<string, Row>, ids: readonly string[]): Map<string, 
   return found;
 }
 
-function clear(rows: Rows, area: StoreArea): void {
-  if (area === "mailboxes") {
-    rows.mailboxes.clear();
-  } else if (area === "emails") {
-    rows.emails.clear();
-  } else if (area === "threads") {
-    rows.threads.clear();
-  } else {
-    rows.queries.clear();
+function areaOf(rows: Rows, area: StoreArea): Map<string, unknown> | Map<number, unknown> {
+  switch (area) {
+    case "mailboxes":
+      return rows.mailboxes;
+    case "emails":
+      return rows.emails;
+    case "threads":
+      return rows.threads;
+    case "queries":
+      return rows.queries;
+    case "bodies":
+      return rows.bodies;
+    default:
+      return rows.pending;
   }
 }
 
@@ -65,10 +83,36 @@ function apply<Row extends { id: string }>(
   }
 }
 
+function applyPending(rows: Map<number, PendingRow>, change: Batch["pending"]): void {
+  for (const seq of change?.remove ?? []) {
+    rows.delete(seq);
+  }
+  for (const row of change?.put ?? []) {
+    rows.set(row.seq, structuredClone(row));
+  }
+}
+
+function applyStates(states: Map<ObjectType, string>, change: Batch["states"]): void {
+  for (const [type, state] of Object.entries(change ?? {})) {
+    if (!isObjectType(type)) {
+      continue;
+    }
+    if (state === null) {
+      states.delete(type);
+    } else {
+      states.set(type, state);
+    }
+  }
+}
+
+function isEmpty(rows: Rows): boolean {
+  return Object.values(rows).every((area: Map<unknown, unknown>) => area.size === 0);
+}
+
 // The store that holds everything in memory: the tests run on it and an
 // instance that keeps nothing on disk can run on it.
 export class MemoryMailStore implements MailStore {
-  private readonly accounts = new Map<string, Rows>();
+  private readonly held = new Map<string, Rows>();
 
   mailboxes(accountId: string): Promise<Mailbox[]> {
     return Promise.resolve(
@@ -99,35 +143,62 @@ export class MemoryMailStore implements MailStore {
     return Promise.resolve(this.rows(accountId).states.get(type) ?? null);
   }
 
+  body(accountId: string, emailId: string): Promise<EmailBody | null> {
+    const row = this.rows(accountId).bodies.get(emailId);
+    return Promise.resolve(row === undefined ? null : structuredClone(row));
+  }
+
+  bodySizes(): Promise<BodySize[]> {
+    const sizes = [...this.held].flatMap(([accountId, rows]) =>
+      [...rows.bodies.values()].map(({ id, fetchedAt, bytes }) => ({
+        accountId,
+        id,
+        fetchedAt,
+        bytes,
+      })),
+    );
+    return Promise.resolve(sizes);
+  }
+
+  pending(accountId: string): Promise<PendingRow[]> {
+    const rows = [...this.rows(accountId).pending.values()].map((row) => structuredClone(row));
+    return Promise.resolve(rows.toSorted((a, b) => a.seq - b.seq));
+  }
+
   commit(accountId: string, batch: Batch): Promise<void> {
     const rows = this.rows(accountId);
     for (const area of batch.reset ?? []) {
-      clear(rows, area);
+      areaOf(rows, area).clear();
     }
     apply(rows.mailboxes, batch.mailboxes);
     apply(rows.emails, batch.emails);
     apply(rows.threads, batch.threads);
     apply(rows.queries, batch.queries);
-    for (const [type, state] of Object.entries(batch.states ?? {})) {
-      if (!isObjectType(type)) {
-        continue;
-      }
-      if (state === null) {
-        rows.states.delete(type);
-      } else {
-        rows.states.set(type, state);
-      }
-    }
+    apply(rows.bodies, batch.bodies);
+    applyPending(rows.pending, batch.pending);
+    applyStates(rows.states, batch.states);
+    return Promise.resolve();
+  }
+
+  // The account ids that hold a row.
+  accounts(): Promise<string[]> {
+    const ids = [...this.held].filter(([, rows]) => !isEmpty(rows)).map(([id]) => id);
+    return Promise.resolve(ids);
+  }
+
+  // Forgets every row of every account.
+  destroy(): Promise<void> {
+    this.held.clear();
     return Promise.resolve();
   }
 
   private rows(accountId: string): Rows {
-    const held = this.accounts.get(accountId);
+    const held = this.held.get(accountId);
     if (held !== undefined) {
       return held;
     }
     const fresh = emptyRows();
-    this.accounts.set(accountId, fresh);
+    this.held.set(accountId, fresh);
     return fresh;
   }
 }

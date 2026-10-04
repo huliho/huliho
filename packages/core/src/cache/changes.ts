@@ -19,6 +19,7 @@ import type { z } from "../schema";
 import { landEmails, landThreads, mergeFolded, nothingFolded } from "./landing";
 import type { Folded, Held, Landing } from "./landing";
 import { fetchInChunks, fetchStates } from "./members";
+import { land, landRound } from "./overlay";
 import type { MailStore } from "./store";
 
 const mailboxAnswerSchema = getAnswerSchema(mailboxSchema);
@@ -64,7 +65,7 @@ export async function hydrateMailboxes(client: JmapClient, store: MailStore): Pr
   const calls = callsFor(session.accountId);
   const responses = await client.request([calls.get("Mailbox", null, "m")]);
   const got = answer(responses, "m", mailboxAnswerSchema);
-  await store.commit(client.accountId, {
+  await land(store, client.accountId, {
     reset: ["mailboxes"],
     mailboxes: { put: got.list },
     states: { Mailbox: got.state },
@@ -252,7 +253,8 @@ async function apply(client: JmapClient, store: MailStore, parsed: Parsed): Prom
   } else {
     await applyObjects(client, store, parsed, landing);
   }
-  await store.commit(accountId, landing.batch);
+  const shifted = await landRound(store, accountId, landing.batch);
+  landing.folded.mailboxes ||= shifted;
   if (parsed.mailbox === "refetch") {
     await hydrateMailboxes(client, store);
     landing.folded.mailboxes = true;

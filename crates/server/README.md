@@ -185,7 +185,8 @@ a fixed list of words. `GET /api/sender-policies` lists the signed-in
 user's per-sender policies, up to five thousand rows; `PUT
 /api/sender-policies/{sender}` writes one, the sender lowercased and at
 most 320 bytes, the key `remoteContent` with a value `{ "allow": true,
-"authserv": <id or null> }`; `DELETE
+"authserv": <id or null> }`, the id empty for a header that named no
+server; `DELETE
 /api/sender-policies/{sender}/{key}` removes one. `GET /api/session`
 carries `privacyStrict`, the instance's `[privacy] strict` setting.
 
