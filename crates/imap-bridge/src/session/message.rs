@@ -40,6 +40,49 @@ pub struct Selected {
     pub messages: u32,
 }
 
+/// A mailbox opened for writing with SELECT (RFC 3501 section 6.3.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Writable {
+    pub uid_validity: u32,
+    /// The flags a STORE changes for good, as the server spells them
+    /// (RFC 3501 section 7.1); `None` when the server named none, which
+    /// reads as every flag.
+    pub permanent: Option<Vec<String>>,
+}
+
+impl Writable {
+    /// Whether a STORE of the flag lasts: the server names the flag or,
+    /// for a keyword, `\*`.
+    #[must_use]
+    pub fn keeps(&self, flag: &str) -> bool {
+        let Some(permanent) = &self.permanent else {
+            return true;
+        };
+        let any_keyword = !flag.starts_with('\\') && permanent.iter().any(|found| found == "\\*");
+        any_keyword
+            || permanent
+                .iter()
+                .any(|found| found.eq_ignore_ascii_case(flag))
+    }
+}
+
+/// The messages one STORE names: with every UID at its full ten digits
+/// the set stays near one KiB of the command line.
+pub const MAX_STORE_UIDS: usize = 100;
+
+/// One STORE: the flags these messages of the selected mailbox gain or
+/// lose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoreAsk<'a> {
+    /// The messages, `MAX_STORE_UIDS` at most.
+    pub uids: &'a [u32],
+    /// The flags as the wire carries them: a system flag a keyword maps
+    /// to or an atom.
+    pub flags: &'a [String],
+    /// Whether the messages gain the flags; they lose them otherwise.
+    pub add: bool,
+}
+
 /// The fixed words of an answer with more messages than one command may
 /// carry.
 pub const MESSAGE_LIMIT: &str = "the answer passes the message limit";

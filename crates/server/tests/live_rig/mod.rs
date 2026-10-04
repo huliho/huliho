@@ -5,9 +5,11 @@
 //! The compose targets as the suite reaches them through the router:
 //! an instance on the compose rules with the bridge on quick clocks, one
 //! account per target and the JMAP calls a step makes. The second
-//! connection that edits the mailbox is `second`.
+//! connection that edits the mailbox is `second`; the steps of a
+//! message that is opened are `reading`.
 
 pub mod corpus;
+pub mod reading;
 mod second;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -27,7 +29,7 @@ use huliho_server::upstream::Upstream;
 use serde_json::{Value, json};
 use tokio::time::sleep;
 
-pub use second::{Editor, clear, editor, expunge, flag, seed, within};
+pub use second::{Editor, clear, editor, expunge, flag, seed, seed_rich, seen, within};
 
 use crate::answers::answer;
 use crate::common::{api_state, router_on, router_with};

@@ -7,8 +7,10 @@
 //! script advertises.
 
 use std::collections::BTreeSet;
+use std::fmt::Write as _;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use super::fetch;
 use super::folder::Folder;
 use super::messages::{Behavior, Message};
 
@@ -177,6 +179,52 @@ impl Mailboxes {
                 message.modseq = modseq;
             }
         });
+    }
+
+    /// A STORE on the folder of that name: the messages of the set gain
+    /// or lose the flags and their mod-sequence moves past the
+    /// folder's. Answers the line a server with CONDSTORE sends per
+    /// message even to a silent STORE (RFC 7162 section 3.1.3); `None`
+    /// when the folder does not keep one of the flags, with nothing
+    /// changed.
+    pub(super) fn store(
+        &self,
+        name: &str,
+        (set, flags): (&str, &[&str]),
+        add: bool,
+    ) -> Option<String> {
+        let mut lines = None;
+        let condstore = self.has(Extension::Condstore);
+        self.edit(name, |folder| {
+            if !flags.iter().all(|flag| folder.keeps(flag)) {
+                return;
+            }
+            let (top, modseq) = (folder.top(), folder.highest_modseq + 1);
+            let mut answered = String::new();
+            for (index, message) in folder.mail.iter_mut().enumerate() {
+                if !fetch::in_set(set, message.uid, top) {
+                    continue;
+                }
+                message
+                    .flags
+                    .retain(|held| !flags.iter().any(|flag| flag.eq_ignore_ascii_case(held)));
+                if add {
+                    message
+                        .flags
+                        .extend(flags.iter().map(|flag| (*flag).to_owned()));
+                }
+                message.modseq = modseq;
+                if condstore {
+                    let (number, uid) = (index + 1, message.uid);
+                    let _ = write!(
+                        answered,
+                        "* {number} FETCH (UID {uid} MODSEQ ({modseq}))\r\n"
+                    );
+                }
+            }
+            lines = Some(answered);
+        });
+        lines
     }
 
     /// One edit of a folder with its counts brought up to date.

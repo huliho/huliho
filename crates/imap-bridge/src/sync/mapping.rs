@@ -99,12 +99,37 @@ fn keyword(flag: &str) -> Option<String> {
     if let Some((_, keyword)) = SYSTEM_KEYWORDS.iter().find(|(name, _)| is(flag, name)) {
         return Some((*keyword).to_owned());
     }
-    let valid = !flag.is_empty()
-        && flag.len() <= MAX_KEYWORD_BYTES
-        && flag
+    canonical_keyword(flag)
+}
+
+/// A keyword as the rows hold it, in lower case; `None` for a text that
+/// is no keyword (RFC 8621 section 4.1.1).
+#[must_use]
+pub fn canonical_keyword(text: &str) -> Option<String> {
+    let valid = !text.is_empty()
+        && text.len() <= MAX_KEYWORD_BYTES
+        && text
             .bytes()
             .all(|byte| byte.is_ascii_graphic() && !KEYWORD_FORBIDDEN.contains(&byte));
-    valid.then(|| flag.to_ascii_lowercase())
+    valid.then(|| text.to_ascii_lowercase())
+}
+
+/// The flag a keyword in lower case is stored as: the four system
+/// keywords by their flags, any other keyword as itself, which is an
+/// atom since a keyword holds no atom special.
+#[must_use]
+pub fn flag(keyword: &str) -> String {
+    SYSTEM_KEYWORDS
+        .iter()
+        .find(|(_, name)| *name == keyword)
+        .map_or(keyword, |(flag, _)| flag)
+        .to_owned()
+}
+
+/// Whether the flag is one of the four a system keyword maps to.
+#[must_use]
+pub fn is_system_flag(flag: &str) -> bool {
+    SYSTEM_KEYWORDS.iter().any(|(name, _)| *name == flag)
 }
 
 /// Dovecot's two flags win where present; otherwise the structure

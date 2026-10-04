@@ -147,7 +147,7 @@ fn peeks(items: &str) -> Vec<(String, usize)> {
 
 /// Whether a UID is in a sequence set of ranges and single numbers;
 /// `*` is the highest UID the folder holds (RFC 3501 section 9).
-fn in_set(set: &str, uid: u32, top: u32) -> bool {
+pub(super) fn in_set(set: &str, uid: u32, top: u32) -> bool {
     set.split(',').any(|part| {
         let number = |text: &str| {
             if text == "*" {

@@ -7,7 +7,7 @@
 //! from the store. A `/changes` call refreshes the account first when a
 //! refresh is due; an `Email/get` that asks for previews the rows lack
 //! or for bodies fetches them and answers again, with every call after
-//! it.
+//! it; an `Email/set` stores its keywords on the server the same way.
 
 mod bodies;
 mod body;
@@ -23,8 +23,10 @@ mod query;
 mod references;
 mod request;
 mod session;
+mod set;
 mod thread;
 mod values;
+mod write;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -46,8 +48,8 @@ pub use request::handle;
 pub use session::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, Urls, session_object};
 pub use values::{MAX_BODY_VALUE_BYTES, MAX_BODY_WINDOWS};
 
-/// A Request object of one MiB at most, room for an `Email/set` with a
-/// body once one exists.
+/// A Request object of one MiB at most, room for an `Email/set` over
+/// every object it may name and for one with a body once that exists.
 pub const MAX_SIZE_REQUEST: usize = 1024 * 1024;
 
 /// Requests in flight per account; the host's semaphore enforces it.
@@ -58,6 +60,11 @@ pub const MAX_CALLS_IN_REQUEST: usize = 16;
 
 /// Ids in one `/get`.
 pub const MAX_OBJECTS_IN_GET: usize = 500;
+
+/// Objects in one `/set`, the floor RFC 8620 section 2 suggests: one
+/// transaction writes a row per message and mailbox, the size of a sync
+/// batch.
+pub const MAX_OBJECTS_IN_SET: usize = 500;
 
 /// Why a request was not run (RFC 8620 section 3.6.1); the host answers
 /// a problem details object with status 400, or 500 for the store and
@@ -166,6 +173,11 @@ pub(crate) struct Context<'a> {
     /// What the server holds of them, set for the call on a later pass;
     /// `None` on the first.
     bodies: RefCell<Option<&'a bodies::Bodies>>,
+    /// What an `Email/set` wants stored on the server, noted on the
+    /// first pass.
+    set_ask: RefCell<Option<set::SetAsk>>,
+    /// What came of that, set for the call on a later pass.
+    written: RefCell<Option<&'a set::Outcome>>,
 }
 
 impl Context<'_> {
@@ -192,6 +204,9 @@ pub(crate) enum MethodError {
     UnsupportedFilter,
     UnsupportedSort,
     AnchorNotFound,
+    /// `ifInState` named another state than the account stands at (RFC
+    /// 8620 section 5.3).
+    StateMismatch,
     ServerFail,
     /// The server behind the account did not answer in time; the same
     /// call may succeed later (RFC 8620 section 3.6.2).
@@ -210,6 +225,7 @@ impl MethodError {
             Self::UnsupportedFilter => "unsupportedFilter",
             Self::UnsupportedSort => "unsupportedSort",
             Self::AnchorNotFound => "anchorNotFound",
+            Self::StateMismatch => "stateMismatch",
             Self::ServerFail => "serverFail",
             Self::ServerUnavailable => "serverUnavailable",
         };
@@ -251,6 +267,7 @@ fn dispatch(
         "Mailbox/get" if context.using.mail => mailbox::get(context, arguments),
         "Mailbox/changes" if context.using.mail => changes::mailbox(context, arguments),
         "Email/get" if context.using.mail => email::get(context, arguments),
+        "Email/set" if context.using.mail => set::email(context, arguments),
         "Email/query" if context.using.mail => query::email(context, arguments),
         "Email/changes" if context.using.mail => changes::email(context, arguments),
         "Thread/get" if context.using.mail => thread::get(context, arguments),
@@ -322,6 +339,7 @@ mod tests {
             (MethodError::UnsupportedFilter, "unsupportedFilter"),
             (MethodError::UnsupportedSort, "unsupportedSort"),
             (MethodError::AnchorNotFound, "anchorNotFound"),
+            (MethodError::StateMismatch, "stateMismatch"),
             (MethodError::ServerUnavailable, "serverUnavailable"),
         ] {
             assert_eq!(error.object()["type"], kind);

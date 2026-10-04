@@ -69,7 +69,7 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
     assert_eq!(core["maxConcurrentRequests"], 4);
     assert_eq!(core["maxCallsInRequest"], 16);
     assert_eq!(core["maxObjectsInGet"], 500);
-    assert_eq!(core["maxObjectsInSet"], 0);
+    assert_eq!(core["maxObjectsInSet"], 500);
     assert_eq!(core["collationAlgorithms"], json!(["i;unicode-casemap"]));
     assert_eq!(session["capabilities"][MAIL_CAPABILITY], json!({}));
     let mail = &session["accounts"][ACCOUNT]["accountCapabilities"][MAIL_CAPABILITY];
@@ -91,7 +91,7 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
     assert_eq!(account["name"], ADDRESS);
     assert_eq!(
         (&account["isPersonal"], &account["isReadOnly"]),
-        (&json!(true), &json!(true))
+        (&json!(true), &json!(false))
     );
     assert_eq!(
         keys(&account["accountCapabilities"]),
@@ -129,8 +129,12 @@ async fn mailbox_get_answers_every_mailbox_with_its_rights_and_counts_rfc8621_2(
         (&json!(0), &json!(0))
     );
     assert_eq!(inbox["isSubscribed"], true);
-    assert_eq!(inbox["myRights"]["mayReadItems"], true);
-    assert_eq!(inbox["myRights"]["mayAddItems"], false);
+    for granted in ["mayReadItems", "maySetSeen", "maySetKeywords"] {
+        assert_eq!(inbox["myRights"][granted], true, "{granted}");
+    }
+    for withheld in ["mayAddItems", "mayRemoveItems", "mayRename", "mayDelete"] {
+        assert_eq!(inbox["myRights"][withheld], false, "{withheld}");
+    }
     assert_eq!(keys(&inbox["myRights"]).len(), 9);
     assert_eq!(inbox.get("syncedEmails"), None);
     assert_eq!(list[5]["role"], "trash");

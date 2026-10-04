@@ -193,7 +193,7 @@ impl Protocol for Script {
                 "LIST" | "LSUB" | "STATUS" if phase.is_tls() => {
                     self.mailboxes.answer(&verb, command, tag)
                 }
-                "EXAMINE" | "UID" | "NOOP" if phase.is_tls() => {
+                "EXAMINE" | "SELECT" | "UID" | "NOOP" if phase.is_tls() => {
                     if conversation.stalls(command, self.mailboxes.behavior) {
                         std::future::pending::<()>().await;
                     }

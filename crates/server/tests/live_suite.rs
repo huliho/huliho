@@ -4,13 +4,16 @@
 
 //! The scenario suite against the compose targets through the router:
 //! Cyrus over JMAP through the proxy and Dovecot through the bridge run
-//! the same steps on the same seeded corpus. Then the latency bound of
+//! the same steps on the same seeded corpus, a message opened, its
+//! attachments downloaded and its mark as read among them. Then the
+//! latency bound of
 //! an inbox window on the synced Dovecot mailbox and one Gmail account
 //! through the same routes when the environment names it.
 
 #![cfg(feature = "live-targets")]
 
 mod answers;
+mod blob_answers;
 mod common;
 mod fake_dns;
 mod live_rig;
@@ -22,12 +25,16 @@ use std::time::{Duration, Instant};
 use live_rig::corpus::THREAD_SIZE;
 use live_rig::{
     Editor, Live, Mail, Target, Window, clear, corpus_size, editor, expunge, flag, listed,
-    number_of, seed, within,
+    number_of, reading, seed, within,
 };
 use serde_json::{Value, json};
 
 /// The scenario corpus: three threads.
 const SCENARIO_CORPUS: u32 = 3 * THREAD_SIZE;
+
+/// The number of the rich message a second connection delivers to be
+/// opened, past the corpus and the plain delivery.
+const OPENED: u32 = SCENARIO_CORPUS + 2;
 
 /// The inbox window the suite asks for.
 const WINDOW: usize = 5;
@@ -119,8 +126,9 @@ async fn leave(live: &Live, mail: &Mail, mut editor: Editor) {
 }
 
 /// The steps every target runs: the mailbox list with its roles, the
-/// inbox window, thread grouping, then a delivery, a flag and an
-/// expunge from the second connection.
+/// inbox window, thread grouping, then a delivery, a rich message
+/// opened, downloaded and marked read, a flag and an expunge from the
+/// second connection.
 async fn suite(target: Target) {
     let live = Live::start().await;
     let mut editor = editor(target).await;
@@ -168,6 +176,7 @@ async fn suite(target: Target) {
     assert_eq!(corpus.len(), usize::try_from(SCENARIO_CORPUS).unwrap());
     threads(&live, &mail, &inbox, &corpus).await;
     delivery(&live, &mail, &inbox, &mut editor).await;
+    reading::opened(&live, &mail, &mut editor, OPENED).await;
     flagging(&live, &mail, &corpus, &mut editor).await;
     expunging(&live, &mail, &corpus, &mut editor).await;
     leave(&live, &mail, editor).await;
