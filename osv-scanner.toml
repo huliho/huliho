@@ -7,3 +7,7 @@ reason = "extract-zip sits under lighthouse's browser fetcher, runs as developme
 [[IgnoredVulns]]
 id = "GHSA-7pqw-9j4j-h8q3"
 reason = "extract-zip sits under lighthouse's browser fetcher, runs as development tooling on archives from Google's own CDN and has no fixed release"
+
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+reason = "braces sits under stylelint's file matching, runs as development tooling on the repository's own glob patterns and has no fixed release"
