@@ -13,8 +13,8 @@ import type { MailboxBody } from "./mail-mocks";
 import { mockSignedIn } from "./session-mocks";
 import { VIEWPORTS } from "./sweep";
 
-// The frame budget at 60 Hz: the main thread's work for one frame, from
-// the scroll it answers to the paint, must fit in it.
+// The frame budget at 60 Hz: the main thread's own work for one frame,
+// from the scroll it answers to the paint, must fit in it.
 const FRAME_BUDGET_MS = 16.7;
 // From a keypress to the painted focus.
 const INTERACTION_BUDGET_MS = 100;
@@ -36,6 +36,17 @@ const CORPUS_UNREAD = 300;
 // The scroll and the trace need longer than a plain test.
 const TRACE_TIMEOUT_MS = 180_000;
 const PERCENTILE = 0.95;
+// The trace holds the main thread's tasks and the marks the frames leave.
+const TRACE_CATEGORIES = ["toplevel", "blink.user_timing"];
+// The marks a frame leaves in the trace: one in its animation callback,
+// one in the timer queued there, which runs once the frame has painted
+// and the tasks queued before it are done.
+const FRAME_MARK = "frame";
+const FRAME_END_MARK = "frame-end";
+// One task of a thread, with the thread's own CPU time in tdur.
+const TASK_EVENT = "ThreadControllerImpl::RunTask";
+// Trace times are in microseconds.
+const MICROSECONDS_PER_MS = 1000;
 
 const ROWS = [accountRow(FIXED_NOW)];
 
@@ -61,51 +72,134 @@ async function openInbox(page: Page): Promise<void> {
   await expect(page.getByRole("grid").locator('[aria-rowindex="1"]')).toBeVisible();
 }
 
-// Scrolls the grid by rows on every animation frame and answers how
-// long the main thread was busy for each frame: from the scroll event
-// that opens it, through the render and the layout, to the paint, which
-// the task after the frame marks the end of.
-function scrollFrames(page: Page): Promise<number[]> {
+// Scrolls the grid by rows on every animation frame and marks each frame
+// in the trace twice: in its animation callback and in the timer queued
+// there. The run ends in the task after the last timer, so that timer's
+// task is whole in the trace.
+function scrollFrames(page: Page): Promise<void> {
   return page.evaluate(
-    async ({ frames, rowsPerFrame }) => {
+    async ({ frames, rowsPerFrame, mark, endMark }) => {
       const grid = document.querySelector('[role="grid"]');
       const row = grid?.querySelector('[role="row"]');
       if (!(grid instanceof HTMLElement) || !(row instanceof HTMLElement)) {
         throw new Error("the grid has no rows");
       }
       const step = row.getBoundingClientRect().height * rowsPerFrame;
-      const busy: number[] = [];
-      let opened: number | null = null;
-      document.addEventListener(
-        "scroll",
-        () => {
-          opened ??= performance.now();
-        },
-        { capture: true },
-      );
       await new Promise<void>((resolve) => {
-        let ticks = 0;
-        const tick = (now: number): void => {
-          const start = opened ?? now;
-          opened = null;
+        let scrolled = 0;
+        let closed = 0;
+        const tick = (): void => {
+          performance.mark(mark);
           grid.scrollTop += step;
-          ticks += 1;
+          scrolled += 1;
           setTimeout(() => {
-            busy.push(performance.now() - start);
-            if (busy.length === frames) {
-              resolve();
+            performance.mark(endMark);
+            closed += 1;
+            if (closed === frames) {
+              setTimeout(resolve, 0);
             }
           }, 0);
-          if (ticks < frames) {
+          if (scrolled < frames) {
             requestAnimationFrame(tick);
           }
         };
         requestAnimationFrame(tick);
       });
-      return busy;
     },
-    { frames: SCROLL_FRAMES, rowsPerFrame: ROWS_PER_FRAME },
+    {
+      frames: SCROLL_FRAMES,
+      rowsPerFrame: ROWS_PER_FRAME,
+      mark: FRAME_MARK,
+      endMark: FRAME_END_MARK,
+    },
   );
+}
+
+// A trace event in the fields the frames are read from. Times are in
+// microseconds; an instant has no length and a task too short to measure
+// carries no CPU time.
+interface TraceEvent {
+  ph: string;
+  cat: string;
+  name: string;
+  pid: number;
+  tid: number;
+  ts: number;
+  dur?: number;
+  tdur?: number;
+}
+
+function isTraceEvent(value: unknown): value is TraceEvent {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const strings = ["ph", "cat", "name"].every((key) => typeof Reflect.get(value, key) === "string");
+  const numbers = ["pid", "tid", "ts"].every((key) => typeof Reflect.get(value, key) === "number");
+  const spans = ["dur", "tdur"].every((key) =>
+    ["undefined", "number"].includes(typeof Reflect.get(value, key)),
+  );
+  return strings && numbers && spans;
+}
+
+// The events of a trace as Chromium writes it.
+function eventsOf(trace: Buffer): TraceEvent[] {
+  const parsed: unknown = JSON.parse(trace.toString());
+  const listed: unknown =
+    typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, "traceEvents") : null;
+  return Array.isArray(listed) ? listed.filter((event) => isTraceEvent(event)) : [];
+}
+
+function isMark(event: TraceEvent, name: string): boolean {
+  return event.ph === "I" && event.cat === "blink.user_timing" && event.name === name;
+}
+
+// The marks of one name, in the order they were set.
+function marksOf(events: readonly TraceEvent[], name: string): TraceEvent[] {
+  return events.filter((event) => isMark(event, name)).toSorted((one, other) => one.ts - other.ts);
+}
+
+// A task that ran to its end inside the trace.
+function isWholeTask(event: TraceEvent): boolean {
+  return event.ph === "X" && event.name === TASK_EVENT;
+}
+
+// The task a mark was left in.
+function taskHolding(tasks: readonly TraceEvent[], mark: TraceEvent): TraceEvent {
+  const task = tasks.find(
+    (candidate) => candidate.ts <= mark.ts && mark.ts <= candidate.ts + (candidate.dur ?? 0),
+  );
+  if (task === undefined) {
+    throw new Error("a frame mark lies outside every task");
+  }
+  return task;
+}
+
+// The CPU time of the tasks from one through another, in milliseconds.
+function cpuThrough(tasks: readonly TraceEvent[], from: TraceEvent, through: TraceEvent): number {
+  const inside = tasks.filter((task) => task.ts >= from.ts && task.ts <= through.ts);
+  return inside.reduce((sum, task) => sum + (task.tdur ?? 0), 0) / MICROSECONDS_PER_MS;
+}
+
+// Each frame's CPU time: the thread time of the task holding its first
+// mark, which carries the scroll event, the render, the layout and the
+// paint, plus every task of the thread after it through the one holding
+// its closing mark. The main thread is the one the marks landed on.
+function frameCpuOf(events: readonly TraceEvent[]): number[] {
+  const marks = marksOf(events, FRAME_MARK);
+  const endMarks = marksOf(events, FRAME_END_MARK);
+  const first = marks[0];
+  if (first === undefined || endMarks.length !== marks.length) {
+    throw new Error("the trace holds no frame or an unclosed one");
+  }
+  const tasks = events.filter(
+    (event) => isWholeTask(event) && event.pid === first.pid && event.tid === first.tid,
+  );
+  return marks.flatMap((mark, frame) => {
+    const endMark = endMarks.at(frame);
+    return endMark === undefined
+      ? []
+      : [cpuThrough(tasks, taskHolding(tasks, mark), taskHolding(tasks, endMark))];
+  });
 }
 
 interface Trace {
@@ -115,8 +209,8 @@ interface Trace {
   p95: number;
 }
 
-function traceOf(busy: readonly number[]): Trace {
-  const measured = busy.slice(WARM_UP_FRAMES);
+function traceOf(cpu: readonly number[]): Trace {
+  const measured = cpu.slice(WARM_UP_FRAMES);
   const sorted = measured.toSorted((one, other) => one - other);
   return {
     long: measured.flatMap((work, frame) =>
@@ -127,13 +221,32 @@ function traceOf(busy: readonly number[]): Trace {
   };
 }
 
-async function expectSmoothScroll(page: Page, profile: string): Promise<void> {
-  const trace = traceOf(await scrollFrames(page));
-  test.info().annotations.push({
-    type: `${profile} frames`,
-    description: `max ${trace.max.toFixed(1)} ms, p95 ${trace.p95.toFixed(1)} ms, long at ${trace.long.join(", ") || "none"}`,
-  });
-  expect(trace.long, `${profile}: frames past ${String(FRAME_BUDGET_MS)} ms`).toEqual([]);
+interface Profile {
+  name: string;
+  benchmarkIndex: number;
+  slowdown: number;
+}
+
+// Traces the fling and holds every frame to the budget. The figures go
+// to stdout first, so the log carries them whatever the outcome.
+async function expectSmoothScroll(page: Page, profile: Profile): Promise<void> {
+  const browser = page.context().browser();
+  if (browser === null) {
+    throw new Error("the page has no browser to trace");
+  }
+  await browser.startTracing(page, { categories: TRACE_CATEGORIES });
+  await scrollFrames(page);
+  const cpu = frameCpuOf(eventsOf(await browser.stopTracing()));
+  const trace = traceOf(cpu);
+  console.log(
+    `${profile.name} frames: benchmark index ${profile.benchmarkIndex.toFixed(0)}, CPU slowed ${profile.slowdown.toFixed(1)}x, max ${trace.max.toFixed(1)} ms, p95 ${trace.p95.toFixed(1)} ms, long at ${trace.long.join(", ") || "none"}`,
+  );
+  expect(cpu, `${profile.name}: frames in the trace`).toHaveLength(SCROLL_FRAMES);
+  expect(trace.long, `${profile.name}: frames past ${String(FRAME_BUDGET_MS)} ms`).toEqual([]);
+}
+
+function benchmarkIndexOf(page: Page): Promise<number> {
+  return page.evaluate(pageFunctions.computeBenchmarkIndex);
 }
 
 test("the fifty-thousand-row list scrolls without a long frame on the desktop profile", async ({
@@ -141,13 +254,10 @@ test("the fifty-thousand-row list scrolls without a long frame on the desktop pr
 }) => {
   test.setTimeout(TRACE_TIMEOUT_MS);
   await page.setViewportSize(VIEWPORTS[1]);
+  const benchmarkIndex = await benchmarkIndexOf(page);
   await openInbox(page);
-  await expectSmoothScroll(page, "desktop");
+  await expectSmoothScroll(page, { name: "desktop", benchmarkIndex, slowdown: NO_SLOWDOWN });
 });
-
-function benchmarkIndexOf(page: Page): Promise<number> {
-  return page.evaluate(pageFunctions.computeBenchmarkIndex);
-}
 
 test("the fifty-thousand-row list scrolls without a long frame on the phone profile", async ({
   page,
@@ -156,14 +266,10 @@ test("the fifty-thousand-row list scrolls without a long frame on the phone prof
   await page.setViewportSize(VIEWPORTS[0]);
   const benchmarkIndex = await benchmarkIndexOf(page);
   const slowdown = Math.max(NO_SLOWDOWN, benchmarkIndex / MID_RANGE_PHONE_BENCHMARK_INDEX);
-  test.info().annotations.push({
-    type: "phone profile",
-    description: `benchmark index ${benchmarkIndex.toFixed(0)}, CPU slowed ${slowdown.toFixed(1)}x`,
-  });
   const session = await page.context().newCDPSession(page);
   await session.send("Emulation.setCPUThrottlingRate", { rate: slowdown });
   await openInbox(page);
-  await expectSmoothScroll(page, "phone");
+  await expectSmoothScroll(page, { name: "phone", benchmarkIndex, slowdown });
   await session.send("Emulation.setCPUThrottlingRate", { rate: NO_SLOWDOWN });
 });
 

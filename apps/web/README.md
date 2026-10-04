@@ -179,10 +179,15 @@ tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component
 workshop. The frame traces run alone, without the rest of the suite,
 with `pnpm exec playwright test --project scroll-budget --no-deps`.
-The phone trace slows the CPU by the host's Lighthouse benchmark index
-over 1000, the middle of the high-end mobile bracket in Lighthouse's
-throttling doc, so a mid-range phone means the same on every machine;
-the run's annotations show the index and the factor.
+A frame counts the main thread's own CPU time, read from a Chromium
+trace: the task that paints it (the scroll event, the render, the
+layout and the paint) and the tasks that run before the frame's closing
+timer. Time the thread waits for a core does not count. The phone
+trace slows the CPU by the host's Lighthouse benchmark index over 1000,
+the middle of the high-end mobile bracket in Lighthouse's throttling
+doc, so a mid-range phone means the same on every machine. Each trace
+prints one line with the index, the factor, the longest frame, the 95th
+percentile and any frame past the budget.
 
 `pnpm lighthouse` audits the built app against the performance and
 accessibility budgets in `lighthouserc.cjs`.
