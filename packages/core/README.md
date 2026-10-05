@@ -33,18 +33,28 @@ to an email's keywords into the rows at once and logs it;
 `flushPending` sends one round of the log as one `Email/set`, drops
 what the server acknowledged and takes back what it refused. Rows that land
 from the server while a change waits take that change again, so a poll
-leaves a message the user read as read. `MailCache` is what an adapter
-offers the query hooks: the tree, a page, a thread and the reveal, each
-answered from the cache. A store that keeps rows on disk checks them
-against the row schemas when they come back.
+leaves a message the user read as read. `mayPatch` says whether the
+account and the mailboxes of an email take a change at all, so one the
+server said it refuses is never logged. `MailCache` is what an adapter
+offers the query hooks: the tree, a page, a thread, the reveal, the
+body of one email with where its parts download from and one change to
+an email, each answered from the cache. A store that keeps rows on
+disk checks them against the row schemas when they come back.
 
 It reads what a message says about itself as well. `unflow` joins the
 soft line breaks of a flowed text part (RFC 3676). The topmost
 Authentication-Results header becomes one verdict per method (RFC
 8601), from a parser with a bound on bytes and clauses; `grantLoads`
 decides from it whether a sender's grant lets a message load remote
-content. `classifyImageUrl` names what an image URL in a mail is, by
-the policy the server's sanitizer holds as well.
+content. `classifyImageUrl` and `classifyLinkUrl` name what an image
+URL and a link's target in a mail are, by the policy the server's
+sanitizer holds as well; `linkText` is a link's text as a reader sees
+it and `linkRisk` names why a link asks the reader before it opens.
+`downloadUrl` fills in the session's download template for one blob
+(RFC 8620 section 6.2).
+
+The manifest names the one module with a side effect on import, the
+one that configures zod, so a bundle carries only what it uses.
 
 `@huliho/core/testing` exports the JMAP server the cache tests run
 against, so an adapter's tests can drive the same reconciliation.

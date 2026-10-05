@@ -77,6 +77,7 @@ function serve(count: number): FakeJmap {
 function coordinate(posted: CacheMessage[]): Coordinator {
   return new Coordinator({
     store: store(),
+    choose: () => "kept",
     locks: locks(),
     post: (message) => {
       posted.push(message);
@@ -128,7 +129,7 @@ async function attached(count: number): Promise<Rig> {
   const coordinator = coordinate(posted);
   const tab = coordinator.api();
   await tab.persisted();
-  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null });
+  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null, strict: false });
   await settled(posts(posted, 1));
   return { server, posted, coordinator, tab };
 }
@@ -158,7 +159,7 @@ test("an attached account gets its mailbox tree at once and answers it from the 
 test("the poll follows the changes at its interval and names what moved", async () => {
   const { server, posted, tab } = await attached(3);
   await tab.window(ACCOUNT, "inbox", 0);
-  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: INBOX });
+  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: INBOX, strict: false });
   server.addEmail(email("e4", { receivedAt: at(4) }));
   posted.length = 0;
   await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS - BEFORE_POLL_MS);
@@ -179,7 +180,12 @@ test("a list nobody watches is dropped by the poll while a watched one keeps its
   await second.persisted();
   await tab.window(ACCOUNT, "inbox", 0);
   await tab.window(ACCOUNT, "archive", 0);
-  await second.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: INBOX });
+  await second.attach({
+    accounts: [ACCOUNT],
+    listedAt: Date.now(),
+    watching: INBOX,
+    strict: false,
+  });
   server.addEmail(email("e4", { receivedAt: at(4) }));
   server.addEmail(email("a1", { mailboxIds: ["archive"], receivedAt: at(5) }));
   await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS);
@@ -191,7 +197,7 @@ test("a list nobody watches is dropped by the poll while a watched one keeps its
 test("a watch the tab stops renewing lapses with the lease and its list is dropped", async () => {
   const { server, posted, tab } = await attached(3);
   await tab.window(ACCOUNT, "inbox", 0);
-  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: INBOX });
+  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: INBOX, strict: false });
   server.addEmail(email("e4", { receivedAt: at(4) }));
   await polled(posted, Math.floor(LEASE_MS / CHANGES_POLL_MS));
   expect((await store().query(ACCOUNT, "inbox"))?.pending).toEqual(["e4"]);
@@ -206,7 +212,7 @@ test("a fresh list drops the rows an earlier session left for another account", 
   const posted: CacheMessage[] = [];
   const later = coordinate(posted).api();
   await later.persisted();
-  await later.attach({ accounts: [], listedAt: Date.now(), watching: null });
+  await later.attach({ accounts: [], listedAt: Date.now(), watching: null, strict: false });
   await settled(posts(posted, 1));
   expect(posted).toEqual([TREE_DROPPED]);
   expect(await store().mailboxes(ACCOUNT)).toEqual([]);
@@ -221,7 +227,7 @@ test("a mailbox in its first sync brings the next poll closer until it is done",
   const posted: CacheMessage[] = [];
   const tab = coordinate(posted).api();
   await tab.persisted();
-  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null });
+  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null, strict: false });
   await settled(posts(posted, 1));
   await vi.advanceTimersByTimeAsync(FIRST_SYNC_POLL_MS);
   await settled(posts(posted, 2));
@@ -301,23 +307,28 @@ test("a limit failure waits for the next poll and a lost session stops every acc
   await drained();
   expect(server.posted()).toHaveLength(4);
   // A list from before the session ended starts nothing; one fetched after it does.
-  await tab.attach({ accounts: [ACCOUNT], listedAt: listedBefore, watching: null });
+  await tab.attach({ accounts: [ACCOUNT], listedAt: listedBefore, watching: null, strict: false });
   await drained();
   expect(server.posted()).toHaveLength(4);
-  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null });
+  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null, strict: false });
   await settled(requests(server, 5));
 });
 
 test("an older list never undoes a newer one", async () => {
   const { server, posted, coordinator } = await attached(3);
   const second = coordinator.api();
-  await second.attach({ accounts: [], listedAt: Date.now() - CHANGES_POLL_MS, watching: null });
+  await second.attach({
+    accounts: [],
+    listedAt: Date.now() - CHANGES_POLL_MS,
+    watching: null,
+    strict: false,
+  });
   await drained();
   expect(posted).toHaveLength(1);
   await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS);
   await settled(posts(posted, 2));
   expect(server.posted()).toHaveLength(2);
-  await second.attach({ accounts: [], listedAt: Date.now(), watching: null });
+  await second.attach({ accounts: [], listedAt: Date.now(), watching: null, strict: false });
   await settled(posts(posted, 3));
   expect(posted[2]).toEqual(TREE_DROPPED);
 });
@@ -356,7 +367,7 @@ test("an account that left the list stops polling and leaves no rows", async () 
   const { server, posted, tab } = await attached(3);
   await tab.window(ACCOUNT, "inbox", 0);
   posted.length = 0;
-  await tab.attach({ accounts: [], listedAt: Date.now(), watching: null });
+  await tab.attach({ accounts: [], listedAt: Date.now(), watching: null, strict: false });
   await settled(posts(posted, 1));
   expect(posted).toEqual([TREE_DROPPED]);
   expect(await store().mailboxes(ACCOUNT)).toEqual([]);
@@ -370,7 +381,7 @@ test("an account that left the list stops polling and leaves no rows", async () 
 test("reveal lands the new mail and tells every tab; a thread reads from the store", async () => {
   const { server, posted, tab } = await attached(3);
   await tab.window(ACCOUNT, "inbox", 0);
-  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: INBOX });
+  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: INBOX, strict: false });
   server.addEmail(email("e4", { receivedAt: at(4) }));
   await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS);
   await settled(posts(posted, 2));
@@ -415,7 +426,7 @@ test("a write held for persistence lands nothing once the database was cleared",
   const server = serve(3);
   const posted: CacheMessage[] = [];
   const tab = coordinate(posted).api();
-  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null });
+  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null, strict: false });
   await settled(requests(server, 1));
   await drained();
   await tab.clear("tab-1");
@@ -434,7 +445,7 @@ test("clear stops the accounts, deletes the database and says so", async () => {
   expect(await store().mailboxes(ACCOUNT)).toEqual([]);
   const sent = server.posted().length;
   // A renewal of a list fetched at or before the sign-out starts nothing.
-  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null });
+  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null, strict: false });
   await vi.advanceTimersByTimeAsync(2 * CHANGES_POLL_MS);
   await drained();
   expect(server.posted()).toHaveLength(sent);

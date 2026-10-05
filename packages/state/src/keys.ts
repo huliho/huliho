@@ -18,8 +18,14 @@ export const queryKeys = {
   window: (accountId: string, mailboxId: string, page: number) =>
     [accountId, "window", mailboxId, page] as const,
   thread: (accountId: string, threadId: string) => [accountId, "thread", threadId] as const,
+  body: (accountId: string, emailId: string) => [accountId, "body", emailId] as const,
 } as const;
 
 // The words a mail key carries in second place, so a cache message can
 // name the queries it touches.
-export const MAIL_KEY_WORDS: ReadonlySet<unknown> = new Set(["mailboxes", "window", "thread"]);
+export const MAIL_KEY_WORDS: ReadonlySet<unknown> = new Set([
+  "mailboxes",
+  "window",
+  "thread",
+  "body",
+]);

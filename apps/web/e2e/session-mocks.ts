@@ -109,6 +109,16 @@ export async function mockSignedIn(
   await mockLiveSession(page, () => sessionBody(role, signInProviders));
 }
 
+// A live session on an instance whose privacy setting the test turns;
+// the answer says what the function it gets back was last given.
+export async function mockPrivacy(page: Page): Promise<(strict: boolean) => void> {
+  let privacyStrict = false;
+  await mockLiveSession(page, () => ({ ...SESSION_BODY, privacyStrict }));
+  return (strict) => {
+    privacyStrict = strict;
+  };
+}
+
 export async function mockSignedOut(page: Page): Promise<void> {
   await page.route(SESSION_ROUTE, (route) => route.fulfill({ status: 401, json: SIGNED_OUT_BODY }));
 }

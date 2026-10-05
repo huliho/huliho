@@ -9,6 +9,7 @@ import { queryKeys, sessionQueryOptions } from "@huliho/state";
 import { useSignOut } from "../auth/use-sign-out";
 import { BrandMark } from "../design-system/brand-mark";
 import { Button } from "../design-system/button";
+import screenCard from "../design-system/screen-card.module.css";
 import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
@@ -28,7 +29,7 @@ export function ChoosePasswordCard({ locale, onSignOut, ...form }: ChoosePasswor
   return (
     <>
       <BrandMark heading />
-      <div className={styles.card}>
+      <div className={screenCard.card}>
         <h2 className={styles.cardTitle}>{m.choose_password_heading({}, { locale })}</h2>
         <p className={styles.reason}>{m.choose_password_reason({}, { locale })}</p>
         <PasswordForm locale={locale} mode="forced" submitClassName={styles.submit} {...form} />

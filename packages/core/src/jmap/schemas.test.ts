@@ -17,8 +17,10 @@ import {
 
 const SESSION = {
   capabilities: { "urn:ietf:params:jmap:core": { maxCallsInRequest: 16, maxObjectsInGet: 500 } },
+  accounts: { u1: { isReadOnly: false } },
   primaryAccounts: { "urn:ietf:params:jmap:mail": "u1" },
   apiUrl: "/api/jmap/acc-1",
+  downloadUrl: "/api/jmap/acc-1/download/{accountId}/{blobId}/{name}?type={type}",
   state: "s1",
 };
 
@@ -27,6 +29,29 @@ test("a session object names an endpoint on this origin and nothing else", () =>
   const refused = ["https://mail.example.test/jmap", "//mail.example.test/jmap", "api/jmap"];
   const outcomes = refused.map((apiUrl) => sessionObjectSchema.safeParse({ ...SESSION, apiUrl }));
   expect(outcomes.map((outcome) => outcome.success)).toEqual([false, false, false]);
+});
+
+test("a download template stays on this origin and carries its four variables", () => {
+  const refused = [
+    "https://mail.example.test/download/{accountId}/{blobId}/{name}?type={type}",
+    "//mail.example.test/download/{accountId}/{blobId}/{name}?type={type}",
+    "/api/jmap/acc-1/download/{accountId}/{blobId}/{name}",
+    "/api/jmap/acc-1/download/{blobId}/{name}?type={type}",
+  ];
+  const outcomes = refused.map((downloadUrl) =>
+    sessionObjectSchema.safeParse({ ...SESSION, downloadUrl }),
+  );
+  expect(outcomes.map((outcome) => outcome.success)).toEqual([false, false, false, false]);
+  const { downloadUrl, ...lean } = SESSION;
+  expect(sessionObjectSchema.safeParse(lean).success).toBe(false);
+  expect(sessionObjectSchema.parse(SESSION).downloadUrl).toBe(downloadUrl);
+});
+
+test("a session object says of every account whether it takes a write", () => {
+  const { accounts, ...lean } = SESSION;
+  expect(sessionObjectSchema.safeParse(lean).success).toBe(false);
+  expect(sessionObjectSchema.safeParse({ ...lean, accounts: { u1: {} } }).success).toBe(false);
+  expect(sessionObjectSchema.parse(SESSION).accounts).toEqual(accounts);
 });
 
 test("an email header parses with its null fields and refuses a wrong keyword or date", () => {
