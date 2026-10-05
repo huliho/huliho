@@ -22,7 +22,7 @@ export const DOWNLOAD_PREFIX = "/api/jmap/acc-1/download/u1/";
 export const PROXY_PREFIX = "/api/remote-image?url=";
 
 const STYLE: FrameStyle = {
-  fontFamily: "system-ui, sans-serif",
+  fontFamily: '"Hanken Grotesk", Arial, sans-serif',
   fontSize: "13px",
   lineHeight: "1.45",
   bg: "rgb(242, 245, 246)",

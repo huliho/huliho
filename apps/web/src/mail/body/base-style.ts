@@ -102,14 +102,14 @@ function xmlText(text: string): string {
 
 // The image that stands where a remote image is blocked: a box in the
 // place the sender gave it, filled and outlined, with the alt text in
-// the middle. It is an image itself, so the element and every rule
-// that sizes it stay as the sender wrote them.
+// the middle, set in the card's type. It is an image itself, so the
+// element and every rule that sizes it stay as the sender wrote them.
 export function blockedImage(alt: string, style: FrameStyle): string {
   const shown = alt.length > ALT_CHARS_MAX ? `${alt.slice(0, ALT_CHARS_MAX)}…` : alt;
   const svg = [
     '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">',
     `<rect width="100%" height="100%" fill="${xmlText(style.bg)}" stroke="${xmlText(style.border)}" stroke-width="${String(BLOCKED_OUTLINE)}"/>`,
-    `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif" font-size="${String(BLOCKED_TYPE)}" fill="${xmlText(style.muted)}">${xmlText(shown)}</text>`,
+    `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-family="${xmlText(style.fontFamily)}" font-size="${String(BLOCKED_TYPE)}" fill="${xmlText(style.muted)}">${xmlText(shown)}</text>`,
     "</svg>",
   ].join("");
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;

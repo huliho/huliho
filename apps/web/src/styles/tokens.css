@@ -31,7 +31,8 @@
   /* A dialog backdrop is the page ground, dimmed; it never carries text. */
   --hhx-scrim-opacity: 0.6;
 
-  --hhx-font-ui: "Hanken Grotesk", system-ui, sans-serif;
+  /* Where the face cannot load, as in a mail's frame, a generic UI family resolves per machine. */
+  --hhx-font-ui: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   --hhx-font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --hhx-type-1: 0.75rem;

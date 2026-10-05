@@ -47,7 +47,7 @@ test("the document carries the frame's policy, no referrer, no prefetch and the 
 test("the base style makes the root as tall as its content and takes the card's type", () => {
   const style = built("<p>hi</p>").page.head.querySelector("style")?.textContent ?? "";
   expect(style).toContain("html, body { margin: 0; height: auto !important; }");
-  expect(style).toContain("font-family: system-ui, sans-serif; font-size: 13px;");
+  expect(style).toContain('font-family: "Hanken Grotesk", Arial, sans-serif; font-size: 13px;');
   expect(style).toContain("line-height: 1.45; overflow-x: auto; overflow-y: hidden;");
   expect(style).toContain("img { max-width: 100%; }");
 });
@@ -112,9 +112,9 @@ test("a remote image is a box with its alt text until the reader allows the send
   const svg = decodeURIComponent(src.slice("data:image/svg+xml,".length));
   expect(svg).toContain("Autumn &amp; &lt;sale&gt;</text>");
   expect(svg).toContain('fill="rgb(242, 245, 246)" stroke="rgb(223, 230, 232)"');
-  expect(
-    new DOMParser().parseFromString(svg, "image/svg+xml").querySelector("parsererror"),
-  ).toBeNull();
+  const box = new DOMParser().parseFromString(svg, "image/svg+xml");
+  expect(box.querySelector("parsererror")).toBeNull();
+  expect(box.querySelector("text")?.getAttribute("font-family")).toBe(OPTIONS.style.fontFamily);
   expect([image?.getAttribute("width"), image?.getAttribute("height")]).toEqual(["600", "180"]);
   expect(image?.getAttribute("alt")).toBe("Autumn & <sale>");
   expect(blocked.remote).toBe(1);
