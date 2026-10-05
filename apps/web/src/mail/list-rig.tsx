@@ -138,6 +138,8 @@ export function coreCache(server: FakeJmap): MailCache & { poll: () => Promise<v
       listPage(await queryWindow(client, store, mailboxId, page), mailboxId),
     thread: () => Promise.resolve(null),
     reveal: (accountId, mailboxId) => revealNewMail(store, accountId, mailboxId),
+    body: () => Promise.resolve(null),
+    mutate: () => Promise.resolve(),
     poll: async () => {
       await applyChanges(client, store, [INBOX_ID]);
     },

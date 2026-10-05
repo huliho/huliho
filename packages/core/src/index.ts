@@ -36,7 +36,7 @@ export type {
 } from "./accounts";
 export { fitsAddress, fitsHostName } from "./address";
 export type { Authentication, AuthenticationResults, AuthVerdict } from "./auth-results";
-export type { MailCache, ThreadDetail } from "./cache/api";
+export type { BodyDetail, MailCache, ThreadDetail } from "./cache/api";
 export { readBody } from "./cache/bodies";
 export { CHANGES_ROUNDS_MAX, PREVIEW_BATCH, WINDOW_SIZE } from "./cache/limits";
 export { syncMailboxes } from "./cache/mailboxes";
@@ -46,6 +46,7 @@ export type { Flushed, Mutation } from "./cache/pending";
 export { applyChanges } from "./cache/poll";
 export type { AppliedChanges } from "./cache/poll";
 export { revealNewMail } from "./cache/refresh";
+export { mayPatch } from "./cache/rights";
 export { firstSyncOf, listPage } from "./cache/rows";
 export type { FirstSync, ListPage, ListRow } from "./cache/rows";
 export {
@@ -73,12 +74,16 @@ export { queryWindow } from "./cache/window";
 export type { WindowPage } from "./cache/window";
 export { CredentialError } from "./credentials";
 export type { CredentialFailureCode } from "./credentials";
+export { downloadUrl } from "./download";
+export type { BlobRequest, DownloadSource } from "./download";
 export type { EmailBodyPart, EmailBodyValue } from "./jmap/body";
 export type { ObjectType } from "./jmap/calls";
 export { JmapClient, JmapError, MethodFailure } from "./jmap/client";
 export type { JmapFailureCode, JmapSession } from "./jmap/client";
 export { HULIHO_CAPABILITY, emailHeaderSchema, mailboxSchema } from "./jmap/schemas";
 export type { EmailHeader, EmailState, Mailbox, Thread } from "./jmap/schemas";
+export { linkRisk, linkText } from "./links";
+export type { LinkRisk } from "./links";
 export {
   PASSWORD_MAX_CHARS,
   PASSWORD_MIN_CHARS,
@@ -103,8 +108,8 @@ export type {
   ReadingPane,
   Theme,
 } from "./preferences";
-export { classifyImageUrl, remoteImageUrl } from "./remote";
-export type { ImageSource } from "./remote";
+export { classifyImageUrl, classifyLinkUrl, remoteImageUrl } from "./remote";
+export type { ImageSource, LinkTarget } from "./remote";
 export { ROLES, grantableRoles, mayManageUsers } from "./role";
 export type { Role } from "./role";
 export {

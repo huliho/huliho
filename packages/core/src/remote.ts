@@ -62,6 +62,41 @@ export function classifyImageUrl(value: string, ownHost: string | null): ImageSo
   }
 }
 
+// What the target of a link in a mail is, by the same policy: a page on
+// another host, an address to write to or nothing a link may carry.
+export type LinkTarget =
+  { kind: "web"; url: string } | { kind: "mail"; url: string } | { kind: "dropped" };
+
+// A page on another host, without the user information a sender may
+// write in front of the host to pass it off as another one.
+function webTarget(url: URL): LinkTarget {
+  const bare = new URL(url);
+  bare.username = "";
+  bare.password = "";
+  return { kind: "web", url: bare.href };
+}
+
+// The class of a link's target. A relative URL, a URL on the instance's
+// own host, an /api/ path on any host and every scheme but http, https
+// and mailto are dropped.
+export function classifyLinkUrl(value: string, ownHost: string | null): LinkTarget {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return { kind: "dropped" };
+  }
+  switch (url.protocol) {
+    case "http:":
+    case "https:":
+      return onInstance(url, ownHost) ? { kind: "dropped" } : webTarget(url);
+    case "mailto:":
+      return { kind: "mail", url: url.href };
+    default:
+      return { kind: "dropped" };
+  }
+}
+
 // Where the frame loads a remote image from once the reader allowed
 // it: the server fetches it, so the sender never sees the reader.
 export function remoteImageUrl(url: string): string {

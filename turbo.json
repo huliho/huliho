@@ -15,6 +15,14 @@
     "test": {
       "dependsOn": ["^build"]
     },
+    "@huliho/web#test": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/crates/server/src/mail/sanitize.rs",
+        "$TURBO_ROOT$/crates/server/tests/xss/**"
+      ]
+    },
     "test:e2e": {
       "dependsOn": ["build", "build:storybook"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/crates/server/src/csp.txt"]

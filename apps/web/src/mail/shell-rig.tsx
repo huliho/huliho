@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { AccountRow, ReadingPane } from "@huliho/core";
+import type { AccountRow, ReadingPane, SessionInfo } from "@huliho/core";
 import { queryKeys } from "@huliho/state";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -28,8 +28,17 @@ import {
 } from "./use-token-px";
 
 // The rig the shell tests render in: the mail routes on a memory
-// history, the accounts the guard would have fetched and the boxes
-// jsdom gives no element. The test file mocks the cache client itself.
+// history, the session and the accounts the guard would have fetched
+// and the boxes jsdom gives no element. The test file mocks the cache
+// client itself.
+const SESSION: SessionInfo = {
+  user: { id: "user-1", login: "mira@example.com", name: "Mira", role: "owner" },
+  organization: { id: "org-1", name: "mira@example.com" },
+  signInProviders: [],
+  passwordChangeRequired: false,
+  privacyStrict: false,
+};
+
 // The frame's height, for the pane below the list.
 export const FRAME_HEIGHT_PX = 900;
 // The list's box in the test.
@@ -96,6 +105,7 @@ export function renderShell(path: string, options: ShellOptions = {}) {
     history: createMemoryHistory({ initialEntries: [path] }),
   });
   const queryClient = new QueryClient();
+  queryClient.setQueryData(queryKeys.session, SESSION);
   queryClient.setQueryData(queryKeys.accounts, {
     accounts: options.accounts ?? ACCOUNTS,
     probeIntervalMinutes: PROBE_INTERVAL_MINUTES,

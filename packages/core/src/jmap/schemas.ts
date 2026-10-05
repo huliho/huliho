@@ -62,10 +62,20 @@ export const coreLimitsSchema = z.object({
   maxObjectsInSet: z.number().int().nonnegative(),
 });
 
+// The variables a download template carries (RFC 8620 section 2).
+const DOWNLOAD_VARIABLES = ["{accountId}", "{blobId}", "{name}", "{type}"] as const;
+
+const downloadUrlSchema = z
+  .string()
+  .regex(SAME_ORIGIN_PATH)
+  .refine((template) => DOWNLOAD_VARIABLES.every((variable) => template.includes(variable)));
+
 export const sessionObjectSchema = z.object({
   capabilities: z.record(z.string(), z.unknown()),
+  accounts: z.record(z.string(), z.object({ isReadOnly: z.boolean() })),
   primaryAccounts: z.record(z.string(), idSchema),
   apiUrl: z.string().regex(SAME_ORIGIN_PATH),
+  downloadUrl: downloadUrlSchema,
   state: z.string(),
 });
 

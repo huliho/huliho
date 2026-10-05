@@ -32,6 +32,8 @@ test("the session comes from the account's route and names the upstream account,
   expect(session).toEqual({
     accountId: UPSTREAM,
     apiUrl: "/api/jmap/acc-1",
+    downloadUrl: "/api/jmap/acc-1/download/{accountId}/{blobId}/{name}?type={type}",
+    readOnly: false,
     using: [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY],
     firstSync: true,
     maxCallsInRequest: 16,
@@ -39,6 +41,14 @@ test("the session comes from the account's route and names the upstream account,
     maxObjectsInSet: 500,
     state: "s1",
   });
+});
+
+test("a read-only account takes no write and neither does one the session leaves out", async () => {
+  const server = serve();
+  server.readOnly = true;
+  expect((await new JmapClient(ACCOUNT).session()).readOnly).toBe(true);
+  server.queue.push(json(200, { ...server.session(), accounts: {} }));
+  expect((await new JmapClient(ACCOUNT).session()).readOnly).toBe(true);
 });
 
 test("a native account without the vendor capability opts into core and mail alone", async () => {

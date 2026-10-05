@@ -4,7 +4,12 @@
 
 export { accountsQueryOptions, consentQueryOptions } from "./accounts";
 export { MAIL_KEY_WORDS, queryKeys } from "./keys";
-export { mailboxesQueryOptions, threadQueryOptions, threadWindowQueryOptions } from "./mail";
+export {
+  bodyQueryOptions,
+  mailboxesQueryOptions,
+  threadQueryOptions,
+  threadWindowQueryOptions,
+} from "./mail";
 export { preferencesQueryOptions } from "./preferences";
 export { senderPoliciesQueryOptions } from "./sender-policies";
 export { sessionQueryOptions } from "./session";

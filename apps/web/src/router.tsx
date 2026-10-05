@@ -33,9 +33,11 @@ type Home = "/" | "/choose-password";
 export const queryClient = new QueryClient();
 
 // The settings screens arrive as one chunk on the first settings visit;
-// the add-account card as another on the first visit to it.
+// the add-account card as another on the first visit to it; the page a
+// link of a mail opens as a third, in the tab that link opens.
 const settings = () => import("./settings/pages");
 const addAccount = () => import("./accounts/add/add-account");
+const openLink = () => import("./open/open-link");
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
@@ -160,6 +162,14 @@ const signInRoute = createRoute({
   },
 });
 
+// A link of a mail opens here, in a tab of its own. The page needs no
+// session: the link rides the fragment and nothing of it is fetched.
+const openRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/open",
+  component: lazyRouteComponent(openLink, "OpenLink"),
+});
+
 const choosePasswordRoute = createRoute({
   getParentRoute: () => signedInRoute,
   path: "/choose-password",
@@ -224,6 +234,7 @@ const usersRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   signInRoute,
+  openRoute,
   signedInRoute.addChildren([
     homeRoute,
     mailRoute.addChildren([mailIndexRoute, mailboxRoute.addChildren([threadRoute])]),

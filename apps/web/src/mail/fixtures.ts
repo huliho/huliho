@@ -405,7 +405,7 @@ function answered<Value>(answer: Value | "never" | Error): Promise<Value> {
 
 // A cache for stories and tests: pages by mailbox and number, threads
 // by id; the mailbox tree from the fixtures; every reveal a no-op it
-// records.
+// records; no body and no change.
 export function fixtureCache(
   pages: Record<string, PageAnswer>,
   threads: Record<string, ThreadAnswer> = {},
@@ -426,5 +426,7 @@ export function fixtureCache(
       revealed.push(mailboxId);
       return Promise.resolve();
     },
+    body: () => Promise.resolve(null),
+    mutate: () => Promise.resolve(),
   };
 }

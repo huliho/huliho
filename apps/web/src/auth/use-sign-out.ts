@@ -10,12 +10,14 @@ import { clearCache } from "../cache/client";
 import { forgetRecent } from "../commands/recent";
 import { toastManager } from "../design-system/toast";
 import { forgetLastAccount } from "../mail/last-account";
+import { forgetLinkKey } from "../open/link-key";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 
 // The local session ends either way, the cached mail, the remembered
-// account and the commands last run with it; the server copy outlives
-// only a failed revoke and ends at its timeout.
+// account, the commands last run and the key of this device's links
+// with it; the server copy outlives only a failed revoke and ends at
+// its timeout.
 export function useSignOut(locale: Locale): () => void {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -26,6 +28,7 @@ export function useSignOut(locale: Locale): () => void {
       queryClient.clear();
       forgetLastAccount();
       forgetRecent();
+      forgetLinkKey();
       await navigate({ to: "/sign-in" });
     },
     onError: () => {

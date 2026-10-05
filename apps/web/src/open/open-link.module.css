@@ -1,0 +1,79 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.screen {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  min-block-size: 100svh;
+  padding: var(--hhx-space-6) var(--hhx-space-4);
+}
+
+.column {
+  inline-size: min(var(--hhx-measure-narrow), 100%);
+  display: grid;
+  gap: var(--hhx-space-4);
+}
+
+.lead {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--hhx-space-3);
+}
+
+.icon {
+  flex: none;
+  inline-size: var(--hhx-icon-header);
+  block-size: var(--hhx-icon-header);
+  stroke-width: var(--hhx-icon-stroke);
+  color: var(--hh-warn);
+}
+
+.sentence {
+  margin: 0;
+  font-size: var(--hhx-type-3);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.target {
+  margin: 0;
+  padding: var(--hhx-space-3);
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-2);
+  color: var(--hh-text-muted);
+  background: var(--hh-bg);
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-field);
+  word-break: break-all;
+}
+
+.named {
+  font-weight: 500;
+  color: var(--hh-text);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hhx-space-2);
+}
+
+.opening {
+  margin: 0;
+  color: var(--hh-text-muted);
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 720px) {
+  .screen {
+    align-content: center;
+  }
+
+  .actions {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+}

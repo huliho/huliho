@@ -4,7 +4,7 @@
 
 import { JmapError } from "@huliho/core";
 import type { MailCache } from "@huliho/core";
-import { MAIL_KEY_WORDS, queryKeys } from "@huliho/state";
+import { MAIL_KEY_WORDS, queryKeys, sessionQueryOptions } from "@huliho/state";
 import type { QueryClient } from "@tanstack/react-query";
 import { wrap } from "comlink";
 import type { Remote } from "comlink";
@@ -71,6 +71,8 @@ export const mailCache: MailCache = {
   window: (accountId, mailboxId, page) => unwrap(worker().window(accountId, mailboxId, page)),
   thread: (accountId, threadId) => unwrap(worker().thread(accountId, threadId)),
   reveal: (accountId, mailboxId) => unwrap(worker().reveal(accountId, mailboxId)),
+  body: (accountId, emailId, options) => unwrap(worker().body(accountId, emailId, options)),
+  mutate: (accountId, mutation) => unwrap(worker().mutate(accountId, mutation)),
 };
 
 // Sign out: the database goes with the session. A worker that fails the
@@ -86,14 +88,15 @@ export function clearCache(): Promise<void> {
 
 // Persistent storage is asked for once per page, from the window, since
 // a worker cannot ask; the worker writes once the outcome is known, and
-// a request that fails counts as an outcome.
-async function requestPersistence(): Promise<void> {
+// a request that fails counts as an outcome. An instance that keeps
+// mail off the disk has nothing to persist and asks for nothing.
+async function requestPersistence(strict: boolean): Promise<void> {
   if (persistenceRequested) {
     return;
   }
   persistenceRequested = true;
   try {
-    if ("storage" in navigator) {
+    if (!strict && "storage" in navigator) {
       await navigator.storage.persist();
     }
   } catch (error) {
@@ -124,7 +127,7 @@ export function attachCache(lease: Lease): () => void {
       void worker().focus();
     }
   };
-  void requestPersistence();
+  void requestPersistence(lease.strict);
   renew();
   const timer = setInterval(renew, LEASE_RENEW_MS);
   document.addEventListener("visibilitychange", seen);
@@ -138,27 +141,18 @@ function isMailQuery(queryKey: readonly unknown[]): boolean {
   return MAIL_KEY_WORDS.has(queryKey[1]);
 }
 
-// A change lands as an invalidation of the queries it names. A cleared
-// database takes every mail query with it and, when another tab did it,
-// hands the rest to the caller, since the session that owned it ended.
-// An account the server stopped, or runs again, refetches the accounts
-// list, which the banner and the switcher's marks read.
-export function applyCacheMessage(
+// What a tab does about a message beyond its queries: end its session
+// once another tab cleared the database, and say that the server
+// refused a change.
+export interface CacheListeners {
+  cleared(): void;
+  refused(): void;
+}
+
+function invalidateChanged(
   queryClient: QueryClient,
-  message: CacheMessage,
-  onCleared: () => void,
+  message: Extract<CacheMessage, { kind: "changed" }>,
 ): void {
-  if (message.kind === "cleared") {
-    queryClient.removeQueries({ predicate: (query) => isMailQuery(query.queryKey) });
-    if (message.by !== TAB) {
-      onCleared();
-    }
-    return;
-  }
-  if (message.kind === "account") {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.accounts });
-    return;
-  }
   const { accountId } = message;
   const keys = [
     ...(message.mailboxes ? [queryKeys.mailboxes(accountId)] : []),
@@ -170,13 +164,55 @@ export function applyCacheMessage(
   }
 }
 
+// A tab whose session answer says the instance stores mail holds an
+// older answer than the worker that keeps it off the disk.
+function rereadSetting(queryClient: QueryClient): void {
+  if (queryClient.getQueryData(sessionQueryOptions.queryKey)?.privacyStrict === false) {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.session });
+  }
+}
+
+// What a message of the worker asks of this tab's queries; a database
+// another tab cleared and a refused change go to the caller as well.
+export function applyCacheMessage(
+  queryClient: QueryClient,
+  message: CacheMessage,
+  listeners: CacheListeners,
+): void {
+  switch (message.kind) {
+    case "cleared":
+      queryClient.removeQueries({ predicate: (query) => isMailQuery(query.queryKey) });
+      if (message.by !== TAB) {
+        listeners.cleared();
+      }
+      break;
+    case "account":
+      void queryClient.invalidateQueries({ queryKey: queryKeys.accounts });
+      break;
+    case "refused":
+      listeners.refused();
+      break;
+    case "reset":
+      void queryClient.invalidateQueries({ predicate: (query) => isMailQuery(query.queryKey) });
+      break;
+    case "strict":
+      rereadSetting(queryClient);
+      break;
+    default:
+      invalidateChanged(queryClient, message);
+  }
+}
+
 // Every tab hears what the worker changed, whichever tab's worker did it.
-export function installCacheListener(queryClient: QueryClient, onCleared: () => void): () => void {
+export function installCacheListener(
+  queryClient: QueryClient,
+  listeners: CacheListeners,
+): () => void {
   const channel = new BroadcastChannel(CACHE_CHANNEL);
   channel.addEventListener("message", (event: MessageEvent<unknown>) => {
     const message = readCacheMessage(event.data);
     if (message !== null) {
-      applyCacheMessage(queryClient, message, onCleared);
+      applyCacheMessage(queryClient, message, listeners);
     }
   });
   return () => {

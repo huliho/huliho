@@ -81,6 +81,10 @@ export interface JmapSession {
   // The upstream account the mail capability names; every call carries it.
   accountId: string;
   apiUrl: string;
+  // The template a blob's URL is made from (RFC 8620 section 6.2).
+  downloadUrl: string;
+  // True for an account that takes no write.
+  readOnly: boolean;
   // The capabilities every request opts into (RFC 8620 section 3.3).
   using: string[];
   // True for a bridge account, whose mailboxes count their synced emails.
@@ -161,6 +165,9 @@ function sessionOf(object: SessionObject): JmapSession {
   return {
     accountId,
     apiUrl: object.apiUrl,
+    downloadUrl: object.downloadUrl,
+    // An account the object does not describe takes no write.
+    readOnly: new Map(Object.entries(object.accounts)).get(accountId)?.isReadOnly ?? true,
     using: vendor
       ? [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY]
       : [CORE_CAPABILITY, MAIL_CAPABILITY],

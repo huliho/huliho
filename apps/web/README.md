@@ -94,7 +94,15 @@ none. It keeps the mailbox tree, the headers, the threads and the
 pages of each list in IndexedDB through Dexie: one database per origin
 with every row under its account id. The database's second version
 adds a table for message bodies and one for the changes the server has
-not acknowledged. Each account reconciles under a
+not acknowledged. The worker opens no store until a tab names the
+instance's privacy setting from the session answer: on an instance
+that keeps mail off the disk it holds the rows in memory and deletes a
+database an earlier start left. A worker that stored on disk when a
+tab names that setting starts over in memory and every tab reads its
+mail again; from then on it stays in memory, whatever a tab with an
+older answer names. A worker that keeps mail off the disk says so to
+every tab and a tab whose session answer says otherwise reads that
+answer again. Each account reconciles under a
 Web Lock, so two workers on one database never interleave. The shell
 tells the worker which accounts the session holds and which mailbox
 the tab is looking at, renewed every thirty seconds while the tab
@@ -109,6 +117,38 @@ result with its code and cause, so the shell can tell a stopped
 account from a server that did not answer. Sign-out deletes the
 database; every other tab of the session hears it and shows the
 sign-in screen with a word about it.
+
+The worker also answers the body of one message. It reads a body
+outside the account's lock, so opening a message waits for no poll. A
+change to a message goes through the worker as well: the rows take it
+at once and every tab hears it; the server gets it within 300 ms,
+ahead of every poll and when the network comes back. A change the
+account or a mailbox does not allow moves nothing. One the server
+refuses is taken back and the tab in view says so.
+
+The body pipeline under `src/mail/body` builds the document a message
+renders from. DOMPurify runs the same allowlist as the server's
+sanitizer. The message's CSS is read through the browser's own parser:
+an import, a font and a viewport length leave. One policy settles
+every image: a part of the message loads from the download route and a
+remote image through the server's proxy once the reader allowed the
+sender; until then a box with its alt text stands in its place. The
+app's theme decides the color scheme inside the message, a light-only
+message can be adapted for the dark theme and every link points at the
+app's own `/open` route. The document goes into a sandboxed frame that
+runs no script; `useFrame` sets the sandbox itself, keeps the frame as
+tall as its content and hands the app's keys through.
+
+`/open` needs no session. The link rides the fragment, which never
+reaches a server. A plain link made on this device leaves for its
+target at once. A mail address made on this device goes to the mail
+program and the tab stays for the reader to close. A web link shows
+where it leads and asks first, with Cancel in focus, when its host is
+an internationalized name, its text names another host, it points at
+the app itself, its text found no room in the address or this device
+did not make it. An address the page
+cannot read opens nothing and neither does a mail address this device
+did not make.
 
 The mail screen lives under `src/mail` at `/mail/{accountId}/{mailboxId}`.
 The root sends a visit to the account this device opened last, else to
@@ -156,8 +196,9 @@ the pane, with still rows after the last synced one; the worker polls
 closer while such a sync runs. Otherwise the foot holds a strip of key
 hints read from the registry, where a keyboard is likely: at the
 tablet and desktop widths. A render failure in one pane stays in
-that pane. The add-account card and the settings screens each load as
-a chunk of their own on their first visit; the thread pane, the
+that pane. The add-account card, the settings screens and the page a
+link opens each load as a chunk of their own on their first visit; the
+thread pane, the
 account menu and the command surfaces load as chunks when the shell or
 the layout mounts, the still cards or a plain trigger standing in until
 they land.

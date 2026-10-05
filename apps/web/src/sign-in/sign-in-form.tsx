@@ -8,6 +8,7 @@ import type { CredentialFailureCode } from "@huliho/core";
 import { CredentialNotice, retryLabel } from "../auth/credential-notice";
 import { Button } from "../design-system/button";
 import { Field } from "../design-system/field";
+import screenCard from "../design-system/screen-card.module.css";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import styles from "./sign-in.module.css";
@@ -41,7 +42,7 @@ export function SignInForm({
 
   return (
     <form
-      className={styles.card}
+      className={screenCard.card}
       onSubmit={(event) => {
         event.preventDefault();
         if (!held) {

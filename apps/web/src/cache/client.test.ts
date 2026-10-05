@@ -7,6 +7,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { TAB, applyCacheMessage } from "./client";
+import type { CacheListeners } from "./client";
 import { LEASE_RENEW_MS } from "./coordinator";
 import type { Lease } from "./coordinator";
 import { CACHE_CHANNEL, readCacheMessage } from "./messages";
@@ -16,9 +17,18 @@ import type { CacheResult } from "./outcome";
 const wrap = vi.hoisted(() => vi.fn<() => unknown>());
 vi.mock("comlink", () => ({ wrap }));
 
-const LEASE: Lease = { accounts: ["a1"], listedAt: 1, watching: null };
+const LEASE: Lease = { accounts: ["a1"], listedAt: 1, watching: null, strict: false };
 
 const NOTHING = { queryFn: () => Promise.resolve(1), staleTime: Number.POSITIVE_INFINITY };
+
+const MAIL_OF_A1 = [
+  "a1/body/e1",
+  "a1/mailboxes",
+  "a1/thread/t1",
+  "a1/window/inbox/0",
+  "a1/window/inbox/1",
+  "a1/window/sent/0",
+];
 
 async function client(): Promise<QueryClient> {
   const queryClient = new QueryClient();
@@ -28,6 +38,7 @@ async function client(): Promise<QueryClient> {
     queryKeys.window("a1", "inbox", 1),
     queryKeys.window("a1", "sent", 0),
     queryKeys.thread("a1", "t1"),
+    queryKeys.body("a1", "e1"),
     queryKeys.mailboxes("a2"),
     queryKeys.accounts,
   ];
@@ -49,13 +60,17 @@ function kept(queryClient: QueryClient): string[] {
     .map((query) => query.queryKey.join("/"));
 }
 
+function listeners() {
+  return { cleared: vi.fn<() => void>(), refused: vi.fn<() => void>() } satisfies CacheListeners;
+}
+
 test("a change invalidates the tree, every page of a moved list and the named threads", async () => {
   const queryClient = await client();
-  const onCleared = vi.fn<() => void>();
+  const heard = listeners();
   applyCacheMessage(
     queryClient,
     { kind: "changed", accountId: "a1", mailboxes: true, windows: ["inbox"], threads: ["t1"] },
-    onCleared,
+    heard,
   );
   expect(stale(queryClient).toSorted()).toEqual([
     "a1/mailboxes",
@@ -63,36 +78,69 @@ test("a change invalidates the tree, every page of a moved list and the named th
     "a1/window/inbox/0",
     "a1/window/inbox/1",
   ]);
-  expect(onCleared).not.toHaveBeenCalled();
+  expect(heard.cleared).not.toHaveBeenCalled();
 });
 
 test("a database another tab cleared takes every mail query, nothing else, then hands over", async () => {
   const queryClient = await client();
-  const onCleared = vi.fn<() => void>();
-  applyCacheMessage(queryClient, { kind: "cleared", by: "another tab" }, onCleared);
+  const heard = listeners();
+  applyCacheMessage(queryClient, { kind: "cleared", by: "another tab" }, heard);
   expect(kept(queryClient)).toEqual(["accounts"]);
-  expect(onCleared).toHaveBeenCalledOnce();
+  expect(heard.cleared).toHaveBeenCalledOnce();
 });
 
 test("a database this tab cleared hands nothing over", async () => {
   const queryClient = await client();
-  const onCleared = vi.fn<() => void>();
-  applyCacheMessage(queryClient, { kind: "cleared", by: TAB }, onCleared);
+  const heard = listeners();
+  applyCacheMessage(queryClient, { kind: "cleared", by: TAB }, heard);
   expect(kept(queryClient)).toEqual(["accounts"]);
-  expect(onCleared).not.toHaveBeenCalled();
+  expect(heard.cleared).not.toHaveBeenCalled();
 });
 
 test("an account the server stopped refetches the accounts list and nothing else", async () => {
   const queryClient = await client();
-  const onCleared = vi.fn<() => void>();
+  const heard = listeners();
   applyCacheMessage(
     queryClient,
     { kind: "account", accountId: "a1", stoppedCause: "connection" },
-    onCleared,
+    heard,
   );
   expect(stale(queryClient)).toEqual(["accounts"]);
-  expect(onCleared).not.toHaveBeenCalled();
+  expect(heard.cleared).not.toHaveBeenCalled();
 });
+
+test("a refused change is the tab's to tell and touches no query", async () => {
+  const queryClient = await client();
+  const heard = listeners();
+  applyCacheMessage(queryClient, { kind: "refused" }, heard);
+  expect(heard.refused).toHaveBeenCalledOnce();
+  expect(heard.cleared).not.toHaveBeenCalled();
+  expect(stale(queryClient)).toEqual([]);
+});
+
+test("a worker on another store has every mail query read again and nothing else", async () => {
+  const queryClient = await client();
+  const heard = listeners();
+  applyCacheMessage(queryClient, { kind: "reset" }, heard);
+  expect(stale(queryClient).toSorted()).toEqual([...MAIL_OF_A1, "a2/mailboxes"]);
+  expect(kept(queryClient)).toContain("accounts");
+  expect(heard.cleared).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["says the instance stores mail", false, ["session"]],
+  ["says the same", true, []],
+])(
+  "a worker that keeps mail off the disk has a tab whose session answer %s read it again or not",
+  async (_what, privacyStrict, reread) => {
+    const queryClient = await client();
+    applyCacheMessage(queryClient, { kind: "strict" }, listeners());
+    expect(stale(queryClient)).toEqual([]);
+    queryClient.setQueryData(queryKeys.session, { privacyStrict });
+    applyCacheMessage(queryClient, { kind: "strict" }, listeners());
+    expect(stale(queryClient)).toEqual(reread);
+  },
+);
 
 test("only a message of the worker's shape is read", () => {
   const changed = { kind: "changed", accountId: "a1", mailboxes: false, windows: [], threads: [] };
@@ -109,6 +157,9 @@ test("only a message of the worker's shape is read", () => {
   expect(readCacheMessage({ kind: "account", stoppedCause: null })).toBeNull();
   expect(readCacheMessage({ ...changed, windows: [1] })).toBeNull();
   expect(readCacheMessage({ ...changed, accountId: 1 })).toBeNull();
+  expect(readCacheMessage({ kind: "refused", extra: true })).toEqual({ kind: "refused" });
+  expect(readCacheMessage({ kind: "reset", extra: true })).toEqual({ kind: "reset" });
+  expect(readCacheMessage({ kind: "strict", extra: true })).toEqual({ kind: "strict" });
   expect(readCacheMessage({ kind: "other" })).toBeNull();
   expect(readCacheMessage("changed")).toBeNull();
   expect(readCacheMessage(null)).toBeNull();
@@ -121,6 +172,8 @@ function fakeRemote() {
     persisted: vi.fn<() => Promise<void>>(() => Promise.resolve()),
     clear: vi.fn<(by: string) => Promise<void>>(() => Promise.resolve()),
     mailboxes: vi.fn<(accountId: string) => Promise<CacheResult<unknown[]>>>(),
+    body: vi.fn<(...call: unknown[]) => Promise<CacheResult<unknown>>>(),
+    mutate: vi.fn<(...call: unknown[]) => Promise<CacheResult<void>>>(),
   };
 }
 
@@ -175,6 +228,17 @@ test("persistence is asked for once per page and reported even when the request 
   expect(logged).toHaveBeenCalledOnce();
 });
 
+test("a strict instance asks for no persistent storage and still reports", async () => {
+  const persist = vi.fn<() => Promise<boolean>>(() => Promise.resolve(true));
+  const { remote, windowSide } = await page(persist);
+  windowSide.attachCache({ ...LEASE, strict: true })();
+  await vi.waitFor(() => {
+    expect(remote.persisted).toHaveBeenCalledOnce();
+  });
+  expect(persist).not.toHaveBeenCalled();
+  expect(remote.attach).toHaveBeenCalledExactlyOnceWith({ ...LEASE, strict: true });
+});
+
 test("a sign-out names this tab and survives a worker that fails or never answers", async () => {
   const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
   const { remote, windowSide } = await page();
@@ -208,21 +272,41 @@ test("a read hands the worker's value through and turns its failure back into th
   expect(remote.mailboxes).toHaveBeenCalledWith("a1");
 });
 
+test("a body and a change cross to the worker with what the caller named", async () => {
+  const { remote, windowSide } = await page();
+  remote.body.mockResolvedValueOnce({ ok: true, value: null });
+  await expect(windowSide.mailCache.body("a1", "e1", { large: true })).resolves.toBeNull();
+  expect(remote.body).toHaveBeenCalledExactlyOnceWith("a1", "e1", { large: true });
+  const mutation = { type: "Email" as const, id: "e1", patch: { "keywords/$seen": true as const } };
+  remote.mutate.mockResolvedValueOnce({ ok: true, value: undefined });
+  await expect(windowSide.mailCache.mutate("a1", mutation)).resolves.toBeUndefined();
+  expect(remote.mutate).toHaveBeenCalledExactlyOnceWith("a1", mutation);
+  remote.mutate.mockResolvedValueOnce({
+    ok: false,
+    failure: { code: "unavailable", stopCause: null, limit: null },
+  });
+  await expect(windowSide.mailCache.mutate("a1", mutation)).rejects.toMatchObject({
+    code: "unavailable",
+  });
+});
+
 test("the listener hears the worker's messages on the channel and nothing else", async () => {
   const { windowSide } = await page();
-  const onCleared = vi.fn<() => void>();
-  const stop = windowSide.installCacheListener(new QueryClient(), onCleared);
+  const heard = listeners();
+  const stop = windowSide.installCacheListener(new QueryClient(), heard);
   const worker = new BroadcastChannel(CACHE_CHANNEL);
   const post = worker.postMessage.bind(worker);
   post({ kind: "other" });
   post({ kind: "cleared", by: "another tab" });
+  post({ kind: "refused" });
   await vi.waitFor(() => {
-    expect(onCleared).toHaveBeenCalledOnce();
+    expect(heard.refused).toHaveBeenCalledOnce();
   });
+  expect(heard.cleared).toHaveBeenCalledOnce();
   stop();
   post({ kind: "cleared", by: "another tab" });
   worker.close();
-  expect(onCleared).toHaveBeenCalledOnce();
+  expect(heard.cleared).toHaveBeenCalledOnce();
 });
 
 test("nothing is invalidated for an account the message does not name", async () => {
@@ -231,7 +315,7 @@ test("nothing is invalidated for an account the message does not name", async ()
   applyCacheMessage(
     queryClient,
     { kind: "changed", accountId: "a2", mailboxes: false, windows: [], threads: [] },
-    () => undefined,
+    listeners(),
   );
   expect(spy).not.toHaveBeenCalled();
 });

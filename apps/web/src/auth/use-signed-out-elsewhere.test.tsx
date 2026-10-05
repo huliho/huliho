@@ -8,6 +8,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { noteRecent, recentCommands } from "../commands/recent";
 import { toastManager } from "../design-system/toast";
+import { hasLinkKey, linkKey } from "../open/link-key";
 import { renderEnding } from "./session-end-rig";
 import { useSignedOutElsewhere } from "./use-signed-out-elsewhere";
 
@@ -35,6 +36,7 @@ afterEach(() => {
 test("a signed-in tab stops its worker, drops what it holds, its account and its recent commands and goes to sign-in", async () => {
   localStorage.setItem(LAST_ACCOUNT_KEY, "a1");
   noteRecent("go.mb-1");
+  const key = linkKey();
   const { queryClient, router } = await renderEnding(Harness, true);
   fireEvent.click(screen.getByRole("button", { name: "elsewhere" }));
   await waitFor(() => {
@@ -44,6 +46,7 @@ test("a signed-in tab stops its worker, drops what it holds, its account and its
   expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
   expect(localStorage.getItem(LAST_ACCOUNT_KEY)).toBeNull();
   expect(recentCommands()).toEqual([]);
+  expect(hasLinkKey(key)).toBe(false);
 });
 
 test("a second word while the tab is ending ends it once", async () => {

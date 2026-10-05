@@ -15,17 +15,22 @@ import {
 } from "@huliho/core";
 import type {
   AppliedChanges,
+  BodyDetail,
   ListPage,
   MailStore,
   Mailbox,
+  Mutation,
   StopCause,
   ThreadDetail,
 } from "@huliho/core";
 
+import { bodyDetail } from "./bodies";
 import type { Locks } from "./locks";
 import type { CacheMessage } from "./messages";
 import { attempt } from "./outcome";
 import type { CacheResult } from "./outcome";
+import type { Choice, WorkerStore } from "./store-choice";
+import { Writes } from "./writes";
 
 // The client asks for changes every sixty seconds until push lands.
 export const CHANGES_POLL_MS = 60_000;
@@ -54,12 +59,14 @@ export interface Watch {
 }
 
 // What a tab tells the worker: the accounts the session holds, when
-// that list was fetched and the mailbox it watches, renewed while the
-// tab lives. The newest list wins, so a tab behind never undoes one.
+// that list was fetched, the mailbox it watches and whether the instance
+// keeps mail off the disk, renewed while the tab lives. The newest list
+// wins, so a tab behind never undoes one.
 export interface Lease {
   accounts: readonly string[];
   listedAt: number;
   watching: Watch | null;
+  strict: boolean;
 }
 
 // The worker's surface for one tab. A read answers a result, since a
@@ -75,10 +82,19 @@ export interface CacheApi {
   window(accountId: string, mailboxId: string, page: number): Promise<CacheResult<ListPage>>;
   thread(accountId: string, threadId: string): Promise<CacheResult<ThreadDetail | null>>;
   reveal(accountId: string, mailboxId: string): Promise<CacheResult<void>>;
+  body(
+    accountId: string,
+    emailId: string,
+    options: { large: boolean },
+  ): Promise<CacheResult<BodyDetail | null>>;
+  mutate(accountId: string, mutation: Mutation): Promise<CacheResult<void>>;
 }
 
 export interface Dependencies {
-  store: MailStore & { accounts(): Promise<string[]>; destroy(): Promise<void> };
+  store: WorkerStore;
+  // Takes the instance's privacy setting and says what that did to the
+  // store.
+  choose(strict: boolean): Choice;
   locks: Locks;
   post(message: CacheMessage): void;
 }
@@ -127,6 +143,7 @@ function held(store: MailStore, gate: Promise<unknown>): MailStore {
 export class Coordinator {
   private readonly deps: Dependencies;
   private readonly store: MailStore;
+  private readonly writes: Writes;
   private readonly persisted = Promise.withResolvers<undefined>();
   private readonly accounts = new Map<string, Account>();
   private readonly watches = new Map<number, Watched>();
@@ -141,6 +158,13 @@ export class Coordinator {
   constructor(deps: Dependencies) {
     this.deps = deps;
     this.store = held(deps.store, this.persisted.promise);
+    this.writes = new Writes({
+      client: (accountId) => this.client(accountId),
+      locked: (accountId, run) => this.locked(accountId, run),
+      post: (message) => {
+        deps.post(message);
+      },
+    });
   }
 
   // The surface of one tab; its watch lives and dies with it.
@@ -149,6 +173,7 @@ export class Coordinator {
     const tab = this.tabs;
     return {
       attach: (lease) => {
+        this.choose(lease.strict);
         if (lease.listedAt >= this.listedAt && lease.listedAt > this.haltedAt) {
           const fresh = lease.listedAt > this.listedAt;
           this.listedAt = lease.listedAt;
@@ -179,7 +204,15 @@ export class Coordinator {
           this.locked(accountId, (store) => readThread(this.client(accountId), store, threadId)),
         ),
       reveal: (accountId, mailboxId) => attempt(() => this.reveal(accountId, mailboxId)),
+      body: (accountId, emailId, options) =>
+        attempt(() => bodyDetail(this.client(accountId), this.guarded(), emailId, options)),
+      mutate: (accountId, mutation) => attempt(() => this.writes.mutate(accountId, mutation)),
     };
+  }
+
+  // The network is back: every account polls now, its log going out first.
+  online(): void {
+    this.pollNow(Number.POSITIVE_INFINITY);
   }
 
   // A list fresh from the server also drops what the database holds of
@@ -244,16 +277,12 @@ export class Coordinator {
     return this.accounts.get(accountId)?.client ?? new JmapClient(accountId);
   }
 
-  // Runs under the account's lock on a store that refuses to write once a
-  // halt came after the call, so no row outlives the session that fetched
-  // it; the check follows the persistence gate, since a halt may fall
-  // inside that wait.
-  private locked<Value>(
-    accountId: string,
-    run: (store: MailStore) => Promise<Value>,
-  ): Promise<Value> {
+  // The store that refuses to write once a halt came after the call, so
+  // no row outlives the session that fetched it; the check follows the
+  // persistence gate, since a halt may fall inside that wait.
+  private guarded(): MailStore {
     const { generation } = this;
-    const store: MailStore = {
+    return {
       ...this.store,
       commit: async (id, batch) => {
         await this.persisted.promise;
@@ -263,6 +292,14 @@ export class Coordinator {
         await this.store.commit(id, batch);
       },
     };
+  }
+
+  // Runs under the account's lock on the guarded store.
+  private locked<Value>(
+    accountId: string,
+    run: (store: MailStore) => Promise<Value>,
+  ): Promise<Value> {
+    const store = this.guarded();
     return this.deps.locks.request(lockName(accountId), () => run(store));
   }
 
@@ -280,7 +317,11 @@ export class Coordinator {
   }
 
   private focus(): void {
-    const stale = Date.now() - FOCUS_POLL_GAP_MS;
+    this.pollNow(Date.now() - FOCUS_POLL_GAP_MS);
+  }
+
+  // Polls at once every account whose last poll began at `stale` or earlier.
+  private pollNow(stale: number): void {
     for (const [accountId, account] of this.accounts) {
       if (account.timer !== null && account.lastPoll <= stale) {
         this.schedule(accountId, 0);
@@ -299,8 +340,12 @@ export class Coordinator {
     account.timer = null;
     account.lastPoll = Date.now();
     const { generation } = this;
+    // The patch log goes out first, so the changes that follow hold it.
     const outcome = await attempt(() =>
-      this.locked(accountId, (store) => this.reconcile(accountId, store)),
+      this.locked(accountId, async (store) => {
+        await this.writes.flush(accountId, store);
+        return this.reconcile(accountId, store);
+      }),
     );
     if (generation !== this.generation) {
       return;
@@ -373,7 +418,31 @@ export class Coordinator {
     if (account?.timer !== null && account?.timer !== undefined) {
       clearTimeout(account.timer);
     }
+    this.writes.stop(accountId);
     this.accounts.delete(accountId);
+  }
+
+  // Names the privacy setting to the store. A store that keeps mail off
+  // the disk is told to every tab, so a tab that holds an older session
+  // answer reads it again.
+  private choose(strict: boolean): void {
+    const choice = this.deps.choose(strict);
+    if (choice === "replaced") {
+      this.restart();
+    }
+    if (strict && choice !== "kept") {
+      this.deps.post({ kind: "strict" });
+    }
+  }
+
+  // The store was replaced by an empty one: work in flight writes
+  // nothing into it, the accounts start over with the list the lease
+  // brings and every tab reads its mail again.
+  private restart(): void {
+    this.halt();
+    this.haltedAt = Number.NEGATIVE_INFINITY;
+    this.listedAt = Number.NEGATIVE_INFINITY;
+    this.deps.post({ kind: "reset" });
   }
 
   // Stops every account and marks this moment, so only a list fetched

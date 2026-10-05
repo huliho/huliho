@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { accountsQueryOptions } from "@huliho/state";
+import { accountsQueryOptions, sessionQueryOptions } from "@huliho/state";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 
@@ -10,9 +10,12 @@ import { attachCache } from "./client";
 import type { Watch } from "./coordinator";
 
 // Runs the cache for the accounts the session holds while the shell is
-// mounted; `watching` names the mailbox this tab shows, if any.
+// mounted; `watching` names the mailbox this tab shows, if any. The
+// worker opens no store before it heard the instance's privacy setting,
+// which the session answer carries.
 export function useMailCache(watching: Watch | null): void {
   const { data, dataUpdatedAt } = useQuery(accountsQueryOptions);
+  const strict = useQuery(sessionQueryOptions).data?.privacyStrict;
   const watchedAccount = watching?.accountId ?? null;
   const watchedMailbox = watching?.mailboxId ?? null;
   useEffect(() => {
@@ -20,12 +23,13 @@ export function useMailCache(watching: Watch | null): void {
       watchedAccount === null || watchedMailbox === null
         ? null
         : { accountId: watchedAccount, mailboxId: watchedMailbox };
-    return data === undefined
+    return data === undefined || strict === undefined
       ? undefined
       : attachCache({
           accounts: data.accounts.map((row) => row.id),
           listedAt: dataUpdatedAt,
           watching: watch,
+          strict,
         });
-  }, [data, dataUpdatedAt, watchedAccount, watchedMailbox]);
+  }, [data, dataUpdatedAt, strict, watchedAccount, watchedMailbox]);
 }

@@ -2,12 +2,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import * as fc from "fast-check";
 import { expect, test } from "vitest";
 
-import { classifyImageUrl, remoteImageUrl } from "./remote";
+import { classifyImageUrl, classifyLinkUrl, remoteImageUrl } from "./remote";
 
 const OWN = "mail.example.test";
 const DROPPED = { kind: "dropped" };
+const WEB_SCHEMES = new Set(["http:", "https:"]);
+
+// Whether the policy's answer for a link is one the frame may carry:
+// nothing, an address to write to or a page on another host, off the
+// API and without user information.
+function carried(value: string): boolean {
+  const target = classifyLinkUrl(value, OWN);
+  if (target.kind === "dropped") {
+    return true;
+  }
+  const url = new URL(target.url);
+  if (target.kind === "mail") {
+    return url.protocol === "mailto:";
+  }
+  const bare = url.username === "" && url.password === "";
+  const elsewhere = url.hostname !== OWN && !url.pathname.startsWith("/api/");
+  return WEB_SCHEMES.has(url.protocol) && bare && elsewhere;
+}
 
 test.each([
   ["https://cdn.example/a.png", "https://cdn.example/a.png"],
@@ -68,6 +87,57 @@ test("without a known host the /api/ rule still holds", () => {
     url: "https://mail.example.test/logo.png",
   });
   expect(classifyImageUrl("https://mail.example.test/api/x", null)).toEqual(DROPPED);
+});
+
+test.each([
+  ["https://shop.example/sale?x=1#top", "https://shop.example/sale?x=1#top"],
+  ["HTTP://Shop.example", "http://shop.example/"],
+  ["https://mybank.example:pw@evil.example/login", "https://evil.example/login"],
+])("a link to another host is a page, without user information: %s", (value, url) => {
+  expect(classifyLinkUrl(value, OWN)).toEqual({ kind: "web", url });
+});
+
+test("a mailto link is an address to write to", () => {
+  expect(classifyLinkUrl("mailto:sanne@example.test?subject=hi", OWN)).toEqual({
+    kind: "mail",
+    url: "mailto:sanne@example.test?subject=hi",
+  });
+});
+
+test.each([
+  "login",
+  "/settings",
+  "//evil.example/x",
+  "#top",
+  "",
+  "https://mail.example.test/settings",
+  "https://shop.example/api/x",
+  "javascript:top.__x=1",
+  " javascript:top.__x=1",
+  "JAVASCRIPT:top.__x=1",
+  "data:text/html;base64,PHNjcmlwdD50b3AuX194PTE8L3NjcmlwdD4=",
+  "cid:part1@shop.example",
+  "file:///etc/passwd",
+  "blob:https://shop.example/1",
+  "tel:+31201234567",
+])("a link the frame may not carry is dropped: %s", (value) => {
+  expect(classifyLinkUrl(value, OWN)).toEqual(DROPPED);
+});
+
+test("a link of any characters is dropped or one the frame may carry and never throws", () => {
+  const scheme = fc.constantFrom("https://", "http://", "mailto:", "javascript:", "data:", "//");
+  const host = fc.constantFrom(OWN, "shop.example", "user:pw@shop.example", `x@${OWN}`, "");
+  const built = fc.tuple(scheme, host, fc.constantFrom("", "/", "/api/x", "/a/../api/x"));
+  const anything = fc.oneof(
+    fc.string({ unit: "binary" }),
+    fc.webUrl({ withQueryParameters: true, withFragments: true }),
+    built.map((pieces) => pieces.join("")),
+  );
+  fc.assert(
+    fc.property(anything, (value) => {
+      expect(carried(value)).toBe(true);
+    }),
+  );
 });
 
 test("a remote image loads through the server's route with its URL as one parameter", () => {

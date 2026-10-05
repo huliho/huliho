@@ -7,6 +7,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { noteRecent, recentCommands } from "../commands/recent";
 import { rememberLastAccount } from "../mail/last-account";
+import { hasLinkKey, linkKey } from "../open/link-key";
 import { renderEnding } from "./session-end-rig";
 import { useSignOut } from "./use-sign-out";
 
@@ -40,6 +41,7 @@ test("signing out drops the cached mail, the remembered account and the commands
   );
   rememberLastAccount("a1");
   noteRecent("go.mb-1");
+  const key = linkKey();
   const { queryClient, router } = await renderEnding(Harness, true);
   fireEvent.click(screen.getByRole("button", { name: "sign out" }));
   await waitFor(() => {
@@ -49,4 +51,5 @@ test("signing out drops the cached mail, the remembered account and the commands
   expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
   expect(localStorage.getItem(LAST_ACCOUNT_KEY)).toBeNull();
   expect(recentCommands()).toEqual([]);
+  expect(hasLinkKey(key)).toBe(false);
 });

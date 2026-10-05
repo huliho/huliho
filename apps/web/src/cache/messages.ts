@@ -7,13 +7,19 @@ import type { AppliedChanges, StopCause } from "@huliho/core";
 // The channel every tab listens on for what the worker changed.
 export const CACHE_CHANNEL = "huliho-cache";
 
-// `cleared` names the tab that signed out, so that tab can tell its own
-// word from another tab's; `account` says the server stopped an
-// account, or runs it again, as the worker's poll last found it.
+// What the worker tells every tab.
 export type CacheMessage =
   | ({ kind: "changed"; accountId: string } & AppliedChanges)
+  // The tab that signed out, so it can tell its own word from another's.
   | { kind: "cleared"; by: string }
-  | { kind: "account"; accountId: string; stoppedCause: StopCause | null };
+  // The server stopped the account or runs it again, as a poll found it.
+  | { kind: "account"; accountId: string; stoppedCause: StopCause | null }
+  // The server refused a change and the rows gave it back.
+  | { kind: "refused" }
+  // The worker moved to an empty store, so every mail query reads again.
+  | { kind: "reset" }
+  // A worker keeps mail off the disk, as the privacy setting asks.
+  | { kind: "strict" };
 
 const STOP_CAUSES: readonly StopCause[] = ["credentials", "connection"];
 
@@ -54,13 +60,22 @@ export function readCacheMessage(value: unknown): CacheMessage | null {
     return null;
   }
   const fields = new Map<string, unknown>(Object.entries(value));
-  const kind = fields.get("kind");
-  if (kind === "cleared") {
-    const by = fields.get("by");
-    return typeof by === "string" ? { kind, by } : null;
+  switch (fields.get("kind")) {
+    case "cleared": {
+      const by = fields.get("by");
+      return typeof by === "string" ? { kind: "cleared", by } : null;
+    }
+    case "account":
+      return account(fields);
+    case "changed":
+      return changed(fields);
+    case "refused":
+      return { kind: "refused" };
+    case "reset":
+      return { kind: "reset" };
+    case "strict":
+      return { kind: "strict" };
+    default:
+      return null;
   }
-  if (kind === "account") {
-    return account(fields);
-  }
-  return kind === "changed" ? changed(fields) : null;
 }

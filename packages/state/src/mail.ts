@@ -39,3 +39,13 @@ export function threadQueryOptions(cache: MailCache, accountId: string, threadId
     ...settled,
   });
 }
+
+// The body of one email as it was first asked for; the ask at the large
+// cap goes to the cache directly and replaces this answer.
+export function bodyQueryOptions(cache: MailCache, accountId: string, emailId: string) {
+  return queryOptions({
+    queryKey: queryKeys.body(accountId, emailId),
+    queryFn: () => cache.body(accountId, emailId, { large: false }),
+    ...settled,
+  });
+}

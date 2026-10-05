@@ -92,6 +92,15 @@ jobs:
             "0BSD", "Unlicense", "CC0-1.0", "BSL-1.0", "Unicode-3.0",
             "Unicode-DFS-2016", "MPL-2.0",
           ]);
+          // An SPDX expression: one choice of an OR is enough, every part of an AND has to be on the list.
+          // One with a group inside it is refused, for a reader to judge.
+          const admitted = (license) => {
+            const flat = license.replace(/^\((.*)\)$/, "$1");
+            if (/[()]/.test(flat)) return false;
+            return flat
+              .split(/\s+OR\s+/)
+              .some((choice) => choice.split(/\s+AND\s+/).every((part) => allowed.has(part)));
+          };
           const groups = JSON.parse(readFileSync(process.argv[process.argv.length - 1], "utf8"));
           const licenses = Object.keys(groups);
           if (licenses.length === 0) {
@@ -100,7 +109,7 @@ jobs:
           }
           let rejected = 0;
           for (const license of licenses) {
-            if (allowed.has(license)) continue;
+            if (admitted(license)) continue;
             for (const pkg of groups[license]) {
               console.error(`${pkg.name} ${pkg.versions.join(",")}: ${license} is not on the allowlist`);
             }
@@ -108,9 +117,16 @@ jobs:
           }
           process.exit(rejected === 0 ? 0 : 1);
           CHECK
-          printf '{"GPL-3.0-only":[{"name":"probe","versions":["1.0.0"]}]}' > "$RUNNER_TEMP/rejected.json"
-          if node "$RUNNER_TEMP/licenses.mjs" "$RUNNER_TEMP/rejected.json" > /dev/null 2>&1; then
-            echo "the license check accepted GPL-3.0-only"
+          for refused in "GPL-3.0-only" "(GPL-3.0-only OR AGPL-3.0-only)" "(MIT AND GPL-3.0-only)" "(MIT OR Apache-2.0) AND GPL-3.0-only" "GPL-3.0-only AND (MIT OR Apache-2.0)" "((MIT OR Apache-2.0) AND GPL-3.0-only)"; do
+            printf '{"%s":[{"name":"probe","versions":["1.0.0"]}]}' "$refused" > "$RUNNER_TEMP/rejected.json"
+            if node "$RUNNER_TEMP/licenses.mjs" "$RUNNER_TEMP/rejected.json" > /dev/null 2>&1; then
+              echo "the license check accepted $refused"
+              exit 1
+            fi
+          done
+          printf '{"(MPL-2.0 OR Apache-2.0)":[{"name":"probe","versions":["1.0.0"]}]}' > "$RUNNER_TEMP/choice.json"
+          if ! node "$RUNNER_TEMP/licenses.mjs" "$RUNNER_TEMP/choice.json" > /dev/null 2>&1; then
+            echo "the license check refused a choice of two allowed licenses"
             exit 1
           fi
           pnpm licenses list --prod --json > "$RUNNER_TEMP/licenses.json"
