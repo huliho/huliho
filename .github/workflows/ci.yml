@@ -189,7 +189,7 @@ jobs:
         with:
           command: check
       - name: install cargo-machete
-        uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
         with:
           tool: cargo-machete
       - run: cargo machete
@@ -539,7 +539,7 @@ jobs:
           echo "$out" | grep -q "cognitive complexity" || { echo "cognitive_complexity did not fire"; exit 1; }
           echo "$out" | grep -q "must_use" || { echo "the pedantic set did not fire"; exit 1; }
       - name: install cargo-machete and cargo-deny
-        uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
         with:
           tool: cargo-machete,cargo-deny
       - name: cargo-machete unused dependency
@@ -588,7 +588,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+      - uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
         with:
           tool: cargo-audit
       - run: cargo audit
