@@ -5,27 +5,30 @@
 // @vitest-environment node
 
 import { WINDOW_SIZE } from "@huliho/core";
-import { ACCOUNT, FakeJmap, at, email, json, mailbox } from "@huliho/core/testing";
-import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import { ACCOUNT, at, email, json, mailbox } from "@huliho/core/testing";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { CHANGES_POLL_MS, Coordinator, FIRST_SYNC_POLL_MS, LEASE_MS } from "./coordinator";
-import type { CacheApi } from "./coordinator";
-import { DexieMailStore, MailDatabase } from "./db";
-import { webLocks } from "./locks";
-import type { Locks } from "./locks";
+import {
+  attached,
+  beginRig,
+  coordinate,
+  drained,
+  endRig,
+  polled,
+  posts,
+  requests,
+  serve,
+  settled,
+  store,
+} from "./coordinator-rig";
+import { BODY_FETCHES_IN_FLIGHT } from "./body-queue";
+import { CHANGES_POLL_MS, FIRST_SYNC_POLL_MS } from "./coordinator";
 import type { CacheMessage } from "./messages";
+import { LEASE_MS } from "./watches";
 
 const LIMIT_PROBLEM = { type: "urn:ietf:params:jmap:error:limit", limit: "maxSizeRequest" };
 const PROBLEM_TYPE = "application/problem+json";
 const INBOX = { accountId: ACCOUNT, mailboxId: "inbox" };
-
-// Only the clock is faked: IndexedDB runs on immediates and the fake
-// server answers on real promises.
-const FAKED = ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] as const;
-
-// How many turns of the event loop let the work of a fired timer finish.
-const DRAIN_TURNS = 50;
 
 // A step of the clock short of the next poll.
 const BEFORE_POLL_MS = 1000;
@@ -41,109 +44,9 @@ const TREE_DROPPED = {
   threads: [],
 };
 
-interface Rig {
-  server: FakeJmap;
-  posted: CacheMessage[];
-  coordinator: Coordinator;
-  tab: CacheApi;
-}
+beforeEach(beginRig);
 
-// One IndexedDB per test, shared by every coordinator of the test as the
-// tabs of one browser share it; the locks are the platform's, under a
-// name per test so a lock a test leaves held never reaches the next one.
-let indexedDB = new IDBFactory();
-let scope = "";
-
-function store(): DexieMailStore {
-  return new DexieMailStore(new MailDatabase("huliho-test", { indexedDB, IDBKeyRange }));
-}
-
-function locks(): Locks {
-  const platform = webLocks(navigator.locks);
-  return { request: (name, run) => platform.request(`${scope}:${name}`, run) };
-}
-
-function serve(count: number): FakeJmap {
-  const server = new FakeJmap();
-  server.putMailbox(mailbox("inbox", "inbox"));
-  server.putMailbox(mailbox("archive", "archive"));
-  for (let index = 1; index <= count; index += 1) {
-    server.addEmail(email(`e${String(index)}`, { receivedAt: at(index) }));
-  }
-  vi.stubGlobal("fetch", server.fetch);
-  return server;
-}
-
-function coordinate(posted: CacheMessage[]): Coordinator {
-  return new Coordinator({
-    store: store(),
-    choose: () => "kept",
-    locks: locks(),
-    post: (message) => {
-      posted.push(message);
-    },
-  });
-}
-
-function posts(posted: CacheMessage[], count: number): () => void {
-  return () => {
-    expect(posted).toHaveLength(count);
-  };
-}
-
-function requests(server: FakeJmap, count: number): () => void {
-  return () => {
-    expect(server.posted()).toHaveLength(count);
-  };
-}
-
-// Waits for a poll or a forget to land, without moving the clock past
-// the next poll.
-function settled(check: () => void): Promise<void> {
-  return vi.waitFor(check);
-}
-
-function drained(turns = DRAIN_TURNS): Promise<void> {
-  if (turns === 0) {
-    return Promise.resolve();
-  }
-  return new Promise((resolve) => {
-    setImmediate(resolve);
-  }).then(() => drained(turns - 1));
-}
-
-// Runs the given number of polls, each to its end.
-async function polled(posted: CacheMessage[], count: number): Promise<void> {
-  if (count === 0) {
-    return;
-  }
-  const expected = posted.length + 1;
-  await vi.advanceTimersByTimeAsync(CHANGES_POLL_MS);
-  await settled(posts(posted, expected));
-  await polled(posted, count - 1);
-}
-
-async function attached(count: number): Promise<Rig> {
-  const server = serve(count);
-  const posted: CacheMessage[] = [];
-  const coordinator = coordinate(posted);
-  const tab = coordinator.api();
-  await tab.persisted();
-  await tab.attach({ accounts: [ACCOUNT], listedAt: Date.now(), watching: null, strict: false });
-  await settled(posts(posted, 1));
-  return { server, posted, coordinator, tab };
-}
-
-beforeEach(() => {
-  scope = crypto.randomUUID();
-  vi.useFakeTimers({ toFake: [...FAKED] });
-});
-
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-  indexedDB = new IDBFactory();
-});
+afterEach(endRig);
 
 test("an attached account gets its mailbox tree at once and answers it from the store", async () => {
   const { server, posted, tab } = await attached(3);
@@ -396,6 +299,26 @@ test("reveal lands the new mail and tells every tab; a thread reads from the sto
   expect(thread.ok && thread.value?.emails["e4"]?.subject).toBe("Message e4");
   const unknown = await tab.thread(ACCOUNT, "t-e9");
   expect(unknown).toEqual({ ok: true, value: null });
+});
+
+test("two bodies of an account are fetched at once and a third waits its turn", async () => {
+  const { server, tab } = await attached(3);
+  const answer = Promise.withResolvers<undefined>();
+  let asked = 0;
+  const held: typeof fetch = async (input, init) => {
+    asked += 1;
+    await answer.promise;
+    return server.fetch(input, init);
+  };
+  vi.stubGlobal("fetch", held);
+  const bodies = ["e1", "e2", "e3"].map((id) => tab.body(ACCOUNT, id, { large: false }));
+  await drained();
+  // Two are with the server; the third is not sent before one of them answers.
+  expect(asked).toBe(BODY_FETCHES_IN_FLIGHT);
+  answer.resolve(undefined);
+  const landed = await Promise.all(bodies);
+  expect(landed.map((read) => read.ok && read.value?.body.id)).toEqual(["e1", "e2", "e3"]);
+  expect(asked).toBe(bodies.length);
 });
 
 test("work in flight when the database is cleared writes nothing after it", async () => {

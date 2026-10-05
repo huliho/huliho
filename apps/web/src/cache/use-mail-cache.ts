@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 
 import { attachCache } from "./client";
-import type { Watch } from "./coordinator";
+import type { Watch } from "./watches";
 
 // Runs the cache for the accounts the session holds while the shell is
 // mounted; `watching` names the mailbox this tab shows, if any. The

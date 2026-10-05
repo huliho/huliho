@@ -3,9 +3,11 @@
 // Additional terms apply, see NOTICE.
 
 import { JmapError } from "@huliho/core";
+import type { BodyDetail } from "@huliho/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
+import { NEWSLETTER_HTML, PASSED, REPLY_TEXT, htmlDetail, textDetail } from "./body-fixtures";
 import {
   FASTMAIL,
   INBOX_ID,
@@ -18,12 +20,21 @@ import {
 import type { ThreadAnswer } from "./fixtures";
 import { ReadingPane, ThreadScreen, prefetchThreadPane } from "./reading-pane";
 import type { OpenThread } from "./reading-pane";
-import { routed } from "./story-router";
+import { routed, seedMail } from "./story-router";
 
 const INBOX = MAILBOXES.find((mailbox) => mailbox.id === INBOX_ID);
 const OPEN: OpenThread = { accountId: FASTMAIL.id, threadId: THREAD_ID, mailbox: INBOX };
 // An older message left unread, which the pane opens in sight.
 const UNREAD_AT = 4;
+const NEWEST_ID = "e-3";
+const UNREAD_ID = "e-3-m5";
+
+// The newest message as a newsletter and the unread one as a quoted
+// reply; every other card shows its preview.
+const BODIES = new Map<string, BodyDetail>([
+  [NEWEST_ID, htmlDetail(NEWEST_ID, NEWSLETTER_HTML, { authentication: PASSED })],
+  [UNREAD_ID, textDetail(UNREAD_ID, REPLY_TEXT, { flowed: { delSp: false } })],
+]);
 
 function nothing(): void {
   // A drawn pane closes nothing.
@@ -35,18 +46,22 @@ function Box({ children }: { children: JSX.Element }): JSX.Element {
 }
 
 function paned(answer: ThreadAnswer): JSX.Element {
-  return routed(() => (
-    <Box>
-      <ReadingPane
-        locale="en"
-        cache={fixtureCache({}, { [THREAD_ID]: answer })}
-        thread={OPEN}
-        position="right"
-        keyHints
-        onClose={nothing}
-      />
-    </Box>
-  ));
+  return routed(
+    () => (
+      <Box>
+        <ReadingPane
+          locale="en"
+          cache={fixtureCache({}, { [THREAD_ID]: answer })}
+          thread={OPEN}
+          position="right"
+          keyHints
+          onClose={nothing}
+        />
+      </Box>
+    ),
+    undefined,
+    seedMail(BODIES),
+  );
 }
 
 // The pane comes as a chunk of its own; every story waits for it before
@@ -73,17 +88,21 @@ export const UnreadInside: StoryObj = {
 
 export const Screen: StoryObj = {
   render: () =>
-    routed(() => (
-      <Box>
-        <ThreadScreen
-          locale="en"
-          cache={fixtureCache({}, { [THREAD_ID]: THREAD })}
-          thread={OPEN}
-          keyHints
-          onClose={nothing}
-        />
-      </Box>
-    )),
+    routed(
+      () => (
+        <Box>
+          <ThreadScreen
+            locale="en"
+            cache={fixtureCache({}, { [THREAD_ID]: THREAD })}
+            thread={OPEN}
+            keyHints
+            onClose={nothing}
+          />
+        </Box>
+      ),
+      undefined,
+      seedMail(BODIES),
+    ),
 };
 
 export const Loading: StoryObj = {

@@ -4,8 +4,10 @@
 
 import { expect, test } from "vitest";
 
+import { BLANK_PIXEL } from "./css";
 import { FRAME_CSP, buildFrameDocument } from "./frame-document";
 import { DOWNLOAD_PREFIX, OPTIONS, PROXY_PREFIX, built, message, part } from "./frame-rig";
+import { BLOCKED_BOXES_MAX } from "./images";
 
 const LOGO = part("image/png", { blobId: "b-logo", name: "logo.png", cid: "logo@shop.example" });
 const TURNED = "calc(1 - l) c h / alpha)";
@@ -122,6 +124,34 @@ test("a remote image is a box with its alt text until the reader allows the send
     `${PROXY_PREFIX}https%3A%2F%2Fcdn.example%2Fhero.png`,
   );
   expect(allowed.remote).toBe(1);
+});
+
+// Remote images numbered from `from`, each with a text of its own.
+function remoteImages(from: number, count: number): string {
+  return Array.from({ length: count }, (_, index) => {
+    const n = String(from + index);
+    return `<img src="https://cdn.example/${n}.png" width="40" height="20" alt="n${n}">`;
+  }).join("");
+}
+
+test("a mail of more remote images than the bound draws that many boxes and keeps the rest blank, across its parts", () => {
+  const extra = 5;
+  const half = BLOCKED_BOXES_MAX / 2;
+  const parts = message([remoteImages(0, half), remoteImages(half, half + extra)]);
+  const { html, remote } = buildFrameDocument(parts, OPTIONS);
+  const read = page(html);
+  const sources = Array.from(read.body.querySelectorAll("img"), (image) => image.src);
+  expect(sources.filter((src) => src.startsWith("data:image/svg+xml,"))).toHaveLength(
+    BLOCKED_BOXES_MAX,
+  );
+  expect(sources.slice(BLOCKED_BOXES_MAX)).toEqual(
+    Array.from({ length: extra }, () => BLANK_PIXEL),
+  );
+  // The blank ones keep their place and still count for the bar.
+  expect(read.body.querySelectorAll('img[width="40"][height="20"]')).toHaveLength(
+    BLOCKED_BOXES_MAX + extra,
+  );
+  expect(remote).toBe(BLOCKED_BOXES_MAX + extra);
 });
 
 test("an alt text is cut to its bound and loses what XML cannot hold", () => {

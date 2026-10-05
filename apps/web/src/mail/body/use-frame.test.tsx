@@ -98,6 +98,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   observers.length = 0;
 });
@@ -181,6 +182,48 @@ test("the app's keys work with the focus inside the frame, so Escape closes the 
   view?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
   expect(close).toHaveBeenCalledOnce();
   unregister();
+});
+
+// The frame navigated: it holds another document, in the state given.
+function navigated(readyState: DocumentReadyState): Document {
+  const page = document.implementation.createHTMLDocument("mail");
+  Object.defineProperty(page, "readyState", { configurable: true, value: readyState });
+  Object.defineProperty(frame(), "contentDocument", { configurable: true, value: page });
+  return page;
+}
+
+// One drawn frame passes, with the frames of the test's own clock.
+function nextFrame(): void {
+  act(() => {
+    vi.advanceTimersToNextFrame();
+  });
+}
+
+test("a document past parsing is followed ahead of its load event, so its text never waits for an image", () => {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+  render(<Harness html="<p>hi</p>" />);
+  nextFrame();
+  expect(frame().dataset["height"]).toBe("null");
+  const parsed = navigated("interactive");
+  layout({ content: 120, frame: 0 });
+  nextFrame();
+  expect(frame().dataset["height"]).toBe("120");
+  expect(live()[0]?.watched).toEqual([parsed.body]);
+  // The load event that comes later follows the same document once.
+  loaded();
+  expect(live()).toHaveLength(1);
+});
+
+test("a document still parsing is not followed and a frame that left stops looking", () => {
+  vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+  render(<Harness html="<p>hi</p>" />);
+  navigated("loading");
+  nextFrame();
+  nextFrame();
+  expect(frame().dataset["height"]).toBe("null");
+  expect(live()).toHaveLength(0);
+  cleanup();
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 test("a document that loads again is followed once", () => {

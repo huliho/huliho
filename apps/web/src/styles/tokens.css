@@ -58,6 +58,8 @@
   --hhx-halo-width: 4px;
   /* The progress line on the first-sync block's top edge. */
   --hhx-hairline-width: 2px;
+  /* One bar per level of quoted text in a plain message. */
+  --hhx-quote-bar-width: 2px;
 
   --hhx-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --hhx-duration-flip: 120ms;

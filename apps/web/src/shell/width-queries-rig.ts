@@ -10,10 +10,11 @@ export interface WidthQueries {
 }
 
 // jsdom answers no media query; the shell's layout hook reads two. The
-// stub answers them from `queries`, which a test may flip.
+// stub answers the width queries from `queries`, which a test may flip,
+// and every other query with no match.
 export function stubWidthQueries(queries: WidthQueries): void {
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: queries.wide,
+    matches: query.includes("min-width") && queries.wide,
     media: query,
     addEventListener() {
       return undefined;

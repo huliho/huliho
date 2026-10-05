@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import type { Theme } from "../../theme/use-theme";
 import { asksDark, namesDark, themedMedia, themedScheme } from "./colors";
-import type { Theme } from "./colors";
 import type { Images } from "./images";
 
 // A transparent pixel, which stands where a URL may not load.

@@ -28,7 +28,7 @@ import { prefetchThreadPane } from "./reading-pane";
 import { ShellFrame } from "./shell-frame";
 import { Sidebar } from "./sidebar";
 import { FixtureList } from "./story-list";
-import { routed } from "./story-router";
+import { routed, seedMail } from "./story-router";
 import { ThreadListBanner } from "./thread-list-banner";
 import type { TreeState } from "./tree";
 
@@ -94,6 +94,7 @@ function opened(readingPane: ReadingPane): JSX.Element {
       </Shell>
     ),
     THREAD_PATH,
+    seedMail(new Map()),
   );
 }
 

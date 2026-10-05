@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-// The theme the app renders, which decides the scheme inside the frame
-// whatever the operating system prefers.
-export type Theme = "light" | "dark";
+import type { Theme } from "../../theme/use-theme";
 
+// The theme the app renders decides the scheme inside the frame,
+// whatever the operating system prefers: these find a message's own
+// scheme features.
 const SCHEME_FEATURE = /\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)/gi;
 const DARK_FEATURE = /prefers-color-scheme\s*:\s*dark/i;
 

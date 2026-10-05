@@ -1,0 +1,40 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* A strip in the card's chrome, on the page color, so it never passes for the sender's content. */
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--hhx-space-2) var(--hhx-space-3);
+  padding: var(--hhx-space-2) var(--hhx-space-3);
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-field);
+  background: var(--hh-bg);
+}
+
+.icon {
+  flex: none;
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
+  color: var(--hh-text-muted);
+}
+
+/* The sentence keeps a column of its own; on a narrow card the buttons wrap under it.
+   It may name the sender's address, which breaks anywhere to stay inside the bar. */
+.sentence {
+  flex: 1 1 var(--hhx-row-facts-min);
+  min-inline-size: 0;
+  margin: 0;
+  color: var(--hh-text);
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hhx-space-2);
+  margin-inline-start: auto;
+}

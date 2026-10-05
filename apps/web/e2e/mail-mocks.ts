@@ -4,10 +4,14 @@
 
 import type { Page, Route } from "@playwright/test";
 
-import { answerCalls, noteArrival, serverFor } from "./mail-answers";
+import { mockBlobs } from "./blob-mocks";
+import type { Blobs } from "./blob-mocks";
+import { answerCalls, asksBody, noteArrival, serverFor } from "./mail-answers";
 import type { Invocation, MailServer } from "./mail-answers";
 import { UPSTREAM, arrive, corpusFor } from "./mail-corpus";
 import type { Corpus, CorpusEmail } from "./mail-corpus";
+import { mockPolicies } from "./policy-mocks";
+import type { PolicyStore } from "./policy-mocks";
 
 const SESSION_ROUTE = "**/api/jmap/*/session";
 const API_ROUTE = "**/api/jmap/*";
@@ -15,6 +19,14 @@ const CORE_CAPABILITY = "urn:ietf:params:jmap:core";
 const MAIL_CAPABILITY = "urn:ietf:params:jmap:mail";
 // The vendor capability a bridge account advertises, which brings syncedEmails.
 const HULIHO_CAPABILITY = "https://huliho.com/jmap";
+// The problem a request past the server's concurrency gets (RFC 8620 section 3.6.1).
+const LIMIT_PROBLEM = {
+  type: "urn:ietf:params:jmap:error:limit",
+  limit: "maxConcurrentRequests",
+  status: 429,
+};
+// How many objects one Email/set takes.
+const MAX_OBJECTS_IN_SET = 500;
 
 export interface MailboxBody {
   id: string;
@@ -41,12 +53,13 @@ interface Counts {
   parentId?: string;
 }
 
+// The reader may mark a message read and set its keywords; nothing else.
 const RIGHTS = {
   mayReadItems: true,
   mayAddItems: false,
   mayRemoveItems: false,
-  maySetSeen: false,
-  maySetKeywords: false,
+  maySetSeen: true,
+  maySetKeywords: true,
   mayCreateChild: false,
   mayRename: false,
   mayDelete: false,
@@ -121,7 +134,7 @@ function sessionBody(accountId: string, vendor: boolean): object {
         maxConcurrentRequests: 4,
         maxCallsInRequest: 16,
         maxObjectsInGet: 500,
-        maxObjectsInSet: 0,
+        maxObjectsInSet: MAX_OBJECTS_IN_SET,
         collationAlgorithms: ["i;unicode-casemap"],
       },
       [MAIL_CAPABILITY]: {},
@@ -131,7 +144,7 @@ function sessionBody(accountId: string, vendor: boolean): object {
       [UPSTREAM]: {
         name: "mira@example.com",
         isPersonal: true,
-        isReadOnly: true,
+        isReadOnly: false,
         accountCapabilities: { [MAIL_CAPABILITY]: {}, ...extra },
       },
     },
@@ -155,20 +168,52 @@ export interface MailOptions {
   corpus?: Corpus;
   // Whether the account is a bridge account, whose mailboxes count their synced emails.
   vendor?: boolean;
+  // The user's sender policies; a second context given the same store
+  // sees the same grants.
+  policies?: PolicyStore;
 }
 
-// The mocked mail behind a page: the server the routes answer from and
-// a way to let new mail arrive in a mailbox.
+// The mocked mail behind a page: the server the routes answer from, a
+// way to let new mail arrive in a mailbox, the policies on record and
+// what the blob routes were asked.
 export interface MockedMail {
   server: MailServer;
   arrive: (mailboxId: string) => CorpusEmail;
+  policies: PolicyStore;
+  blobs: Blobs;
 }
 
-// Answers the proxy's two routes for any account with the mailboxes and
-// the corpus, so the shell behind a signed-in page has a tree and a
-// list to draw. A route never reaches a shared worker's requests, so
-// the page runs the dedicated worker, whose requests the context's
-// routes do answer.
+// A body request, held while the server holds and answered with the
+// limit problem while the server limits; any other request is answered
+// at once.
+async function answered(server: MailServer, route: Route): Promise<void> {
+  const asked = calls(route);
+  if (asksBody(asked)) {
+    if (server.limitBodies > 0) {
+      server.limitBodies -= 1;
+      return route.fulfill({
+        status: LIMIT_PROBLEM.status,
+        contentType: "application/problem+json",
+        json: LIMIT_PROBLEM,
+      });
+    }
+    if (server.holdBodies) {
+      await new Promise<void>((resolve) => {
+        server.heldBodies.push(resolve);
+      });
+    }
+  }
+  return route.fulfill({
+    json: { methodResponses: answerCalls(server, asked), sessionState: "s1" },
+  });
+}
+
+// Answers the proxy's routes for any account with the mailboxes and the
+// corpus, so the shell behind a signed-in page has a tree, a list and
+// bodies to draw, with the sender policies and the blob routes beside
+// them. A route never reaches a shared worker's requests, so the page
+// runs the dedicated worker, whose requests the context's routes do
+// answer.
 export async function mockMail(
   page: Page,
   mailboxes: MailboxBody[] = MAILBOXES,
@@ -177,11 +222,12 @@ export async function mockMail(
   const corpus = options.corpus ?? corpusFor(mailboxes);
   // A native account's mailboxes carry no synced count.
   const listed = mailboxes.map((row) =>
-    options.vendor === true
-      ? row
-      : Object.fromEntries(Object.entries(row).filter(([key]) => key !== "syncedEmails")),
+    Object.fromEntries(
+      Object.entries(row).filter(([key]) => options.vendor === true || key !== "syncedEmails"),
+    ),
   );
   const server = serverFor(corpus, listed);
+  const policies = options.policies ?? new Map();
   const context = page.context();
   await context.addInitScript(() => {
     Reflect.deleteProperty(window, "SharedWorker");
@@ -189,14 +235,11 @@ export async function mockMail(
   await context.route(SESSION_ROUTE, (route) =>
     route.fulfill({ json: sessionBody(accountIdOf(route), options.vendor === true) }),
   );
-  await context.route(API_ROUTE, (route) => {
-    if (route.request().method() !== "POST") {
-      return route.fallback();
-    }
-    return route.fulfill({
-      json: { methodResponses: answerCalls(server, calls(route)), sessionState: "s1" },
-    });
-  });
+  await context.route(API_ROUTE, (route) =>
+    route.request().method() === "POST" ? answered(server, route) : route.fallback(),
+  );
+  await mockPolicies(context, policies);
+  const blobs = await mockBlobs(context);
   return {
     server,
     arrive: (mailboxId) => {
@@ -204,6 +247,8 @@ export async function mockMail(
       noteArrival(server, message.id, message.threadId);
       return message;
     },
+    policies,
+    blobs,
   };
 }
 

@@ -76,6 +76,7 @@ export { CredentialError } from "./credentials";
 export type { CredentialFailureCode } from "./credentials";
 export { downloadUrl } from "./download";
 export type { BlobRequest, DownloadSource } from "./download";
+export { BODY_VALUE_BYTES, BODY_VALUE_BYTES_LARGE } from "./jmap/body";
 export type { EmailBodyPart, EmailBodyValue } from "./jmap/body";
 export type { ObjectType } from "./jmap/calls";
 export { JmapClient, JmapError, MethodFailure } from "./jmap/client";
@@ -101,6 +102,7 @@ export {
   withPreference,
 } from "./preferences";
 export type {
+  DarkMail,
   Density,
   PreferenceChange,
   PreferenceLocale,
@@ -136,7 +138,7 @@ export {
   sessionRowSchema,
 } from "./sessions";
 export type { Device, RevokeOptions, SessionRow } from "./sessions";
-export { unflow } from "./text/flowed";
+export { quotedLines, unflow } from "./text/flowed";
 export type { QuotedLine } from "./text/flowed";
 export {
   USER_NAME_MAX_CHARS,

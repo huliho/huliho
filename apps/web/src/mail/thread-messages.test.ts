@@ -19,30 +19,29 @@ test("the messages come oldest first and a header the detail lacks is left out",
 
 test("with every message read the newest opens, two stay in sight and the rest wait", () => {
   const plan = planMessages(messagesOf(THREAD));
-  expect(plan.olderCount).toBe(COUNT - 3);
-  expect(plan.messages.map((message) => message.expanded)).toEqual([
+  expect(plan.map((message) => message.expanded)).toEqual([
     ...Array.from({ length: COUNT - 1 }, () => false),
     true,
   ]);
-  expect(plan.messages.filter((message) => !message.older)).toHaveLength(3);
-  expect(plan.messages.every((message) => !message.unread)).toBe(true);
+  expect(plan.filter((message) => !message.older)).toHaveLength(3);
+  expect(plan.every((message) => !message.unread)).toBe(true);
 });
 
 test("an unread message opens wherever it stands and the two before it stay in sight", () => {
   const plan = planMessages(messagesOf(threadDetail([4])));
-  expect(plan.olderCount).toBe(2);
-  expect(plan.messages[4]).toMatchObject({ unread: true, expanded: true, older: false });
-  expect(plan.messages[2]).toMatchObject({ expanded: false, older: false });
-  expect(plan.messages[1]).toMatchObject({ older: true });
-  expect(plan.messages.at(-1)).toMatchObject({ expanded: true });
+  expect(plan.filter((message) => message.older)).toHaveLength(2);
+  expect(plan[4]).toMatchObject({ unread: true, expanded: true, older: false });
+  expect(plan[2]).toMatchObject({ expanded: false, older: false });
+  expect(plan[1]).toMatchObject({ older: true });
+  expect(plan.at(-1)).toMatchObject({ expanded: true });
 });
 
 test("a thread of one or two messages hides nothing", () => {
   const messages = messagesOf(THREAD).slice(-2);
   const plan = planMessages(messages);
-  expect(plan.olderCount).toBe(0);
-  expect(plan.messages.map((message) => message.expanded)).toEqual([false, true]);
-  expect(planMessages([])).toEqual({ messages: [], olderCount: 0 });
+  expect(plan.some((message) => message.older)).toBe(false);
+  expect(plan.map((message) => message.expanded)).toEqual([false, true]);
+  expect(planMessages([])).toEqual([]);
 });
 
 test("the subject is the first message's, null when it has none", () => {

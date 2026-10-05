@@ -4,21 +4,25 @@
 
 import { CircleAlert } from "lucide-react";
 
-import { Button } from "./button";
+import { LeavingButton } from "./button";
 import styles from "./error-state.module.css";
 
 interface ErrorStateProps {
   message: string;
   retryLabel: string;
   onRetry: () => void;
+  // A pane shows the state centered in its room; a card shows it as one
+  // line at its own padding.
+  variant?: "pane" | "inline";
 }
 
-export function ErrorState({ message, retryLabel, onRetry }: ErrorStateProps) {
+// The retry takes the state away, so its button hands the focus on.
+export function ErrorState({ message, retryLabel, onRetry, variant = "pane" }: ErrorStateProps) {
   return (
-    <div className={styles.state} role="alert">
+    <div className={styles.state} role="alert" data-variant={variant}>
       <CircleAlert className={styles.icon} aria-hidden="true" />
       <p className={styles.message}>{message}</p>
-      <Button onClick={onRetry}>{retryLabel}</Button>
+      <LeavingButton onClick={onRetry}>{retryLabel}</LeavingButton>
     </div>
   );
 }

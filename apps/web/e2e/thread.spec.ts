@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { AxeBuilder } from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
@@ -11,7 +10,7 @@ import { FIXED_NOW } from "./mail-corpus";
 import { mockMail } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
-import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
+import { THEMES, VIEWPORTS, axeOn } from "./sweep";
 import {
   CARDS_IN_SIGHT,
   INBOX_PATH,
@@ -19,6 +18,7 @@ import {
   READ_INBOX,
   ROWS,
   SINGLE_ROW,
+  bodiesLanded,
   directionOf,
   grid,
   heightOf,
@@ -277,6 +277,7 @@ test("the pane reads in Dutch and in the pseudo-locale", async ({ page }) => {
   for (const own of [subject, title, sender]) {
     expect(await directionOf(own)).toBe("ltr");
   }
+  await bodiesLanded(page);
   await settled(page);
   await expect.soft(page).toHaveScreenshot("thread-en-XA-light-desktop.png");
 });
@@ -303,8 +304,9 @@ async function drawnOpen(page: Page, drawn: Drawn, theme: (typeof THEMES)[number
     await openInbox(page, drawn.readingPane);
     await rowAt(page, LONG_ROW).click();
     await expect(page.getByRole("heading", { name: subjectOf(LONG_ROW) })).toBeVisible();
+    await bodiesLanded(page);
     await settled(page);
-    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    const results = await axeOn(page).analyze();
     expect.soft(results.violations, `axe on ${drawn.name} in ${theme}`).toEqual([]);
     await expect
       .soft(page)

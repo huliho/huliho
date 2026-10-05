@@ -4,7 +4,7 @@
 
 import { expect, test, vi } from "vitest";
 
-import type { Theme } from "./colors";
+import type { Theme } from "../../theme/use-theme";
 import { BLANK_PIXEL, cleanBlock, cleanSheet, cssContext, selectsRoot, sheetText } from "./css";
 import type { CssContext } from "./css";
 import { DOWNLOAD, DOWNLOAD_PREFIX, OWN_HOST, PROXY_PREFIX, message, part } from "./frame-rig";

@@ -2,23 +2,44 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Additional terms apply, see NOTICE. */
 
+/* The card's own values: the chrome's column starts past the dot and the initials;
+   the corner curve runs inside the border. The card lays its head out by its own
+   width and anchors what it reads out without drawing. */
 .card {
+  position: relative;
+  --card-chrome-indent: calc(
+    var(--hhx-space-3) + var(--hhx-icon-inline) + var(--hhx-avatar-size) + 2 * var(--hhx-space-2)
+  );
+  --card-corner: calc(var(--hhx-radius-overlay) - var(--hhx-border-width));
+
+  container-type: inline-size;
   border: var(--hhx-border-width) solid var(--hh-border);
   border-radius: var(--hhx-radius-overlay);
   background: var(--hh-surface);
 }
 
-/* The dot, the initials, who wrote and when, in one row that folds the card. */
+/* The fold button with the icon buttons after it; the icons stand beside the first line. */
 .head {
+  display: flex;
+  align-items: flex-start;
+}
+
+/* The dot, the initials, who wrote and when, in one button that folds the card. In a
+   narrow card the time stands under the name beside the address; wider, beside both. */
+.fold {
+  flex: 1;
   display: grid;
   grid-template-columns: var(--hhx-icon-inline) var(--hhx-avatar-size) minmax(0, 1fr) auto;
+  grid-template-areas:
+    "dot portrait name name"
+    "dot portrait detail time";
   column-gap: var(--hhx-space-2);
   align-items: center;
-  inline-size: 100%;
+  min-inline-size: 0;
   min-block-size: var(--hhx-row-height);
   padding: var(--hhx-space-2) var(--hhx-space-3);
   border: none;
-  border-radius: var(--hhx-radius-overlay);
+  border-start-start-radius: var(--card-corner);
   background: none;
   color: var(--hh-text);
   font: inherit;
@@ -26,17 +47,24 @@
   cursor: pointer;
 }
 
-.head:hover {
-  background: var(--hh-hover);
+/* Alone in the head the button reaches the card's other top corner; in a
+   folded card it reaches the bottom ones as well. */
+.fold:last-child {
+  border-start-end-radius: var(--card-corner);
 }
 
-.card[data-expanded] .head {
-  border-end-start-radius: 0;
-  border-end-end-radius: 0;
+.card:not([data-expanded]) .fold {
+  border-end-start-radius: var(--card-corner);
+  border-end-end-radius: var(--card-corner);
+}
+
+.fold:hover {
+  background: var(--hh-hover);
 }
 
 /* Unread is the dot plus the weight; the dot keeps its place either way. */
 .dot {
+  grid-area: dot;
   justify-self: center;
   inline-size: var(--hhx-space-2);
   block-size: var(--hhx-space-2);
@@ -48,13 +76,14 @@
   background: var(--hh-accent);
 }
 
-.who {
+.portrait {
+  grid-area: portrait;
   display: flex;
-  flex-direction: column;
-  min-inline-size: 0;
 }
 
 .name {
+  grid-area: name;
+  align-self: end;
   overflow: hidden;
   font-weight: 500;
   text-overflow: ellipsis;
@@ -66,6 +95,8 @@
 }
 
 .detail {
+  grid-area: detail;
+  align-self: start;
   overflow: hidden;
   font-size: var(--hhx-type-1);
   color: var(--hh-text-muted);
@@ -74,21 +105,38 @@
 }
 
 .time {
+  grid-area: time;
+  align-self: start;
   font-family: var(--hhx-font-mono);
   font-size: var(--hhx-type-1);
   color: var(--hh-text-muted);
   white-space: nowrap;
 }
 
-/* The open card's rest starts under the name, past the dot and the initials. */
+/* The icon buttons of the open head, each its own tab stop. */
+.revert {
+  margin-block-start: var(--hhx-space-1);
+  margin-inline-end: var(--hhx-space-2);
+}
+
+/* Pressed, the message stands as sent: the inset frame and the tint say so. */
+.revert[data-pressed] {
+  background: var(--hh-accent-tint);
+  box-shadow: inset 0 0 0 var(--hhx-border-width-selected) var(--hh-accent);
+}
+
+.headIcon {
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
+}
+
+/* The recipients and the bar keep the chrome's column, past the dot and the initials. */
 .details {
   display: grid;
   gap: var(--hhx-space-3);
   padding-block: 0 var(--hhx-space-3);
-  padding-inline: calc(
-      var(--hhx-space-3) + var(--hhx-icon-inline) + var(--hhx-avatar-size) + 2 * var(--hhx-space-2)
-    )
-    var(--hhx-space-3);
+  padding-inline: var(--card-chrome-indent) var(--hhx-space-3);
 }
 
 .recipients {
@@ -136,8 +184,35 @@
   color: var(--hh-text-muted);
 }
 
-.text {
-  margin: 0;
-  line-height: var(--hhx-leading);
-  overflow-wrap: anywhere;
+/* The bar stands in the chrome above the hairline; in a narrow card it starts at the card padding. */
+.bar {
+  padding-block: 0 var(--hhx-space-3);
+  padding-inline: var(--hhx-space-3);
+}
+
+/* The seam: the body runs to the card's border under a hairline and
+   ends in the card's bottom corners, which cut a mail that paints them. */
+.body {
+  overflow: hidden;
+  border-block-start: var(--hhx-border-width) solid var(--hh-border);
+  border-end-start-radius: var(--card-corner);
+  border-end-end-radius: var(--card-corner);
+}
+
+/* A card this wide has room for the full time beside a name. A container
+   query takes no token, so the width stands here as a number. */
+@container (min-inline-size: 480px) {
+  .fold {
+    grid-template-areas:
+      "dot portrait name time"
+      "dot portrait detail time";
+  }
+
+  .time {
+    align-self: center;
+  }
+
+  .bar {
+    padding-inline-start: var(--card-chrome-indent);
+  }
 }

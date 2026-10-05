@@ -3,6 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import { Button as BaseButton } from "@base-ui/react/button";
+import { useLayoutEffect, useRef } from "react";
 import type { ComponentProps } from "react";
 
 import { cx } from "./cx";
@@ -48,4 +49,25 @@ export function Button({
       {...props}
     />
   );
+}
+
+const FOCUS_HEIR = "data-focus-heir";
+
+// What a box wears to take the focus of a button that leaves inside it.
+export const focusHeir = { tabIndex: -1, [FOCUS_HEIR]: "" } as const;
+
+// A button its own action takes away. The focus it held goes to the
+// nearest box around it that wears `focusHeir`, so the action never
+// drops it; the page stays where it is scrolled.
+export function LeavingButton(props: Omit<ButtonProps, "ref">) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    const button = ref.current;
+    return () => {
+      if (button !== null && button === document.activeElement) {
+        button.closest<HTMLElement>(`[${FOCUS_HEIR}]`)?.focus({ preventScroll: true });
+      }
+    };
+  }, []);
+  return <Button {...props} ref={ref} />;
 }

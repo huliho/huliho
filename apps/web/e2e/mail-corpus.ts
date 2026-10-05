@@ -5,8 +5,15 @@
 // A seeded mailbox of any size behind the mocked proxy: the messages,
 // their threads and the shape the proxy serves them in.
 
+import type { CorpusBody } from "./mail-bodies";
+
 // Screenshots must not age, so every message sits before a fixed now.
 export const FIXED_NOW = new Date("2026-05-14T10:00:00");
+// A thread seeded after the corpus was built stands at the top, one
+// message every so many minutes.
+const SEEDED_STEP_MS = 60_000;
+// The subject of a corpus case is its title, cut where a row shows no more.
+const CASE_SUBJECT_CHARS = 120;
 // One message every so many minutes back from now, so a large mailbox
 // spans days and weeks.
 const STEP_MS = 23 * 60_000;
@@ -93,6 +100,9 @@ export interface Corpus {
   lists: Map<string, MailboxList>;
   // Every thread's messages, oldest first.
   threads: Map<string, string[]>;
+  // The bodies a test gave messages of its own; every other message
+  // carries its sender's shape.
+  bodies: Map<string, CorpusBody>;
 }
 
 // A mailbox the corpus fills: the messages it holds, or the synced
@@ -157,9 +167,108 @@ function fill(corpus: Corpus, mailbox: CountedMailbox, now: Date): void {
 
 // The messages of every mailbox that holds some, the same for every run.
 export function corpusFor(mailboxes: readonly CountedMailbox[], now = FIXED_NOW): Corpus {
-  const corpus: Corpus = { emails: new Map(), lists: new Map(), threads: new Map() };
+  const corpus: Corpus = {
+    emails: new Map(),
+    lists: new Map(),
+    threads: new Map(),
+    bodies: new Map(),
+  };
   for (const mailbox of mailboxes) {
     fill(corpus, mailbox, now);
+  }
+  return corpus;
+}
+
+// One message of a thread a test seeds: unread unless said otherwise,
+// from the first sender unless named, with the body it carries.
+export interface Seeded {
+  seen?: boolean;
+  from?: { name: string; email: string };
+  subject?: string;
+  body?: CorpusBody;
+}
+
+// A thread placed at the top of a mailbox after the corpus was built,
+// its members oldest first as given; the newest is the row's exemplar.
+export function seedThread(
+  corpus: Corpus,
+  mailboxId: string,
+  members: readonly Seeded[],
+  now = FIXED_NOW,
+): CorpusEmail[] {
+  const list = corpus.lists.get(mailboxId) ?? { ids: [], exemplars: [] };
+  const n = list.ids.length;
+  const threadId = `${mailboxId}-tx${String(n)}`;
+  const first = pick(SENDERS, n);
+  const messages = members.map((member, index): CorpusEmail => {
+    const id = `${mailboxId}-x${String(n + index)}`;
+    const [name, email] = first;
+    const from = member.from ?? { name, email };
+    const message: CorpusEmail = {
+      id,
+      threadId,
+      mailboxId,
+      receivedAt: new Date(now.getTime() - (members.length - index) * SEEDED_STEP_MS).toISOString(),
+      seen: member.seen ?? false,
+      flagged: false,
+      attachment: false,
+      from,
+      subject: member.subject ?? pick(SUBJECTS, n),
+      preview: pick(PREVIEWS, n + index),
+    };
+    corpus.emails.set(id, message);
+    if (member.body !== undefined) {
+      corpus.bodies.set(id, member.body);
+    }
+    return message;
+  });
+  const ids = messages.map((message) => message.id);
+  const newest = ids.at(-1) ?? "";
+  corpus.threads.set(threadId, ids);
+  corpus.lists.set(mailboxId, {
+    ids: [...ids.toReversed(), ...list.ids],
+    exemplars: [newest, ...list.exemplars],
+  });
+  return messages;
+}
+
+// One case of the sanitizer corpus: its payload as a message's HTML,
+// with the headers the entry names.
+export interface CorpusCase {
+  title: string;
+  payload: string;
+  headers?: Record<string, string[]>;
+}
+
+// The subject a case's message carries: its title, cut.
+export function caseSubject(entry: CorpusCase): string {
+  return entry.title.slice(0, CASE_SUBJECT_CHARS);
+}
+
+// The body of a case's message: the payload with the header the entry names.
+export function caseBody(entry: CorpusCase): CorpusBody {
+  return {
+    html: entry.payload,
+    authenticationResults: entry.headers?.["Authentication-Results"] ?? [],
+  };
+}
+
+// A mailbox holding one read message per corpus case, each a thread of
+// its own, newest first in the order given.
+export function corpusOfCases(
+  mailboxId: string,
+  cases: readonly CorpusCase[],
+  now = FIXED_NOW,
+): Corpus {
+  const corpus = corpusFor([{ id: mailboxId, totalEmails: 0, unreadEmails: 0 }], now);
+  for (const [index, entry] of cases.toReversed().entries()) {
+    const [name, email] = pick(SENDERS, index);
+    seedThread(
+      corpus,
+      mailboxId,
+      [{ seen: true, from: { name, email }, subject: caseSubject(entry), body: caseBody(entry) }],
+      now,
+    );
   }
   return corpus;
 }

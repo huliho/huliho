@@ -5,7 +5,7 @@
 import * as fc from "fast-check";
 import { expect, test } from "vitest";
 
-import { flowedOf, unflow } from "./flowed";
+import { flowedOf, quotedLines, unflow } from "./flowed";
 import type { QuotedLine } from "./flowed";
 
 // The longest header value the module reads.
@@ -320,6 +320,45 @@ test("any text at all answers without a throw and never more text than it holds"
     fc.property(anyText, fc.boolean(), (text, delSp) => {
       const answered = unflow(text, delSp).reduce((sum, one) => sum + one.text.length, 0);
       expect(answered).toBeLessThanOrEqual(text.length);
+    }),
+  );
+});
+
+test("fixed text keeps every line, its quote marks counted and one space after them taken off", () => {
+  expect(quotedLines("Hi,\n\n> one\n>> two\n>>>three\n> \nend ")).toEqual([
+    flat("Hi,"),
+    flat(""),
+    quoted(1, "one"),
+    quoted(2, "two"),
+    quoted(3, "three"),
+    quoted(1, ""),
+    flat("end "),
+  ]);
+  expect(quotedLines("a\r\nb\r\n")).toEqual([flat("a"), flat("b")]);
+  expect(quotedLines("")).toEqual([]);
+});
+
+test("an unquoted line of fixed text keeps the spaces it starts with, as a patch in a mail needs", () => {
+  expect(quotedLines(" context\n+added\n  two deep\n>  quoted")).toEqual([
+    flat(" context"),
+    flat("+added"),
+    flat("  two deep"),
+    quoted(1, " quoted"),
+  ]);
+});
+
+test("fixed text of any lines keeps an unquoted line whole and reads a quoted one as flowed text does", () => {
+  const anyLine = fc.string({ unit: fc.constantFrom(">", " ", "-", "a", "é", "語") });
+  fc.assert(
+    fc.property(fc.array(anyLine), lineEnd, (lines, end) => {
+      const text = lines.map((line) => line + end).join("");
+      expect(quotedLines(text)).toEqual(
+        lines.map((line) =>
+          line.startsWith(">")
+            ? quoted(line.search(/[^>]|$/u), line.replace(/^>* ?/u, ""))
+            : flat(line),
+        ),
+      );
     }),
   );
 });

@@ -4,27 +4,24 @@
 
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
-import { pageFunctions } from "lighthouse/core/lib/page-functions.js";
 
 import { accountRow, mockAccounts } from "./account-mocks";
 import { FIXED_NOW } from "./mail-corpus";
 import { MAILBOXES, mockMail } from "./mail-mocks";
 import type { MailboxBody } from "./mail-mocks";
+import {
+  INTERACTION_BUDGET_MS,
+  NO_SLOWDOWN,
+  benchmarkIndexOf,
+  onPhoneProfile,
+} from "./phone-profile";
+import type { HostSpeed } from "./phone-profile";
 import { mockSignedIn } from "./session-mocks";
 import { VIEWPORTS } from "./sweep";
 
 // The frame budget at 60 Hz: the main thread's own work for one frame,
 // from the scroll it answers to the paint, must fit in it.
 const FRAME_BUDGET_MS = 16.7;
-// From a keypress to the painted focus.
-const INTERACTION_BUDGET_MS = 100;
-// The middle of the high-end mobile bracket, 800 to 1200, in Lighthouse's
-// docs/throttling.md. The phone profile slows the CPU by the host's own
-// index, measured before throttling, over this one, so the profile means
-// the same on every host.
-const MID_RANGE_PHONE_BENCHMARK_INDEX = 1000;
-// No slowdown: the floor, for a host no faster than the phone.
-const NO_SLOWDOWN = 1;
 // The scroll: this many frames at a fast fling of this many rows each,
 // the first few left out while the page warms up.
 const SCROLL_FRAMES = 600;
@@ -221,10 +218,8 @@ function traceOf(cpu: readonly number[]): Trace {
   };
 }
 
-interface Profile {
+interface Profile extends HostSpeed {
   name: string;
-  benchmarkIndex: number;
-  slowdown: number;
 }
 
 // Traces the fling and holds every frame to the budget. The figures go
@@ -245,10 +240,6 @@ async function expectSmoothScroll(page: Page, profile: Profile): Promise<void> {
   expect(trace.long, `${profile.name}: frames past ${String(FRAME_BUDGET_MS)} ms`).toEqual([]);
 }
 
-function benchmarkIndexOf(page: Page): Promise<number> {
-  return page.evaluate(pageFunctions.computeBenchmarkIndex);
-}
-
 test("the fifty-thousand-row list scrolls without a long frame on the desktop profile", async ({
   page,
 }) => {
@@ -264,13 +255,10 @@ test("the fifty-thousand-row list scrolls without a long frame on the phone prof
 }) => {
   test.setTimeout(TRACE_TIMEOUT_MS);
   await page.setViewportSize(VIEWPORTS[0]);
-  const benchmarkIndex = await benchmarkIndexOf(page);
-  const slowdown = Math.max(NO_SLOWDOWN, benchmarkIndex / MID_RANGE_PHONE_BENCHMARK_INDEX);
-  const session = await page.context().newCDPSession(page);
-  await session.send("Emulation.setCPUThrottlingRate", { rate: slowdown });
-  await openInbox(page);
-  await expectSmoothScroll(page, { name: "phone", benchmarkIndex, slowdown });
-  await session.send("Emulation.setCPUThrottlingRate", { rate: NO_SLOWDOWN });
+  await onPhoneProfile(page, async (speed) => {
+    await openInbox(page);
+    await expectSmoothScroll(page, { name: "phone", ...speed });
+  });
 });
 
 // Where the page keeps the measurement between the two evaluations.

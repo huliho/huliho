@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { AxeBuilder } from "@axe-core/playwright";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 import { STORYBOOK_URL } from "../playwright.config";
-import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
+import { THEMES, VIEWPORTS, axeOn, framesLoaded } from "./sweep";
 
 // The sweep must fail loudly when a rename leaves it iterating nothing.
 const MIN_STORY_COUNT = 9;
@@ -52,7 +51,8 @@ async function auditStory(page: Page, id: string, theme: string, name: string): 
   await page.evaluate(async () => {
     await Promise.all(document.getAnimations().map((animation) => animation.finished));
   });
-  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+  await framesLoaded(page);
+  const results = await axeOn(page).analyze();
   expect.soft(results.violations, `axe on ${id} in ${theme} at ${name} width`).toEqual([]);
   await expect.soft(page).toHaveScreenshot(`${id}-${theme}-${name}.png`, { fullPage: true });
 }

@@ -4,9 +4,9 @@
 
 import type { DownloadSource, EmailBody, EmailBodyPart } from "@huliho/core";
 
+import type { Theme } from "../../theme/use-theme";
 import { baseStyle } from "./base-style";
 import type { Canvas, FrameStyle } from "./base-style";
-import type { Theme } from "./colors";
 import { cssContext } from "./css";
 import type { CssContext } from "./css";
 import { Images } from "./images";

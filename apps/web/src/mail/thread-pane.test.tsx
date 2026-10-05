@@ -3,12 +3,21 @@
 // Additional terms apply, see NOTICE.
 
 import { JmapError } from "@huliho/core";
-import type { MailCache, ThreadDetail } from "@huliho/core";
+import type { EmailHeader, MailCache, ThreadDetail } from "@huliho/core";
+import { queryKeys } from "@huliho/state";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeAll, expect, test, vi } from "vitest";
+import {
+  RouterProvider,
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+} from "@tanstack/react-router";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
+import type { JSX } from "react";
 
 import { dispatchKey } from "../commands/registry";
+import { stubWidthQueries } from "../shell/width-queries-rig";
 import {
   FASTMAIL,
   INBOX_ID,
@@ -43,41 +52,92 @@ interface Options {
   keyHints?: boolean;
   cache?: MailCache;
   open?: OpenThread;
+  // The query client of an earlier render, for a thread opened again.
+  client?: QueryClient;
+}
+
+// The pane in a router of its own, since a card's hooks reach for the
+// session's end.
+function routed(Screen: () => JSX.Element, client: QueryClient): JSX.Element {
+  const router = createRouter({
+    routeTree: createRootRoute({ component: Screen }),
+    history: createMemoryHistory({ initialEntries: ["/mail/acc-1/mb-inbox"] }),
+  });
+  return (
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  );
 }
 
 function renderPane(answer: ThreadAnswer = THREAD, options: Options = {}) {
   const onClose = vi.fn<() => void>();
+  const client = options.client ?? new QueryClient();
   const cache = options.cache ?? fixtureCache({}, { [THREAD_ID]: answer });
   const keyHints = options.keyHints ?? true;
   const position = options.position ?? "right";
   const open = options.open ?? OPEN;
   render(
-    <QueryClientProvider client={new QueryClient()}>
-      {position === "screen" ? (
-        <ThreadScreen
-          locale="en"
-          cache={cache}
-          thread={open}
-          keyHints={keyHints}
-          onClose={onClose}
-        />
-      ) : (
-        <ReadingPane
-          locale="en"
-          cache={cache}
-          thread={open}
-          position={position}
-          keyHints={keyHints}
-          onClose={onClose}
-        />
-      )}
-    </QueryClientProvider>,
+    routed(
+      () =>
+        position === "screen" ? (
+          <ThreadScreen
+            locale="en"
+            cache={cache}
+            thread={open}
+            keyHints={keyHints}
+            onClose={onClose}
+          />
+        ) : (
+          <ReadingPane
+            locale="en"
+            cache={cache}
+            thread={open}
+            position={position}
+            keyHints={keyHints}
+            onClose={onClose}
+          />
+        ),
+      client,
+    ),
   );
-  return { onClose };
+  return { onClose, client };
 }
 
 function cards(): HTMLElement[] {
   return screen.getAllByRole("listitem");
+}
+
+function expandedOf(card: HTMLElement | undefined): string | null {
+  return card === undefined ? null : headOf(card).getAttribute("aria-expanded");
+}
+
+// The open thread as the cache hands it on after a change.
+function landIn(client: QueryClient, detail: ThreadDetail): void {
+  act(() => {
+    client.setQueryData(queryKeys.thread(FASTMAIL.id, THREAD_ID), detail);
+  });
+}
+
+// The fixture thread with messages after its newest, each read or unread.
+function withLanded(landed: readonly (readonly [id: string, unread: boolean])[]): ThreadDetail {
+  const newest = Object.values(THREAD.emails).at(-1);
+  if (newest === undefined) {
+    throw new Error("the fixture thread is empty");
+  }
+  const added = landed.map(([id, unread]): EmailHeader => ({
+    ...newest,
+    id,
+    blobId: id,
+    keywords: unread ? {} : { $seen: true },
+  }));
+  return {
+    thread: {
+      ...THREAD.thread,
+      emailIds: [...THREAD.thread.emailIds, ...added.map((email) => email.id)],
+    },
+    emails: { ...THREAD.emails, ...Object.fromEntries(added.map((email) => [email.id, email])) },
+  };
 }
 
 // The button that folds a card: the first one in it.
@@ -89,13 +149,30 @@ function headOf(card: HTMLElement): HTMLElement {
   return head;
 }
 
+// Presses the head of the newest card.
+function pressNewest(): void {
+  const card = cards().at(-1);
+  if (card === undefined) {
+    throw new Error("the pane has no card");
+  }
+  fireEvent.click(headOf(card));
+}
+
 function command(key: string): void {
   act(() => {
     dispatchKey(new KeyboardEvent("keydown", { key }));
   });
 }
 
-afterEach(cleanup);
+// The width queries answer for the desktop layout; the card reads the theme through one.
+beforeEach(() => {
+  stubWidthQueries({ wide: true });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 test("the pane shows the subject, the count, the older button and the cards in sight, the newest open", async () => {
   renderPane();
@@ -116,7 +193,7 @@ test("the pane shows the subject, the count, the older button and the cards in s
   expect(within(newest).getByText("Pieter Blom")).toBeDefined();
   expect(within(newest).getByText("pieter@blom-installaties.example")).toBeDefined();
   expect(within(newest).getByText("to Sanne Bakker")).toBeDefined();
-  expect(within(newest).getByText(NEWEST_TEXT)).toBeDefined();
+  expect(await within(newest).findByText(NEWEST_TEXT)).toBeDefined();
   expect(headOf(newest).textContent).toContain("8:15");
   expect(within(newest).getByRole("button", { name: "Show all recipients" })).toBeDefined();
   // A collapsed card is one line: who, its text and a short time.
@@ -163,10 +240,10 @@ test("the subject, who wrote, the recipients and the text each read in their own
     within(newest).getByText("Pieter Blom"),
     within(newest).getByText("pieter@blom-installaties.example"),
     within(newest).getByText("to Sanne Bakker"),
-    within(newest).getByText(NEWEST_TEXT),
+    (await within(newest).findByText(NEWEST_TEXT)).closest("[dir]"),
     screen.getByText("sanne@fastmail.com"),
   ];
-  expect(own.map((element) => element.getAttribute("dir"))).toEqual(own.map(() => "auto"));
+  expect(own.map((element) => element?.getAttribute("dir"))).toEqual(own.map(() => "auto"));
 });
 
 test("every recipient shows by field with the address beside the name", async () => {
@@ -195,6 +272,127 @@ test("an unread message opens in sight and says so to a screen reader", async ()
   expect(unread?.dataset["unread"]).toBe("true");
   expect(unread === undefined ? null : headOf(unread).getAttribute("aria-expanded")).toBe("true");
   expect(unread === undefined ? null : headOf(unread).textContent).toContain("Unread");
+});
+
+test("the cards in sight and the open ones stay as first drawn once the unread one reads as read", async () => {
+  const { client } = renderPane(threadDetail([UNREAD_AT]));
+  await screen.findByRole("heading", { level: 2 });
+  const drawn = cards().map(expandedOf);
+  landIn(client, THREAD);
+  await waitFor(() => {
+    expect(cards()[UNREAD_AT - 2]?.dataset["unread"]).toBeUndefined();
+  });
+  expect(screen.getByRole("button", { name: "Show 2 older messages" })).toBeDefined();
+  expect(cards()).toHaveLength(COUNT - 2);
+  expect(cards().map(expandedOf)).toEqual(drawn);
+  expect(expandedOf(cards()[UNREAD_AT - 2])).toBe("true");
+});
+
+test("a message that lands in the open thread comes in folded and stays unread until its head opens it", async () => {
+  const cache = fixtureCache({}, { [THREAD_ID]: THREAD });
+  const { client } = renderPane(THREAD, { cache });
+  await screen.findByRole("heading", { level: 2 });
+  landIn(client, withLanded([["e-landed", true]]));
+  await waitFor(() => {
+    expect(cards()).toHaveLength(IN_SIGHT + 1);
+  });
+  const landed = cards().at(IN_SIGHT);
+  if (landed === undefined) {
+    throw new Error("no landed card");
+  }
+  expect(landed.dataset["unread"]).toBe("true");
+  expect(expandedOf(landed)).toBe("false");
+  // The card that stood open at first stays open.
+  expect(expandedOf(cards().at(IN_SIGHT - 1))).toBe("true");
+  expect(cache.mutations).toEqual([]);
+  fireEvent.click(headOf(landed));
+  expect(expandedOf(cards().at(IN_SIGHT))).toBe("true");
+  await waitFor(() => {
+    expect(cache.mutations).toEqual([
+      { type: "Email", id: "e-landed", patch: { "keywords/$seen": true } },
+    ]);
+  });
+  // It reads as read and a newer message stands after it, folded in its turn.
+  landIn(
+    client,
+    withLanded([
+      ["e-landed", false],
+      ["e-newer", true],
+    ]),
+  );
+  await waitFor(() => {
+    expect(cards()).toHaveLength(IN_SIGHT + 2);
+  });
+  expect(cards().at(IN_SIGHT)?.dataset["unread"]).toBeUndefined();
+  expect(expandedOf(cards().at(IN_SIGHT))).toBe("true");
+  expect(expandedOf(cards().at(IN_SIGHT + 1))).toBe("false");
+  expect(cache.mutations).toHaveLength(1);
+});
+
+test("a message that turns unread under its open card stays unread until its head opens it again", async () => {
+  const cache = fixtureCache({}, { [THREAD_ID]: THREAD });
+  const { client } = renderPane(THREAD, { cache });
+  await screen.findByRole("heading", { level: 2 });
+  const newest = Object.values(THREAD.emails).at(-1);
+  if (newest === undefined) {
+    throw new Error("the fixture thread is empty");
+  }
+  // Another client took the mark away and a poll lands the change.
+  landIn(client, {
+    thread: THREAD.thread,
+    emails: { ...THREAD.emails, [newest.id]: { ...newest, keywords: {} } },
+  });
+  await waitFor(() => {
+    expect(cards().at(-1)?.dataset["unread"]).toBe("true");
+  });
+  expect(expandedOf(cards().at(-1))).toBe("true");
+  expect(cache.mutations).toEqual([]);
+  // Folded and opened again by its head.
+  pressNewest();
+  pressNewest();
+  await waitFor(() => {
+    expect(cache.mutations).toEqual([
+      { type: "Email", id: newest.id, patch: { "keywords/$seen": true } },
+    ]);
+  });
+});
+
+// The fixture thread opened, closed and named by a poll, then opened
+// again on the same query client with the cache answering `next`.
+async function reopened(next: ThreadDetail | Error): Promise<ReturnType<typeof fixtureCache>> {
+  const held = fixtureCache({}, { [THREAD_ID]: THREAD });
+  const thread = vi.fn<() => Promise<ThreadDetail | null>>().mockResolvedValueOnce(THREAD);
+  const cache = { ...held, thread };
+  const { client } = renderPane(THREAD, { cache });
+  await screen.findByRole("heading", { level: 2 });
+  cleanup();
+  await act(() => client.invalidateQueries({ queryKey: queryKeys.thread(FASTMAIL.id, THREAD_ID) }));
+  if (next instanceof Error) {
+    thread.mockRejectedValue(next);
+  } else {
+    thread.mockResolvedValue(next);
+  }
+  renderPane(THREAD, { cache, client });
+  return held;
+}
+
+test("a thread opened again opens the reply that arrived meanwhile and marks it read", async () => {
+  const cache = await reopened(withLanded([["e-landed", true]]));
+  await waitFor(() => {
+    expect(cache.mutations).toEqual([
+      { type: "Email", id: "e-landed", patch: { "keywords/$seen": true } },
+    ]);
+  });
+  expect(cards().map(expandedOf)).toEqual(["false", "false", "true"]);
+  expect(cards().at(-1)?.dataset["unread"]).toBe("true");
+});
+
+test("a thread opened again draws as it was read before when the fresh read fails, with no fault shown", async () => {
+  const cache = await reopened(new JmapError("unavailable"));
+  expect(await screen.findByRole("heading", { level: 2, name: SUBJECT })).toBeDefined();
+  expect(cards().map(expandedOf)).toEqual(["false", "false", "true"]);
+  expect(cache.mutations).toEqual([]);
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
 test("Escape and the Close button close the thread", async () => {

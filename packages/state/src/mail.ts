@@ -8,8 +8,14 @@ import { queryOptions } from "@tanstack/react-query";
 import { queryKeys } from "./keys";
 
 // The cache is the truth: a query stays fresh until a cache message
-// invalidates it, and a failure waits for the user rather than a retry.
-const settled = { staleTime: Number.POSITIVE_INFINITY, retry: false } as const;
+// invalidates it, runs whatever the network does and leaves a failure to
+// the user, asked again when the network comes back.
+const settled = {
+  staleTime: Number.POSITIVE_INFINITY,
+  retry: false,
+  networkMode: "always",
+  refetchOnReconnect: true,
+} as const;
 
 export function mailboxesQueryOptions(cache: MailCache, accountId: string) {
   return queryOptions({

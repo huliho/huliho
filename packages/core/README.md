@@ -7,7 +7,9 @@ list with its revokes, the password change, the admin's users with
 create and reset and the connected accounts with their discovery,
 connect, reconnect, retry and removal plus the consent a Google or
 Microsoft account signs in through, started once and polled until it
-settles, plus the user's preferences: the words each key takes and
+settles, plus the user's preferences: the words each key takes (the
+locale, the theme, the density, the reading pane, the font size, the
+line height and how a light-only message shows in the dark theme) and
 one write per key. The per-sender policies sit beside them: the list,
 the grant that lets a sender's remote content load and its removal.
 Every answer from the server passes a zod
@@ -42,7 +44,8 @@ an email, each answered from the cache. A store that keeps rows on
 disk checks them against the row schemas when they come back.
 
 It reads what a message says about itself as well. `unflow` joins the
-soft line breaks of a flowed text part (RFC 3676). The topmost
+soft line breaks of a flowed text part (RFC 3676) and `quotedLines`
+reads the quote depth of a plain one line by line. The topmost
 Authentication-Results header becomes one verdict per method (RFC
 8601), from a parser with a bound on bytes and clauses; `grantLoads`
 decides from it whether a sender's grant lets a message load remote

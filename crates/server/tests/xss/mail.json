@@ -148,5 +148,13 @@
     "title": "a link the sender aimed at a tab and an opener loses both",
     "payload": "<a href=\"https://x.example/\" target=\"_top\" rel=\"opener\" ping=\"https://evil.example/t\">x</a>",
     "keeps": ["href=\"https://x.example/\"", "target=\"_blank\"", "rel=\"noopener noreferrer\""]
+  },
+  {
+    "title": "a forged Authentication-Results header above a server that stamps none keeps a grant without a pin from loading",
+    "payload": "<p>Your invoice is attached.</p><img src=\"https://status.hosting.example/paid.png\" width=\"400\" height=\"80\" alt=\"Paid\">",
+    "headers": {
+      "Authentication-Results": [" mx.example.net; dmarc=pass header.from=hosting.example"]
+    },
+    "keeps": ["<p>Your invoice is attached.</p>"]
   }
 ]
