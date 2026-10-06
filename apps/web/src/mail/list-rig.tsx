@@ -21,16 +21,10 @@ import { afterEach, beforeEach, vi } from "vitest";
 
 import { dispatchKey } from "../commands/registry";
 import { stubWidthQueries } from "../shell/width-queries-rig";
-import {
-  FASTMAIL,
-  FIXED_NOW,
-  INBOX_ID,
-  INBOX_PAGE,
-  MAILBOXES,
-  fixtureCache,
-  pageOf,
-} from "./fixtures";
-import type { Draft, PageAnswer } from "./fixtures";
+import { fixtureCache } from "./fixture-cache";
+import type { PageAnswer } from "./fixture-cache";
+import { FASTMAIL, FIXED_NOW, INBOX_ID, INBOX_PAGE, MAILBOXES, pageOf } from "./fixtures";
+import type { Draft } from "./fixtures";
 import { startOfDay } from "./row-time";
 import { ThreadList } from "./thread-list";
 

@@ -88,6 +88,11 @@
   --hhx-avatar-size: 32px;
   --hhx-measure-narrow: 400px;
   --hhx-measure-wide: 760px;
+  /* The overlay an image attachment opens in, and the most the image is tall in it. */
+  --hhx-measure-image: 1200px;
+  --hhx-measure-image-block: 720px;
+  /* The most an image attachment is tall in the strip under a message. */
+  --hhx-attachment-preview: 320px;
   /* The command palette hangs this far from the top of the visible viewport. */
   --hhx-palette-top: 15dvh;
   --hhx-sheet-width: 960px;

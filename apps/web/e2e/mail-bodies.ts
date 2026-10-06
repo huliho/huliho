@@ -6,6 +6,7 @@
 // test finds a newsletter, a quoted reply or a cut message by who wrote
 // it; and the body properties of an Email/get answer built from one.
 
+import { NOT_AN_IMAGE_NAME } from "./blob-mocks";
 import type { CorpusEmail } from "./mail-corpus";
 
 // One part with the default body properties (RFC 8621 section 4.1.4).
@@ -61,6 +62,16 @@ export const FAILED_SENDER = "anouk@kastanje.example";
 export const CUT_ONCE_SENDER = "tomas@lindqvist.example";
 export const CUT_TWICE_SENDER = "jeroen@vos-advies.example";
 export const NO_TEXT_SENDER = "iris@familie.example";
+export const ATTACHMENTS_SENDER = "jonas@kastanje.example";
+
+// The attachments of the planning mail: the names a test looks for.
+export const LONG_NAME = "Offerte_badkamer_renovatie_v3_definitief.pdf";
+export const PHOTO_NAME = "tegelwerk_voorbeeld.png";
+export const SVG_NAME = "diagram.svg";
+export const DANGEROUS_NAME = "factuur_viewer.html";
+// An image whose name asks first, whatever its bytes are.
+export const DANGEROUS_IMAGE_NAME = "kaart.html";
+const ATTACHMENTS_TEXT = "De deck is leidend; de budgetsheet en een foto van het bord staan erbij.";
 
 // The receiving server's header for a message that passed every check
 // and for one that failed.
@@ -141,6 +152,24 @@ function logoPart(emailId: string): CorpusPart {
   });
 }
 
+// A long name, an unnamed part, an attached message, a photo, an SVG, a
+// file that can run a program, a part declared an image whose bytes are
+// not one and an image whose name asks first.
+function attachmentParts(emailId: string): CorpusPart[] {
+  const attached = (partId: string, type: string, name: string | null, size: number) =>
+    part(type, { partId, blobId: `${emailId}-${partId}`, name, size, disposition: "attachment" });
+  return [
+    attached("2", "application/pdf", LONG_NAME, 48_210),
+    attached("3", "application/octet-stream", null, 1024),
+    attached("4", "message/rfc822", null, 12_400),
+    attached("5", "image/png", PHOTO_NAME, 2_400_000),
+    attached("6", "image/svg+xml", SVG_NAME, 8192),
+    attached("7", "text/html", DANGEROUS_NAME, 36_000),
+    attached("8", "image/png", NOT_AN_IMAGE_NAME, 512_000),
+    attached("9", "image/png", DANGEROUS_IMAGE_NAME, 20_000),
+  ];
+}
+
 const BY_SENDER = new Map<string, (message: CorpusEmail) => CorpusBody>([
   [
     NEWSLETTER_SENDER,
@@ -177,6 +206,10 @@ const BY_SENDER = new Map<string, (message: CorpusEmail) => CorpusBody>([
         part("application/pdf", { blobId: `${message.id}-1`, name: "taart.pdf", size: 48_210 }),
       ],
     }),
+  ],
+  [
+    ATTACHMENTS_SENDER,
+    (message) => ({ text: ATTACHMENTS_TEXT, attachments: attachmentParts(message.id) }),
   ],
 ]);
 

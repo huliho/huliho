@@ -35,6 +35,45 @@
   inline-size: min(var(--hhx-measure-wide), calc(100% - var(--hhx-space-6)));
 }
 
+/* A picture at full size fills a phone's screen; from the tablet width on it
+   stands in an overlay as wide as the image measure. */
+.popup[data-size="image"] {
+  inline-size: 100%;
+  max-block-size: 100dvh;
+  border: none;
+  border-radius: 0;
+}
+
+@media (min-width: 720px) {
+  .popup[data-size="image"] {
+    inline-size: min(var(--hhx-measure-image), calc(100% - var(--hhx-space-6)));
+    max-block-size: calc(100dvh - var(--hhx-space-6));
+    border: var(--hhx-border-width) solid var(--hh-border);
+    border-radius: var(--hhx-radius-overlay);
+  }
+}
+
+/* The title with controls beside it; the words give way to the controls. */
+.heading {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--hhx-space-3);
+}
+
+.words {
+  display: grid;
+  flex: 1;
+  gap: var(--hhx-space-3);
+  min-inline-size: 0;
+}
+
+.tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--hhx-space-2);
+}
+
 .backdrop[data-starting-style],
 .backdrop[data-ending-style],
 .popup[data-starting-style],

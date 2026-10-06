@@ -1,0 +1,149 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* Under the body behind a hairline, at the card padding; it ends in the card's corners. */
+.strip {
+  padding: var(--hhx-space-3) var(--hhx-space-4);
+  border-block-start: var(--hhx-border-width) solid var(--hh-border);
+  border-end-start-radius: var(--card-corner);
+  border-end-end-radius: var(--card-corner);
+}
+
+/* Chips first, then the previews, each on a row of its own. In a narrow card one chip per row. */
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--hhx-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex: 1 0 100%;
+  min-inline-size: 0;
+}
+
+/* A chip is a thing to take away: on the page color with a strong border,
+   apart from the card's surface and the sender's canvas. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hhx-space-2);
+  min-block-size: var(--hhx-hit-target);
+  max-inline-size: 100%;
+  padding: var(--hhx-space-2) var(--hhx-space-3);
+  border: var(--hhx-border-width) solid var(--hh-border-strong);
+  border-radius: var(--hhx-radius-field);
+  background: var(--hh-bg);
+  color: var(--hh-text);
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--hh-hover);
+}
+
+.icon {
+  flex: none;
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
+  color: var(--hh-text-muted);
+}
+
+/* The name, read out whole from its hidden copy and drawn in two pieces: the
+   start gives way with an ellipsis, the end keeps its characters whole, so the
+   extension stays readable. A piece keeps the space it ends on. */
+.name {
+  position: relative;
+  display: flex;
+  min-inline-size: 0;
+}
+
+.pieces {
+  display: flex;
+  min-inline-size: 0;
+}
+
+.start {
+  overflow: hidden;
+  min-inline-size: 0;
+  white-space: pre;
+  text-overflow: ellipsis;
+}
+
+.end {
+  flex: none;
+  white-space: pre;
+}
+
+.size {
+  flex: none;
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+}
+
+/* A raster part in place: the image at most this tall and never wider than the
+   card, with its name and size under it. */
+.preview {
+  display: grid;
+  gap: var(--hhx-space-2);
+  max-inline-size: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--hh-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.picture {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: var(--hhx-attachment-preview);
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-field);
+}
+
+.caption {
+  display: flex;
+  align-items: baseline;
+  gap: var(--hhx-space-2);
+  min-inline-size: 0;
+}
+
+/* The image at full size in its dialog: the screen's width on a phone, its own
+   size within the overlay from the tablet width on. */
+.full {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+}
+
+/* A card this wide sets chips side by side; the same width as the one-line head. */
+@container (min-inline-size: 480px) {
+  .item {
+    flex: 0 1 auto;
+  }
+
+  .item[data-preview] {
+    flex-basis: 100%;
+  }
+}
+
+@media (min-width: 720px) {
+  .full {
+    inline-size: auto;
+    max-inline-size: 100%;
+    max-block-size: var(--hhx-measure-image-block);
+    margin-inline: auto;
+  }
+}

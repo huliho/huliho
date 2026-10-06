@@ -63,6 +63,8 @@ export interface FrameDocument {
   declaresDark: boolean;
   // Whether the colors were adapted, so a revert has something to undo.
   adapted: boolean;
+  // The ids of the parts the document shows inline.
+  inlineParts: ReadonlySet<string>;
 }
 
 // A document that runs and loads nothing, for the parts built here.
@@ -153,5 +155,6 @@ export function buildFrameDocument(body: EmailBody, options: FrameOptions): Fram
     remote: images.remote,
     declaresDark: context.declaresDark,
     adapted,
+    inlineParts: images.inlineParts,
   };
 }

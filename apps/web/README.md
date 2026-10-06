@@ -144,6 +144,13 @@ until its head opens it.
 The card lays its head out by its own width, so it reads the same in a
 narrow pane as on a phone.
 
+What a message carries stands in a strip under its body: a chip per
+attachment with its icon, its name and its size, a raster image shown
+in place and opened at full size in a dialog, an attached message that
+saves as a file of its own. A chip downloads through the server's
+route, which decides what the bytes are. A name that can run a program
+asks first and keeps the focus on the chip after either answer.
+
 A message that names remote images gets a bar above it. Load once
 loads them for this view. Always for this sender writes a grant pinned
 to what the receiving server said about the message and Stop takes it

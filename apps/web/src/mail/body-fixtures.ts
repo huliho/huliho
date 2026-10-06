@@ -113,6 +113,45 @@ export function attachmentDetail(id: string): BodyDetail {
   };
 }
 
+// A photo among the attachments, which previews in the strip.
+export const PHOTO_PART = part("image/jpeg", {
+  partId: "7",
+  blobId: "b-photo",
+  name: "tegelwerk_voorbeeld.jpg",
+  size: 2_400_000,
+});
+
+// The attachments of a message as a sender sends them: a long name, an
+// unnamed part, an attached message, the photo, two files a download
+// has to ask about first and an image whose name asks first as well.
+// Their ids follow the text and HTML parts of the messages they ride.
+export const ATTACHMENT_PARTS: EmailBodyPart[] = [
+  part("application/pdf", {
+    partId: "4",
+    blobId: "b-offerte",
+    name: "Offerte_badkamer_renovatie_v3_definitief.pdf",
+    size: 48_210,
+  }),
+  part("application/octet-stream", { partId: "5", blobId: "b-unnamed", size: 1024 }),
+  part("message/rfc822", { partId: "6", blobId: "b-forwarded", size: 12_400 }),
+  PHOTO_PART,
+  part("image/svg+xml", { partId: "8", blobId: "b-diagram", name: "diagram.svg", size: 8192 }),
+  part("text/html", {
+    partId: "9",
+    blobId: "b-viewer",
+    name: "factuur_viewer.html",
+    size: 36_000,
+  }),
+  part("image/png", { partId: "10", blobId: "b-kaart", name: "kaart.html", size: 20_000 }),
+];
+
+// A plain message with the attachments given, all of them by default.
+export const ATTACHMENTS_TEXT = "In de bijlage de offerte en een foto van het tegelwerk.";
+
+export function attachmentsDetail(id: string, parts = ATTACHMENT_PARTS): BodyDetail {
+  return textDetail(id, ATTACHMENTS_TEXT, { attachments: parts });
+}
+
 // A message the server could not describe: one part over the whole of it.
 export function complexDetail(id: string): BodyDetail {
   const whole = part("application/octet-stream", {
@@ -155,6 +194,7 @@ const LOGO_CID = "logo@koersbrief.example";
 
 // The sender's logo as a part of the message, with the image that names it.
 export const LOGO = part("image/png", {
+  partId: "3",
   blobId: "e-3-3",
   name: "logo.png",
   cid: LOGO_CID,

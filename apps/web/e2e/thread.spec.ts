@@ -19,6 +19,7 @@ import {
   ROWS,
   SINGLE_ROW,
   bodiesLanded,
+  cardsIn,
   directionOf,
   grid,
   heightOf,
@@ -127,7 +128,7 @@ test("o and a click open a row; the cards show who wrote when and the older ones
   await expect(pane(page).getByText(`${String(size)} messages`)).toBeVisible();
   const older = pane(page).getByRole("button", { name: /older message/ });
   await expect(older).toHaveText(`Show ${String(hidden)} older message${hidden === 1 ? "" : "s"}`);
-  const cards = pane(page).getByRole("listitem");
+  const cards = cardsIn(pane(page));
   await expect(cards).toHaveCount(CARDS_IN_SIGHT);
   await expect(cards.nth(2).getByRole("button").first()).toHaveAttribute("aria-expanded", "true");
   await expect(cards.nth(2).getByText("to Mira")).toBeVisible();
@@ -205,7 +206,7 @@ test("with the pane off the list fills the room and a thread opens as a screen o
   const screen = screenOf(page);
   await expect(screen.getByRole("heading", { level: 1, name: subjectOf(1) })).toBeFocused();
   await expect(main).toHaveAttribute("inert", "");
-  const card = screen.getByRole("listitem").last();
+  const card = cardsIn(screen).last();
   expect((await card.boundingBox())?.width ?? 0).toBeLessThanOrEqual(
     CARD_MAX_WIDTH_PX + SUBPIXEL_PX,
   );
@@ -269,8 +270,7 @@ test("the pane reads in Dutch and in the pseudo-locale", async ({ page }) => {
   // row's subject, the pane's title and a card's sender read left to right.
   expect(await directionOf(pseudo)).toBe("rtl");
   const newest = threadOf(LONG_ROW).at(-1);
-  const sender = pseudo
-    .getByRole("listitem")
+  const sender = cardsIn(pseudo)
     .last()
     .getByText(newest?.from.name ?? "", { exact: true });
   const subject = longRow.getByText(subjectOf(LONG_ROW), { exact: true });

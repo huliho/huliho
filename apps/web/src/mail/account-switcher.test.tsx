@@ -17,15 +17,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { dispatchKey } from "../commands/registry";
 import { AccountSwitcher, prefetchAccountMenu } from "./account-switcher";
-import {
-  ACCOUNTS,
-  EXPIRED,
-  FASTMAIL,
-  MAILBOXES,
-  MAILBOXES_EMPTY_INBOX,
-  STOPPED,
-  fixtureCache,
-} from "./fixtures";
+import { ACCOUNTS, EXPIRED, FASTMAIL, MAILBOXES, MAILBOXES_EMPTY_INBOX, STOPPED } from "./fixtures";
+import { fixtureCache } from "./fixture-cache";
 
 const signOut = vi.hoisted(() => vi.fn<() => void>());
 vi.mock("../auth/use-sign-out", () => ({ useSignOut: () => signOut }));

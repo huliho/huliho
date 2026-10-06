@@ -8,16 +8,9 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
 import { NEWSLETTER_HTML, PASSED, REPLY_TEXT, htmlDetail, textDetail } from "./body-fixtures";
-import {
-  FASTMAIL,
-  INBOX_ID,
-  MAILBOXES,
-  THREAD,
-  THREAD_ID,
-  fixtureCache,
-  threadDetail,
-} from "./fixtures";
-import type { ThreadAnswer } from "./fixtures";
+import { fixtureCache } from "./fixture-cache";
+import type { ThreadAnswer } from "./fixture-cache";
+import { FASTMAIL, INBOX_ID, MAILBOXES, THREAD, THREAD_ID, threadDetail } from "./fixtures";
 import { ReadingPane, ThreadScreen, prefetchThreadPane } from "./reading-pane";
 import type { OpenThread } from "./reading-pane";
 import { routed, seedMail } from "./story-router";

@@ -13,7 +13,8 @@ import { expect, test, vi } from "vitest";
 
 import { COMMANDS } from "../commands/fixtures";
 import { registerCommand } from "../commands/registry";
-import { FASTMAIL, INBOX_ID, INBOX_PAGE, fixtureCache, pageOf } from "./fixtures";
+import { fixtureCache } from "./fixture-cache";
+import { FASTMAIL, INBOX_ID, INBOX_PAGE, pageOf } from "./fixtures";
 import {
   ROW_PX,
   command,

@@ -119,9 +119,18 @@ export async function openInbox(
   return mail;
 }
 
+// A card is an item of the thread's own list; the strip of attachments
+// inside a card is a list of its own.
+const CARD = "ol[role='list'] > li";
+
 // The cards of the open thread, oldest first; the newest is the last.
 export function cards(page: Page): Locator {
-  return page.getByRole("listitem");
+  return page.locator(CARD);
+}
+
+// The cards inside the pane or the screen given.
+export function cardsIn(scope: Locator): Locator {
+  return scope.locator(CARD);
 }
 
 // The frame a card renders its message in.

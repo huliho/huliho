@@ -191,12 +191,18 @@
 }
 
 /* The seam: the body runs to the card's border under a hairline and
-   ends in the card's bottom corners, which cut a mail that paints them. */
+   ends in the card's bottom corners, which cut a mail that paints them.
+   With a strip under it the strip ends in the corners instead. */
 .body {
   overflow: hidden;
   border-block-start: var(--hhx-border-width) solid var(--hh-border);
   border-end-start-radius: var(--card-corner);
   border-end-end-radius: var(--card-corner);
+}
+
+.body[data-strip] {
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
 }
 
 /* A card this wide has room for the full time beside a name. A container

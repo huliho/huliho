@@ -13,6 +13,8 @@ import type { Locale } from "../paraglide/runtime.js";
 import { useOnline } from "../shell/use-online";
 import { useTheme } from "../theme/use-theme";
 import type { Theme } from "../theme/use-theme";
+import { attachmentsOf } from "./attachments/parts";
+import type { Attachment } from "./attachments/parts";
 import { canAdapt } from "./body/colors";
 import { buildFrameDocument } from "./body/frame-document";
 import type { FrameDocument } from "./body/frame-document";
@@ -39,12 +41,18 @@ export interface Revert {
   toggle: () => void;
 }
 
+// No part is shown inline where no document was built.
+const NO_INLINE: ReadonlySet<string> = new Set();
+
 export interface OpenMessage {
   view: BodyView;
   // The bar above the body, null when the message names no remote image.
   bar: RemoteContentBarProps | null;
   // Null where the adaptation would change nothing.
   revert: Revert | null;
+  // The strip under the body, null while the body is on its way or
+  // when the message carries nothing to take away.
+  strip: Attachment[] | null;
 }
 
 interface Facts {
@@ -158,6 +166,20 @@ function buildOf({ detail, theme, adapt, remote, links, style }: Build): FrameDo
   });
 }
 
+// The parts of the strip once the body is in. An HTML body waits for
+// its document, which says which parts it shows inline.
+function stripOf(
+  detail: BodyDetail | null,
+  built: FrameDocument | null,
+  locale: Locale,
+): Attachment[] | null {
+  if (detail === null || (shapeOf(detail.body) === "html" && built === null)) {
+    return null;
+  }
+  const parts = attachmentsOf(detail, built?.inlineParts ?? NO_INLINE, locale);
+  return parts.length === 0 ? null : parts;
+}
+
 interface Adaptation {
   // Whether a light-only message is adapted in this view.
   adapt: boolean;
@@ -188,9 +210,10 @@ function useAdaptation(theme: Theme): Adaptation {
 }
 
 // Everything an open card shows beside its head: the body in its state,
-// the bar when the message names remote images and the revert control
-// when the dark adaptation has something to undo. `slotRef` names the
-// box the body stands in, whose type and colors the frame takes.
+// the bar when the message names remote images, the revert control
+// when the dark adaptation has something to undo and the strip of what
+// the message carries. `slotRef` names the box the body stands in,
+// whose type and colors the frame takes.
 export function useOpenMessage(slotRef: RefObject<HTMLElement | null>, facts: Facts): OpenMessage {
   const { locale, cache, accountId, email } = facts;
   const theme = useTheme();
@@ -207,5 +230,6 @@ export function useOpenMessage(slotRef: RefObject<HTMLElement | null>, facts: Fa
     view: viewOf({ locale, email, theme, ask, online, built, links }),
     bar: built !== null && built.remote > 0 ? barOf(locale, remote) : null,
     revert: adaptation.revertOf(built),
+    strip: stripOf(detail, built, locale),
   };
 }

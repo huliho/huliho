@@ -10,11 +10,14 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { forgetLinkKey, linkKey } from "../open/link-key";
 import {
+  ATTACHMENT_PARTS,
   LOGO,
   LOGO_IMAGE,
   NEWSLETTER_HTML,
+  PHOTO_PART,
   REPLY_TEXT,
   attachmentDetail,
+  attachmentsDetail,
   complexDetail,
   htmlDetail,
   textDetail,
@@ -85,6 +88,55 @@ test("a plain message renders as text with its quotes; one without text and one 
   cleanup();
   renderCard({ bodies: { [NEWEST_ID]: complexDetail(NEWEST_ID) } });
   expect(await screen.findByText("This message is too complex to show here.")).toBeDefined();
+});
+
+test("the attachments stand in a strip under the body; a part the document shows inline is left out", async () => {
+  stubServer();
+  renderCard({
+    bodies: {
+      [NEWEST_ID]: htmlDetail(NEWEST_ID, NEWSLETTER_HTML + LOGO_IMAGE, {
+        attachments: [LOGO, ...ATTACHMENT_PARTS],
+      }),
+    },
+  });
+  // The strip waits for the document, which says what is shown inline.
+  expect(screen.queryByRole("list", { name: /attachments/ })).toBeNull();
+  await frame();
+  const strip = screen.getByRole("list", {
+    name: `${String(ATTACHMENT_PARTS.length)} attachments`,
+  });
+  expect(within(strip).queryByText(/logo\.png/)).toBeNull();
+  expect(
+    within(strip)
+      .getByRole("link", { name: /definitief\.pdf/ })
+      .getAttribute("href"),
+  ).toBe(
+    "/api/jmap/acc-1/download/u1/b-offerte/Offerte_badkamer_renovatie_v3_definitief.pdf?type=application%2Foctet-stream",
+  );
+  cleanup();
+  // A photo the body list shows stays out of the strip as well.
+  const pictured = htmlDetail(NEWEST_ID, NEWSLETTER_HTML, { attachments: ATTACHMENT_PARTS });
+  pictured.body.htmlBody.push(PHOTO_PART);
+  renderCard({ bodies: { [NEWEST_ID]: pictured } });
+  expect((await frame()).srcdoc).toContain("/b-photo/tegelwerk_voorbeeld.jpg?type=image%2Fjpeg");
+  const shown = screen.getByRole("list", {
+    name: `${String(ATTACHMENT_PARTS.length - 1)} attachments`,
+  });
+  expect(within(shown).queryByText(/tegelwerk_voorbeeld/)).toBeNull();
+  cleanup();
+  renderCard({ bodies: { [NEWEST_ID]: attachmentsDetail(NEWEST_ID) } });
+  expect(await screen.findByRole("list", { name: /attachments/ })).toBeDefined();
+  cleanup();
+  // The one part of a message too complex to describe downloads whole.
+  renderCard({ bodies: { [NEWEST_ID]: complexDetail(NEWEST_ID) } });
+  const whole = await screen.findByRole("link", { name: /message\.eml/ });
+  expect(whole.getAttribute("href")).toBe(
+    "/api/jmap/acc-1/download/u1/e-3/message.eml?type=application%2Foctet-stream",
+  );
+  cleanup();
+  renderCard({ bodies: { [NEWEST_ID]: textDetail(NEWEST_ID, "nothing attached") } });
+  await screen.findByText("nothing attached");
+  expect(screen.queryByRole("list", { name: /attachment/ })).toBeNull();
 });
 
 test("a link carries the device's key and none once the key is forgotten, so the open route asks first", async () => {

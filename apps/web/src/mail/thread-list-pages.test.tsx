@@ -9,7 +9,8 @@ import { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
-import { FASTMAIL, INBOX_ID, INBOX_PAGE, fixtureCache } from "./fixtures";
+import { fixtureCache } from "./fixture-cache";
+import { FASTMAIL, INBOX_ID, INBOX_PAGE } from "./fixtures";
 import {
   ROW_PX,
   VIEW_HEIGHT_PX,

@@ -6,8 +6,18 @@ import type { BodyDetail, Preferences } from "@huliho/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
-import { NEWSLETTER_HTML, PASSED, REPLY_TEXT, htmlDetail, textDetail } from "./body-fixtures";
-import { FASTMAIL, FIXED_NOW, THREAD, THREAD_ID, fixtureCache } from "./fixtures";
+import {
+  ATTACHMENT_PARTS,
+  NEWSLETTER_HTML,
+  PASSED,
+  PHOTO_PART,
+  REPLY_TEXT,
+  attachmentsDetail,
+  htmlDetail,
+  textDetail,
+} from "./body-fixtures";
+import { fixtureCache } from "./fixture-cache";
+import { FASTMAIL, FIXED_NOW, THREAD, THREAD_ID } from "./fixtures";
 import { MessageCard } from "./message-card";
 import { startOfDay } from "./row-time";
 import { routed, seedMail } from "./story-router";
@@ -71,4 +81,16 @@ export const ShownAsSent: StoryObj = {
 
 export const Reply: StoryObj = {
   render: () => card(textDetail(NEWEST_ID, REPLY_TEXT, { flowed: { delSp: false } })),
+};
+
+// The files alone: no route serves a story, so a photo would fall back
+// to its chip once its request failed.
+export const Attachments: StoryObj = {
+  render: () =>
+    card(
+      attachmentsDetail(
+        NEWEST_ID,
+        ATTACHMENT_PARTS.filter((one) => one !== PHOTO_PART),
+      ),
+    ),
 };
