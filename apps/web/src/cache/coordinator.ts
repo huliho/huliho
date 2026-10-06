@@ -25,11 +25,14 @@ import type {
 } from "@huliho/core";
 
 import { bodyDetail } from "./bodies";
+import { BodyQueue } from "./body-queue";
 import type { Locks } from "./locks";
 import type { CacheMessage } from "./messages";
 import { attempt } from "./outcome";
 import type { CacheResult } from "./outcome";
 import type { Choice, WorkerStore } from "./store-choice";
+import { Watches } from "./watches";
+import type { Watch } from "./watches";
 import { Writes } from "./writes";
 
 // The client asks for changes every sixty seconds until push lands.
@@ -43,20 +46,11 @@ export const FIRST_SYNC_POLL_MS = 10_000;
 // once a minute, so a live tab never falls past the lease.
 export const LEASE_RENEW_MS = 30_000;
 
-// A watch older than this belongs to a tab that is gone.
-export const LEASE_MS = 150_000;
-
 // A focus poll this soon after the last one is skipped, so switching
 // windows back and forth costs one request.
 const FOCUS_POLL_GAP_MS = 10_000;
 
 const EVERY_AREA = ["mailboxes", "emails", "threads", "queries", "bodies", "pending"] as const;
-
-// The mailbox one tab is looking at.
-export interface Watch {
-  accountId: string;
-  mailboxId: string;
-}
 
 // What a tab tells the worker: the accounts the session holds, when
 // that list was fetched, the mailbox it watches and whether the instance
@@ -108,11 +102,6 @@ interface Account {
   stopped: boolean;
 }
 
-interface Watched {
-  watch: Watch;
-  seen: number;
-}
-
 function lockName(accountId: string): string {
   return `huliho-cache:${accountId}`;
 }
@@ -139,14 +128,16 @@ function held(store: MailStore, gate: Promise<unknown>): MailStore {
 
 // Runs the accounts a session holds: the mailbox tree at the start, then
 // the poll at its interval and on focus. Every reconciliation of one
-// account runs under its lock and every change goes to every tab.
+// account runs under its lock and every change goes to every tab. A
+// body is read outside the lock, a few per account at a time.
 export class Coordinator {
   private readonly deps: Dependencies;
   private readonly store: MailStore;
   private readonly writes: Writes;
+  private readonly bodies = new BodyQueue();
   private readonly persisted = Promise.withResolvers<undefined>();
   private readonly accounts = new Map<string, Account>();
-  private readonly watches = new Map<number, Watched>();
+  private readonly watches = new Watches();
   // When the list in force was fetched.
   private listedAt = Number.NEGATIVE_INFINITY;
   // The last halt; only a list fetched after it starts the accounts again.
@@ -179,7 +170,7 @@ export class Coordinator {
           this.listedAt = lease.listedAt;
           this.setAccounts(lease.accounts, fresh);
         }
-        this.setWatch(tab, lease.watching);
+        this.watches.set(tab, lease.watching);
         return Promise.resolve();
       },
       focus: () => {
@@ -205,7 +196,11 @@ export class Coordinator {
         ),
       reveal: (accountId, mailboxId) => attempt(() => this.reveal(accountId, mailboxId)),
       body: (accountId, emailId, options) =>
-        attempt(() => bodyDetail(this.client(accountId), this.guarded(), emailId, options)),
+        attempt(() =>
+          this.bodies.read(accountId, () =>
+            bodyDetail(this.client(accountId), this.guarded(), emailId, options),
+          ),
+        ),
       mutate: (accountId, mutation) => attempt(() => this.writes.mutate(accountId, mutation)),
     };
   }
@@ -249,28 +244,6 @@ export class Coordinator {
         }
       }
     }
-  }
-
-  private setWatch(tab: number, watch: Watch | null): void {
-    if (watch === null) {
-      this.watches.delete(tab);
-    } else {
-      this.watches.set(tab, { watch, seen: Date.now() });
-    }
-  }
-
-  // The mailboxes live tabs watch on an account; a watch past the lease goes.
-  private watched(accountId: string): string[] {
-    const live = Date.now() - LEASE_MS;
-    for (const [tab, { seen }] of this.watches) {
-      if (seen < live) {
-        this.watches.delete(tab);
-      }
-    }
-    const ids = [...this.watches.values()]
-      .filter(({ watch }) => watch.accountId === accountId)
-      .map(({ watch }) => watch.mailboxId);
-    return [...new Set(ids)];
   }
 
   private client(accountId: string): JmapClient {
@@ -388,7 +361,7 @@ export class Coordinator {
       await syncMailboxes(client, store);
       return { mailboxes: true, windows: [], threads: [] };
     }
-    return applyChanges(client, store, this.watched(accountId));
+    return applyChanges(client, store, this.watches.of(accountId));
   }
 
   private async mailboxes(accountId: string): Promise<Mailbox[]> {
@@ -419,6 +392,7 @@ export class Coordinator {
       clearTimeout(account.timer);
     }
     this.writes.stop(accountId);
+    this.bodies.stop(accountId);
     this.accounts.delete(accountId);
   }
 

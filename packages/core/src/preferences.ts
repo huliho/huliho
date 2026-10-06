@@ -12,18 +12,28 @@ const READING_PANES = ["right", "bottom", "off"] as const;
 export const THEMES = ["system", "light", "dark"] as const;
 export const DENSITIES = ["comfortable", "compact"] as const;
 const PREFERENCE_LOCALES = ["en", "nl"] as const;
+const FONT_SIZES = ["default", "large", "larger"] as const;
+const LINE_HEIGHTS = ["default", "relaxed", "loose"] as const;
+// Whether a light-only message is adapted to the dark theme or shown as sent.
+const DARK_MAILS = ["adapt", "original"] as const;
 
 const preferencesSchema = z.object({
   readingPane: z.enum(READING_PANES).optional(),
   theme: z.enum(THEMES).optional(),
   density: z.enum(DENSITIES).optional(),
   locale: z.enum(PREFERENCE_LOCALES).optional(),
+  fontSize: z.enum(FONT_SIZES).optional(),
+  lineHeight: z.enum(LINE_HEIGHTS).optional(),
+  darkMail: z.enum(DARK_MAILS).optional(),
 });
 
 export type ReadingPane = (typeof READING_PANES)[number];
 export type Theme = (typeof THEMES)[number];
 export type Density = (typeof DENSITIES)[number];
 export type PreferenceLocale = (typeof PREFERENCE_LOCALES)[number];
+type FontSize = (typeof FONT_SIZES)[number];
+type LineHeight = (typeof LINE_HEIGHTS)[number];
+export type DarkMail = (typeof DARK_MAILS)[number];
 // The user's choices; a key never chosen is absent.
 export type Preferences = z.infer<typeof preferencesSchema>;
 
@@ -32,7 +42,10 @@ export type PreferenceChange =
   | { key: "readingPane"; value: ReadingPane }
   | { key: "theme"; value: Theme }
   | { key: "density"; value: Density }
-  | { key: "locale"; value: PreferenceLocale };
+  | { key: "locale"; value: PreferenceLocale }
+  | { key: "fontSize"; value: FontSize }
+  | { key: "lineHeight"; value: LineHeight }
+  | { key: "darkMail"; value: DarkMail };
 
 export type PreferencesFailureCode = "unauthenticated" | "unavailable";
 
@@ -59,8 +72,14 @@ export function withPreference(current: Preferences, change: PreferenceChange): 
       return { ...current, theme: change.value };
     case "density":
       return { ...current, density: change.value };
-    default:
+    case "locale":
       return { ...current, locale: change.value };
+    case "fontSize":
+      return { ...current, fontSize: change.value };
+    case "lineHeight":
+      return { ...current, lineHeight: change.value };
+    default:
+      return { ...current, darkMail: change.value };
   }
 }
 

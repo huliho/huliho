@@ -18,9 +18,11 @@ const COMPARE_SCREENSHOTS = process.env.CI !== undefined || process.platform ===
 const SNAPSHOT_PATH_TEMPLATE =
   "{snapshotDir}/{testFileDir}/{testFileName}-snapshots/{arg}{-snapshotSuffix}{ext}";
 
-// The frame traces run in a project of their own after the rest of the
-// suite, so no other worker shares the CPU while one measures.
+// The traces run in projects of their own, one after the other and
+// after the rest of the suite, so no other worker shares the CPU while
+// one measures.
 const SCROLL_BUDGET_SPEC = "**/scroll-budget.spec.ts";
+const BODY_BUDGET_SPEC = "**/body-budget.spec.ts";
 
 export default defineConfig({
   testDir: "e2e",
@@ -30,8 +32,9 @@ export default defineConfig({
     baseURL: PREVIEW_URL,
   },
   projects: [
-    { name: "suite", testIgnore: SCROLL_BUDGET_SPEC },
+    { name: "suite", testIgnore: [SCROLL_BUDGET_SPEC, BODY_BUDGET_SPEC] },
     { name: "scroll-budget", testMatch: SCROLL_BUDGET_SPEC, dependencies: ["suite"] },
+    { name: "body-budget", testMatch: BODY_BUDGET_SPEC, dependencies: ["scroll-budget"] },
   ],
   webServer: [
     {

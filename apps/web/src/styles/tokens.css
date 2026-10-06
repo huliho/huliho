@@ -31,7 +31,8 @@
   /* A dialog backdrop is the page ground, dimmed; it never carries text. */
   --hhx-scrim-opacity: 0.6;
 
-  --hhx-font-ui: "Hanken Grotesk", system-ui, sans-serif;
+  /* Where the face cannot load, as in a mail's frame, a generic UI family resolves per machine. */
+  --hhx-font-ui: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   --hhx-font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --hhx-type-1: 0.75rem;
@@ -58,6 +59,8 @@
   --hhx-halo-width: 4px;
   /* The progress line on the first-sync block's top edge. */
   --hhx-hairline-width: 2px;
+  /* One bar per level of quoted text in a plain message. */
+  --hhx-quote-bar-width: 2px;
 
   --hhx-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --hhx-duration-flip: 120ms;

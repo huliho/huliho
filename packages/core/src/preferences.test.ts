@@ -30,7 +30,15 @@ test("the answer parses with absent keys and refuses a word off a list", async (
   expect(await fetchPreferences()).toEqual({});
   answer(200, { theme: "dark", locale: "nl" });
   expect(await fetchPreferences()).toEqual({ theme: "dark", locale: "nl" });
+  answer(200, { fontSize: "larger", lineHeight: "relaxed", darkMail: "original" });
+  expect(await fetchPreferences()).toEqual({
+    fontSize: "larger",
+    lineHeight: "relaxed",
+    darkMail: "original",
+  });
   answer(200, { readingPane: "left" });
+  await expect(fetchPreferences()).rejects.toThrow(/invalid/i);
+  answer(200, { darkMail: "invert" });
   await expect(fetchPreferences()).rejects.toThrow(/invalid/i);
   answer(200, { locale: "en-XA" });
   await expect(fetchPreferences()).rejects.toThrow(/invalid/i);
@@ -80,6 +88,16 @@ test("a change replaces one key and leaves the rest", () => {
   expect(withPreference({}, { key: "readingPane", value: "off" })).toEqual({ readingPane: "off" });
   expect(withPreference({}, { key: "density", value: "comfortable" })).toEqual({
     density: "comfortable",
+  });
+  expect(withPreference(current, { key: "fontSize", value: "large" })).toEqual({
+    ...current,
+    fontSize: "large",
+  });
+  expect(withPreference({}, { key: "lineHeight", value: "loose" })).toEqual({
+    lineHeight: "loose",
+  });
+  expect(withPreference({ darkMail: "adapt" }, { key: "darkMail", value: "original" })).toEqual({
+    darkMail: "original",
   });
 });
 

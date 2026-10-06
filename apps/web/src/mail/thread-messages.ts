@@ -20,11 +20,6 @@ export interface PlannedMessage {
   older: boolean;
 }
 
-export interface ThreadPlan {
-  messages: PlannedMessage[];
-  olderCount: number;
-}
-
 // The thread's messages in the server's order, oldest first, for the
 // headers the detail holds.
 export function messagesOf(detail: ThreadDetail): EmailHeader[] {
@@ -35,26 +30,23 @@ export function messagesOf(detail: ThreadDetail): EmailHeader[] {
   });
 }
 
-function isUnread(email: EmailHeader): boolean {
+export function isUnread(email: EmailHeader): boolean {
   return !(SEEN in email.keywords);
 }
 
 // The newest message and every unread one open; the two before the
 // first open one stay in sight, collapsed; every message older than
 // those waits behind the button.
-export function planMessages(messages: readonly EmailHeader[]): ThreadPlan {
+export function planMessages(messages: readonly EmailHeader[]): PlannedMessage[] {
   const last = messages.length - 1;
   const firstOpen = messages.findIndex((email, index) => index === last || isUnread(email));
   const keepFrom = Math.max(0, firstOpen - COLLAPSED_IN_SIGHT);
-  return {
-    messages: messages.map((email, index) => ({
-      email,
-      unread: isUnread(email),
-      expanded: index === last || isUnread(email),
-      older: index < keepFrom,
-    })),
-    olderCount: keepFrom,
-  };
+  return messages.map((email, index) => ({
+    email,
+    unread: isUnread(email),
+    expanded: index === last || isUnread(email),
+    older: index < keepFrom,
+  }));
 }
 
 // The thread's subject: the one its first message carries.

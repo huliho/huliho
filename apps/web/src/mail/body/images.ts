@@ -10,6 +10,12 @@ const IMAGE_TYPE = "image/";
 // The name a part without one is asked under; the frame shows no name.
 const UNNAMED = "image";
 
+// How many blocked images of one message get a drawn box. An engine
+// draws each box as a document of its own, about a millisecond apiece
+// on a mid-range phone, so a mail of thousands of images could hold
+// the tab for minutes; past this a blocked image keeps its place blank.
+export const BLOCKED_BOXES_MAX = 100;
+
 // What stands in the place of an image URL from a mail: the URL the
 // frame loads instead, the sender's own data image, a remote image the
 // reader has not allowed or nothing.
@@ -39,11 +45,13 @@ function partsByCid(body: EmailBody): Map<string, EmailBodyPart> {
 // The URL policy over the images of one message: a part of the message
 // itself loads from the download route, a remote image through the
 // server's proxy once the reader allowed the sender, a data image as it
-// is; everything else loads nothing. It keeps the remote URLs it met.
+// is; everything else loads nothing. It keeps the remote URLs it met
+// and counts the boxes it gave to blocked images.
 export class Images {
   private readonly policy: ImagePolicy;
   private readonly parts: Map<string, EmailBodyPart>;
   private readonly found = new Set<string>();
+  private boxes = 0;
 
   constructor(body: EmailBody, policy: ImagePolicy) {
     this.policy = policy;
@@ -54,6 +62,12 @@ export class Images {
   // address once, however often an engine lists it.
   get remote(): number {
     return this.found.size;
+  }
+
+  // Whether one more blocked image of the message gets a drawn box.
+  takeBox(): boolean {
+    this.boxes += 1;
+    return this.boxes <= BLOCKED_BOXES_MAX;
   }
 
   place(value: string): Placed {

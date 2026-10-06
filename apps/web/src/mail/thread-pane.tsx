@@ -22,6 +22,7 @@ import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { MessageCard } from "./message-card";
 import { messagesOf, planMessages, subjectOf } from "./thread-messages";
+import type { PlannedMessage } from "./thread-messages";
 import { ThreadSkeleton } from "./thread-skeleton";
 import { useToday } from "./use-today";
 import styles from "./thread-pane.module.css";
@@ -89,34 +90,84 @@ function Toolbar({ locale, position, mailbox, keyHints, onClose }: ToolbarProps)
 interface BodyProps {
   locale: Locale;
   today: number;
+  cache: MailCache;
+  accountId: string;
   detail: ThreadDetail;
+  // Whether the detail is the thread as it stands; a cached one that
+  // is being read again is not.
+  current: boolean;
   position: PanePosition;
   titleRef: RefObject<HTMLHeadingElement | null>;
 }
 
-// The cards the user folded the other way from how the pane drew them.
-function useFlipped(): [ReadonlySet<string>, (id: string) => void] {
-  const [flipped, setFlipped] = useState<ReadonlySet<string>>(new Set());
-  const toggle = (id: string): void => {
-    setFlipped((held) => {
-      const next = new Set(held);
-      if (!next.delete(id)) {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-  return [flipped, toggle];
+// Which cards stand open and which wait behind the button.
+interface Drawn {
+  open: ReadonlyMap<string, boolean>;
+  older: ReadonlySet<string>;
 }
 
-// The subject, the count and one card per message, oldest first: the
-// newest and the unread ones open, the rest collapsed, the oldest
-// behind a button. A card toggles on its head.
-function ThreadBody({ locale, today, detail, position, titleRef }: BodyProps) {
+function drawnOf(plan: readonly PlannedMessage[]): Drawn {
+  return {
+    open: new Map(plan.map((message) => [message.email.id, message.expanded])),
+    older: new Set(plan.filter((message) => message.older).map((one) => one.email.id)),
+  };
+}
+
+// The cards as the thread stood when it opened and as the user folded
+// them since; null until the thread is read as it stands, so a thread
+// opened again opens what arrived meanwhile. A message that lands
+// later comes in folded, so it stays unread until its head opens it.
+function useCardsDrawn(plan: readonly PlannedMessage[], current: boolean) {
+  const [drawn, setDrawn] = useState(() => (current ? drawnOf(plan) : null));
+  if (drawn === null && current) {
+    setDrawn(drawnOf(plan));
+  }
+  const toggle = (id: string, open: boolean): void => {
+    setDrawn((held) => held && { ...held, open: new Map(held.open).set(id, !open) });
+  };
+  return drawn === null ? null : { ...drawn, toggle };
+}
+
+interface CardsProps {
+  locale: Locale;
+  today: number;
+  cache: MailCache;
+  accountId: string;
+  messages: readonly PlannedMessage[];
+  open: ReadonlyMap<string, boolean>;
+  onToggle: (id: string, open: boolean) => void;
+}
+
+// One card per message; a message the map does not hold stands folded.
+function Cards({ locale, today, cache, accountId, messages, open, onToggle }: CardsProps) {
+  return messages.map((message) => {
+    const expanded = open.get(message.email.id) ?? false;
+    return (
+      <MessageCard
+        key={message.email.id}
+        locale={locale}
+        today={today}
+        message={message}
+        expanded={expanded}
+        cache={cache}
+        accountId={accountId}
+        onToggle={() => {
+          onToggle(message.email.id, expanded);
+        }}
+      />
+    );
+  });
+}
+
+// The subject, the count and one card per message, oldest first: as
+// the thread opens the newest and the unread ones open, the rest
+// collapsed, the oldest behind a button. A card toggles on its head.
+function ThreadBody(props: BodyProps) {
+  const { locale, today, cache, accountId, detail, current, position, titleRef } = props;
   const messages = messagesOf(detail);
   const plan = planMessages(messages);
   const [olderShown, setOlderShown] = useState(false);
-  const [flipped, toggle] = useFlipped();
+  const drawn = useCardsDrawn(plan, current);
   const cardsRef = useRef<HTMLOListElement>(null);
   const revealedRef = useRef(false);
   // The button that revealed the older cards leaves; the first of them takes its focus.
@@ -126,6 +177,9 @@ function ThreadBody({ locale, today, detail, position, titleRef }: BodyProps) {
       cardsRef.current?.querySelector("button")?.focus();
     }
   });
+  if (drawn === null) {
+    return <ThreadSkeleton locale={locale} />;
+  }
   const Title = position === "screen" ? "h1" : "h2";
   return (
     <div className={cx(styles.thread, styles.reveal)}>
@@ -136,7 +190,7 @@ function ThreadBody({ locale, today, detail, position, titleRef }: BodyProps) {
       <p className={styles.count}>
         {m.thread_count({ count: detail.thread.emailIds.length }, { locale })}
       </p>
-      {!olderShown && plan.olderCount > 0 && (
+      {!olderShown && drawn.older.size > 0 && (
         <Button
           className={styles.older}
           onClick={() => {
@@ -144,25 +198,20 @@ function ThreadBody({ locale, today, detail, position, titleRef }: BodyProps) {
             setOlderShown(true);
           }}
         >
-          {m.thread_show_older({ count: plan.olderCount }, { locale })}
+          {m.thread_show_older({ count: drawn.older.size }, { locale })}
         </Button>
       )}
       {/* Safari drops the list semantics of a list without markers; the role keeps them. */}
       <ol ref={cardsRef} role="list" className={styles.cards}>
-        {plan.messages
-          .filter((message) => olderShown || !message.older)
-          .map((message) => (
-            <MessageCard
-              key={message.email.id}
-              locale={locale}
-              today={today}
-              message={message}
-              expanded={flipped.has(message.email.id) !== message.expanded}
-              onToggle={() => {
-                toggle(message.email.id);
-              }}
-            />
-          ))}
+        <Cards
+          locale={locale}
+          today={today}
+          cache={cache}
+          accountId={accountId}
+          messages={plan.filter((message) => olderShown || !drawn.older.has(message.email.id))}
+          open={drawn.open}
+          onToggle={drawn.toggle}
+        />
       </ol>
     </div>
   );
@@ -202,7 +251,8 @@ export function ThreadPane(props: ThreadPaneProps) {
       />
       <div className={styles.body} data-position={position}>
         {query.isPending && <ThreadSkeleton locale={locale} />}
-        {query.isError && (
+        {/* A read that fails with an earlier answer held draws that answer alone. */}
+        {query.isError && query.data === undefined && (
           <ErrorState
             message={m.mail_error({}, { locale })}
             retryLabel={m.retry_action({}, { locale })}
@@ -217,7 +267,10 @@ export function ThreadPane(props: ThreadPaneProps) {
             key={threadId}
             locale={locale}
             today={today}
+            cache={cache}
+            accountId={accountId}
             detail={query.data}
+            current={!(query.isStale && query.isFetching)}
             position={position}
             titleRef={titleRef}
           />

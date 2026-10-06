@@ -57,18 +57,41 @@ function follow(frame: HTMLIFrameElement, report: (height: number) => void): () 
   };
 }
 
+// Calls `parsed` once the frame holds a document other than `previous`
+// that is past parsing, looking once per drawn frame; the returned
+// function stops the looking. A document is past parsing well ahead of
+// its load event, which waits for every image.
+function onceParsed(
+  frame: HTMLIFrameElement,
+  previous: Document | null,
+  parsed: () => void,
+): () => void {
+  let handle = 0;
+  const look = (): void => {
+    const page = frame.contentDocument;
+    if (page !== null && page !== previous && page.readyState !== "loading") {
+      parsed();
+    } else {
+      handle = requestAnimationFrame(look);
+    }
+  };
+  handle = requestAnimationFrame(look);
+  return () => {
+    cancelAnimationFrame(handle);
+  };
+}
+
 export interface Frame {
   // For the iframe element, which takes no source; whatever sandbox it
   // names, the hook sets the frame's own.
   ref: RefObject<HTMLIFrameElement | null>;
-  // The height the frame should have; null until its document loaded.
+  // The height the frame should have; null until its document is parsed.
   height: number | null;
 }
 
-// Renders a built document in the frame the ref names: the frame is
-// sandboxed before the document goes in as `srcdoc`, so no caller
-// renders one outside the sandbox; the frame is as tall as its content
-// and the app's keys work while the focus is inside.
+// Renders a built document in the frame the ref names, sandboxed before
+// `srcdoc` goes in. It follows the document once parsed: as tall as its
+// content, the app's keys inside; the load event stands in where no frame is drawn.
 export function useFrame(html: string): Frame {
   const ref = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState<number | null>(null);
@@ -78,14 +101,21 @@ export function useFrame(html: string): Frame {
       return undefined;
     }
     let unfollow = (): void => undefined;
-    const loaded = (): void => {
+    const shown = (): void => {
       unfollow();
       unfollow = follow(frame, setHeight);
     };
-    frame.addEventListener("load", loaded);
+    const previous = frame.contentDocument;
     frame.setAttribute("sandbox", FRAME_SANDBOX);
     frame.srcdoc = html;
+    const stopLooking = onceParsed(frame, previous, shown);
+    const loaded = (): void => {
+      stopLooking();
+      shown();
+    };
+    frame.addEventListener("load", loaded);
     return () => {
+      stopLooking();
       frame.removeEventListener("load", loaded);
       unfollow();
     };

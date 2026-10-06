@@ -18,6 +18,7 @@ import { InboxRedirect } from "./mail/inbox-redirect";
 import { landingAccount } from "./mail/last-account";
 import { MailShell } from "./mail/mail-shell";
 import { MailboxPane } from "./mail/mailbox-pane";
+import { linkKey } from "./open/link-key";
 import { RootLayout } from "./shell/root-layout";
 import { RouteError, RoutePending } from "./shell/route-fallbacks";
 import { SignedInLayout } from "./shell/signed-in-layout";
@@ -127,6 +128,8 @@ const mailRoute = createRoute({
     if (!accounts.some((account) => account.id === params.accountId)) {
       redirect({ to: "/", throw: true });
     }
+    // The device holds its key before a message writes a link with it.
+    linkKey();
   },
 });
 

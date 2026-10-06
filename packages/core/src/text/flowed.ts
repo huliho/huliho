@@ -66,6 +66,18 @@ function lineOf(raw: string, delSp: boolean): Line {
   return { depth, text: flowed && delSp ? content.slice(0, -1) : content, flowed, separator };
 }
 
+// The lines of a text that is not flowed, each as written. A quoted
+// line gives up its marks and the one space that may follow them. An
+// unquoted line stays whole: a space in front of it is the writer's,
+// since only flowed text stuffs one there (RFC 3676 section 4.4).
+export function quotedLines(text: string): QuotedLine[] {
+  return linesOf(text).map((raw) => {
+    const depth = quoteDepth(raw);
+    const marks = raw.charAt(depth) === " " ? depth + 1 : depth;
+    return { depth, text: depth === 0 ? raw : raw.slice(marks) };
+  });
+}
+
 // RFC 3676 section 4.1: the paragraphs of a flowed text.
 export function unflow(text: string, delSp: boolean): QuotedLine[] {
   const paragraphs: { depth: number; parts: string[] }[] = [];

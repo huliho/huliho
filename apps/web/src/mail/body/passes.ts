@@ -5,7 +5,7 @@
 import { blockedImage } from "./base-style";
 import type { FrameStyle } from "./base-style";
 import { LEGACY_COLORED, adaptAttributes, adaptBlock } from "./colors";
-import { cleanBlock, cleanSheet, selectorRules, selectsRoot, sheetText } from "./css";
+import { BLANK_PIXEL, cleanBlock, cleanSheet, selectorRules, selectsRoot, sheetText } from "./css";
 import type { CssContext } from "./css";
 
 // One sanitized part of a mail while the passes run over it: its
@@ -35,14 +35,16 @@ function styled(root: HTMLElement): HTMLElement[] {
 }
 
 // Every image by the policy: one that loads gets its address on this
-// instance, a blocked one the box that says so, a dropped one none.
+// instance, a blocked one the box that says so while the message has
+// boxes left and a blank pixel after, a dropped one none.
 function placeImages(root: HTMLElement, context: CssContext, style: FrameStyle): void {
   for (const image of root.querySelectorAll("img[src]")) {
     const placed = context.images.place(image.getAttribute("src") ?? "");
     if (placed.kind === "loads") {
       image.setAttribute("src", placed.url);
     } else if (placed.kind === "blocked") {
-      image.setAttribute("src", blockedImage(image.getAttribute("alt") ?? "", style));
+      const alt = image.getAttribute("alt") ?? "";
+      image.setAttribute("src", context.images.takeBox() ? blockedImage(alt, style) : BLANK_PIXEL);
     } else if (placed.kind === "dropped") {
       image.removeAttribute("src");
     }

@@ -1,0 +1,23 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* A plain message sits at the card padding, its lines as written and a long address wrapped. */
+.text {
+  padding: var(--hhx-space-4);
+  line-height: var(--hhx-leading);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.text a {
+  color: var(--hh-accent);
+}
+
+/* One bar per level of quoting; quoted text reads in the muted color. */
+.quote {
+  margin: 0;
+  padding-inline-start: var(--hhx-space-2);
+  border-inline-start: var(--hhx-quote-bar-width) solid var(--hh-border-strong);
+  color: var(--hh-text-muted);
+}

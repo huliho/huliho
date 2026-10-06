@@ -11,6 +11,15 @@
   text-align: center;
 }
 
+/* In a card the icon, the sentence and the button stand in one row that wraps. */
+.state[data-variant="inline"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: var(--hhx-space-4);
+  text-align: start;
+}
+
 .icon {
   inline-size: var(--hhx-icon-header);
   block-size: var(--hhx-icon-header);
@@ -22,4 +31,9 @@
   margin: 0;
   max-inline-size: var(--hhx-measure-narrow);
   color: var(--hh-text);
+}
+
+.state[data-variant="inline"] .message {
+  flex: 1 1 var(--hhx-row-facts-min);
+  max-inline-size: none;
 }

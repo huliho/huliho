@@ -1,0 +1,75 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* Three still lines where the text will be, each a line of type tall. */
+.lines {
+  display: grid;
+  gap: var(--hhx-space-2);
+  padding: var(--hhx-space-4);
+}
+
+.line {
+  block-size: var(--hhx-type-2);
+}
+
+.line:last-child {
+  inline-size: 60%;
+}
+
+/* The frame runs to the card's border; the frame's own document pads a message that paints no background. */
+.frame {
+  display: block;
+  inline-size: 100%;
+  border: 0;
+}
+
+.frame[data-loading] {
+  visibility: hidden;
+}
+
+/* A light message shown as sent in the dark theme is a white sheet laid in the card. */
+.frame[data-canvas="as-sent"] {
+  inline-size: calc(100% - 2 * var(--hhx-space-2));
+  margin: var(--hhx-space-2);
+  border-radius: var(--hhx-radius-field);
+}
+
+/* A sentence in the slot: the state is said in words, with an icon where it is a fault. */
+.sentence {
+  margin: 0;
+  padding: var(--hhx-space-4);
+  color: var(--hh-text-muted);
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-3);
+  margin: 0;
+  padding: var(--hhx-space-4);
+  color: var(--hh-text-muted);
+}
+
+.icon {
+  flex: none;
+  inline-size: var(--hhx-icon-header);
+  block-size: var(--hhx-icon-header);
+  stroke-width: var(--hhx-icon-stroke);
+}
+
+/* The cut notice stands behind a hairline under the mail that arrived, so it reads as chrome. */
+.cut {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--hhx-space-2) var(--hhx-space-3);
+  padding: var(--hhx-space-3) var(--hhx-space-4);
+  border-block-start: var(--hhx-border-width) solid var(--hh-border);
+}
+
+.cut .sentence {
+  flex: 1 1 var(--hhx-row-facts-min);
+  padding: 0;
+  color: var(--hh-text);
+}

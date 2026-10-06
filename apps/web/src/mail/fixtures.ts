@@ -5,15 +5,19 @@
 import { listPage } from "@huliho/core";
 import type {
   AccountRow,
+  BodyDetail,
   EmailHeader,
   ListPage,
   MailCache,
   Mailbox,
   MemberState,
+  Mutation,
   ThreadDetail,
   ThreadRow,
   WindowPage,
 } from "@huliho/core";
+
+import { previewDetail } from "./body-fixtures";
 
 const HOUR_MS = 3_600_000;
 const CREATED_AT = 1_778_750_400_000;
@@ -21,12 +25,14 @@ const CREATED_AT = 1_778_750_400_000;
 // Screenshots must not age, so the rows sit at fixed times before a fixed now.
 export const FIXED_NOW = new Date(2026, 4, 14, 10, 0);
 
-const READ_ONLY = {
+// A mailbox a reader may mark read in, as every mailbox of an account
+// that takes writes is.
+const RIGHTS = {
   mayReadItems: true,
   mayAddItems: false,
   mayRemoveItems: false,
-  maySetSeen: false,
-  maySetKeywords: false,
+  maySetSeen: true,
+  maySetKeywords: true,
   mayCreateChild: false,
   mayRename: false,
   mayDelete: false,
@@ -59,7 +65,7 @@ function build(rows: readonly Row[]): Mailbox[] {
     unreadEmails: unread,
     totalThreads: total,
     unreadThreads: unread,
-    myRights: READ_ONLY,
+    myRights: RIGHTS,
     isSubscribed: true,
   }));
 }
@@ -395,6 +401,8 @@ export const THREAD: ThreadDetail = threadDetail();
 export type PageAnswer = ListPage | "never" | Error;
 // How it answers a thread: with the thread, with nothing, with a refusal or not at all.
 export type ThreadAnswer = ThreadDetail | null | "never" | Error;
+// How it answers a body: with the body, with nothing, with a refusal or not at all.
+export type BodyAnswer = BodyDetail | null | "never" | Error;
 
 function answered<Value>(answer: Value | "never" | Error): Promise<Value> {
   if (answer === "never") {
@@ -403,17 +411,36 @@ function answered<Value>(answer: Value | "never" | Error): Promise<Value> {
   return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer);
 }
 
+// The header of an email among the threads held, if any.
+function headerOf(threads: ReadonlyMap<string, ThreadAnswer>, emailId: string): EmailHeader | null {
+  for (const answer of threads.values()) {
+    if (answer !== null && answer !== "never" && !(answer instanceof Error)) {
+      const found = new Map(Object.entries(answer.emails)).get(emailId);
+      if (found !== undefined) {
+        return found;
+      }
+    }
+  }
+  return null;
+}
+
 // A cache for stories and tests: pages by mailbox and number, threads
-// by id; the mailbox tree from the fixtures; every reveal a no-op it
-// records; no body and no change.
+// by id and bodies by email id, the key `<id>#large` for the ask at the
+// large cap; a message without a body of its own shows its preview as
+// text. The mailbox tree comes from the fixtures; every reveal and every
+// change is a no-op it records.
 export function fixtureCache(
   pages: Record<string, PageAnswer>,
   threads: Record<string, ThreadAnswer> = {},
-): MailCache & { revealed: string[] } {
+  bodies: Record<string, BodyAnswer> = {},
+): MailCache & { revealed: string[]; mutations: Mutation[] } {
   const revealed: string[] = [];
+  const mutations: Mutation[] = [];
   const held = new Map(Object.entries(threads));
+  const heldBodies = new Map(Object.entries(bodies));
   return {
     revealed,
+    mutations,
     mailboxes: () => Promise.resolve(MAILBOXES),
     window: (_accountId, mailboxId, page) => {
       const answer = pages[`${mailboxId}/${String(page)}`];
@@ -426,7 +453,18 @@ export function fixtureCache(
       revealed.push(mailboxId);
       return Promise.resolve();
     },
-    body: () => Promise.resolve(null),
-    mutate: () => Promise.resolve(),
+    body: (_accountId, emailId, { large }) => {
+      const answer =
+        (large ? heldBodies.get(`${emailId}#large`) : undefined) ?? heldBodies.get(emailId);
+      if (answer !== undefined) {
+        return answered(answer);
+      }
+      const found = headerOf(held, emailId);
+      return Promise.resolve(found === null ? null : previewDetail(found));
+    },
+    mutate: (_accountId, mutation) => {
+      mutations.push(mutation);
+      return Promise.resolve();
+    },
   };
 }

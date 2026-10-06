@@ -126,29 +126,64 @@ ahead of every poll and when the network comes back. A change the
 account or a mailbox does not allow moves nothing. One the server
 refuses is taken back and the tab in view says so.
 
+A card that opens shows its message under a hairline: HTML in the
+frame the pipeline below builds, titled by who wrote and what about,
+plain text with each quote level as a quote of its own behind a bar
+and every address a link through the `/open` route. The frame takes
+its type and colors from the card. Three still lines stand in for a
+body on its way and the message shows once its document is parsed,
+ahead of its images. A body the server refuses offers Try again.
+Offline the card shows what the device holds and says so for a message
+it never got. A body that arrived cut short offers the whole message
+at a larger cap and the download when that comes back cut as well. A
+plain message draws fifty thousand lines at most and says so under the
+last, with the download. A card marks its message read as it opens
+unread; a message that turns unread under an open card stays unread. A
+message that lands in the open thread comes in folded and stays unread
+until its head opens it.
+The card lays its head out by its own width, so it reads the same in a
+narrow pane as on a phone.
+
+A message that names remote images gets a bar above it. Load once
+loads them for this view. Always for this sender writes a grant pinned
+to what the receiving server said about the message and Stop takes it
+back; a later message that fails that check keeps its images blocked
+and says why. A button of the card that its own press takes away hands
+its focus to the bar or the body it stood in. In the dark theme a
+light-only message is adapted and its head offers to show it as sent.
+The worker fetches bodies two at a time per account: a request the
+server holds back for its limit goes on the queue again, five times at
+most before the card shows the fault. An account that leaves takes its
+waiting fetches with it.
+
 The body pipeline under `src/mail/body` builds the document a message
 renders from. DOMPurify runs the same allowlist as the server's
 sanitizer. The message's CSS is read through the browser's own parser:
 an import, a font and a viewport length leave. One policy settles
 every image: a part of the message loads from the download route and a
 remote image through the server's proxy once the reader allowed the
-sender; until then a box with its alt text stands in its place. The
+sender; until then a box with its alt text stands in its place. A
+message draws a hundred such boxes and keeps a blocked image past them
+blank; a mail of twenty thousand images stands about three seconds
+after the click on a desktop and thirteen on the phone profile. The
 app's theme decides the color scheme inside the message, a light-only
 message can be adapted for the dark theme and every link points at the
 app's own `/open` route. The document goes into a sandboxed frame that
-runs no script; `useFrame` sets the sandbox itself, keeps the frame as
-tall as its content and hands the app's keys through.
+runs no script; `useFrame` sets the sandbox itself, follows the
+document once it is parsed, keeps the frame as tall as its content and
+hands the app's keys through.
 
 `/open` needs no session. The link rides the fragment, which never
-reaches a server. A plain link made on this device leaves for its
-target at once. A mail address made on this device goes to the mail
-program and the tab stays for the reader to close. A web link shows
+reaches a server. A device gets its key when the mail screen loads and
+loses it when the session ends there; a message writes it into every
+link. A plain link made on this device leaves for its target at once.
+A mail address made on this device goes to the mail program and the
+tab stays for the reader to close. A web link shows
 where it leads and asks first, with Cancel in focus, when its host is
 an internationalized name, its text names another host, it points at
 the app itself, its text found no room in the address or this device
-did not make it. An address the page
-cannot read opens nothing and neither does a mail address this device
-did not make.
+did not make it. An address the page cannot read opens nothing and
+neither does a mail address this device did not make.
 
 The mail screen lives under `src/mail` at `/mail/{accountId}/{mailboxId}`.
 The root sends a visit to the account this device opened last, else to
@@ -210,12 +245,15 @@ by rows and keeps its place on the device; or as a screen of its own,
 which a phone always uses. The list stays where it was underneath, so
 Escape, the Close button or the way back return the focus to the row.
 The pane shows the thread's subject, its message count and one card per
-message: who wrote it, to whom and when, with the message's first
-sentence standing in for the body until bodies arrive. The newest
+message: who wrote it, to whom and when, over its body. The newest
 message and the unread ones open, the two before them stay in sight
-collapsed and the rest wait behind a button. The members' headers are
-fetched with their previews when a thread opens, in batches of the size
-the bridge fills previews in.
+collapsed with their first sentence and the rest wait behind a button.
+The cards in sight and the open ones stay as the pane first drew them
+while the thread changes under it. A thread opens as it stands: one
+that changed since it was last read waits for the fresh read before
+its cards draw. The members' headers are fetched with their previews
+when a thread opens, in batches of the size the bridge fills previews
+in.
 
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
@@ -230,7 +268,12 @@ trace slows the CPU by the host's Lighthouse benchmark index over 1000,
 the middle of the high-end mobile bracket in Lighthouse's throttling
 doc, so a mid-range phone means the same on every machine. Each trace
 prints one line with the index, the factor, the longest frame, the 95th
-percentile and any frame past the budget.
+percentile and any frame past the budget. The `body-budget` project
+runs after it: it opens a newsletter of 102 KB, the weight Gmail clips
+a message at, on the phone profile and prints the time to the still
+lines and the longest task of the main thread while the message
+builds. It also opens a mail of twenty thousand remote images, which
+has to stand at its height within twenty seconds.
 
 `pnpm lighthouse` audits the built app against the performance and
 accessibility budgets in `lighthouserc.cjs`.
