@@ -14,9 +14,9 @@ import {
   MAILBOXES_EMPTY_INBOX,
   THREAD,
   THREAD_ID,
-  fixtureCache,
 } from "./fixtures";
-import type { PageAnswer } from "./fixtures";
+import { fixtureCache } from "./fixture-cache";
+import type { PageAnswer } from "./fixture-cache";
 import { EmptyMailbox } from "./mailbox-pane";
 import { startOfDay } from "./row-time";
 import { ThreadList } from "./thread-list";

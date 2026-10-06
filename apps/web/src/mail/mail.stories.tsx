@@ -20,9 +20,9 @@ import {
   STOPPED,
   THREAD,
   THREAD_ID,
-  fixtureCache,
 } from "./fixtures";
 import { prefetchAccountMenu } from "./account-switcher";
+import { fixtureCache } from "./fixture-cache";
 import { EmptyMailbox } from "./mailbox-pane";
 import { prefetchThreadPane } from "./reading-pane";
 import { ShellFrame } from "./shell-frame";

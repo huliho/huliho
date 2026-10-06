@@ -14,6 +14,7 @@ import iconButton from "../design-system/icon-button.module.css";
 import spoken from "../design-system/spoken.module.css";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
+import { AttachmentStrip } from "./attachments/attachment-strip";
 import { MessageBody } from "./message-body";
 import {
   RECIPIENT_FIELDS,
@@ -180,8 +181,9 @@ function Recipients({ locale, email }: DetailsProps) {
 type OpenCardProps = Omit<MessageCardProps, "expanded">;
 
 // The open card: the head with the revert control, the recipients, the
-// bar when the message names remote images and the body under the hairline.
-// The body's box gives the frame its type and colors and holds the focus of a control that leaves.
+// bar when the message names remote images, the body under the hairline
+// and the strip of attachments under that. The body's box gives the
+// frame its type and colors and holds the focus of a control that leaves.
 function OpenCard({ locale, today, message, cache, accountId, onToggle }: OpenCardProps) {
   const { email } = message;
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -197,9 +199,15 @@ function OpenCard({ locale, today, message, cache, accountId, onToggle }: OpenCa
           <RemoteContentBar {...open.bar} />
         </div>
       )}
-      <div ref={bodyRef} {...focusHeir} className={styles.body}>
+      <div
+        ref={bodyRef}
+        {...focusHeir}
+        className={styles.body}
+        data-strip={open.strip !== null || undefined}
+      >
         <MessageBody locale={locale} view={open.view} />
       </div>
+      {open.strip !== null && <AttachmentStrip locale={locale} attachments={open.strip} />}
     </>
   );
 }

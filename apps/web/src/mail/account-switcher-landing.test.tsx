@@ -13,7 +13,8 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { AccountSwitcher, prefetchAccountMenu } from "./account-switcher";
-import { ACCOUNTS, FASTMAIL, fixtureCache } from "./fixtures";
+import { fixtureCache } from "./fixture-cache";
+import { ACCOUNTS, FASTMAIL } from "./fixtures";
 
 vi.mock("../auth/use-sign-out", () => ({ useSignOut: () => vi.fn<() => void>() }));
 

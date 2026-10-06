@@ -18,16 +18,9 @@ import type { JSX } from "react";
 
 import { dispatchKey } from "../commands/registry";
 import { stubWidthQueries } from "../shell/width-queries-rig";
-import {
-  FASTMAIL,
-  INBOX_ID,
-  MAILBOXES,
-  THREAD,
-  THREAD_ID,
-  fixtureCache,
-  threadDetail,
-} from "./fixtures";
-import type { ThreadAnswer } from "./fixtures";
+import { fixtureCache } from "./fixture-cache";
+import type { ThreadAnswer } from "./fixture-cache";
+import { FASTMAIL, INBOX_ID, MAILBOXES, THREAD, THREAD_ID, threadDetail } from "./fixtures";
 import { ReadingPane, ThreadScreen, prefetchThreadPane } from "./reading-pane";
 import type { OpenThread } from "./reading-pane";
 import type { PanePosition } from "./thread-pane";

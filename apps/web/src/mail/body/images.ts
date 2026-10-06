@@ -45,12 +45,13 @@ function partsByCid(body: EmailBody): Map<string, EmailBodyPart> {
 // The URL policy over the images of one message: a part of the message
 // itself loads from the download route, a remote image through the
 // server's proxy once the reader allowed the sender, a data image as it
-// is; everything else loads nothing. It keeps the remote URLs it met
-// and counts the boxes it gave to blocked images.
+// is; everything else loads nothing. It keeps the remote URLs it met,
+// the parts it showed inline and counts the boxes it gave to blocked images.
 export class Images {
   private readonly policy: ImagePolicy;
   private readonly parts: Map<string, EmailBodyPart>;
   private readonly found = new Set<string>();
+  private readonly inline = new Set<string>();
   private boxes = 0;
 
   constructor(body: EmailBody, policy: ImagePolicy) {
@@ -62,6 +63,12 @@ export class Images {
   // address once, however often an engine lists it.
   get remote(): number {
     return this.found.size;
+  }
+
+  // The ids of the parts the message shows inline: one a `cid:` resolved
+  // to and an image of the body list. The attachment strip leaves them out.
+  get inlineParts(): ReadonlySet<string> {
+    return this.inline;
   }
 
   // Whether one more blocked image of the message gets a drawn box.
@@ -87,14 +94,18 @@ export class Images {
     }
   }
 
-  // Where an image part of the message loads from. A part of another
-  // type loads nothing and neither does one without a blob.
+  // Where an image part of the message loads from; one that loads counts
+  // as shown inline. A part of another type loads nothing and neither
+  // does one without a blob.
   part(part: EmailBodyPart | undefined): Placed {
     if (part === undefined || part.blobId === null) {
       return DROPPED;
     }
     if (!part.type.toLowerCase().startsWith(IMAGE_TYPE)) {
       return DROPPED;
+    }
+    if (part.partId !== null) {
+      this.inline.add(part.partId);
     }
     const name = part.name === null || part.name === "" ? UNNAMED : part.name;
     const url = downloadUrl(this.policy.download, { blobId: part.blobId, name, type: part.type });

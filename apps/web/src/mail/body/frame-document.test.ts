@@ -9,7 +9,12 @@ import { FRAME_CSP, buildFrameDocument } from "./frame-document";
 import { DOWNLOAD_PREFIX, OPTIONS, PROXY_PREFIX, built, message, part } from "./frame-rig";
 import { BLOCKED_BOXES_MAX } from "./images";
 
-const LOGO = part("image/png", { blobId: "b-logo", name: "logo.png", cid: "logo@shop.example" });
+const LOGO = part("image/png", {
+  partId: "3",
+  blobId: "b-logo",
+  name: "logo.png",
+  cid: "logo@shop.example",
+});
 const TURNED = "calc(1 - l) c h / alpha)";
 
 function page(html: string): Document {
@@ -64,7 +69,7 @@ test("a value from the card cannot end the base style or its element", () => {
 });
 
 test("the parts of the body list render in order: HTML, an image, text as text", () => {
-  const photo = part("image/jpeg", { blobId: "b-photo", name: "photo 1.jpg" });
+  const photo = part("image/jpeg", { partId: "2", blobId: "b-photo", name: "photo 1.jpg" });
   const footer = part("text/plain", { partId: "9" });
   const body = message(["<p>first</p>", photo, "<p>second</p>", footer, part("audio/mpeg")]);
   body.bodyValues["9"] = {
@@ -72,13 +77,15 @@ test("the parts of the body list render in order: HTML, an image, text as text",
     isEncodingProblem: false,
     isTruncated: false,
   };
-  const read = page(buildFrameDocument(body, OPTIONS).html);
-  expect(read.body.innerHTML).toBe(
+  const frame = buildFrameDocument(body, OPTIONS);
+  expect(page(frame.html).body.innerHTML).toBe(
     "<p>first</p>" +
       `<img src="${DOWNLOAD_PREFIX}b-photo/photo%201.jpg?type=image%2Fjpeg" alt="photo 1.jpg">` +
       "<p>second</p>" +
       '<div style="white-space: pre-wrap;">-- \n&lt;b&gt;list&lt;/b&gt; footer &amp; more</div>',
   );
+  // The image is shown inline, so the strip leaves it out.
+  expect(Array.from(frame.inlineParts)).toEqual(["2"]);
 });
 
 test("a part without a value and one of another kind render nothing", () => {
@@ -92,7 +99,8 @@ test("a cid image resolves inside the message and nowhere else", () => {
     '<img src="cid:doc@shop.example">';
   const attached = part("text/html", { blobId: "b-doc", cid: "doc@shop.example" });
   const body = message([html], [LOGO, attached]);
-  const images = page(buildFrameDocument(body, OPTIONS).html).body.querySelectorAll("img");
+  const frame = buildFrameDocument(body, OPTIONS);
+  const images = page(frame.html).body.querySelectorAll("img");
   expect(Array.from(images, (image) => image.getAttribute("src"))).toEqual([
     `${DOWNLOAD_PREFIX}b-logo/logo.png?type=image%2Fpng`,
     null,
@@ -100,6 +108,8 @@ test("a cid image resolves inside the message and nowhere else", () => {
   ]);
   expect(images[0]?.getAttribute("width")).toBe("120");
   expect(images[1]?.getAttribute("alt")).toBe("x");
+  // The part shown inline is the one the strip leaves out.
+  expect(Array.from(frame.inlineParts)).toEqual(["3"]);
 });
 
 test("a remote image is a box with its alt text until the reader allows the sender", () => {
