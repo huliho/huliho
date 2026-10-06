@@ -26,6 +26,9 @@ const MAIL = readFileSync(
 // The DOMPurify fixtures hold at least this many cases.
 const DOMPURIFY_FLOOR = 200;
 
+// Long enough for jsdom to build every fixture twice on a shared runner.
+const CORPUS_TIMEOUT_MS = 30_000;
+
 interface Case {
   title: string;
   payload: string;
@@ -124,29 +127,37 @@ function failures(source: string, remote: boolean, adapt = false): string[] {
   );
 }
 
-test("every DOMPurify fixture comes out within the allowlist, blocked and allowed", () => {
-  expect(cases(DOMPURIFY).length).toBeGreaterThanOrEqual(DOMPURIFY_FLOOR);
-  expect(failures(DOMPURIFY, false)).toEqual([]);
-  expect(failures(DOMPURIFY, true)).toEqual([]);
-});
+test(
+  "every DOMPurify fixture comes out within the allowlist, blocked and allowed",
+  { timeout: CORPUS_TIMEOUT_MS },
+  () => {
+    expect(cases(DOMPURIFY).length).toBeGreaterThanOrEqual(DOMPURIFY_FLOOR);
+    expect(failures(DOMPURIFY, false)).toEqual([]);
+    expect(failures(DOMPURIFY, true)).toEqual([]);
+  },
+);
 
 test("every mail case comes out within the allowlist, blocked and allowed", () => {
   expect(failures(MAIL, false)).toEqual([]);
   expect(failures(MAIL, true)).toEqual([]);
 });
 
-test("every case comes out within the allowlist under the dark adaptation as well", () => {
-  expect(failures(DOMPURIFY, false, true)).toEqual([]);
-  expect(failures(MAIL, false, true)).toEqual([]);
-  const hidden =
-    '<table><tr><td bgcolor="var(--a) url(https://probe.invalid/leak.png)">x</td></tr></table>';
-  const { html, page, adapted } = built(hidden, { theme: "dark", adapt: true });
-  expect(adapted).toBe(true);
-  // The attribute stays what the sender wrote; no style is made of it.
-  expect(page.body.querySelector("td")?.hasAttribute("style")).toBe(false);
-  expect(html).not.toContain("oklch(from var(--a)");
-  expect(problems(html, false)).toEqual([]);
-});
+test(
+  "every case comes out within the allowlist under the dark adaptation as well",
+  { timeout: CORPUS_TIMEOUT_MS },
+  () => {
+    expect(failures(DOMPURIFY, false, true)).toEqual([]);
+    expect(failures(MAIL, false, true)).toEqual([]);
+    const hidden =
+      '<table><tr><td bgcolor="var(--a) url(https://probe.invalid/leak.png)">x</td></tr></table>';
+    const { html, page, adapted } = built(hidden, { theme: "dark", adapt: true });
+    expect(adapted).toBe(true);
+    // The attribute stays what the sender wrote; no style is made of it.
+    expect(page.body.querySelector("td")?.hasAttribute("style")).toBe(false);
+    expect(html).not.toContain("oklch(from var(--a)");
+    expect(problems(html, false)).toEqual([]);
+  },
+);
 
 // What a built document holds that could run, or load from another
 // host without being asked.
