@@ -11,3 +11,7 @@ reason = "extract-zip sits under lighthouse's browser fetcher, runs as developme
 [[IgnoredVulns]]
 id = "GHSA-vfj7-8cjw-p6xm"
 reason = "braces sits under stylelint's file matching, runs as development tooling on the repository's own glob patterns and has no fixed release"
+
+[[IgnoredVulns]]
+id = "GHSA-hp3w-g68c-fv3c"
+reason = "sprintf-js sits under the command line of js-yaml 3 through argparse, which Lighthouse CI never runs; argparse formats its own fixed strings and there is no fixed release"
