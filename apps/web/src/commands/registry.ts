@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { chordOf, sameKeys } from "./keys";
+import { ESCAPE, chordOf, sameKeys } from "./keys";
 import type { Chord } from "./keys";
 
 // Where a command sits in the palette and the overlay.
@@ -25,7 +25,9 @@ const commands: Command[] = [];
 const listeners = new Set<() => void>();
 let snapshot: readonly Command[] = [];
 
-// Typing keeps the single keys to itself; a layered surface keeps every key.
+// Typing keeps the single keys to itself; a layered surface keeps every
+// key, from a frame inside it as well. Escape alone passes from such a
+// frame, since no layer hears a key pressed inside one.
 const CLAIMED_BY_TYPING = "input, textarea, select, [contenteditable]";
 const CLAIMED_BY_LAYER = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
 
@@ -72,9 +74,21 @@ function claimedBy(target: EventTarget | null, selector: string): boolean {
   return target instanceof Element && target.closest(selector) !== null;
 }
 
+// The frame the key was pressed in, as the host's document holds it;
+// null for a key pressed in the host's own window.
+function frameOf(event: KeyboardEvent): Element | null {
+  const { view } = event;
+  return view === null || view === window ? null : view.frameElement;
+}
+
+function isEscape(chord: Chord): boolean {
+  return chord.mod !== true && chord.key === ESCAPE.key;
+}
+
 function claimed(event: KeyboardEvent, chord: Chord): boolean {
   return (
     claimedBy(event.target, CLAIMED_BY_LAYER) ||
+    (!isEscape(chord) && claimedBy(frameOf(event), CLAIMED_BY_LAYER)) ||
     (chord.mod !== true && claimedBy(event.target, CLAIMED_BY_TYPING))
   );
 }

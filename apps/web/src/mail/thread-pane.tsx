@@ -24,6 +24,8 @@ import { MessageCard } from "./message-card";
 import { messagesOf, planMessages, subjectOf } from "./thread-messages";
 import type { PlannedMessage } from "./thread-messages";
 import { ThreadSkeleton } from "./thread-skeleton";
+import { useInspect } from "./use-inspect";
+import type { Inspect } from "./use-inspect";
 import { useToday } from "./use-today";
 import styles from "./thread-pane.module.css";
 
@@ -135,11 +137,13 @@ interface CardsProps {
   accountId: string;
   messages: readonly PlannedMessage[];
   open: ReadonlyMap<string, boolean>;
+  inspectOf: (id: string) => Inspect;
   onToggle: (id: string, open: boolean) => void;
 }
 
 // One card per message; a message the map does not hold stands folded.
-function Cards({ locale, today, cache, accountId, messages, open, onToggle }: CardsProps) {
+function Cards(props: CardsProps) {
+  const { locale, today, cache, accountId, messages, open, inspectOf, onToggle } = props;
   return messages.map((message) => {
     const expanded = open.get(message.email.id) ?? false;
     return (
@@ -151,6 +155,7 @@ function Cards({ locale, today, cache, accountId, messages, open, onToggle }: Ca
         expanded={expanded}
         cache={cache}
         accountId={accountId}
+        inspect={inspectOf(message.email.id)}
         onToggle={() => {
           onToggle(message.email.id, expanded);
         }}
@@ -161,7 +166,8 @@ function Cards({ locale, today, cache, accountId, messages, open, onToggle }: Ca
 
 // The subject, the count and one card per message, oldest first: as
 // the thread opens the newest and the unread ones open, the rest
-// collapsed, the oldest behind a button. A card toggles on its head.
+// collapsed, the oldest behind a button. A card toggles on its head;
+// the inspect command stands in the palette while a card is open.
 function ThreadBody(props: BodyProps) {
   const { locale, today, cache, accountId, detail, current, position, titleRef } = props;
   const messages = messagesOf(detail);
@@ -169,6 +175,11 @@ function ThreadBody(props: BodyProps) {
   const [olderShown, setOlderShown] = useState(false);
   const drawn = useCardsDrawn(plan, current);
   const cardsRef = useRef<HTMLOListElement>(null);
+  const inspect = useInspect(
+    cardsRef,
+    locale,
+    drawn !== null && [...drawn.open.values()].includes(true),
+  );
   const revealedRef = useRef(false);
   // The button that revealed the older cards leaves; the first of them takes its focus.
   useLayoutEffect(() => {
@@ -210,6 +221,7 @@ function ThreadBody(props: BodyProps) {
           accountId={accountId}
           messages={plan.filter((message) => olderShown || !drawn.older.has(message.email.id))}
           open={drawn.open}
+          inspectOf={inspect.of}
           onToggle={drawn.toggle}
         />
       </ol>

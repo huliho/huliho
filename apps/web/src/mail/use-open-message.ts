@@ -21,6 +21,8 @@ import type { FrameDocument } from "./body/frame-document";
 import { useFrameStyle } from "./body/use-frame-style";
 import { shapeOf, textOf } from "./body-shape";
 import { cutOf, frameTitle, messageDownload } from "./body-view";
+import { inspectedBodyOf } from "./inspected-body";
+import type { InspectedBody } from "./inspector/message-inspector";
 import type { BodyView, Cut } from "./message-body";
 import { firstLines } from "./plain-text";
 import type { LinkPolicy } from "./plain-text";
@@ -53,6 +55,8 @@ export interface OpenMessage {
   // The strip under the body, null while the body is on its way or
   // when the message carries nothing to take away.
   strip: Attachment[] | null;
+  // What the inspector shows of the message, null while the body is on its way.
+  inspected: InspectedBody | null;
 }
 
 interface Facts {
@@ -71,6 +75,8 @@ interface Pieces {
   // The frame's document, null until everything it takes is known.
   built: FrameDocument | null;
   links: LinkPolicy;
+  // The server's cut of the body, null for a whole one.
+  cut: Cut | null;
 }
 
 // A message shown as sent in the dark theme stands on its own white page.
@@ -96,7 +102,7 @@ function textViewOf(
   };
 }
 
-function viewOf({ locale, email, theme, ask, online, built, links }: Pieces): BodyView {
+function viewOf({ locale, email, theme, ask, online, built, links, cut }: Pieces): BodyView {
   const { query } = ask;
   if (query.isError) {
     return online ? { kind: "error", retry: () => void query.refetch() } : { kind: "offline" };
@@ -109,7 +115,6 @@ function viewOf({ locale, email, theme, ask, online, built, links }: Pieces): Bo
     return { kind: "loading" };
   }
   const shape = shapeOf(detail.body);
-  const cut = cutOf(detail, email, locale, { show: ask.showWhole, pending: ask.wholePending });
   if (shape === "html") {
     return built === null
       ? { kind: "loading" }
@@ -211,9 +216,9 @@ function useAdaptation(theme: Theme): Adaptation {
 
 // Everything an open card shows beside its head: the body in its state,
 // the bar when the message names remote images, the revert control
-// when the dark adaptation has something to undo and the strip of what
-// the message carries. `slotRef` names the box the body stands in,
-// whose type and colors the frame takes.
+// when the dark adaptation has something to undo, the strip of what
+// the message carries and what its details show. `slotRef` names the
+// box the body stands in, whose type and colors the frame takes.
 export function useOpenMessage(slotRef: RefObject<HTMLElement | null>, facts: Facts): OpenMessage {
   const { locale, cache, accountId, email } = facts;
   const theme = useTheme();
@@ -226,10 +231,15 @@ export function useOpenMessage(slotRef: RefObject<HTMLElement | null>, facts: Fa
   // Without the device's key a link carries none and the open route asks first.
   const links: LinkPolicy = { ownHost: window.location.hostname, linkKey: useLinkKey() ?? "" };
   const built = buildOf({ detail, theme, adapt: adaptation.adapt, remote, links, style });
+  const cut =
+    detail === null
+      ? null
+      : cutOf(detail, email, locale, { show: ask.showWhole, pending: ask.wholePending });
   return {
-    view: viewOf({ locale, email, theme, ask, online, built, links }),
+    view: viewOf({ locale, email, theme, ask, online, built, links, cut }),
     bar: built !== null && built.remote > 0 ? barOf(locale, remote) : null,
     revert: adaptation.revertOf(built),
     strip: stripOf(detail, built, locale),
+    inspected: inspectedBodyOf({ detail, email, accountId, links, cut }),
   };
 }

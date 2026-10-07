@@ -144,6 +144,15 @@ until its head opens it.
 The card lays its head out by its own width, so it reads the same in a
 narrow pane as on a phone.
 
+The head of an open card offers the message's details, as does the
+palette: a dialog with the receiving server's verdict in one sentence
+above three tabs. Rendered shows the message as the card does, Plain
+text its text part or that there is none and Source the first 512 kB
+of the raw message as the server holds it, unwrapped, with a notice
+where the message runs past that; offline the source says what the
+body says. The download of the whole message stands in the dialog's
+foot. On a phone the dialog fills the screen.
+
 What a message carries stands in a strip under its body: a chip per
 attachment with its icon, its name and its size, a raster image shown
 in place and opened at full size in a dialog, an attached message that
@@ -243,7 +252,8 @@ link opens each load as a chunk of their own on their first visit; the
 thread pane, the
 account menu and the command surfaces load as chunks when the shell or
 the layout mounts, the still cards or a plain trigger standing in until
-they land.
+they land; the message details load as a chunk when a card opens, so
+they open at once.
 
 Enter, `o` or a click opens a row's thread at
 `/mail/{accountId}/{mailboxId}/{threadId}`, where the reading pane

@@ -3,18 +3,22 @@
 // Additional terms apply, see NOTICE.
 
 import type { EmailHeader, MailCache } from "@huliho/core";
-import { Moon, Sun } from "lucide-react";
-import { Fragment, useRef, useState } from "react";
+import { Info, Moon, Sun } from "lucide-react";
+import { Fragment, Suspense, use, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { Avatar } from "../design-system/avatar";
 import { Button, focusHeir } from "../design-system/button";
 import { cx } from "../design-system/cx";
+import { Dialog } from "../design-system/dialog";
 import iconButton from "../design-system/icon-button.module.css";
 import spoken from "../design-system/spoken.module.css";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
+import { chunk } from "../shell/chunk";
+import { PaneBoundary, PaneErrorState } from "../shell/pane-boundary";
 import { AttachmentStrip } from "./attachments/attachment-strip";
+import type { MessageInspectorProps } from "./inspector/message-inspector";
 import { MessageBody } from "./message-body";
 import {
   RECIPIENT_FIELDS,
@@ -27,10 +31,15 @@ import type { RecipientField } from "./recipients";
 import { RemoteContentBar } from "./remote-content-bar";
 import { formatMessageTime, formatRowTime } from "./row-time";
 import type { PlannedMessage } from "./thread-messages";
+import type { Inspect } from "./use-inspect";
 import { useMarkRead } from "./use-mark-read";
 import { useOpenMessage } from "./use-open-message";
-import type { Revert } from "./use-open-message";
+import type { OpenMessage, Revert } from "./use-open-message";
 import styles from "./message-card.module.css";
+
+// The inspector's code is a chunk of its own; an open card fetches it,
+// so the details open at once.
+export const prefetchInspector = chunk(() => import("./inspector/message-inspector"));
 
 const FIELD_LABELS = new Map<RecipientField, (locale: Locale) => string>([
   ["to", (locale) => m.thread_field_to({}, { locale })],
@@ -47,6 +56,8 @@ interface MessageCardProps {
   expanded: boolean;
   cache: MailCache;
   accountId: string;
+  // The inspector of this card, open or not.
+  inspect: Inspect;
   onToggle: () => void;
 }
 
@@ -97,7 +108,7 @@ function RevertButton({ locale, revert }: { locale: Locale; revert: Revert }) {
   return (
     <button
       type="button"
-      className={cx(iconButton.button, styles.revert)}
+      className={cx(iconButton.button, styles.tool)}
       data-pressed={revert.original || undefined}
       aria-label={
         revert.original
@@ -112,6 +123,87 @@ function RevertButton({ locale, revert }: { locale: Locale; revert: Revert }) {
         <Sun className={styles.headIcon} aria-hidden="true" />
       )}
     </button>
+  );
+}
+
+// Opens the message's details; the focus comes back here when they close.
+function DetailsButton({ locale, inspect }: { locale: Locale; inspect: Inspect }) {
+  return (
+    <button
+      type="button"
+      className={cx(iconButton.button, styles.tool)}
+      aria-label={m.inspector_title({}, { locale })}
+      onClick={(event) => {
+        inspect.onOpen(event.currentTarget);
+      }}
+    >
+      <Info className={styles.headIcon} aria-hidden="true" />
+    </button>
+  );
+}
+
+function LoadedInspector(props: MessageInspectorProps) {
+  const { MessageInspector } = use(prefetchInspector());
+  return <MessageInspector {...props} />;
+}
+
+interface InspectorProps {
+  locale: Locale;
+  inspect: Inspect;
+  open: OpenMessage;
+}
+
+// What stands in the tree while the details are open or closing: the
+// element that opened them, which takes the focus back once the
+// closing fade has ended, so it is kept here past the moment the
+// opening is taken back.
+interface Shown {
+  opener: HTMLElement | null;
+}
+
+// The message's details, in the tree from their opening through their
+// closing fade. A refused chunk shows its error in a dialog of the
+// same name, so Escape closes it and the focus stays in a layer.
+function Inspector({ locale, inspect, open }: InspectorProps) {
+  const [shown, setShown] = useState<Shown | null>(null);
+  if (inspect.open && shown === null) {
+    setShown({ opener: inspect.opener });
+  }
+  if (shown === null) {
+    return null;
+  }
+  const closed = (): void => {
+    setShown(null);
+  };
+  return (
+    <PaneBoundary
+      frame={
+        <Dialog
+          open={inspect.open}
+          onOpenChange={(next) => {
+            if (!next) {
+              inspect.onClose();
+            }
+          }}
+          onClosed={closed}
+          title={m.inspector_title({}, { locale })}
+        >
+          <PaneErrorState />
+        </Dialog>
+      }
+    >
+      <Suspense fallback={null}>
+        <LoadedInspector
+          locale={locale}
+          open={inspect.open}
+          onClose={inspect.onClose}
+          onClosed={closed}
+          opener={shown.opener ?? undefined}
+          rendered={<MessageBody locale={locale} view={open.view} />}
+          body={open.inspected}
+        />
+      </Suspense>
+    </PaneBoundary>
   );
 }
 
@@ -180,18 +272,24 @@ function Recipients({ locale, email }: DetailsProps) {
 
 type OpenCardProps = Omit<MessageCardProps, "expanded">;
 
-// The open card: the head with the revert control, the recipients, the
-// bar when the message names remote images, the body under the hairline
-// and the strip of attachments under that. The body's box gives the
-// frame its type and colors and holds the focus of a control that leaves.
-function OpenCard({ locale, today, message, cache, accountId, onToggle }: OpenCardProps) {
+// The open card: the head with the revert control and the details
+// button, the recipients, the bar when the message names remote
+// images, the body under the hairline and the strip of attachments
+// under that. The body's box gives the frame its type and colors and
+// holds the focus of a control that leaves.
+function OpenCard(props: OpenCardProps) {
+  const { locale, today, message, cache, accountId, inspect, onToggle } = props;
   const { email } = message;
   const bodyRef = useRef<HTMLDivElement>(null);
   const open = useOpenMessage(bodyRef, { locale, cache, accountId, email });
+  useEffect(() => {
+    void prefetchInspector();
+  }, []);
   return (
     <>
       <Head locale={locale} today={today} message={message} expanded onToggle={onToggle}>
         {open.revert !== null && <RevertButton locale={locale} revert={open.revert} />}
+        <DetailsButton locale={locale} inspect={inspect} />
       </Head>
       <Recipients locale={locale} email={email} />
       {open.bar !== null && (
@@ -208,18 +306,21 @@ function OpenCard({ locale, today, message, cache, accountId, onToggle }: OpenCa
         <MessageBody locale={locale} view={open.view} />
       </div>
       {open.strip !== null && <AttachmentStrip locale={locale} attachments={open.strip} />}
+      <Inspector locale={locale} inspect={inspect} open={open} />
     </>
   );
 }
 
 // One message of an open thread. A card that opens unread marks itself
-// read; a folded card is its head alone.
+// read; a folded card is its head alone. The card carries its message's
+// id, so the inspect command can find the card the focus is in.
 export function MessageCard(props: MessageCardProps) {
-  const { locale, today, message, expanded, cache, accountId, onToggle } = props;
+  const { locale, today, message, expanded, cache, accountId, inspect, onToggle } = props;
   useMarkRead(cache, accountId, message.email, expanded);
   return (
     <li
       className={styles.card}
+      data-message-id={message.email.id}
       data-expanded={expanded || undefined}
       data-unread={message.unread || undefined}
     >
@@ -230,6 +331,7 @@ export function MessageCard(props: MessageCardProps) {
           message={message}
           cache={cache}
           accountId={accountId}
+          inspect={inspect}
           onToggle={onToggle}
         />
       ) : (

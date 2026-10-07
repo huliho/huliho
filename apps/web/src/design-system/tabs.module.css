@@ -1,0 +1,45 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* The row ends in a hairline; the active tab's line lies over it. */
+.list {
+  display: flex;
+  gap: var(--hhx-space-1);
+  border-block-end: var(--hhx-border-width) solid var(--hh-border);
+}
+
+/* On a phone the tabs share the row; from the tablet width on each takes its own width. */
+.tab {
+  flex: 1 1 0;
+  min-block-size: var(--hhx-hit-target);
+  margin-block-end: calc(-1 * var(--hhx-border-width));
+  padding: var(--hhx-space-2) var(--hhx-space-3);
+  border: none;
+  border-block-end: var(--hhx-tab-line-width) solid transparent;
+  background: none;
+  color: var(--hh-text-muted);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--hh-text);
+}
+
+.tab[data-active] {
+  border-block-end-color: var(--hh-accent);
+  color: var(--hh-accent-strong);
+  font-weight: 600;
+}
+
+.panel {
+  margin-block-start: var(--hhx-space-3);
+}
+
+@media (min-width: 720px) {
+  .tab {
+    flex: none;
+  }
+}

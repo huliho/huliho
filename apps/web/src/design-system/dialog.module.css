@@ -35,21 +35,40 @@
   inline-size: min(var(--hhx-measure-wide), calc(100% - var(--hhx-space-6)));
 }
 
-/* A picture at full size fills a phone's screen; from the tablet width on it
-   stands in an overlay as wide as the image measure. */
-.popup[data-size="image"] {
+/* A picture at full size and a screen of its own fill a phone's screen; from the
+   tablet width on each stands in an overlay, the picture as wide as the image
+   measure and the screen as wide as the wide measure. */
+.popup[data-size="image"],
+.popup[data-size="screen"] {
   inline-size: 100%;
   max-block-size: 100dvh;
   border: none;
   border-radius: 0;
 }
 
+/* The screen is as tall as the phone's: its heading and its foot stay in place and
+   what stands between them scrolls. */
+.popup[data-size="screen"] {
+  block-size: 100dvh;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
 @media (min-width: 720px) {
-  .popup[data-size="image"] {
-    inline-size: min(var(--hhx-measure-image), calc(100% - var(--hhx-space-6)));
+  .popup[data-size="image"],
+  .popup[data-size="screen"] {
     max-block-size: calc(100dvh - var(--hhx-space-6));
     border: var(--hhx-border-width) solid var(--hh-border);
     border-radius: var(--hhx-radius-overlay);
+  }
+
+  .popup[data-size="image"] {
+    inline-size: min(var(--hhx-measure-image), calc(100% - var(--hhx-space-6)));
+  }
+
+  .popup[data-size="screen"] {
+    inline-size: min(var(--hhx-measure-wide), calc(100% - var(--hhx-space-6)));
+    block-size: fit-content;
+    grid-template-rows: none;
   }
 }
 

@@ -1,0 +1,97 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* The line and the tabs as one piece between the dialog's heading and its foot; on a
+   phone it is the piece that scrolls, so the heading and the foot keep their place. */
+.views {
+  display: grid;
+  gap: var(--hhx-space-3);
+  align-content: start;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+/* The receiving server's verdict above the tabs: one sentence, the host in mono,
+   each result a mark and a word in the color of its outcome. */
+.line {
+  margin: 0;
+}
+
+.host {
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-1);
+}
+
+.result {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.result[data-verdict="pass"] {
+  color: var(--hh-success);
+}
+
+.result[data-verdict="fail"] {
+  color: var(--hh-danger);
+}
+
+.result[data-verdict="none"],
+.result[data-verdict="unknown"] {
+  color: var(--hh-text-muted);
+}
+
+.mark {
+  display: inline-block;
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  margin-inline-end: var(--hhx-space-1);
+  vertical-align: text-bottom;
+  stroke-width: var(--hhx-icon-stroke);
+}
+
+/* The message in each tab stands on a sheet of its own inside the dialog: the panel,
+   which is a tab stop, so a source wider than the sheet scrolls sideways by keyboard. */
+.sheet {
+  overflow: auto hidden;
+  border: var(--hhx-border-width) solid var(--hh-border);
+  border-radius: var(--hhx-radius-field);
+}
+
+.sentence {
+  margin: 0;
+  padding: var(--hhx-space-4);
+  color: var(--hh-text-muted);
+}
+
+/* The raw message never wraps; the sheet around it scrolls. */
+.source {
+  margin: 0;
+  padding: var(--hhx-space-4);
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-1);
+  line-height: var(--hhx-leading);
+  white-space: pre;
+}
+
+/* The cut notice stands under the source or the text behind a hairline, so it reads as
+   the app's; it keeps its place while the source scrolls sideways. */
+.cut {
+  position: sticky;
+  inset-inline-start: 0;
+  margin: 0;
+  padding: var(--hhx-space-3) var(--hhx-space-4);
+  border-block-start: var(--hhx-border-width) solid var(--hh-border);
+  color: var(--hh-text-muted);
+}
+
+/* The download fills the foot on a phone and stands at its end from the tablet width on. */
+.download {
+  flex: 1 1 100%;
+}
+
+@media (min-width: 720px) {
+  .download {
+    flex: none;
+  }
+}

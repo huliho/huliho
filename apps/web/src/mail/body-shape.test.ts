@@ -5,7 +5,7 @@
 import { expect, test } from "vitest";
 
 import { message, part } from "./body/frame-rig";
-import { isCut, shapeOf, textOf } from "./body-shape";
+import { hasPlainText, isCut, shapeOf, textOf } from "./body-shape";
 
 const TEXT = part("text/plain", { partId: "1", blobId: "b1" });
 const OTHER_TEXT = part("text/plain", { partId: "3", blobId: "b3" });
@@ -46,6 +46,20 @@ test("a message with text parts alone renders them in order, each on its own lin
   expect(textOf(body)).toBe("first\nthird");
   // A text part whose value never came is left out.
   expect(textOf({ ...body, bodyValues: valued([["1", "first"]]) })).toBe("first");
+});
+
+test("a message has plain text when a text part is not the HTML; the HTML standing in for a text part is none", () => {
+  const both = { ...message([HTML]), textBody: [TEXT], bodyValues: valued([["1", "plain"]]) };
+  expect(hasPlainText(both)).toBe(true);
+  expect(textOf(both)).toBe("plain");
+  const htmlAlone = {
+    ...message([HTML]),
+    textBody: [HTML],
+    bodyValues: valued([["2", "<p>hi</p>"]]),
+  };
+  expect(hasPlainText(htmlAlone)).toBe(false);
+  expect(textOf(htmlAlone)).toBe("");
+  expect(hasPlainText({ ...message([]), attachments: [PDF] })).toBe(false);
 });
 
 test("a message without text or HTML has nothing to show; the one the server could not describe is too complex", () => {

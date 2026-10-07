@@ -37,6 +37,17 @@ function press(html: string, key: string): void {
   target?.dispatchEvent(keydown(key));
 }
 
+// The window of the frame the selector names, which a key pressed in
+// the frame carries as its view.
+function windowOf(selector: string): Window {
+  const frame = document.querySelector(selector);
+  const view = frame instanceof HTMLIFrameElement ? frame.contentWindow : null;
+  if (view === null) {
+    throw new Error(`no frame at ${selector}`);
+  }
+  return view;
+}
+
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) {
     cleanup();
@@ -94,6 +105,27 @@ test("a dialog, a menu and a listbox keep every key to themselves", () => {
   }
   expect(single).not.toHaveBeenCalled();
   expect(combined).not.toHaveBeenCalled();
+});
+
+test("a frame inside a dialog keeps every key but Escape; a frame outside any layer keeps none", () => {
+  const single = register([{ key: "z" }]);
+  const combined = register([{ key: "k", mod: true }]);
+  const thread = register([{ key: "Escape" }], "thread");
+  const inspector = register([{ key: "Escape" }], "inspector");
+  document.body.innerHTML = '<div role="dialog"><iframe></iframe></div><iframe></iframe>';
+  const inside = windowOf('[role="dialog"] iframe');
+  const outside = windowOf("body > iframe");
+  dispatchKey(keydown("z", { view: inside }));
+  dispatchKey(keydown("k", { ctrlKey: true, view: inside }));
+  expect(single).not.toHaveBeenCalled();
+  expect(combined).not.toHaveBeenCalled();
+  dispatchKey(keydown("Escape", { view: inside }));
+  expect(inspector).toHaveBeenCalledOnce();
+  expect(thread).not.toHaveBeenCalled();
+  dispatchKey(keydown("z", { view: outside }));
+  dispatchKey(keydown("k", { ctrlKey: true, view: outside }));
+  expect(single).toHaveBeenCalledOnce();
+  expect(combined).toHaveBeenCalledOnce();
 });
 
 test("a handled event, Alt and the other platform's command key are left alone", () => {
