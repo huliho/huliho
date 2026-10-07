@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { BrowserContext } from "@playwright/test";
+import type { BrowserContext, Route } from "@playwright/test";
 
 const DOWNLOAD_ROUTE = "**/api/jmap/*/download/**";
 const REMOTE_ROUTE = "**/api/remote-image?*";
 const PNG_TYPE = "image/png";
 // The type of every blob the route does not serve as a picture.
 const OCTET_STREAM = "application/octet-stream";
+const PARTIAL_CONTENT = 206;
+const BAD_GATEWAY = 502;
+// A range from byte zero, the one the route honors.
+const RANGE = /^bytes=0-(\d+)$/;
 
 // A photo of 480 by 360, two bands of color, for every image the routes serve.
 const PHOTO = Buffer.from(
@@ -21,8 +25,11 @@ const PHOTO = Buffer.from(
 export const NOT_AN_IMAGE_NAME = "scan.png";
 
 // The whole message the download route serves for a message blob.
-const MESSAGE = "From: sender@example.test\r\nSubject: the message\r\n\r\nThe whole message.\r\n";
+export const MESSAGE =
+  "From: sender@example.test\r\nSubject: the message\r\n\r\nThe whole message.\r\n";
 const MESSAGE_EXTENSION = ".eml";
+// A long message runs this far past what the source view reads.
+const LONG_MESSAGE_FACTOR = 3;
 
 // The bytes of any other download: binary with no signature, so a
 // browser keeps the name it was given instead of renaming it after a
@@ -37,10 +44,40 @@ const BLOB_HEADERS = {
   "cache-control": "private, no-store",
 };
 
-// What the image proxy was asked: each remote image by the address it
-// was given.
+// What the blob routes were asked: each remote image by the address it
+// was given and each range asked of a message; which messages are long,
+// so a range from byte zero answers the first part of them; and which
+// the route refuses, as a proxy whose upstream is down does.
 export interface Blobs {
   remote: string[];
+  ranges: string[];
+  longMessages: Set<string>;
+  refusedMessages: Set<string>;
+}
+
+// The whole message as the route serves it: the message, or the first
+// part of a long one with the range it covers, as the route answers a
+// blob whose length it knows.
+function messageAnswer(route: Route, blobId: string, blobs: Blobs): Promise<void> {
+  const headers = { ...BLOB_HEADERS, "content-type": OCTET_STREAM };
+  if (blobs.refusedMessages.has(blobId)) {
+    return route.fulfill({ status: BAD_GATEWAY, headers });
+  }
+  const range = route.request().headers()["range"];
+  if (range !== undefined) {
+    blobs.ranges.push(range);
+  }
+  const end = range === undefined ? null : RANGE.exec(range)?.[1];
+  if (end === null || end === undefined || !blobs.longMessages.has(blobId)) {
+    return route.fulfill({ body: MESSAGE, headers });
+  }
+  const first = Number(end) + 1;
+  const whole = first * LONG_MESSAGE_FACTOR;
+  return route.fulfill({
+    status: PARTIAL_CONTENT,
+    body: MESSAGE.padEnd(first, "x").slice(0, first),
+    headers: { ...headers, "content-range": `bytes 0-${end}/${String(whole)}` },
+  });
 }
 
 // Answers the download route with the photo for an image asked as one
@@ -48,11 +85,16 @@ export interface Blobs {
 // name and plain bytes otherwise; the image proxy answers the photo and
 // counts each address it was asked.
 export async function mockBlobs(context: BrowserContext): Promise<Blobs> {
-  const blobs: Blobs = { remote: [] };
+  const blobs: Blobs = {
+    remote: [],
+    ranges: [],
+    longMessages: new Set(),
+    refusedMessages: new Set(),
+  };
   await context.route(DOWNLOAD_ROUTE, (route) => {
     const url = new URL(route.request().url());
     const type = url.searchParams.get("type") ?? "";
-    const name = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+    const [name = "", blobId = ""] = url.pathname.split("/").toReversed();
     if (type.startsWith("image/") && name !== NOT_AN_IMAGE_NAME) {
       return route.fulfill({
         body: PHOTO,
@@ -63,12 +105,15 @@ export async function mockBlobs(context: BrowserContext): Promise<Blobs> {
         },
       });
     }
+    if (decodeURIComponent(name).endsWith(MESSAGE_EXTENSION)) {
+      return messageAnswer(route, blobId, blobs);
+    }
     return route.fulfill({
-      body: name.endsWith(MESSAGE_EXTENSION) ? MESSAGE : BYTES,
+      body: BYTES,
       headers: {
         ...BLOB_HEADERS,
         "content-type": OCTET_STREAM,
-        "content-disposition": `attachment; filename="${name}"`,
+        "content-disposition": `attachment; filename="${decodeURIComponent(name)}"`,
       },
     });
   });

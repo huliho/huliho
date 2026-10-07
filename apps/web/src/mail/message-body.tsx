@@ -9,7 +9,7 @@ import { LeavingButton } from "../design-system/button";
 import buttonStyles from "../design-system/button.module.css";
 import { cx } from "../design-system/cx";
 import { ErrorState } from "../design-system/error-state";
-import { Skeleton } from "../design-system/skeleton";
+import { TextLines } from "../design-system/text-lines";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { FRAME_SANDBOX } from "./body/frame-document";
@@ -19,8 +19,16 @@ import type { LinkPolicy } from "./plain-text";
 import { useStatusText } from "./status-text";
 import styles from "./message-body.module.css";
 
-// The still lines that stand for a body on its way.
-const SKELETON_LINES = 3;
+// Why a body stops short: cut by the server at the cap it was asked at,
+// or longer than the card draws.
+export type Short = { kind: "size"; size: string } | { kind: "lines" };
+
+// The sentence that says why a body stops short.
+export function shortSentence(short: Short, locale: Locale): string {
+  return short.kind === "size"
+    ? m.body_cut({ size: short.size }, { locale })
+    : m.body_too_long({}, { locale });
+}
 
 // What a body that stops short offers. Cut at the cap it was asked at:
 // the size, the second ask until it was made and the download once that
@@ -62,18 +70,12 @@ export type BodyView =
     };
 
 function Lines({ locale }: { locale: Locale }) {
-  return (
-    <div role="status" aria-label={m.loading_label({}, { locale })} className={styles.lines}>
-      {Array.from({ length: SKELETON_LINES }, (_, index) => (
-        <Skeleton key={index} className={styles.line} />
-      ))}
-    </div>
-  );
+  return <TextLines label={m.loading_label({}, { locale })} />;
 }
 
 // The sentence of a message this device never got. Its status region
 // stands empty first, so the sentence is announced when it lands.
-function OfflineNotice({ locale }: { locale: Locale }) {
+export function OfflineNotice({ locale }: { locale: Locale }) {
   const sentenceRef = useRef<HTMLSpanElement>(null);
   useStatusText(sentenceRef, m.body_offline({}, { locale }));
   return (
@@ -90,11 +92,7 @@ function OfflineNotice({ locale }: { locale: Locale }) {
 function CutNotice({ locale, cut }: { locale: Locale; cut: Cut }) {
   return (
     <div className={styles.cut}>
-      <p className={styles.sentence}>
-        {cut.kind === "size"
-          ? m.body_cut({ size: cut.size }, { locale })
-          : m.body_too_long({}, { locale })}
-      </p>
+      <p className={styles.sentence}>{shortSentence(cut, locale)}</p>
       {cut.kind === "size" && cut.whole !== null && (
         <LeavingButton pending={cut.pending} onClick={cut.whole}>
           {m.body_show_whole({}, { locale })}

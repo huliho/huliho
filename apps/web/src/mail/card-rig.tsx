@@ -12,7 +12,7 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import { ToastProvider, Toasts } from "../design-system/toast";
@@ -24,6 +24,7 @@ import { FASTMAIL, FIXED_NOW, THREAD, THREAD_ID } from "./fixtures";
 import { MessageCard } from "./message-card";
 import { startOfDay } from "./row-time";
 import type { PlannedMessage } from "./thread-messages";
+import { useInspect } from "./use-inspect";
 
 // The rig the card tests render in: one card in a list, a fixture cache
 // with the bodies of the test, the sender policies the stubbed server
@@ -49,7 +50,7 @@ export interface Answers {
 }
 
 // jsdom has no ResizeObserver; the frame watches its document with one.
-class StillObserver {
+export class StillObserver {
   observe(): void {
     return undefined;
   }
@@ -125,12 +126,15 @@ interface HarnessProps {
   cache: MailCache;
 }
 
-// One card in a list; its fold button opens and folds it.
+// One card in a list; its fold button opens and folds it and its
+// details open as they do in a thread.
 function Harness({ message, expanded, cache }: HarnessProps) {
   const [shown, setShown] = useState(expanded);
+  const listRef = useRef<HTMLOListElement>(null);
+  const inspect = useInspect(listRef, "en", shown);
   return (
     <ToastProvider>
-      <ol role="list">
+      <ol ref={listRef} role="list">
         <MessageCard
           locale="en"
           today={TODAY}
@@ -138,6 +142,7 @@ function Harness({ message, expanded, cache }: HarnessProps) {
           expanded={shown}
           cache={cache}
           accountId={FASTMAIL.id}
+          inspect={inspect.of(message.email.id)}
           onToggle={() => {
             setShown(!shown);
           }}

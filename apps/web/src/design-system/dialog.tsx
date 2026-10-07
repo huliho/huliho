@@ -23,11 +23,14 @@ interface DialogProps {
   // Where the focus goes when the dialog closes: the element that
   // opened it, for a dialog opened without a trigger of its own.
   finalFocus?: HTMLElement | undefined;
-  // Controls beside the title, for a dialog whose content is a picture.
+  // Controls beside the title, for a dialog whose content is a picture
+  // or a view with a close button of its own.
   header?: ReactNode;
   // The narrow measure for a question, the wide one for a table, the
-  // image one for a picture at full size.
-  size?: "narrow" | "wide" | "image" | undefined;
+  // image one for a picture at full size and the screen one for a view
+  // that fills a phone's screen and takes the wide measure from the
+  // tablet width on.
+  size?: "narrow" | "wide" | "image" | "screen" | undefined;
   children: ReactNode;
 }
 

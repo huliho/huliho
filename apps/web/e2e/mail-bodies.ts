@@ -63,6 +63,10 @@ export const CUT_ONCE_SENDER = "tomas@lindqvist.example";
 export const CUT_TWICE_SENDER = "jeroen@vos-advies.example";
 export const NO_TEXT_SENDER = "iris@familie.example";
 export const ATTACHMENTS_SENDER = "jonas@kastanje.example";
+// A header the server left with two of its methods unchecked and one it
+// could not settle, and one no reader can make sense of.
+export const UNCHECKED_SENDER = "femke@kastanje.example";
+export const UNREADABLE_SENDER = "sven@hosting.example";
 
 // The attachments of the planning mail: the names a test looks for.
 export const LONG_NAME = "Offerte_badkamer_renovatie_v3_definitief.pdf";
@@ -90,6 +94,12 @@ const MICROSOFT_HEADER = [
   " header.d=kastanje.example;dmarc=pass action=none",
   " header.from=kastanje.example;compauth=pass reason=100",
 ].join("\r\n");
+
+// A server that checked nothing of SPF and DMARC and found DKIM neither way.
+const UNCHECKED_HEADER = ` ${AUTHSERV}; spf=none smtp.mailfrom=kastanje.example; dkim=neutral header.d=kastanje.example; dmarc=none header.from=kastanje.example`;
+
+// Two DMARC clauses in one header: a value the sender chose, copied unquoted.
+const UNREADABLE_HEADER = ` ${AUTHSERV}; dmarc=pass header.from=hosting.example; dmarc=fail header.from=other.example`;
 
 export const NEWSLETTER_HTML = [
   '<div style="background: #f4efe6; padding: 24px; font-family: Georgia, serif; color: #2b2622">',
@@ -210,6 +220,14 @@ const BY_SENDER = new Map<string, (message: CorpusEmail) => CorpusBody>([
   [
     ATTACHMENTS_SENDER,
     (message) => ({ text: ATTACHMENTS_TEXT, attachments: attachmentParts(message.id) }),
+  ],
+  [
+    UNCHECKED_SENDER,
+    (message) => ({ text: message.preview, authenticationResults: [UNCHECKED_HEADER] }),
+  ],
+  [
+    UNREADABLE_SENDER,
+    (message) => ({ text: message.preview, authenticationResults: [UNREADABLE_HEADER] }),
   ],
 ]);
 

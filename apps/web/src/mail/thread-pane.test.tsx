@@ -3,169 +3,35 @@
 // Additional terms apply, see NOTICE.
 
 import { JmapError } from "@huliho/core";
-import type { EmailHeader, MailCache, ThreadDetail } from "@huliho/core";
+import type { ThreadDetail } from "@huliho/core";
 import { queryKeys } from "@huliho/state";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  RouterProvider,
-  createMemoryHistory,
-  createRootRoute,
-  createRouter,
-} from "@tanstack/react-router";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
-import type { JSX } from "react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
 
-import { dispatchKey } from "../commands/registry";
-import { stubWidthQueries } from "../shell/width-queries-rig";
 import { fixtureCache } from "./fixture-cache";
-import type { ThreadAnswer } from "./fixture-cache";
-import { FASTMAIL, INBOX_ID, MAILBOXES, THREAD, THREAD_ID, threadDetail } from "./fixtures";
-import { ReadingPane, ThreadScreen, prefetchThreadPane } from "./reading-pane";
-import type { OpenThread } from "./reading-pane";
-import type { PanePosition } from "./thread-pane";
+import { FASTMAIL, THREAD, THREAD_ID, threadDetail } from "./fixtures";
+import {
+  COUNT,
+  IN_SIGHT,
+  NEWEST_TEXT,
+  OPEN,
+  SUBJECT,
+  cards,
+  command,
+  expandedOf,
+  headOf,
+  landIn,
+  mockPaneBox,
+  pressNewest,
+  renderPane,
+  withLanded,
+} from "./pane-rig";
 
-// The pane's code is in before the first render, as the shell has it.
-beforeAll(async () => {
-  await prefetchThreadPane();
-});
-
-const INBOX = MAILBOXES.find((mailbox) => mailbox.id === INBOX_ID);
-const OPEN: OpenThread = { accountId: FASTMAIL.id, threadId: THREAD_ID, mailbox: INBOX };
-const SUBJECT = "Offerte badkamerrenovatie, herziene versie";
-const COUNT = 14;
-// The two collapsed cards in sight and the newest, open.
-const IN_SIGHT = 3;
-// The text of the newest message, the one sentence that stands for its body.
-const NEWEST_TEXT = "De meerprijs voor de vloerverwarming ontbreekt nog.";
 const UNREAD_AT = 4;
 
-interface Options {
-  position?: PanePosition;
-  keyHints?: boolean;
-  cache?: MailCache;
-  open?: OpenThread;
-  // The query client of an earlier render, for a thread opened again.
-  client?: QueryClient;
-}
+mockPaneBox();
 
-// The pane in a router of its own, since a card's hooks reach for the
-// session's end.
-function routed(Screen: () => JSX.Element, client: QueryClient): JSX.Element {
-  const router = createRouter({
-    routeTree: createRootRoute({ component: Screen }),
-    history: createMemoryHistory({ initialEntries: ["/mail/acc-1/mb-inbox"] }),
-  });
-  return (
-    <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  );
-}
-
-function renderPane(answer: ThreadAnswer = THREAD, options: Options = {}) {
-  const onClose = vi.fn<() => void>();
-  const client = options.client ?? new QueryClient();
-  const cache = options.cache ?? fixtureCache({}, { [THREAD_ID]: answer });
-  const keyHints = options.keyHints ?? true;
-  const position = options.position ?? "right";
-  const open = options.open ?? OPEN;
-  render(
-    routed(
-      () =>
-        position === "screen" ? (
-          <ThreadScreen
-            locale="en"
-            cache={cache}
-            thread={open}
-            keyHints={keyHints}
-            onClose={onClose}
-          />
-        ) : (
-          <ReadingPane
-            locale="en"
-            cache={cache}
-            thread={open}
-            position={position}
-            keyHints={keyHints}
-            onClose={onClose}
-          />
-        ),
-      client,
-    ),
-  );
-  return { onClose, client };
-}
-
-function cards(): HTMLElement[] {
-  return screen.getAllByRole("listitem");
-}
-
-function expandedOf(card: HTMLElement | undefined): string | null {
-  return card === undefined ? null : headOf(card).getAttribute("aria-expanded");
-}
-
-// The open thread as the cache hands it on after a change.
-function landIn(client: QueryClient, detail: ThreadDetail): void {
-  act(() => {
-    client.setQueryData(queryKeys.thread(FASTMAIL.id, THREAD_ID), detail);
-  });
-}
-
-// The fixture thread with messages after its newest, each read or unread.
-function withLanded(landed: readonly (readonly [id: string, unread: boolean])[]): ThreadDetail {
-  const newest = Object.values(THREAD.emails).at(-1);
-  if (newest === undefined) {
-    throw new Error("the fixture thread is empty");
-  }
-  const added = landed.map(([id, unread]): EmailHeader => ({
-    ...newest,
-    id,
-    blobId: id,
-    keywords: unread ? {} : { $seen: true },
-  }));
-  return {
-    thread: {
-      ...THREAD.thread,
-      emailIds: [...THREAD.thread.emailIds, ...added.map((email) => email.id)],
-    },
-    emails: { ...THREAD.emails, ...Object.fromEntries(added.map((email) => [email.id, email])) },
-  };
-}
-
-// The button that folds a card: the first one in it.
-function headOf(card: HTMLElement): HTMLElement {
-  const head = within(card).getAllByRole("button")[0];
-  if (head === undefined) {
-    throw new Error("the card has no head");
-  }
-  return head;
-}
-
-// Presses the head of the newest card.
-function pressNewest(): void {
-  const card = cards().at(-1);
-  if (card === undefined) {
-    throw new Error("the pane has no card");
-  }
-  fireEvent.click(headOf(card));
-}
-
-function command(key: string): void {
-  act(() => {
-    dispatchKey(new KeyboardEvent("keydown", { key }));
-  });
-}
-
-// The width queries answer for the desktop layout; the card reads the theme through one.
-beforeEach(() => {
-  stubWidthQueries({ wide: true });
-});
-
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-});
+afterEach(cleanup);
 
 test("the pane shows the subject, the count, the older button and the cards in sight, the newest open", async () => {
   renderPane();

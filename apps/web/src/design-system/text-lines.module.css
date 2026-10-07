@@ -1,0 +1,18 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* Three still lines where the text will be, each a line of type tall. */
+.lines {
+  display: grid;
+  gap: var(--hhx-space-2);
+  padding: var(--hhx-space-4);
+}
+
+.line {
+  block-size: var(--hhx-type-2);
+}
+
+.line:last-child {
+  inline-size: 60%;
+}

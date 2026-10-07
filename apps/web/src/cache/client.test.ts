@@ -24,6 +24,7 @@ const NOTHING = { queryFn: () => Promise.resolve(1), staleTime: Number.POSITIVE_
 const MAIL_OF_A1 = [
   "a1/body/e1",
   "a1/mailboxes",
+  "a1/source/e1",
   "a1/thread/t1",
   "a1/window/inbox/0",
   "a1/window/inbox/1",
@@ -39,6 +40,7 @@ async function client(): Promise<QueryClient> {
     queryKeys.window("a1", "sent", 0),
     queryKeys.thread("a1", "t1"),
     queryKeys.body("a1", "e1"),
+    queryKeys.source("a1", "e1"),
     queryKeys.mailboxes("a2"),
     queryKeys.accounts,
   ];

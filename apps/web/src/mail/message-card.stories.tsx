@@ -4,6 +4,7 @@
 
 import type { BodyDetail, Preferences } from "@huliho/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useRef } from "react";
 import type { JSX } from "react";
 
 import {
@@ -22,6 +23,7 @@ import { MessageCard } from "./message-card";
 import { startOfDay } from "./row-time";
 import { routed, seedMail } from "./story-router";
 import type { PlannedMessage } from "./thread-messages";
+import { useInspect } from "./use-inspect";
 
 const NEWEST_ID = "e-3";
 const TODAY = startOfDay(FIXED_NOW);
@@ -38,23 +40,31 @@ function nothing(): void {
   // A drawn card folds nothing and marks nothing.
 }
 
-// One open card showing the body, under the reader's preferences.
-function card(body: BodyDetail, preferences: Preferences = {}): JSX.Element {
+// One open card showing the body, its details opening as in a thread.
+function OpenCard({ body }: { body: BodyDetail }): JSX.Element {
   const cache = fixtureCache({}, { [THREAD_ID]: THREAD }, { [NEWEST_ID]: body });
+  const listRef = useRef<HTMLOListElement>(null);
+  const inspect = useInspect(listRef, "en", true);
+  return (
+    <ol ref={listRef} role="list" style={{ margin: 0, padding: 0, listStyle: "none" }}>
+      <MessageCard
+        locale="en"
+        today={TODAY}
+        message={newest()}
+        expanded
+        cache={cache}
+        accountId={FASTMAIL.id}
+        inspect={inspect.of(NEWEST_ID)}
+        onToggle={nothing}
+      />
+    </ol>
+  );
+}
+
+// The card under the reader's preferences, with what it reads in place.
+function card(body: BodyDetail, preferences: Preferences = {}): JSX.Element {
   return routed(
-    () => (
-      <ol role="list" style={{ margin: 0, padding: 0, listStyle: "none" }}>
-        <MessageCard
-          locale="en"
-          today={TODAY}
-          message={newest()}
-          expanded
-          cache={cache}
-          accountId={FASTMAIL.id}
-          onToggle={nothing}
-        />
-      </ol>
-    ),
+    () => <OpenCard body={body} />,
     undefined,
     seedMail(new Map([[NEWEST_ID, body]]), preferences),
   );

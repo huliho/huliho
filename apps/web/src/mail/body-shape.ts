@@ -27,6 +27,12 @@ function isText(part: EmailBodyPart): boolean {
   return typeOf(part).startsWith(TEXT_TYPE);
 }
 
+// A text part that is not the HTML, which the text list carries as well
+// for a message with HTML alone (RFC 8621 section 4.1.4).
+function isPlainText(part: EmailBodyPart): boolean {
+  return isText(part) && typeOf(part) !== HTML_TYPE;
+}
+
 // Whether the frame has to draw the part: HTML, or an image the sender
 // placed among the text, which a text block cannot show.
 function needsFrame(part: EmailBodyPart): boolean {
@@ -38,22 +44,27 @@ function isWholeMessage(part: EmailBodyPart): boolean {
   return typeOf(part) === WHOLE_MESSAGE_TYPE && part.name === WHOLE_MESSAGE_NAME;
 }
 
+// Whether the message carries a plain text part, whatever else it carries.
+export function hasPlainText(body: EmailBody): boolean {
+  return body.textBody.some(isPlainText);
+}
+
 export function shapeOf(body: EmailBody): BodyShape {
   if (body.htmlBody.some(needsFrame)) {
     return "html";
   }
-  if (body.textBody.some(isText)) {
+  if (hasPlainText(body)) {
     return "text";
   }
   const whole = isWholeMessage(body.bodyStructure);
   return whole && body.htmlBody.length === 0 ? "complex" : "none";
 }
 
-// The text a message without HTML shows: the values of its text parts
-// in order, each on lines of its own.
+// The text a message shows as plain text: the values of its plain text
+// parts in order, each on lines of its own.
 export function textOf(body: EmailBody): string {
   return body.textBody
-    .filter(isText)
+    .filter(isPlainText)
     .flatMap((part) => (part.partId === null ? [] : [body.bodyValues[part.partId]?.value]))
     .filter((value) => value !== undefined)
     .join("\n");

@@ -17,6 +17,7 @@ import {
 } from "./mail-bodies";
 import { FIXED_NOW, corpusFor, seedThread } from "./mail-corpus";
 import { MAILBOXES, mockMail } from "./mail-mocks";
+import { network } from "./network";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
 import { THEMES, VIEWPORTS, axeOn } from "./sweep";
@@ -333,22 +334,6 @@ test("a body the server refuses offers Try again, which lands it", async ({ page
   await alert.getByRole("button", { name: "Try again" }).click();
   await expect(card.getByText(/Dank Pieter/)).toBeVisible();
 });
-
-// The network as a device has it: connected, or with the browser
-// saying offline and every request to the server failing, the mocked
-// routes included.
-async function network(page: Page): Promise<(connected: boolean) => Promise<void>> {
-  let online = true;
-  await page
-    .context()
-    .route("**/api/**", (route) =>
-      online ? route.fallback() : route.abort("internetdisconnected"),
-    );
-  return async (connected) => {
-    online = connected;
-    await page.context().setOffline(!connected);
-  };
-}
 
 test("offline a body this device holds shows and one it never got says so; back online that one lands by itself", async ({
   page,
