@@ -72,6 +72,12 @@ export const FirstSync: StoryObj = {
   render: () => listed({ mailbox: SYNCING }),
 };
 
+// The largest type with the loosest leading: the rows grow with their two lines.
+export const LargerAndLoose: StoryObj = {
+  globals: { fontSize: "larger", lineHeight: "loose" },
+  render: () => listed({}),
+};
+
 // The seven drawn states of a row, one under the other; hover is the
 // pointer's own.
 interface Drawn {

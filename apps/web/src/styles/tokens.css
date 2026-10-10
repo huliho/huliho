@@ -5,6 +5,13 @@
 /* Stable tier: --hh-* names are the versioned instance-override surface.
    Internal tier: --hhx-* names may change freely and never appear in overrides. */
 
+/* Registered as a length, so a script that reads the row height gets pixels and not the formula. */
+@property --hhx-row-height {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 52px;
+}
+
 :root {
   color-scheme: light dark;
 
@@ -74,9 +81,12 @@
   --hhx-icon-header: 20px;
   --hhx-icon-stroke: 1.75;
 
-  --hhx-row-height: 52px;
   --hhx-type-row: 0.8125rem;
-  --hhx-leading: 1.45;
+  /* Each density's own leading plus the step the reader chose, summed where the density is set. */
+  --hhx-leading-step: 0;
+  --hhx-leading: calc(1.45 + var(--hhx-leading-step));
+  /* Two lines of row type plus the room the design leaves around them: 52px at the defaults. */
+  --hhx-row-height: calc(2 * var(--hhx-type-row) * var(--hhx-leading) + 14.3px);
   --hhx-hit-target: 28px;
   --hhx-pane-padding: 16px;
   --hhx-toolbar-height: 44px;
@@ -115,10 +125,28 @@
   color-scheme: dark;
 }
 
+/* The type scale is rem-based, so the root's size scales every step; a
+   percentage keeps the browser's own text size in the sum. */
+:root[data-font-size="large"] {
+  font-size: 112.5%;
+}
+
+:root[data-font-size="larger"] {
+  font-size: 125%;
+}
+
+[data-line-height="relaxed"] {
+  --hhx-leading-step: 0.15;
+}
+
+[data-line-height="loose"] {
+  --hhx-leading-step: 0.3;
+}
+
 [data-density="compact"] {
-  --hhx-row-height: 40px;
   --hhx-type-row: 0.75rem;
-  --hhx-leading: 1.35;
+  --hhx-leading: calc(1.35 + var(--hhx-leading-step));
+  --hhx-row-height: calc(2 * var(--hhx-type-row) * var(--hhx-leading) + 7.6px);
   --hhx-hit-target: 24px;
   --hhx-pane-padding: 12px;
   --hhx-toolbar-height: 36px;
@@ -126,9 +154,9 @@
 
 [data-density="touch"] {
   --hhx-type-2: 0.875rem;
-  --hhx-row-height: 56px;
   --hhx-type-row: 0.875rem;
-  --hhx-leading: 1.5;
+  --hhx-leading: calc(1.5 + var(--hhx-leading-step));
+  --hhx-row-height: calc(2 * var(--hhx-type-row) * var(--hhx-leading) + 14px);
   --hhx-hit-target: 44px;
   --hhx-pane-padding: 16px;
   --hhx-toolbar-height: 56px;
@@ -141,9 +169,9 @@
   [data-density="comfortable"],
   [data-density="compact"] {
     --hhx-type-2: 0.875rem;
-    --hhx-row-height: 56px;
     --hhx-type-row: 0.875rem;
-    --hhx-leading: 1.5;
+    --hhx-leading: calc(1.5 + var(--hhx-leading-step));
+    --hhx-row-height: calc(2 * var(--hhx-type-row) * var(--hhx-leading) + 14px);
     --hhx-hit-target: 44px;
     --hhx-pane-padding: 16px;
     --hhx-toolbar-height: 56px;

@@ -9,7 +9,7 @@ import { useEffect } from "react";
 
 import { preferredLocale, switchLocale } from "../i18n/locale";
 import { getLocale } from "../paraglide/runtime.js";
-import { DEFAULT_APPEARANCE, applyAppearance } from "./appearance";
+import { appearanceOf, applyAppearance } from "./appearance";
 
 // The pseudo locale is the device's own development aid, never traded away.
 export function useAppliedPreferences(): void {
@@ -18,10 +18,7 @@ export function useAppliedPreferences(): void {
     if (data === undefined) {
       return;
     }
-    applyAppearance(document, {
-      theme: data.theme ?? DEFAULT_APPEARANCE.theme,
-      density: data.density ?? DEFAULT_APPEARANCE.density,
-    });
+    applyAppearance(document, appearanceOf(data));
     if (getLocale() !== PSEUDO_LOCALE) {
       switchLocale(data.locale ?? preferredLocale());
     }

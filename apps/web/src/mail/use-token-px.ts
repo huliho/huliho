@@ -14,9 +14,9 @@ export const ROW_HEIGHT_FALLBACK_PX = 52;
 export const TOOLBAR_HEIGHT_FALLBACK_PX = 44;
 export const FOOT_HEIGHT_FALLBACK_PX = 36;
 
-// A length token as the density resolves it on the element, in CSS
-// pixels: read on mount and again when the density on the document
-// changes.
+// A length token as the density and the type resolve it on the element,
+// in CSS pixels: read on mount and again when the density, the font size
+// or the line height on the document changes.
 export function useTokenPx(
   ref: RefObject<HTMLElement | null>,
   token: string,
@@ -38,7 +38,7 @@ export function useTokenPx(
     const observer = new MutationObserver(read);
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-density"],
+      attributeFilter: ["data-density", "data-font-size", "data-line-height"],
     });
     return () => {
       observer.disconnect();
@@ -47,7 +47,7 @@ export function useTokenPx(
   return value;
 }
 
-// The density's row height.
+// The row height, which follows the density and the type.
 export function useRowHeight(ref: RefObject<HTMLElement | null>): number {
   return useTokenPx(ref, ROW_HEIGHT_TOKEN, ROW_HEIGHT_FALLBACK_PX);
 }
