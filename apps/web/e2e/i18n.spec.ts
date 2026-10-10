@@ -66,14 +66,26 @@ test("choosing a language translates every screen, sticks and reaches the server
 
 test("the choices on record follow the user to a device that has none", async ({ page }) => {
   await mockSignedIn(page);
-  await mockPreferences(page, { theme: "dark", density: "compact", locale: "nl" });
+  await mockPreferences(page, {
+    theme: "dark",
+    density: "compact",
+    fontSize: "larger",
+    lineHeight: "loose",
+    darkMail: "original",
+    locale: "nl",
+  });
   await openAppearance(page);
   await expect(page.getByRole("heading", { level: 2, name: "Thema" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
+  await expect(page.locator("html")).toHaveAttribute("data-font-size", "larger");
+  await expect(page.locator("html")).toHaveAttribute("data-line-height", "loose");
   await expect(checked(page, "Thema")).toHaveText("Donker");
   await expect(checked(page, "Dichtheid")).toHaveText("Compact");
+  await expect(checked(page, "Tekstgrootte")).toHaveText("Groter");
+  await expect(checked(page, "Regelafstand")).toHaveText("Ruimer");
   await expect(checked(page, "Leesvenster")).toHaveText("Rechts");
+  await expect(checked(page, "Donkere modus voor berichten")).toHaveText("Tonen zoals verzonden");
 });
 
 test("a choice by click or by arrow key applies at once and reaches the server", async ({
@@ -87,7 +99,7 @@ test("a choice by click or by arrow key applies at once and reaches the server",
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.keyboard.press("ArrowLeft");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect(page.getByRole("radio", { name: "Light" })).toBeFocused();
+  await expect(page.getByRole("radio", { name: "Light", exact: true })).toBeFocused();
   await page.getByRole("radio", { name: "Compact" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-density", "compact");
   await page.getByRole("radio", { name: "Off" }).click();
