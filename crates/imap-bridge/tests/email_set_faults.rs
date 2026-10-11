@@ -86,6 +86,22 @@ async fn a_keyword_the_folder_does_not_keep_is_an_invalid_property_and_a_flag_is
     assert_eq!(set.keywords(1).await, json!({ "$seen": true }));
 }
 
+#[tokio::test]
+async fn a_folder_the_server_opens_read_only_is_forbidden_and_takes_no_store_rfc3501_6_3_1() {
+    let mailboxes = inbox(Vec::new());
+    mailboxes.set(vec![Folder {
+        read_only: true,
+        ..keeping(PERMANENT_FLAGS)
+    }]);
+    let set = started(mailboxes, INBOX, false).await;
+    let before = set.state();
+    let answered = set.update(&[(1, json!({ "keywords/$seen": true }))]).await;
+    assert_eq!(refused(&set, &answered, 1), "forbidden", "{answered}");
+    assert_eq!(set.written(), ["SELECT \"INBOX\""]);
+    assert_eq!(set.state(), before);
+    assert_eq!(set.flags(INBOX, 1), Vec::<String>::new());
+}
+
 /// Two unseen messages on a server that takes a STORE this way.
 async fn storing(storing: Storing) -> Set {
     let behavior = Behavior {

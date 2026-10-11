@@ -46,7 +46,7 @@ const SELECTED_SPARE_LINES: usize = 1024;
 
 /// The longest name the bridge keeps and sends back on a command line,
 /// far above the few hundred bytes a server lets a name grow to.
-const MAX_WIRE_NAME_BYTES: usize = 4096;
+pub const MAX_WIRE_NAME_BYTES: usize = 4096;
 
 /// The longest raw name worth unescaping: the fold at most halves a
 /// name, so a longer one stays above `MAX_WIRE_NAME_BYTES`.
@@ -118,6 +118,9 @@ impl Count {
 pub(super) struct Selection<'a> {
     pub(super) session: &'a mut Signed,
     pub(super) count: Option<&'a mut Count>,
+    /// A SELECT opened the mailbox and the server did not answer
+    /// `[READ-ONLY]`.
+    pub(super) writable: bool,
 }
 
 impl Selection<'_> {
@@ -145,6 +148,15 @@ impl Selection<'_> {
             .map(|count| count.0)
             .ok_or(SessionError::Protocol("no mailbox is selected"))
     }
+
+    /// Whether a write may go out: only on a mailbox open for writing.
+    pub(super) fn writable(&self) -> Result<(), SessionError> {
+        if self.writable && self.count.is_some() {
+            Ok(())
+        } else {
+            Err(SessionError::Protocol("no mailbox is open for writing"))
+        }
+    }
 }
 
 /// NOOP (RFC 3501 section 6.1.2): whether the connection still answers.
@@ -153,8 +165,8 @@ pub(super) async fn noop(selection: &mut Selection<'_>, room: Room) -> Result<()
     selection.collect("NOOP", room.bounds(0), |_| Ok(())).await
 }
 
-/// Runs `command` and hands every untagged answer to `visit` until the
-/// tagged OK, as [`answer`] reads it.
+/// Runs `command` and hands every untagged answer and the tagged OK to
+/// `visit`, as [`answer`] reads them.
 async fn collect(
     session: &mut Signed,
     command: &str,
@@ -168,11 +180,12 @@ async fn collect(
     answer(session, &id.0, bounds, visit).await
 }
 
-/// Hands every untagged answer to `visit` until the one tagged `tag`: an
-/// OK ends the read, a NO is `Refused`, a BAD a protocol failure in
-/// fixed words. An answer of more lines than the bounds allow fails the
-/// same way, so one command takes a bounded number of reads. Each
-/// response is dropped before the next one is parsed.
+/// Hands every untagged answer to `visit` until the one tagged `tag`. An
+/// OK goes to `visit` as well, since its code may carry what the command
+/// answers; it ends the read. A NO is `Refused`, a BAD a protocol
+/// failure in fixed words. An answer of more lines than the bounds allow
+/// fails the same way, so one command takes a bounded number of reads.
+/// Each response is dropped before the next one is parsed.
 pub(super) async fn answer<T: Wire>(
     connection: &mut Connection<T>,
     tag: &str,
@@ -186,12 +199,13 @@ pub(super) async fn answer<T: Wire>(
             .map_err(|_elapsed| SessionError::Timeout)?
             .map_err(io_error)?
             .ok_or(SessionError::Closed)?;
-        match response.parsed() {
+        let parsed = response.parsed();
+        match parsed {
             Response::Done {
                 tag: found, status, ..
             } if found.0 == tag => {
                 return match status {
-                    Status::Ok => Ok(()),
+                    Status::Ok => visit(parsed),
                     Status::No => Err(SessionError::Refused),
                     Status::Bad => Err(SessionError::Protocol("the server answered BAD")),
                     Status::PreAuth | Status::Bye => Err(SessionError::Closed),
@@ -239,7 +253,7 @@ fn sendable(name: &str) -> bool {
 /// A mailbox name as a quoted string (RFC 9051 section 4.3), `\` and
 /// `"` escaped. A name that is not sendable is refused, so none reaches
 /// a command line.
-fn quoted(name: &str) -> Result<String, SessionError> {
+pub(super) fn quoted(name: &str) -> Result<String, SessionError> {
     if !sendable(name) {
         return Err(SessionError::Protocol("the mailbox name cannot be sent"));
     }
@@ -258,7 +272,7 @@ fn quoted(name: &str) -> Result<String, SessionError> {
 /// A name as the server spells it, `None` when it is not sendable: a
 /// mailbox the bridge can never name has no place in what it reads. A
 /// raw name above `MAX_RAW_NAME_BYTES` is never copied.
-fn wire_name(name: &str) -> Option<String> {
+pub(super) fn wire_name(name: &str) -> Option<String> {
     if name.len() > MAX_RAW_NAME_BYTES {
         return None;
     }

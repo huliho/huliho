@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! One server line through the parser into the LIST, STATUS and FETCH readers.
+//! One server line through the parser into the session's readers.
 
 #![no_main]
 

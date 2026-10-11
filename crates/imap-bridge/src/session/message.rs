@@ -48,6 +48,9 @@ pub struct Writable {
     /// (RFC 3501 section 7.1); `None` when the server named none, which
     /// reads as every flag.
     pub permanent: Option<Vec<String>>,
+    /// The server answered with `[READ-ONLY]`: the session refuses every
+    /// write on the mailbox before anything is sent.
+    pub read_only: bool,
 }
 
 impl Writable {
@@ -66,8 +69,9 @@ impl Writable {
     }
 }
 
-/// The messages one STORE names: with every UID at its full ten digits
-/// the set stays near one KiB of the command line.
+/// The messages one STORE, MOVE, COPY or EXPUNGE names: with every UID
+/// at its full ten digits the set stays near one KiB of the command
+/// line.
 pub const MAX_STORE_UIDS: usize = 100;
 
 /// One STORE: the flags these messages of the selected mailbox gain or
@@ -81,6 +85,49 @@ pub struct StoreAsk<'a> {
     pub flags: &'a [String],
     /// Whether the messages gain the flags; they lose them otherwise.
     pub add: bool,
+}
+
+/// One `UID MOVE` or `UID COPY`: these messages of the selected mailbox
+/// to another mailbox.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MoveAsk<'a> {
+    /// The messages, `MAX_STORE_UIDS` at most.
+    pub uids: &'a [u32],
+    /// The wire name of the mailbox they go to.
+    pub target: &'a str,
+}
+
+/// What the `COPYUID` code of a move or a copy names (RFC 4315 section
+/// 3): the UIDVALIDITY of the target and, for every message that went,
+/// its UID in the source and its UID in the target. A UID that names no
+/// message of the source is passed over (RFC 3501 section 6.4.8) and has
+/// no pair.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Moved {
+    pub uid_validity: u32,
+    /// `(source, target)`, in the order the code names them.
+    pub uids: Vec<(u32, u32)>,
+}
+
+/// One quota root a mailbox falls under (RFC 9208 section 4.2.2) with
+/// the two resources the bridge reads; one the server does not name is
+/// `None`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuotaRoot {
+    /// The name as the server spells it; often empty.
+    pub name: String,
+    /// STORAGE in octets; the server counts in units of 1024 (RFC 9208
+    /// section 5.1).
+    pub storage: Option<Usage>,
+    /// MESSAGE, in messages (RFC 9208 section 5.2).
+    pub messages: Option<Usage>,
+}
+
+/// What one resource of a quota root uses and its limit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Usage {
+    pub used: u64,
+    pub limit: u64,
 }
 
 /// The fixed words of an answer with more messages than one command may

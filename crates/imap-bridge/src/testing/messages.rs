@@ -5,10 +5,12 @@
 //! The message model of the scripted IMAP server: EXAMINE, SELECT, UID
 //! SEARCH over a window of sequence numbers, NOOP, UID FETCH and UID
 //! STORE over the mail of a folder, with the ways a server misbehaves
-//! as switches.
+//! as switches. UID MOVE, UID COPY and UID EXPUNGE go to the mailbox
+//! model.
 
 use std::fmt::Write as _;
 
+use super::behavior::{Behavior, Storing};
 use super::fetch;
 use super::folder::Folder;
 use super::mailboxes::{Mailboxes, Refusal, unquote};
@@ -183,66 +185,12 @@ impl Message {
     }
 }
 
-/// How the server misbehaves on a selected mailbox.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Behavior {
-    /// Lines nobody asked for ahead of the messages of every UID FETCH
-    /// answer: this many EXISTS lines, then an EXPUNGE, a flag update
-    /// for the first message, a message outside the range and, after
-    /// the messages, a second line for the first one.
-    pub volunteered: usize,
-    /// A MODSEQ item on every FETCH line (RFC 7162 section 3.1.4), this
-    /// value in place of the message's own.
-    pub fetch_modseq: Option<u64>,
-    /// EXAMINE of a missing folder answers NO with the name in raw
-    /// UTF-8, as Dovecot does.
-    pub utf8_no: bool,
-    /// A connection closes instead of answering once it has answered
-    /// this many UID FETCH commands.
-    pub drops_after: Option<usize>,
-    /// A body fetch that names this UID answers NO.
-    pub refuses_body_of: Option<u32>,
-    /// Every window answer names this origin octet whatever was asked.
-    pub misplaced_origin: Option<usize>,
-    /// The lowest this many messages leave the folder behind the first
-    /// UID SEARCH answer of a connection, an EXPUNGE line for each (RFC
-    /// 3501 section 7.4.1).
-    pub expunges: usize,
-    /// EXAMINE answers without its EXISTS line.
-    pub no_exists: bool,
-    /// The three Gmail items on every header line and the labels on
-    /// every flag line, asked for or not.
-    pub gmail_items: bool,
-    /// The UID FETCH with this index on a connection never gets an
-    /// answer; the connection holds until the client gives up.
-    pub stalls_at: Option<usize>,
-    /// What a UID STORE comes to.
-    pub storing: Storing,
-    /// The STOREs a connection takes as usual before `storing` holds.
-    pub storing_from: usize,
-}
-
-/// How the server takes a UID STORE.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum Storing {
-    /// The flags change and the tagged OK follows.
-    #[default]
-    Stores,
-    /// NO, with nothing changed.
-    Refuses,
-    /// BAD, with nothing changed.
-    Bad,
-    /// The connection closes instead of answering.
-    Drops,
-    /// No answer ever comes; the connection holds.
-    Stalls,
-}
-
 /// What one connection remembers between commands.
 #[derive(Debug, Default)]
 pub(super) struct Conversation {
     selected: Option<String>,
-    /// Whether a SELECT opened the selected mailbox; a STORE needs one.
+    /// Whether a SELECT opened the selected mailbox and the folder takes
+    /// writes; a STORE, a MOVE and an EXPUNGE need one.
     writable: bool,
     fetches: usize,
     stores: usize,
@@ -267,18 +215,31 @@ impl Conversation {
     }
 
     /// The answer to EXAMINE, SELECT, NOOP or a UID command; `None`
-    /// closes the connection.
+    /// closes the connection. The tagged OK of an open names the access
+    /// it granted (RFC 3501 section 6.3.1).
     pub(super) fn answer(
         &mut self,
         mailboxes: &Mailboxes,
         command: &str,
         tag: &str,
     ) -> Option<String> {
+        let open = (self.selected.as_deref(), self.writable);
+        if let Some(reply) = mailboxes.transfer(open, command, tag) {
+            return Some(reply);
+        }
         let behavior = mailboxes.behavior;
+        let mut access = "";
         let reply = if let Some(rest) = command.strip_prefix("EXAMINE ") {
+            access = "[READ-ONLY] ";
             self.open(mailboxes, rest, false)
         } else if let Some(rest) = command.strip_prefix("SELECT ") {
-            self.open(mailboxes, rest, true)
+            let opened = self.open(mailboxes, rest, true);
+            access = if self.writable {
+                "[READ-WRITE] "
+            } else {
+                "[READ-ONLY] "
+            };
+            opened
         } else if let Some(rest) = command.strip_prefix("UID STORE ") {
             let storing = self.storing(behavior);
             self.stores += 1;
@@ -315,7 +276,7 @@ impl Conversation {
             None
         };
         Some(match reply {
-            Some(lines) => format!("{lines}{tag} OK done\r\n"),
+            Some(lines) => format!("{lines}{tag} OK {access}done\r\n"),
             None if behavior.utf8_no => format!("{tag} NO Mailbox doesn't exist: Caf\u{e9}\r\n"),
             None => format!("{tag} NO refused\r\n"),
         })
@@ -352,7 +313,8 @@ impl Conversation {
             .ok_or(Refusal::No)
     }
 
-    /// EXAMINE or SELECT; a SELECT names the flags the folder keeps.
+    /// EXAMINE or SELECT; a SELECT names the flags the folder keeps and
+    /// opens a read-only folder read-only.
     fn open(&mut self, mailboxes: &Mailboxes, rest: &str, writable: bool) -> Option<String> {
         let (name, _) = unquote(rest)?;
         let folder = mailboxes
@@ -360,7 +322,7 @@ impl Conversation {
             .into_iter()
             .find(|folder| folder.name == name)?;
         self.selected = Some(name);
-        self.writable = writable;
+        self.writable = writable && !folder.read_only;
         let permanent = match folder.permanent.filter(|_| writable) {
             Some(flags) => format!("* OK [PERMANENTFLAGS ({flags})] Flags permitted\r\n"),
             None => String::new(),
