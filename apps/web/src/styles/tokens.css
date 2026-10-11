@@ -5,13 +5,6 @@
 /* Stable tier: --hh-* names are the versioned instance-override surface.
    Internal tier: --hhx-* names may change freely and never appear in overrides. */
 
-/* Registered as a length, so a script that reads the row height gets pixels and not the formula. */
-@property --hhx-row-height {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 52px;
-}
-
 :root {
   color-scheme: light dark;
 
