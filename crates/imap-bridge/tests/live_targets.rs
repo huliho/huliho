@@ -3,7 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 //! The checks against the compose Dovecot: the credentials, the mailbox
-//! pass and the JMAP methods reading what it wrote.
+//! pass, the JMAP methods reading what it wrote and the session's moves.
 
 #![cfg(feature = "live-targets")]
 
@@ -11,15 +11,17 @@ mod live_rig;
 
 use huliho_imap_bridge::mailboxes::sync;
 use huliho_imap_bridge::runtime::Link;
-use huliho_imap_bridge::session::{STEP_TIMEOUT, Session, SessionError, TlsMode};
+use huliho_imap_bridge::session::{
+    MoveAsk, STEP_TIMEOUT, Session, SessionError, StatusItems, TlsMode,
+};
 use huliho_imap_bridge::smtp;
 use huliho_imap_bridge::sync::Cache;
 use huliho_imap_bridge::testing::TestConnector;
 use huliho_imap_bridge::utf7;
 use huliho_imap_bridge::verify::{Credential, VerifyError, verify};
 use live_rig::{
-    IMAPS_PORT, PASSWORD, USER, answer, bridge_session, cache, dovecot, editor, link, mailbox_list,
-    tls, within,
+    Editor, IMAPS_PORT, PASSWORD, USER, answer, bridge_session, cache, dovecot, editor, link,
+    mailbox_list, tls, within,
 };
 use serde_json::{Value, json};
 
@@ -29,6 +31,15 @@ const SUBMISSION_PORT: u16 = 31587;
 /// A mailbox with a character outside ASCII, so the UTF-7 path runs
 /// live.
 const CREATED_NAME: &str = "Bijlagen é";
+
+/// The folders the move check and the copy check work in, each pair its
+/// own. The compose Dovecot always holds them, so no check adds a
+/// mailbox the listing check would count.
+const MOVE_FOLDERS: (&str, &str) = ("Drafts", "Archive");
+const COPY_FOLDERS: (&str, &str) = ("Sent", "Trash");
+
+/// The status items the checks read a folder's UIDVALIDITY by.
+const VALIDITY: StatusItems = StatusItems { modseq: false };
 
 fn password(password: &str) -> Credential {
     Credential::Password {
@@ -152,5 +163,107 @@ async fn dovecot_lists_its_mailboxes_and_a_created_one_travels_through_changes()
     assert_eq!(gone["created"], json!([]));
     assert_eq!(gone["newState"], "3");
     session.logout().await.unwrap();
+    within(editor.logout()).await.unwrap();
+}
+
+/// The messages a check appended, told apart by the word in their
+/// Message-ID, expunged from both its folders on the second connection.
+async fn swept(editor: &mut Editor, (from, to): (&str, &str), word: &str) {
+    for folder in [from, to] {
+        within(editor.select(folder)).await.unwrap();
+        let query = format!("HEADER Message-ID <{word}-");
+        let uids = within(editor.uid_search(&query)).await.unwrap();
+        if uids.is_empty() {
+            continue;
+        }
+        let set: Vec<String> = uids.iter().map(u32::to_string).collect();
+        let set = set.join(",");
+        for command in [
+            format!("UID STORE {set} +FLAGS.SILENT (\\Deleted)"),
+            format!("UID EXPUNGE {set}"),
+        ] {
+            within(editor.run_command_and_check_ok(&command))
+                .await
+                .unwrap();
+        }
+    }
+}
+
+/// The second connection with what an earlier run left swept away and
+/// the first folder holding one message per number, the last appended
+/// with the highest UID.
+async fn fresh(folders: (&str, &str), word: &str, numbers: &[u32]) -> Editor {
+    let mut editor = editor().await;
+    swept(&mut editor, folders, word).await;
+    for number in numbers {
+        let message = format!(
+            "From: {USER}\r\nTo: {USER}\r\nSubject: {word} {number}\r\nMessage-ID: <{word}-{number}@huliho.test>\r\n\r\nBody {number}\r\n"
+        );
+        within(editor.append(folders.0, None, None, message))
+            .await
+            .unwrap();
+    }
+    editor
+}
+
+/// The UID of one appended message in the folder the second connection
+/// has selected.
+async fn uid_of(editor: &mut Editor, word: &str, number: u32) -> u32 {
+    let query = format!("HEADER Message-ID <{word}-{number}@huliho.test>");
+    let uids = within(editor.uid_search(&query)).await.unwrap();
+    assert_eq!(uids.len(), 1, "{query}");
+    uids.into_iter().next().unwrap()
+}
+
+#[tokio::test]
+async fn dovecot_moves_a_message_and_names_its_new_uid_rfc6851_3_2() {
+    let (from, to) = MOVE_FOLDERS;
+    let mut editor = fresh(MOVE_FOLDERS, "move", &[1, 2]).await;
+    let mut session = bridge_session().await;
+    let target = session.status(to, VALIDITY).await.unwrap();
+    assert!(!session.select(from).await.unwrap().read_only);
+    let uids = session.uid_list().await.unwrap();
+    let ask = MoveAsk {
+        uids: &uids[..1],
+        target: to,
+    };
+    let moved = session.uid_move(&ask).await.unwrap().unwrap();
+    assert_eq!(Some(moved.uid_validity), target.uid_validity);
+    assert_eq!(session.uid_list().await.unwrap(), uids[1..]);
+    within(editor.select(to)).await.unwrap();
+    let arrived = uid_of(&mut editor, "move", 2).await;
+    assert_eq!(moved.uids, [(uids[0], arrived)]);
+    session.logout().await.unwrap();
+    swept(&mut editor, MOVE_FOLDERS, "move").await;
+    within(editor.logout()).await.unwrap();
+}
+
+#[tokio::test]
+async fn dovecot_moves_by_copy_and_uid_expunge_and_keeps_a_message_another_client_marked_rfc4315_2_1()
+ {
+    let (from, to) = COPY_FOLDERS;
+    let mut editor = fresh(COPY_FOLDERS, "copy", &[1, 2]).await;
+    within(editor.select(from)).await.unwrap();
+    let marked = uid_of(&mut editor, "copy", 1).await;
+    let taken = uid_of(&mut editor, "copy", 2).await;
+    let mark = format!("UID STORE {marked} +FLAGS.SILENT (\\Deleted)");
+    within(editor.run_command_and_check_ok(&mark))
+        .await
+        .unwrap();
+    let mut session = bridge_session().await;
+    session.select(from).await.unwrap();
+    let ask = MoveAsk {
+        uids: &[taken],
+        target: to,
+    };
+    let copied = session.uid_copy(&ask).await.unwrap().unwrap();
+    session.uid_expunge(&[taken]).await.unwrap();
+    let left = session.uid_list().await.unwrap();
+    assert!(left.contains(&marked) && !left.contains(&taken), "{left:?}");
+    within(editor.select(to)).await.unwrap();
+    let arrived = uid_of(&mut editor, "copy", 2).await;
+    assert_eq!(copied.uids, [(taken, arrived)]);
+    session.logout().await.unwrap();
+    swept(&mut editor, COPY_FOLDERS, "copy").await;
     within(editor.logout()).await.unwrap();
 }

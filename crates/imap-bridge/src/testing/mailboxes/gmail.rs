@@ -25,6 +25,10 @@ const ALL: &str = "\\All";
 /// Trash.
 const INBOX_LABEL: &str = "\\Inbox";
 
+/// What Gmail answers a GETQUOTAROOT with: one root without a name over
+/// the account's storage, in units of 1024 octets.
+const GMAIL_QUOTA: &str = "* QUOTAROOT \"INBOX\" \"\"\r\n* QUOTA \"\" (STORAGE 2048 15728640)\r\n";
+
 impl Mailboxes {
     /// A Gmail account as it lists itself: INBOX, the `[Gmail]` folders
     /// with their attributes, the given mail in All Mail and every
@@ -33,12 +37,12 @@ impl Mailboxes {
     #[must_use]
     pub fn gmail(mail: Vec<Message>) -> Self {
         let mut extensions = Extension::all();
-        extensions.insert(Extension::Gmail);
+        extensions.extend([Extension::Gmail, Extension::Quota]);
         let system = |name: &str, attribute: &'static str, label: &str| Folder {
             label: Some(label.to_owned()),
             ..Folder::special(name, attribute)
         };
-        Self::new(
+        let mut gmail = Self::new(
             vec![
                 Folder::labeled("INBOX", INBOX_LABEL),
                 Folder::noselect("[Gmail]"),
@@ -51,7 +55,9 @@ impl Mailboxes {
                 Folder::special(TRASH, "\\Trash"),
             ],
             extensions,
-        )
+        );
+        gmail.quota = Some(GMAIL_QUOTA.to_owned());
+        gmail
     }
 
     /// The same account with a user label, which messages carry by that

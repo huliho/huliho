@@ -7,6 +7,7 @@
 //! CAPABILITY holds every line nobody asked for until the tagged answer;
 //! read here, each response is dropped before the next one is parsed.
 
+use std::collections::BTreeSet;
 use std::time::Duration;
 
 use async_imap::Connection;
@@ -16,7 +17,7 @@ use tokio::time::timeout;
 
 use super::imap::Wire;
 use super::read::{Bounds, Count, answer};
-use super::{Capabilities, SessionError, io_error};
+use super::{SessionError, io_error};
 
 /// The untagged lines one CAPABILITY answer may carry before its tagged
 /// OK; one is the norm, the rest is room for alerts.
@@ -25,6 +26,41 @@ const CAPABILITY_LINES: usize = 8;
 /// The names one connection may advertise, some four times what the
 /// most talkative servers send.
 const MAX_CAPABILITIES: usize = 256;
+
+/// What the server advertises, compared without regard to case
+/// (RFC 9051 section 9, note 1).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Capabilities {
+    names: BTreeSet<String>,
+}
+
+impl Capabilities {
+    /// Whether `name` was advertised, in any case.
+    #[must_use]
+    pub fn has(&self, name: &str) -> bool {
+        self.names.contains(&name.to_ascii_uppercase())
+    }
+
+    /// Every advertised name in upper case, sorted.
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
+        self.names.iter().map(String::as_str)
+    }
+}
+
+impl Extend<String> for Capabilities {
+    fn extend<I: IntoIterator<Item = String>>(&mut self, names: I) {
+        self.names
+            .extend(names.into_iter().map(|name| name.to_ascii_uppercase()));
+    }
+}
+
+impl FromIterator<String> for Capabilities {
+    fn from_iter<I: IntoIterator<Item = String>>(names: I) -> Self {
+        let mut found = Self::default();
+        found.extend(names);
+        found
+    }
+}
 
 /// The tags of the commands sent here, a fresh one per command (RFC 3501
 /// section 2.2.1). The client library's own tags open with `A`, so the
@@ -92,5 +128,24 @@ fn name(capability: &Capability<'_>) -> String {
         Capability::Imap4rev1 => "IMAP4rev1".to_owned(),
         Capability::Auth(mechanism) => format!("AUTH={mechanism}"),
         Capability::Atom(atom) => atom.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_capability_matches_without_regard_to_case_rfc9051_9_note_1() {
+        let capabilities: Capabilities = ["IMAP4rev2".to_owned(), "auth=xoauth2".to_owned()]
+            .into_iter()
+            .collect();
+        assert!(capabilities.has("imap4rev2"));
+        assert!(capabilities.has("AUTH=XOAUTH2"));
+        assert!(!capabilities.has("STARTTLS"));
+        assert_eq!(
+            capabilities.iter().collect::<Vec<_>>(),
+            ["AUTH=XOAUTH2", "IMAP4REV2"]
+        );
     }
 }

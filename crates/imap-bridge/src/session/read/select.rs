@@ -59,12 +59,14 @@ pub(in crate::session) struct Opened {
     uid_next: Option<u32>,
     messages: Option<u32>,
     permanent: Option<Vec<String>>,
+    read_only: bool,
 }
 
 impl Opened {
-    /// Keeps what one untagged line says about the mailbox. The
-    /// permanent flags count for a SELECT alone: the read path passes
-    /// them over, whatever their number.
+    /// Keeps what one line says about the mailbox. The permanent flags
+    /// count for a SELECT alone: the read path passes them over, whatever
+    /// their number. `[READ-ONLY]` belongs on the tagged OK (RFC 3501
+    /// section 6.3.1); an untagged OK that carries it counts as well.
     pub(super) fn note(
         &mut self,
         response: &Response<'_>,
@@ -82,8 +84,14 @@ impl Opened {
                 ResponseCode::PermanentFlags(flags) if access == Access::ReadWrite => {
                     self.permanent = Some(permanent(flags)?);
                 }
+                ResponseCode::ReadOnly => self.read_only = true,
                 _ => {}
             },
+            Response::Done {
+                status: Status::Ok,
+                code: Some(ResponseCode::ReadOnly),
+                ..
+            } => self.read_only = true,
             Response::MailboxData(MailboxDatum::Exists(count)) => self.messages = Some(*count),
             _ => {}
         }
@@ -114,6 +122,7 @@ impl Opened {
         Ok(Writable {
             uid_validity,
             permanent: self.permanent,
+            read_only: self.read_only,
         })
     }
 }
@@ -291,6 +300,18 @@ mod tests {
         let silent = selected(&[validity]).unwrap();
         assert_eq!(silent.permanent, None);
         assert!(silent.keeps("\\Seen") && silent.keeps("work"));
+    }
+
+    #[test]
+    fn a_select_answered_with_read_only_reads_as_read_only_rfc3501_6_3_1() {
+        let validity = "* OK [UIDVALIDITY 7] UIDs valid\r\n";
+        let read_only = |lines: &[&str]| selected(lines).unwrap().read_only;
+        assert!(!read_only(&[validity, "A1 OK [READ-WRITE] Selected\r\n"]));
+        assert!(!read_only(&[validity, "A1 OK Selected\r\n"]));
+        assert!(read_only(&[validity, "A1 OK [READ-ONLY] Selected\r\n"]));
+        assert!(read_only(&["* OK [READ-ONLY] Shared\r\n", validity]));
+        // Only an OK counts; a NO never reaches the reader.
+        assert!(!read_only(&[validity, "A1 NO [READ-ONLY] Refused\r\n"]));
     }
 
     #[test]

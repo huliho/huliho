@@ -10,15 +10,19 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use super::behavior::Behavior;
 use super::fetch;
 use super::folder::Folder;
-use super::messages::{Behavior, Message};
+use super::messages::Message;
 
 mod gmail;
+mod moves;
+mod quota;
 #[cfg(test)]
 mod tests;
 
 pub use gmail::{ALL_MAIL, SPAM, TRASH};
+pub use quota::quota_lines;
 
 /// An extension the scripted server advertises and honors; a command
 /// that needs one it does not advertise gets a BAD.
@@ -28,6 +32,12 @@ pub enum Extension {
     ListStatus,
     SpecialUse,
     Condstore,
+    /// UID MOVE (RFC 6851).
+    Move,
+    /// UID EXPUNGE and the `COPYUID` code (RFC 4315).
+    Uidplus,
+    /// GETQUOTAROOT (RFC 9208).
+    Quota,
     /// The three Gmail FETCH items.
     Gmail,
 }
@@ -39,11 +49,15 @@ impl Extension {
             Self::ListStatus => "LIST-STATUS",
             Self::SpecialUse => "SPECIAL-USE",
             Self::Condstore => "CONDSTORE",
+            Self::Move => "MOVE",
+            Self::Uidplus => "UIDPLUS",
+            Self::Quota => "QUOTA",
             Self::Gmail => "X-GM-EXT-1",
         }
     }
 
-    /// Every extension, the shape of Dovecot.
+    /// The extensions Dovecot advertises as it ships. QUOTA takes a
+    /// plugin and the Gmail items are Gmail's own, so both stay out.
     #[must_use]
     pub fn all() -> BTreeSet<Self> {
         [
@@ -51,6 +65,8 @@ impl Extension {
             Self::ListStatus,
             Self::SpecialUse,
             Self::Condstore,
+            Self::Move,
+            Self::Uidplus,
         ]
         .into_iter()
         .collect()
@@ -71,6 +87,9 @@ pub struct Mailboxes {
     pub chatter: bool,
     /// How the server misbehaves on a selected mailbox.
     pub behavior: Behavior,
+    /// The untagged lines a GETQUOTAROOT answers, as the wire carries
+    /// them; `None` answers that the inbox falls under no root.
+    pub quota: Option<String>,
 }
 
 /// Why a command was refused: BAD for a form outside the advertised
@@ -98,11 +117,12 @@ impl Mailboxes {
             extensions,
             chatter: false,
             behavior: Behavior::default(),
+            quota: None,
         }
     }
 
     /// A Dovecot with the English defaults: their attributes, an
-    /// Archive, every extension.
+    /// Archive and the extensions it ships with.
     #[must_use]
     pub fn dovecot() -> Self {
         Self::new(

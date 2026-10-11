@@ -6,6 +6,7 @@
 //! server, one answer per command and a record of every line received.
 //! The recorder and the replayer stand on the same listener.
 
+mod behavior;
 pub mod connector;
 mod fetch;
 pub mod folder;
@@ -38,11 +39,12 @@ use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
 use crate::session::{Target, TlsMode};
 use crate::verify::Credential;
 
+pub use behavior::{Behavior, Storing};
 pub use connector::{Counting, TestConnector};
 pub use folder::Folder;
 pub use imap::FakeImap;
 pub use mailboxes::{Extension, Mailboxes};
-pub use messages::{Behavior, Message, Storing};
+pub use messages::Message;
 pub use parts::Part;
 pub use record::Recorder;
 pub use replay::Replayer;

@@ -33,8 +33,8 @@ pub const IMAPS_PORT: u16 = 31993;
 pub const USER: &str = "sanne@huliho.test";
 pub const PASSWORD: &str = "password";
 
-/// The second connection: the client library's typed commands, which
-/// the read path never sends.
+/// The second connection: a session of the client library, driven by
+/// its typed commands and by raw command lines.
 pub type Editor = async_imap::Session<TlsStream<TcpStream>>;
 
 fn dev_ca() -> PathBuf {
@@ -83,8 +83,9 @@ pub async fn within<T>(step: impl Future<Output = T>) -> T {
         .expect("Dovecot answers within the step timeout")
 }
 
-/// A second connection through the client library's typed commands
-/// for CREATE and DELETE, which the read path never sends.
+/// A second connection that edits the account as another client would:
+/// it creates and deletes folders, appends, searches, marks and
+/// expunges messages.
 pub async fn editor() -> Editor {
     let tcp = within(TcpStream::connect((DOVECOT_HOST, IMAPS_PORT)))
         .await

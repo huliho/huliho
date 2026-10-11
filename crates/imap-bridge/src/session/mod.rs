@@ -11,11 +11,12 @@ mod error;
 pub mod fuzzing;
 mod guard;
 mod imap;
+mod listing;
 mod message;
+mod quota;
 mod read;
 mod write;
 
-use std::collections::BTreeSet;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -23,19 +24,22 @@ use std::time::Duration;
 
 use tokio_rustls::rustls::ClientConfig;
 
+pub use capability::Capabilities;
 pub use error::SessionError;
 pub(crate) use error::io_error;
 pub use guard::{MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
 pub use imap::ImapSession;
+pub use listing::{ListEntry, ListReturn, Listing, StatusEntry, StatusItems};
 pub use message::{
     BODY_WINDOW_BYTES, BodyPart, Disposition, FetchItems, FetchedMessage, FlagFetch, Flagged,
     GmailItems, Leaf, MAX_FETCH_MESSAGES, MAX_FLAGGED, MAX_HEADER_BYTES, MAX_PART_FIELD_BYTES,
-    MAX_PART_FIELDS, MAX_PREVIEW_TEXT_BYTES, MAX_PREVIEWS, MAX_STORE_UIDS, MESSAGE_LIMIT,
-    Multipart, PREVIEW_HEADER_BYTES, PartAsk, PartWindow, PreviewAsk, PreviewBytes, Selected,
-    StoreAsk, Structure, UidRange, Writable,
+    MAX_PART_FIELDS, MAX_PREVIEW_TEXT_BYTES, MAX_PREVIEWS, MAX_STORE_UIDS, MESSAGE_LIMIT, MoveAsk,
+    Moved, Multipart, PREVIEW_HEADER_BYTES, PartAsk, PartWindow, PreviewAsk, PreviewBytes,
+    QuotaRoot, Selected, StoreAsk, Structure, UidRange, Usage, Writable,
 };
-pub use read::MAX_TREE_BYTES;
+pub use quota::MAX_QUOTA_ROOTS;
 pub(crate) use read::sendable_field;
+pub use read::{MAX_TREE_BYTES, MAX_WIRE_NAME_BYTES};
 pub use write::MAX_COMMAND_BYTES;
 
 /// One connect attempt or one step of a command gets this long: the
@@ -63,91 +67,6 @@ pub struct Target {
     pub addresses: Vec<SocketAddr>,
     /// Whether TLS starts at the first byte or after STARTTLS.
     pub tls: TlsMode,
-}
-
-/// What the server advertises, compared without regard to case
-/// (RFC 9051 section 9, note 1).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Capabilities {
-    names: BTreeSet<String>,
-}
-
-impl Capabilities {
-    /// Whether `name` was advertised, in any case.
-    #[must_use]
-    pub fn has(&self, name: &str) -> bool {
-        self.names.contains(&name.to_ascii_uppercase())
-    }
-
-    /// Every advertised name in upper case, sorted.
-    pub fn iter(&self) -> impl Iterator<Item = &str> {
-        self.names.iter().map(String::as_str)
-    }
-}
-
-impl Extend<String> for Capabilities {
-    fn extend<I: IntoIterator<Item = String>>(&mut self, names: I) {
-        self.names
-            .extend(names.into_iter().map(|name| name.to_ascii_uppercase()));
-    }
-}
-
-impl FromIterator<String> for Capabilities {
-    fn from_iter<I: IntoIterator<Item = String>>(names: I) -> Self {
-        let mut found = Self::default();
-        found.extend(names);
-        found
-    }
-}
-
-/// The RETURN options of one LIST (RFC 5258 section 3), each behind the
-/// capability that defines it.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ListReturn {
-    /// `SUBSCRIBED`, so every line carries `\Subscribed` where it
-    /// applies (RFC 5258 section 3.1).
-    pub subscribed: bool,
-    /// `SPECIAL-USE`, the role attributes (RFC 6154 section 2).
-    pub special_use: bool,
-    /// `STATUS (...)` after every selectable name (RFC 5819).
-    pub status: Option<StatusItems>,
-}
-
-/// The items one STATUS asks for: MESSAGES, UNSEEN, UIDNEXT and
-/// UIDVALIDITY always, HIGHESTMODSEQ where CONDSTORE is advertised
-/// (RFC 7162 section 3.1.7).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StatusItems {
-    pub modseq: bool,
-}
-
-/// One LIST or LSUB line: the name as the server spells it, the
-/// hierarchy delimiter and every attribute in upper case with its
-/// backslash.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ListEntry {
-    pub name: String,
-    pub delimiter: Option<char>,
-    pub attributes: Vec<String>,
-}
-
-/// One STATUS line; an item the server left out is `None`.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct StatusEntry {
-    pub mailbox: String,
-    pub messages: Option<u32>,
-    pub unseen: Option<u32>,
-    pub uid_next: Option<u32>,
-    pub uid_validity: Option<u32>,
-    pub highest_modseq: Option<u64>,
-}
-
-/// What one LIST answered: the names and the STATUS lines that rode
-/// along.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Listing {
-    pub entries: Vec<ListEntry>,
-    pub statuses: Vec<StatusEntry>,
 }
 
 /// The seam over the client library. Every step runs within the timeout
@@ -254,7 +173,8 @@ pub trait Session: Sized + Send {
 
     /// SELECT of one mailbox by its wire name (RFC 3501 section 6.3.1):
     /// read-write, for the write path alone, with the flags a STORE
-    /// there changes for good.
+    /// there changes for good. A mailbox the server opens `[READ-ONLY]`
+    /// takes no write; an EXAMINE takes none either.
     ///
     /// # Errors
     ///
@@ -272,10 +192,10 @@ pub trait Session: Sized + Send {
     /// # Errors
     ///
     /// As [`Session::list`]; `Protocol` as well, before anything is
-    /// sent, when no mailbox is selected, the ask names no message, more
-    /// than `MAX_STORE_UIDS` or no flag, a flag is neither a system flag
-    /// a keyword maps to nor an atom or the command would pass
-    /// `MAX_COMMAND_BYTES`.
+    /// sent, when no mailbox is open for writing, the ask names no
+    /// message, more than `MAX_STORE_UIDS` or no flag, a flag is neither
+    /// a system flag a keyword maps to nor an atom or the command would
+    /// pass `MAX_COMMAND_BYTES`.
     fn uid_store(
         &mut self,
         ask: &StoreAsk<'_>,
@@ -384,6 +304,65 @@ pub trait Session: Sized + Send {
         ask: &PartAsk<'_>,
     ) -> impl Future<Output = Result<Option<Vec<u8>>, SessionError>> + Send;
 
+    /// `UID MOVE` of messages of the selected mailbox to another one by
+    /// its wire name (RFC 6851 section 3.2): the pairs its `COPYUID`
+    /// names, `None` when the answer carries none. A UID that names no
+    /// message of the mailbox is passed over and has no pair.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::uid_copy`].
+    fn uid_move(
+        &mut self,
+        ask: &MoveAsk<'_>,
+    ) -> impl Future<Output = Result<Option<Moved>, SessionError>> + Send;
+
+    /// `UID COPY` of messages of the selected mailbox to another one by
+    /// its wire name (RFC 3501 section 6.4.7), answered as
+    /// [`Session::uid_move`] is; the caller asks it where MOVE is not
+    /// advertised.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`]; `Protocol` as well for a `COPYUID` that does
+    /// not pair with the ask or names a zero. Before anything is sent,
+    /// `Protocol` when no mailbox is open for writing, the ask names no
+    /// message or more than `MAX_STORE_UIDS`, the name cannot be sent or
+    /// the command would pass `MAX_COMMAND_BYTES`.
+    fn uid_copy(
+        &mut self,
+        ask: &MoveAsk<'_>,
+    ) -> impl Future<Output = Result<Option<Moved>, SessionError>> + Send;
+
+    /// `\Deleted` stored on messages of the selected mailbox, then `UID
+    /// EXPUNGE` of the same set (RFC 4315 section 2.1), so a message
+    /// another client marked stays. The one way the bridge stores
+    /// `\Deleted`; the caller asks it where UIDPLUS is advertised.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`]; `Protocol` as well, before anything is
+    /// sent, when no mailbox is open for writing or the ask names no
+    /// message or more than `MAX_STORE_UIDS`. When the STORE fails the
+    /// expunge is never sent; when the expunge fails the messages keep
+    /// `\Deleted` until a later expunge removes them.
+    fn uid_expunge(
+        &mut self,
+        uids: &[u32],
+    ) -> impl Future<Output = Result<(), SessionError>> + Send;
+
+    /// `GETQUOTAROOT INBOX` (RFC 9208 section 4.1.2): the roots the inbox
+    /// falls under with their storage in octets and their message count;
+    /// the caller asks it where QUOTA is advertised.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`]; `Protocol` as well for an answer without a
+    /// QUOTAROOT line or with more than `MAX_QUOTA_ROOTS` roots, a root
+    /// name that cannot be sent back and a value past 63 bits or, in
+    /// octets, past 64.
+    fn quota_root(&mut self) -> impl Future<Output = Result<Vec<QuotaRoot>, SessionError>> + Send;
+
     /// NOOP (RFC 3501 section 6.1.2): whether a connection kept from an
     /// earlier use still answers.
     ///
@@ -399,23 +378,4 @@ pub trait Session: Sized + Send {
     ///
     /// Returns an error when the server does not answer the command.
     fn logout(self) -> impl Future<Output = Result<(), SessionError>> + Send;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_capability_matches_without_regard_to_case_rfc9051_9_note_1() {
-        let capabilities: Capabilities = ["IMAP4rev2".to_owned(), "auth=xoauth2".to_owned()]
-            .into_iter()
-            .collect();
-        assert!(capabilities.has("imap4rev2"));
-        assert!(capabilities.has("AUTH=XOAUTH2"));
-        assert!(!capabilities.has("STARTTLS"));
-        assert_eq!(
-            capabilities.iter().collect::<Vec<_>>(),
-            ["AUTH=XOAUTH2", "IMAP4REV2"]
-        );
-    }
 }

@@ -244,6 +244,13 @@ async fn folder_stored<S: Session>(
             return stands;
         }
     };
+    // A folder the server opened read-only takes no STORE.
+    if writable.read_only {
+        for group in &groups {
+            settle(work, &group.members, &SetError::Forbidden);
+        }
+        return true;
+    }
     for group in &mut groups {
         if let Err(error) = lasting(&writable, group) {
             settle(work, &group.members, &error);

@@ -36,6 +36,9 @@ pub struct Folder {
     /// carries them; `None` leaves the code out. A STORE of any other
     /// flag answers NO.
     pub permanent: Option<&'static str>,
+    /// A SELECT opens the folder `[READ-ONLY]`, as a shared folder
+    /// without write rights opens; every write there answers NO.
+    pub read_only: bool,
     /// The mail EXAMINE, UID SEARCH and UID FETCH answer from; the
     /// counts above are what STATUS says and may differ on purpose.
     pub mail: Vec<Message>,
@@ -58,6 +61,7 @@ impl Folder {
             uid_validity: 1,
             highest_modseq: 1,
             permanent: Some(PERMANENT_FLAGS),
+            read_only: false,
             mail: Vec::new(),
         }
     }

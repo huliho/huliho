@@ -27,9 +27,10 @@ use self::auth::{Xoauth2, auth_error};
 use super::capability::{Tags, capabilities_of};
 use super::guard::Guarded;
 use super::{
-    Capabilities, FetchItems, FetchedMessage, FlagFetch, Flagged, ListReturn, Listing, PartAsk,
-    PreviewAsk, PreviewBytes, Selected, Session, SessionError, StatusEntry, StatusItems, StoreAsk,
-    Structure, Target, TlsMode, UidRange, Writable, io_error, read, write,
+    Capabilities, FetchItems, FetchedMessage, FlagFetch, Flagged, ListReturn, Listing, MoveAsk,
+    Moved, PartAsk, PreviewAsk, PreviewBytes, QuotaRoot, Selected, Session, SessionError,
+    StatusEntry, StatusItems, StoreAsk, Structure, Target, TlsMode, UidRange, Writable, io_error,
+    quota, read, write,
 };
 
 pub(super) type Stream = Guarded<TlsStream<TcpStream>>;
@@ -56,6 +57,8 @@ pub struct ImapSession {
     /// The message count of the selected mailbox; while one is selected
     /// other clients' lines ride along.
     selected: Option<read::Count>,
+    /// A SELECT opened the selected mailbox without `[READ-ONLY]`.
+    writable: bool,
 }
 
 impl Session for ImapSession {
@@ -103,6 +106,7 @@ impl Session for ImapSession {
             offered,
             tags,
             selected: None,
+            writable: false,
         })
     }
 
@@ -170,12 +174,34 @@ impl Session for ImapSession {
 
     async fn select(&mut self, mailbox: &str) -> Result<Writable, SessionError> {
         let opened = self.open(read::Access::ReadWrite, mailbox).await;
-        self.opened(opened.and_then(read::Opened::writable))
+        let writable = self.opened(opened.and_then(read::Opened::writable))?;
+        self.writable = !writable.read_only;
+        Ok(writable)
     }
 
     async fn uid_store(&mut self, ask: &StoreAsk<'_>) -> Result<(), SessionError> {
         let room = self.room();
         write::uid_store(&mut self.selection()?, ask, room).await
+    }
+
+    async fn uid_move(&mut self, ask: &MoveAsk<'_>) -> Result<Option<Moved>, SessionError> {
+        let room = self.room();
+        write::uid_move(&mut self.selection()?, ask, room).await
+    }
+
+    async fn uid_copy(&mut self, ask: &MoveAsk<'_>) -> Result<Option<Moved>, SessionError> {
+        let room = self.room();
+        write::uid_copy(&mut self.selection()?, ask, room).await
+    }
+
+    async fn uid_expunge(&mut self, uids: &[u32]) -> Result<(), SessionError> {
+        let room = self.room();
+        write::uid_expunge(&mut self.selection()?, uids, room).await
+    }
+
+    async fn quota_root(&mut self) -> Result<Vec<QuotaRoot>, SessionError> {
+        let room = self.room();
+        quota::quota_root(&mut self.selection()?, room).await
     }
 
     async fn uid_list(&mut self) -> Result<Vec<u32>, SessionError> {
@@ -265,13 +291,14 @@ impl ImapSession {
     }
 
     /// EXAMINE or SELECT. A server may select before it fails, so the
-    /// room grows first.
+    /// room grows first; no write goes out until a SELECT succeeds.
     async fn open(
         &mut self,
         access: read::Access,
         mailbox: &str,
     ) -> Result<read::Opened, SessionError> {
         self.selected = Some(read::Count::default());
+        self.writable = false;
         let room = self.room();
         read::open(&mut self.selection()?, access, mailbox, room).await
     }
@@ -292,6 +319,7 @@ impl ImapSession {
             State::SignedIn(session) => Ok(read::Selection {
                 session,
                 count: self.selected.as_mut(),
+                writable: self.writable,
             }),
             State::Fresh(_) => Err(SessionError::Protocol("not signed in")),
             State::Gone => Err(SessionError::Closed),

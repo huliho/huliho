@@ -11,9 +11,10 @@ mod body;
 
 use std::fmt::Write as _;
 
+use super::behavior::Behavior;
 use super::folder::Folder;
 use super::mailboxes::{Extension, Mailboxes, Refusal, quote};
-use super::messages::{Behavior, Message};
+use super::messages::Message;
 
 /// What one UID FETCH asked for.
 enum Asked {

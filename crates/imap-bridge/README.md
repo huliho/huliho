@@ -50,8 +50,9 @@ STATUS. A mailbox without a STATUS answer, because the server said NO
 or left its line out of the listing, keeps its row with zero counts and
 the pass goes on. A listing of more than ten thousand mailboxes fails
 the pass and nothing is written; a name that holds a control character
-or passes 4096 bytes cannot be sent back on a command line and is left
-out. The bridge speaks IMAP4rev1 with extensions and
+or passes 4096 bytes (`session::MAX_WIRE_NAME_BYTES`) cannot be sent
+back on a command line and is left out.
+The bridge speaks IMAP4rev1 with extensions and
 never enables IMAP4rev2 or UTF8=ACCEPT, so servers keep modified
 UTF-7 names toward it; a server that dropped IMAP4rev1 is refused.
 Every read command runs on the client library's raw command path and
@@ -306,7 +307,9 @@ no room for answers `serverUnavailable` with nothing stored. On a Gmail
 account the folder is the store the row was fetched from. A flag the
 PERMANENTFLAGS of the folder do not name is never sent: a system flag
 answers `forbidden`, a keyword without `\*` there `invalidProperties`
-with the path as the patch wrote it. A SELECT that names more than 1024
+with the path as the patch wrote it. A folder the server opens
+`[READ-ONLY]` answers `forbidden` and is sent nothing past its SELECT.
+A SELECT that names more than 1024
 permanent flags is read as a protocol failure; an EXAMINE passes the
 list over. What the server took is written
 as one state: the keywords of each row that differs, its email as
@@ -324,6 +327,26 @@ refresh reads it. An update that names more than 4 KiB of keywords
 answers `tooManyKeywords`. The refresh after a write finds the rows
 equal to the flags and logs no email; the mailbox pass logs the folder,
 since its unseen count moved.
+
+The session layer also carries what moving and deleting mail takes,
+each answer read under the guard and the line bounds like any other.
+`uid_move` sends `UID MOVE` (RFC 6851) and `uid_copy` sends `UID COPY`
+to a mailbox by its wire name; both answer the pairs of old and new
+UIDs the `COPYUID` code names (RFC 4315 section 3). `uid_expunge`
+stores `\Deleted` on the messages it names, then sends `UID EXPUNGE` of
+the same set, so a message another client marked stays; when the STORE
+fails the expunge is never sent. `\Deleted` is stored there alone and no
+plain EXPUNGE is ever built. `quota_root` sends `GETQUOTAROOT INBOX`
+(RFC 9208) and answers each quota root with its storage in octets and
+its message count. A `COPYUID` whose two sets do not pair is a protocol
+failure, as is one that names a UID the ask did not or a zero; a UID
+that names no message of the folder is passed over and has no pair. A
+QUOTA value past 63 bits, a storage past 64 bits in octets and a root
+name that cannot be sent back are protocol failures too. Every write
+needs a mailbox a SELECT opened for writing: after an EXAMINE, or a
+SELECT the server answered with `[READ-ONLY]`, the session refuses it
+before anything is sent. No JMAP method sends the moves, the expunge or
+the quota root.
 
 The rows live in `bridge_` tables inside the host's database.
 `store::MIGRATIONS` carries their schema for the host's migration list
@@ -364,17 +387,23 @@ live-targets` adds the tests that need the compose Dovecot.
 The `test-support` feature exposes `testing`, the scripted IMAP and
 SMTP servers the tests run against: a fresh certificate per server, one
 answer per command and a record of every line received. Its IMAP script
-carries a mailbox model with LIST-EXTENDED, LIST-STATUS, SPECIAL-USE
-and CONDSTORE as switches and a message model behind EXAMINE, SELECT
+carries a mailbox model with LIST-EXTENDED, LIST-STATUS, SPECIAL-USE,
+CONDSTORE, MOVE, UIDPLUS and QUOTA as switches and a message model
+behind EXAMINE, SELECT
 with the PERMANENTFLAGS of the folder, NOOP, UID SEARCH, UID STORE and
 UID FETCH, the flags alone with CHANGEDSINCE, the two
 sections of a preview cut as the partial fetch asks, the structure with
 a set of header fields, the fields alone and one window of one section
 or of the whole message
-included, whose misbehavior is a switch as well: volunteered lines, a connection that
+included. UID MOVE and UID COPY give the messages new UIDs in the
+target and name them in `COPYUID`, UID EXPUNGE removes what its set
+marked `\Deleted`, GETQUOTAROOT answers the lines a test writes (none
+by default) and a folder can open `[READ-ONLY]`. Misbehavior is a
+switch as well: volunteered lines, a connection that
 drops, a MODSEQ item, a NO in raw UTF-8, messages that leave between
 two searches, the Gmail items volunteered unasked, a STORE that is
-refused, answered BAD, dropped or never answered plus an EXAMINE answer
+refused, answered BAD, dropped or never answered, a `COPYUID` of the
+test's own words plus an EXAMINE answer
 without EXISTS. Its `Mailboxes`
 stand in for a second client between two passes: a message appended,
 one expunged by UID, the flags of one replaced, the counts and the
