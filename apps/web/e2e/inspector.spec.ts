@@ -161,6 +161,13 @@ for (const viewport of VIEWPORTS) {
     releaseBodies(mail.server);
     await expect(lineOf(page)).toContainText(`Checked by ${AUTHSERV}`);
     await expect(details.getByRole("link", { name: "Download the message" })).toBeVisible();
+    // The newsletter's logo comes from the download route, which going offline cuts off.
+    await framesLoaded(page);
+    await page.waitForFunction(() =>
+      Array.from(document.querySelectorAll("iframe")).every((frame) =>
+        Array.from(frame.contentDocument?.images ?? []).every((image) => image.complete),
+      ),
+    );
     // The source is never on the device, so offline it says so.
     await connect(false);
     const source = await showTab(details, "Source");
