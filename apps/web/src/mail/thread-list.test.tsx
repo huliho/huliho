@@ -33,6 +33,9 @@ const NEW_MAIL = 2;
 const SYNC_EDGE_ROWS = 3;
 const COMPACT_ROW_PX = "40px";
 const TOUCH_ROW_PX = "56px";
+// The comfortable row at the loosest leading, then at the largest type as well.
+const LOOSE_ROW_PX = "59.8px";
+const LARGER_LOOSE_ROW_PX = "71.175px";
 const OFFLINE_SENTENCE = "Offline: showing cached mail. The connection comes back on its own.";
 const FIRST_SYNC_SENTENCE = "Syncing this mailbox for the first time.";
 const NEW_MAIL_SENTENCE = "2 new messages";
@@ -302,4 +305,23 @@ test("the row height follows the density token, under a mounted list too", async
     expect(row(1).style.transform).toBe("translateY(56px)");
   });
   expect(row(0).style.blockSize).toBe(TOUCH_ROW_PX);
+});
+
+test("the row height is read again when the line height or the font size changes", async () => {
+  renderList();
+  await screen.findByRole("grid");
+  expect(row(1).style.transform).toBe(`translateY(${String(ROW_PX)}px)`);
+  const declaration = document.createElement("div").style;
+  declaration.setProperty("--hhx-row-height", LOOSE_ROW_PX);
+  vi.spyOn(window, "getComputedStyle").mockReturnValue(declaration);
+  document.documentElement.dataset["lineHeight"] = "loose";
+  await vi.waitFor(() => {
+    expect(row(1).style.transform).toBe(`translateY(${LOOSE_ROW_PX})`);
+  });
+  declaration.setProperty("--hhx-row-height", LARGER_LOOSE_ROW_PX);
+  document.documentElement.dataset["fontSize"] = "larger";
+  await vi.waitFor(() => {
+    expect(row(1).style.transform).toBe(`translateY(${LARGER_LOOSE_ROW_PX})`);
+  });
+  expect(row(0).style.blockSize).toBe(LARGER_LOOSE_ROW_PX);
 });

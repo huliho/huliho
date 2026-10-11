@@ -34,11 +34,16 @@ async function serveOverride(page: Page, body: string): Promise<void> {
   await page.route(OVERRIDE_PATH, (route) => route.fulfill({ contentType: "text/css", body }));
 }
 
-function rootPropertyValue(page: Page, property: string): Promise<string> {
-  return page.evaluate(
-    (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim(),
-    property,
-  );
+// Reads the length a token sizes a box to, so calc() is resolved.
+function resolvedLength(page: Page, property: string): Promise<string> {
+  return page.evaluate((name) => {
+    const probe = document.createElement("div");
+    probe.style.blockSize = `var(${name})`;
+    document.body.append(probe);
+    const length = getComputedStyle(probe).blockSize;
+    probe.remove();
+    return length;
+  }, property);
 }
 
 // Reads the color a token actually paints, so light-dark() is resolved.
@@ -82,7 +87,7 @@ test("an override hiding a nested rule is rejected entirely", async ({ page }) =
   await expect
     .poll(() => consoleErrors.find((text) => text.includes(":root rules")) ?? "")
     .toContain("token declarations");
-  expect(await rootPropertyValue(page, "--hhx-row-height")).toBe("52px");
+  expect(await resolvedLength(page, "--hhx-row-height")).toBe("52px");
   expect(await paintedColor(page, "--hh-accent")).toBe(DEFAULT_ACCENT);
 });
 
@@ -99,5 +104,5 @@ test("an override naming an internal token is rejected with a clear message", as
   await expect
     .poll(() => consoleErrors.find((text) => text.includes("--hhx-row-height")) ?? "")
     .toContain("internal token");
-  expect(await rootPropertyValue(page, "--hhx-row-height")).toBe("52px");
+  expect(await resolvedLength(page, "--hhx-row-height")).toBe("52px");
 });

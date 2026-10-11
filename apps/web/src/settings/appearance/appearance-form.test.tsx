@@ -24,17 +24,43 @@ function renderForm(preferences: Parameters<typeof AppearanceForm>[0]["preferenc
   return rendered;
 }
 
-function checkedIn(group: string): string {
-  const radios = within(screen.getByRole("radiogroup", { name: group })).getAllByRole("radio");
+function group(name: string): HTMLElement {
+  return screen.getByRole("radiogroup", { name });
+}
+
+function checkedIn(name: string): string {
+  const radios = within(group(name)).getAllByRole("radio");
   return radios.find((radio) => radio.getAttribute("aria-checked") === "true")?.textContent ?? "";
+}
+
+// The word of the group, since two cards offer a word of the same spelling.
+function pick(name: string, word: string): void {
+  fireEvent.click(within(group(name)).getByRole("radio", { name: word }));
 }
 
 afterEach(cleanup);
 
-test("four named groups show the choices, with the defaults for keys never chosen", () => {
-  renderForm({ theme: "dark", readingPane: "off" });
+test("seven named groups show the choices in order, with the defaults for keys never chosen", () => {
+  renderForm({ theme: "dark", readingPane: "off", lineHeight: "loose" });
+  expect(
+    screen.getAllByRole("radiogroup").map((found) => found.getAttribute("aria-labelledby")),
+  ).toEqual(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.id));
+  expect(
+    screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent),
+  ).toEqual([
+    "Theme",
+    "Density",
+    "Font size",
+    "Line height",
+    "Dark mode for messages",
+    "Reading pane",
+    "Language",
+  ]);
   expect(checkedIn("Theme")).toBe("Dark");
   expect(checkedIn("Density")).toBe("Comfortable");
+  expect(checkedIn("Font size")).toBe("Default");
+  expect(checkedIn("Line height")).toBe("Loose");
+  expect(checkedIn("Dark mode for messages")).toBe("Adapt light messages");
   expect(checkedIn("Reading pane")).toBe("Off");
   expect(checkedIn("Language")).toBe("English");
 });
@@ -49,29 +75,47 @@ test("a hint describes its group and a group without one carries no description"
   ).toBeDefined();
   expect(
     screen.getByRole("radiogroup", {
+      name: "Font size",
+      description: "Applies to the app and to messages.",
+    }),
+  ).toBeDefined();
+  expect(
+    screen.getByRole("radiogroup", {
       name: "Reading pane",
       description: /^Where a conversation opens/,
     }),
   ).toBeDefined();
-  expect(screen.getByRole("radiogroup", { name: "Theme" }).getAttribute("aria-describedby")).toBe(
-    null,
-  );
+  expect(
+    screen.getByRole("radiogroup", {
+      name: "Dark mode for messages",
+      description: /^A light message takes the dark theme’s colors/,
+    }),
+  ).toBeDefined();
+  for (const name of ["Theme", "Line height", "Language"]) {
+    expect(group(name).getAttribute("aria-describedby")).toBe(null);
+  }
 });
 
 test("a pick names its key and word; the language group switches instead", () => {
   const rendered = renderForm({});
-  fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
+  pick("Density", "Compact");
   expect(rendered.onChange).toHaveBeenLastCalledWith({ key: "density", value: "compact" });
-  fireEvent.click(screen.getByRole("radio", { name: "Bottom" }));
+  pick("Font size", "Larger");
+  expect(rendered.onChange).toHaveBeenLastCalledWith({ key: "fontSize", value: "larger" });
+  pick("Line height", "Relaxed");
+  expect(rendered.onChange).toHaveBeenLastCalledWith({ key: "lineHeight", value: "relaxed" });
+  pick("Reading pane", "Bottom");
   expect(rendered.onChange).toHaveBeenLastCalledWith({ key: "readingPane", value: "bottom" });
-  fireEvent.click(screen.getByRole("radio", { name: "Nederlands" }));
+  pick("Dark mode for messages", "Show as sent");
+  expect(rendered.onChange).toHaveBeenLastCalledWith({ key: "darkMail", value: "original" });
+  pick("Language", "Nederlands");
   expect(rendered.onSwitchLocale).toHaveBeenLastCalledWith("nl");
-  expect(rendered.onChange).toHaveBeenCalledTimes(2);
+  expect(rendered.onChange).toHaveBeenCalledTimes(5);
 });
 
 test("a development build lists the pseudo locale in its own spelling", () => {
   renderForm({});
-  const languages = within(screen.getByRole("radiogroup", { name: "Language" }));
+  const languages = within(group("Language"));
   expect(languages.getAllByRole("radio").map((radio) => radio.textContent)).toEqual([
     "English",
     "Nederlands",

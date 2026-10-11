@@ -39,10 +39,18 @@ async function renderApplied(fetchMock: Mock<typeof fetch>): Promise<void> {
   });
 }
 
+const ATTRIBUTES = ["data-theme", "data-density", "data-font-size", "data-line-height"];
+
+// The four attributes the document wears, in that order.
+function worn(): (string | null)[] {
+  return ATTRIBUTES.map((attribute) => document.documentElement.getAttribute(attribute));
+}
+
 beforeEach(async () => {
   localStorage.clear();
-  delete document.documentElement.dataset["theme"];
-  delete document.documentElement.dataset["density"];
+  for (const attribute of ATTRIBUTES) {
+    document.documentElement.removeAttribute(attribute);
+  }
   Object.defineProperty(navigator, "languages", { value: ["nl-NL", "en"], configurable: true });
   await setLocale("en", { reload: false });
 });
@@ -53,11 +61,16 @@ afterEach(() => {
 });
 
 test("the server's words land on the document and on the screen", async () => {
-  const fetchMock = answer({ theme: "dark", density: "compact", locale: "nl" });
+  const fetchMock = answer({
+    theme: "dark",
+    density: "compact",
+    fontSize: "larger",
+    lineHeight: "loose",
+    locale: "nl",
+  });
   await renderApplied(fetchMock);
   expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/preferences");
-  expect(document.documentElement.dataset["theme"]).toBe("dark");
-  expect(document.documentElement.dataset["density"]).toBe("compact");
+  expect(worn()).toEqual(["dark", "compact", "larger", "loose"]);
   expect(document.documentElement.lang).toBe("nl");
   expect(localStorage.getItem("PARAGLIDE_LOCALE")).toBe("nl");
 });
@@ -65,8 +78,7 @@ test("the server's words land on the document and on the screen", async () => {
 test("a key never chosen applies its default, the browser's language included", async () => {
   localStorage.setItem("PARAGLIDE_LOCALE", "en");
   await renderApplied(answer({}));
-  expect(document.documentElement.dataset["theme"]).toBe("system");
-  expect(document.documentElement.dataset["density"]).toBe("comfortable");
+  expect(worn()).toEqual(["system", "comfortable", "default", "default"]);
   expect(document.documentElement.lang).toBe("nl");
 });
 

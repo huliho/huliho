@@ -26,7 +26,7 @@ async function applyInstanceOverride(): Promise<void> {
 void applyInstanceOverride();
 
 applyDocumentLocale(getLocale());
-// The device's last theme and density, before anything paints.
+// The device's last appearance, before anything paints.
 applyAppearance(document, rememberedAppearance());
 
 const container = document.getElementById("root");

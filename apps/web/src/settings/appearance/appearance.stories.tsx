@@ -21,7 +21,15 @@ export const Default: StoryObj = {
   render: () => (
     <AppearanceForm
       locale="en"
-      preferences={{ theme: "dark", density: "compact", readingPane: "bottom", locale: "en" }}
+      preferences={{
+        theme: "dark",
+        density: "compact",
+        fontSize: "larger",
+        lineHeight: "loose",
+        readingPane: "bottom",
+        darkMail: "original",
+        locale: "en",
+      }}
       onChange={nothing}
       onSwitchLocale={nothing}
     />

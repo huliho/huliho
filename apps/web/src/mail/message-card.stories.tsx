@@ -89,6 +89,12 @@ export const ShownAsSent: StoryObj = {
     }),
 };
 
+// The largest type and the loosest leading: the frame's text follows the card's.
+export const LargerAndLoose: StoryObj = {
+  globals: { fontSize: "larger", lineHeight: "loose" },
+  render: () => card(htmlDetail(NEWEST_ID, NEWSLETTER_HTML, { authentication: PASSED })),
+};
+
 export const Reply: StoryObj = {
   render: () => card(textDetail(NEWEST_ID, REPLY_TEXT, { flowed: { delSp: false } })),
 };

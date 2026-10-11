@@ -12,8 +12,8 @@ const READING_PANES = ["right", "bottom", "off"] as const;
 export const THEMES = ["system", "light", "dark"] as const;
 export const DENSITIES = ["comfortable", "compact"] as const;
 const PREFERENCE_LOCALES = ["en", "nl"] as const;
-const FONT_SIZES = ["default", "large", "larger"] as const;
-const LINE_HEIGHTS = ["default", "relaxed", "loose"] as const;
+export const FONT_SIZES = ["default", "large", "larger"] as const;
+export const LINE_HEIGHTS = ["default", "relaxed", "loose"] as const;
 // Whether a light-only message is adapted to the dark theme or shown as sent.
 const DARK_MAILS = ["adapt", "original"] as const;
 
@@ -31,8 +31,8 @@ export type ReadingPane = (typeof READING_PANES)[number];
 export type Theme = (typeof THEMES)[number];
 export type Density = (typeof DENSITIES)[number];
 export type PreferenceLocale = (typeof PREFERENCE_LOCALES)[number];
-type FontSize = (typeof FONT_SIZES)[number];
-type LineHeight = (typeof LINE_HEIGHTS)[number];
+export type FontSize = (typeof FONT_SIZES)[number];
+export type LineHeight = (typeof LINE_HEIGHTS)[number];
 export type DarkMail = (typeof DARK_MAILS)[number];
 // The user's choices; a key never chosen is absent.
 export type Preferences = z.infer<typeof preferencesSchema>;

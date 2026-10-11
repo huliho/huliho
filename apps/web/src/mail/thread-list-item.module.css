@@ -2,7 +2,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Additional terms apply, see NOTICE. */
 
-/* The virtualizer places a row by its transform; the row keeps the density's height. */
+/* The virtualizer places a row by its transform; the row takes the token's height, which
+   grows with the type so its two lines keep their room. */
 .row {
   position: absolute;
   inset-block-start: 0;

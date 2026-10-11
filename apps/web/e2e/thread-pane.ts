@@ -95,6 +95,8 @@ export interface InboxExtras {
   // The mailboxes behind the tab; every message read unless given.
   mailboxes?: MailboxBody[];
   mail?: MailOptions;
+  // The words on record beside the reading pane's.
+  preferences?: Record<string, string>;
   // Leaves the page its own clock. The fixed one installs a script in
   // every document, which a message's sandboxed frame refuses out loud.
   ownClock?: boolean;
@@ -110,7 +112,7 @@ export async function openInbox(
   await mockSignedIn(page);
   const mail = await mockMail(page, extras.mailboxes ?? READ_INBOX, extras.mail ?? {});
   await mockAccounts(page, ROWS);
-  await mockPreferences(page, { readingPane });
+  await mockPreferences(page, { readingPane, ...extras.preferences });
   if (extras.ownClock !== true) {
     await page.clock.setFixedTime(FIXED_NOW);
   }

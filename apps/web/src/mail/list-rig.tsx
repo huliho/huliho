@@ -215,6 +215,8 @@ export function invalidateWindows(client: QueryClient): Promise<void> {
 }
 
 const layout = { wide: true };
+// What a test may put on the document, taken off again after it.
+const WORN_ATTRIBUTES = ["data-density", "data-font-size", "data-line-height"];
 
 // The scroll box has a size in the test, which jsdom gives no element; a
 // box under a hidden ancestor has none, as in a browser. The width
@@ -238,6 +240,8 @@ export function mockListBox(): void {
     cleanup();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    document.documentElement.removeAttribute("data-density");
+    for (const name of WORN_ATTRIBUTES) {
+      document.documentElement.removeAttribute(name);
+    }
   });
 }

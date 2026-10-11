@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { BodyDetail, DarkMail, EmailHeader, MailCache } from "@huliho/core";
+import type { BodyDetail, EmailHeader, MailCache } from "@huliho/core";
 import { preferencesQueryOptions } from "@huliho/state";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -11,6 +11,7 @@ import type { RefObject } from "react";
 import { useLinkKey } from "../open/link-key";
 import type { Locale } from "../paraglide/runtime.js";
 import { useOnline } from "../shell/use-online";
+import { DEFAULT_DARK_MAIL } from "../theme/appearance";
 import { useTheme } from "../theme/use-theme";
 import type { Theme } from "../theme/use-theme";
 import { attachmentsOf } from "./attachments/parts";
@@ -31,10 +32,6 @@ import { useBodyQuery } from "./use-body-query";
 import type { BodyAsk } from "./use-body-query";
 import { useRemoteContent } from "./use-remote-content";
 import type { RemoteContent } from "./use-remote-content";
-
-// What a reader who never chose gets: a light-only message adapted to
-// the dark theme.
-const DEFAULT_DARK_MAIL: DarkMail = "adapt";
 
 // The control that shows a light-only message as sent and adapts it
 // again, for this message alone.

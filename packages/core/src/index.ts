@@ -94,6 +94,8 @@ export {
 export type { PasswordChangeInput } from "./password";
 export {
   DENSITIES,
+  FONT_SIZES,
+  LINE_HEIGHTS,
   PreferencesError,
   THEMES,
   fetchPreferences,
@@ -104,6 +106,8 @@ export {
 export type {
   DarkMail,
   Density,
+  FontSize,
+  LineHeight,
   PreferenceChange,
   PreferenceLocale,
   Preferences,

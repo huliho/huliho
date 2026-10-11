@@ -15,8 +15,9 @@ import { AppearanceForm } from "./appearance-form";
 import { usePreference } from "./use-preference";
 import styles from "./appearance.module.css";
 
-// Theme, density, reading pane and language: the four cards the page holds.
-const SETTING_COUNT = 4;
+// Theme, density, font size, line height, dark mode for messages,
+// reading pane and language: the seven cards the page holds.
+const SETTING_COUNT = 7;
 
 // Still cards in the shape of the settings while the choices load.
 // Spans only: an output element takes phrasing content.
