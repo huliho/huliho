@@ -3,12 +3,13 @@
 // Additional terms apply, see NOTICE.
 
 //! The write commands on the raw path, each on a mailbox a SELECT opened
-//! for writing. A STORE changes flags silently (RFC 3501 section 6.4.6).
-//! A MOVE (RFC 6851 section 3.2) or a COPY (RFC 3501 section 6.4.7)
-//! takes messages to another mailbox and reads their new UIDs from
-//! `COPYUID`. An expunge removes the messages it names and no other (RFC
-//! 4315 section 2.1). A flag reaches the command line only as one of the
-//! four system flags a keyword maps to or as an atom; `\Deleted` is
+//! for writing. A STORE changes flags or Gmail labels silently (RFC 3501
+//! section 6.4.6). A MOVE (RFC 6851 section 3.2) or a COPY (RFC 3501
+//! section 6.4.7) takes messages to another mailbox and reads their new
+//! UIDs from `COPYUID`. An expunge removes the messages it names and no
+//! other (RFC 4315 section 2.1). A flag reaches the command line only as
+//! one of the four system flags a keyword maps to or as an atom, a label
+//! only as a system label a mailbox stands for or quoted; `\Deleted` is
 //! stored by the expunge alone, which never sends a plain EXPUNGE.
 
 mod copyuid;
@@ -16,11 +17,19 @@ mod copyuid;
 use async_imap::imap_proto::Response;
 
 use super::read::{ATOM_SPECIALS, Room, Selection, quoted, sequence_set};
-use super::{MAX_STORE_UIDS, MoveAsk, Moved, SessionError, StoreAsk};
+use super::{MAX_STORE_UIDS, MoveAsk, Moved, SessionError, StoreAsk, StoreItem};
 
 /// The system flags a keyword maps to (RFC 8621 section 4.1.1). No
 /// other backslash flag is stored through a STORE ask.
 const STORABLE_SYSTEM_FLAGS: [&str; 4] = ["\\Seen", "\\Flagged", "\\Answered", "\\Draft"];
+
+/// The Gmail system labels a label mailbox stands for, as Gmail spells
+/// them. Gmail reads any label that opens with a backslash as a system
+/// label, quoted or not, so no other such label is ever stored: `\All`
+/// would stick as a label of its own and the stores are reached by a
+/// move.
+const STORABLE_SYSTEM_LABELS: [&str; 5] =
+    ["\\Inbox", "\\Starred", "\\Important", "\\Sent", "\\Draft"];
 
 /// The flag the expunge stores and nothing else does.
 const DELETED: &str = "\\Deleted";
@@ -30,7 +39,7 @@ pub const MAX_COMMAND_BYTES: usize = 8192;
 
 /// The fixed words of a write the bridge does not send.
 const NO_MESSAGE: &str = "a write names no message or too many";
-const NO_FLAG: &str = "a STORE names no flag or one that cannot be sent";
+const NO_FLAG: &str = "a STORE names nothing or something that cannot be sent";
 const LINE_LIMIT: &str = "the command passes the line limit";
 
 /// Which of the two commands takes messages to another mailbox.
@@ -67,14 +76,45 @@ fn fitting(command: String) -> Result<String, SessionError> {
     Ok(command)
 }
 
+/// A label as it goes on the command line: a system label of the list
+/// as it is, any other label quoted. A label that opens with a
+/// backslash outside the list goes nowhere.
+fn wire_label(label: &str) -> Option<String> {
+    if STORABLE_SYSTEM_LABELS.contains(&label) {
+        return Some(label.to_owned());
+    }
+    if label.is_empty() || label.starts_with('\\') {
+        return None;
+    }
+    quoted(label).ok()
+}
+
+/// The bytes a label takes on a command line: a system label of the
+/// list as it is, any other quoted with its escapes. `None` for a label
+/// no STORE carries.
+#[must_use]
+pub fn label_bytes(label: &str) -> Option<usize> {
+    wire_label(label).map(|wire| wire.len())
+}
+
 fn store_command(ask: &StoreAsk<'_>) -> Result<String, SessionError> {
     let set = uid_set(ask.uids)?;
-    if ask.flags.is_empty() || !ask.flags.iter().all(|flag| sendable_flag(flag)) {
-        return Err(SessionError::Protocol(NO_FLAG));
-    }
+    let (item, written) = match ask.item {
+        StoreItem::Flags => {
+            let sendable = ask.flags.iter().all(|flag| sendable_flag(flag));
+            ("FLAGS", sendable.then(|| ask.flags.to_vec()))
+        }
+        StoreItem::Labels => {
+            let labels = ask.flags.iter().map(|label| wire_label(label));
+            ("X-GM-LABELS", labels.collect())
+        }
+    };
+    let written = written
+        .filter(|written: &Vec<String>| !written.is_empty())
+        .ok_or(SessionError::Protocol(NO_FLAG))?;
     let sign = if ask.add { '+' } else { '-' };
-    let flags = ask.flags.join(" ");
-    fitting(format!("UID STORE {set} {sign}FLAGS.SILENT ({flags})"))
+    let written = written.join(" ");
+    fitting(format!("UID STORE {set} {sign}{item}.SILENT ({written})"))
 }
 
 fn transfer_command(transfer: Transfer, ask: &MoveAsk<'_>) -> Result<String, SessionError> {
@@ -98,8 +138,9 @@ fn expunge_commands(uids: &[u32]) -> Result<[String; 2], SessionError> {
 }
 
 /// One STORE. A server with CONDSTORE answers a line per message even
-/// to a silent one (RFC 7162 section 3.1.3), so the answer has room for
-/// as many lines as the ask names messages; none of them is read.
+/// to a silent one (RFC 7162 section 3.1.3), as Gmail does for a label
+/// that moves a flag, so the answer has room for as many lines as the
+/// ask names messages; none of them is read.
 pub(super) async fn uid_store(
     selection: &mut Selection<'_>,
     ask: &StoreAsk<'_>,

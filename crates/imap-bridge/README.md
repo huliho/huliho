@@ -137,10 +137,10 @@ so the bridge never sees a credential and never resolves a host.
 `runtime::Link` keeps one conversation per account between requests
 behind a lock, checks a kept session with NOOP before it is used again
 and drops it after a failure. Only a refresh, a preview fetch, a body
-fetch, a keyword write and a window of a blob take the conversation; a
+fetch, a write and a window of a blob take the conversation; a
 request that reads the cache never waits on IMAP, and a server that is
 down costs nothing but the refresh for the stored properties: the cache
-answers as it stands, while a body ask and a keyword write answer
+answers as it stands, while a body ask and a write answer
 `serverUnavailable`.
 
 `runtime::Bridge` runs the accounts the host registers: one store, one
@@ -150,7 +150,7 @@ whose first sync is not done, in tree order. The task takes one batch
 per turn on the conversation and hands it back, so a request gets in
 between, selects the folder afresh before every batch and puts one
 deadline (`runtime::CONVERSATION_DEADLINE`, sixty seconds) around a
-batch, a refresh, a preview fetch, a body fetch, a keyword write and a
+batch, a refresh, a preview fetch, a body fetch, a write and a
 window of a blob. A session that fails or runs past
 the deadline is dropped; a fresh one resumes the same sync after a
 pause, and the slice whose fetch was cut short is fetched again. A
@@ -283,50 +283,116 @@ the session standing and the blob unavailable; any other failure costs
 the session as well. An error is the last thing a blob answers. The
 bridge hands bytes: the host decides their media type and disposition.
 
-`Email/set` (RFC 8621 section 4.6) writes keywords and nothing else. An
-update patches `keywords/<keyword>` with true to set it and null to
-take it off, or names the whole `keywords` object. A create and a
-destroy answer `forbidden` per object, any other property and any other
-value `invalidProperties` with the paths, a call over more than five
+`Email/set` (RFC 8621 section 4.6) writes keywords and mailboxes and
+destroys emails. An update patches `keywords/<keyword>` and
+`mailboxIds/<id>` with true to set an entry and null to take it off, or
+names the whole `keywords` or `mailboxIds` object. A create answers
+`forbidden` per object, an update of an email the same call destroys
+`willDestroy`, any other property and any other value
+`invalidProperties` with the paths and a call over more than five
 hundred objects `requestTooLarge` (`jmap::MAX_OBJECTS_IN_SET`).
 `ifInState` is checked before anything is sent. A keyword is stored as
 its flag (RFC 8621 section 4.1.1): the four system keywords as `\Seen`,
-`\Flagged`, `\Answered` and `\Draft`, any other as an atom. The write
-runs between two passes over the request, on the account's conversation
-under its lock and deadline: per store folder a SELECT, then one
-`UID STORE` with `+FLAGS.SILENT` or `-FLAGS.SILENT` per set of messages
-that gain or lose the same flags, a hundred UIDs per command at most
-(`session::MAX_STORE_UIDS`). The lock is held from the state check
-until the rows are written, so two requests that name one state never
-both store. The writes of one round share the deadline: once it is
-over, a later write of that round sends nothing and answers
-`serverUnavailable`. The calls of a request answer in order (RFC 8620 section
-3.10): a write behind a call that is no write of the same round waits
-for the pass after it, and a write the three passes of a request leave
-no room for answers `serverUnavailable` with nothing stored. On a Gmail
-account the folder is the store the row was fetched from. A flag the
-PERMANENTFLAGS of the folder do not name is never sent: a system flag
-answers `forbidden`, a keyword without `\*` there `invalidProperties`
-with the path as the patch wrote it. A folder the server opens
-`[READ-ONLY]` answers `forbidden` and is sent nothing past its SELECT.
-A SELECT that names more than 1024
+`\Flagged`, `\Answered` and `\Draft`, any other as an atom. A mailbox
+the account does not hold or that holds no mail answers
+`invalidProperties`.
+
+On a folder account a message lies in one folder, so a change of its
+mailboxes is a move (RFC 8621 section 1.3.1): an update that leaves the
+email in no mailbox answers `invalidProperties` with the paths that
+took it out and one that leaves it in two answers `tooManyMailboxes`
+(RFC 8621 section 4.6). A move is
+`UID MOVE` where the server offers it (RFC 6851), else `UID COPY` and
+an expunge of what it copied, which needs a folder that keeps
+`\Deleted`. The new UIDs come from `COPYUID` (RFC 4315 section 3), so
+the row moves to its new folder and UID with its email id kept. A
+message the answer pairs with no new UID is `notFound` and its row
+leaves; the next sync brings the message where it lies. A server
+without UIDPLUS names no new UIDs: the update stands and the rows of
+what moved leave the same way. A copy whose expunge fails leaves the
+copies beside the messages; the next sync reads them in. A server
+with neither MOVE nor UIDPLUS gets no move asked: `mayAddItems` and
+`mayRemoveItems` are false on every mailbox and a patch that moves
+answers `forbidden`. The mailbox pass reads MOVE and UIDPLUS from the
+session's capabilities and logs every mailbox as updated when it first
+learns them and whenever either changes. A destroy stores `\Deleted` on
+the message and expunges it alone with `UID EXPUNGE`, so a message
+another client marked stays; it needs UIDPLUS and a folder that keeps
+`\Deleted` and answers `forbidden` without them.
+
+On a Gmail account a label mailbox is a label: an update that adds or
+removes one stores `X-GM-LABELS` on the store the row lies in, with
+`\Flagged` and `\Drafts` written as `\Starred` and `\Draft`. Entering
+Spam or Trash is a move to that store, after which the message carries
+that store alone. Leaving either is a move into All Mail: the labels
+the patch adds are stored there and the labels the message carries are
+read back, since Gmail gives a message back the labels it had; when
+All Mail then opens `[READ-ONLY]` or under another UIDVALIDITY than
+the move named, the update answers `serverFail` with the row moved
+and no label stored. A move between the stores is `UID
+MOVE` alone: on a Gmail server that does not offer MOVE it answers
+`forbidden` before anything is sent, since a copy and an expunge would
+run in All Mail. The three stores show `mayAddItems` and
+`mayRemoveItems` only where the server offers MOVE; a label mailbox
+keeps a folder's rights. A row whose message the move cannot follow, because
+`COPYUID` pairs it with no new UID or the store cannot take it where
+it went, waits for the pass with its UID negated instead of leaving;
+the pass claims it by X-GM-MSGID where the message turned up and the
+update answers as it would on a folder account. A message of Spam or
+Trash carries no label, so an update that gives it one without taking
+it out answers `invalidProperties`, as does one that enters two
+stores, takes a message of All Mail out of All Mail without entering
+Spam or Trash or takes one out of Spam or Trash with no label to land
+on. A destroy stays in Spam and Trash and answers `forbidden`
+anywhere else, since the account's own setting decides what an expunge
+does there. A starred message of All Mail is a member of the
+`\Flagged` label mailbox: setting `$flagged` makes the email a member
+and adding it to that mailbox sets `$flagged`, since Gmail keeps the
+flag and the label together.
+
+The write runs between two passes over the request, on the account's
+conversation under its lock and deadline: per store folder a SELECT,
+then the keyword STOREs, the label STOREs, the moves and the destroys,
+each over sets of a hundred UIDs at most (`session::MAX_STORE_UIDS`);
+the labels of what moved into All Mail come last. A keyword STORE
+carries `+FLAGS.SILENT` or `-FLAGS.SILENT` per set of messages that
+gain or lose the same flags, a label STORE `+X-GM-LABELS.SILENT` or
+`-X-GM-LABELS.SILENT` the same way; a list past one command line goes
+out in runs that fit, and a label too wide for any run fails its
+update with `serverFail` before anything is sent. The lock is held
+from the state check until the rows are written, so two requests that
+name one state never both write. The writes of one round share the
+deadline: once it is over, a later write of that round sends nothing
+and answers `serverUnavailable`. The calls of a request answer in
+order (RFC 8620 section 3.10): a write behind a call that is no write
+of the same round waits for the pass after it, and a write the three
+passes of a request leave no room for answers `serverUnavailable`
+with nothing stored. On a Gmail account the folder is the store the
+row was fetched from. A flag the PERMANENTFLAGS of the folder do not
+name is never sent: a system flag answers `forbidden`, a keyword
+without `\*` there `invalidProperties` with the path as the patch
+wrote it. A folder the server opens `[READ-ONLY]` answers `forbidden`
+and is sent nothing past its SELECT. A SELECT that names more than 1024
 permanent flags is read as a protocol failure; an EXAMINE passes the
-list over. What the server took is written
-as one state: the keywords of each row that differs, its email as
-updated and every mailbox it is a member of as updated too, since its
-counts moved; `oldState` and `newState` are the states around that
-write. A SELECT or a STORE the server refuses answers `serverFail` for
-its updates and keeps the session; an answer the bridge cannot read
-answers `serverFail` too and costs the session; a server out of
-reach, a lost connection, the deadline, a folder renumbered since the
-sync and a row no UID names answer `serverUnavailable`. None of them
-writes a row, while a set of messages the server took before the failure is
-kept. An update that both sets and clears keywords is two commands; a
-failure between them leaves the first on the server until the next
-refresh reads it. An update that names more than 4 KiB of keywords
-answers `tooManyKeywords`. The refresh after a write finds the rows
-equal to the flags and logs no email; the mailbox pass logs the folder,
-since its unseen count moved.
+list over. What the server took is written as one state: the keywords
+and memberships of each row that differs, the rows that moved under
+their new folder and UID and the rows that left. Each such email reads
+as updated or destroyed, a thread a destroy changed as updated or
+destroyed and every mailbox whose counts moved as updated; `oldState`
+and `newState` are the states around that write. An update whose email
+the server left otherwise than its patch asked answers the properties
+that differ (RFC 8620 section 5.3). A command the server refuses
+answers `serverFail` for its updates and keeps the session; an answer
+the bridge cannot read answers `serverFail` too and costs the session;
+a server out of reach, a lost connection, the deadline, a folder
+renumbered since the sync and a row no UID names answer
+`serverUnavailable`. None of them writes a row, while a set of messages
+the server took before the failure is kept. An update that both sets
+and clears keywords is two commands; a failure between them leaves the
+first on the server until the next refresh reads it. An update that
+names more than 4 KiB of keywords answers `tooManyKeywords`. The
+refresh after a write finds every row where the write left it and logs
+no email; the mailbox pass logs the folders, since their counts moved.
 
 The session layer also carries what moving and deleting mail takes,
 each answer read under the guard and the line bounds like any other.
@@ -345,8 +411,8 @@ QUOTA value past 63 bits, a storage past 64 bits in octets and a root
 name that cannot be sent back are protocol failures too. Every write
 needs a mailbox a SELECT opened for writing: after an EXAMINE, or a
 SELECT the server answered with `[READ-ONLY]`, the session refuses it
-before anything is sent. No JMAP method sends the moves, the expunge or
-the quota root.
+before anything is sent. `Email/set` sends the moves and the expunge;
+no JMAP method sends the quota root.
 
 The rows live in `bridge_` tables inside the host's database.
 `store::MIGRATIONS` carries their schema for the host's migration list
@@ -362,7 +428,8 @@ section 3.3) against those rows and answers `Mailbox/get`,
 `Email/get` serves the
 metadata, the header properties and the preview from the rows, the
 body properties and the `header:` forms from the server. `Email/query` serves the filter
-`inMailbox`, the sort `receivedAt` either way, a window by position or
+`inMailbox` with `hasKeyword` and `notKeyword` beside it, the sort
+`receivedAt` either way, a window by position or
 by anchor, the total on request and one email per thread on request,
 two hundred ids at most (`jmap::QUERY_LIMIT`); any other filter or sort
 answers `unsupportedFilter` or `unsupportedSort`. Result references
@@ -398,20 +465,22 @@ or of the whole message
 included. UID MOVE and UID COPY give the messages new UIDs in the
 target and name them in `COPYUID`, UID EXPUNGE removes what its set
 marked `\Deleted`, GETQUOTAROOT answers the lines a test writes (none
-by default) and a folder can open `[READ-ONLY]`. Misbehavior is a
-switch as well: volunteered lines, a connection that
-drops, a MODSEQ item, a NO in raw UTF-8, messages that leave between
-two searches, the Gmail items volunteered unasked, a STORE that is
-refused, answered BAD, dropped or never answered, a `COPYUID` of the
-test's own words plus an EXAMINE answer
-without EXISTS. Its `Mailboxes`
+by default) and a folder can open `[READ-ONLY]` or show another
+UIDVALIDITY on one SELECT. Misbehavior is a switch as well:
+volunteered lines, a connection that drops, a MODSEQ item, a NO in raw
+UTF-8, messages that leave between two searches, the Gmail items
+volunteered unasked, a STORE or a move that is refused, answered BAD,
+dropped or never answered, a `COPYUID` of the test's own words plus an
+EXAMINE answer without EXISTS. Its `Mailboxes`
 stand in for a second client between two passes: a message appended,
 one expunged by UID, the flags of one replaced, the counts and the
 mod-sequences following. Its Gmail mode
 (`Mailboxes::gmail`) lists the folders as Gmail does, answers the three
-Gmail items where asked and BAD where the extension is off, counts a
-label folder from the labels of All Mail's messages and lets a test
-relabel a message or move it between stores as a second client would.
+Gmail items where asked and BAD where the extension is off, takes a
+STORE of `X-GM-LABELS` with the Starred label and `\Flagged` kept
+together, counts a label folder from the labels of All Mail's messages
+and lets a test relabel a message or move it between stores as a
+second client would.
 `testing::TestConnector` signs a
 user in on such a server or refuses every connection.
 `testing::seal::TestSealer` binds a blob to its row without a cipher.
@@ -444,5 +513,7 @@ against the scripted server's Gmail mode through the recorder and back
 through the replayer, and against a live test account when
 `HULIHO_LIVE_GMAIL_ADDRESS` and `HULIHO_LIVE_GMAIL_APP_PASSWORD` are
 set, writing the transcript to the path in `HULIHO_RECORD_TRANSCRIPT`
-when that is set as well. `tests/transcripts.rs` scans every checked-in
-transcript.
+when that is set as well. The checked-in transcript and the one
+recorded off the scripted server both fail on a `\Deleted` or an
+expunge sent outside Spam and Trash. `tests/transcripts.rs` scans
+every checked-in transcript.

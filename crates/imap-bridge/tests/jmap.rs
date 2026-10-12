@@ -129,10 +129,17 @@ async fn mailbox_get_answers_every_mailbox_with_its_rights_and_counts_rfc8621_2(
         (&json!(0), &json!(0))
     );
     assert_eq!(inbox["isSubscribed"], true);
-    for granted in ["mayReadItems", "maySetSeen", "maySetKeywords"] {
+    // The server advertises MOVE and UIDPLUS, so emails move in and out.
+    for granted in [
+        "mayReadItems",
+        "mayAddItems",
+        "mayRemoveItems",
+        "maySetSeen",
+        "maySetKeywords",
+    ] {
         assert_eq!(inbox["myRights"][granted], true, "{granted}");
     }
-    for withheld in ["mayAddItems", "mayRemoveItems", "mayRename", "mayDelete"] {
+    for withheld in ["mayCreateChild", "mayRename", "mayDelete", "maySubmit"] {
         assert_eq!(inbox["myRights"][withheld], false, "{withheld}");
     }
     assert_eq!(keys(&inbox["myRights"]).len(), 9);

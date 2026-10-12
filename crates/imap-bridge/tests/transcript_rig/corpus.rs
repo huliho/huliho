@@ -197,6 +197,19 @@ pub enum Change {
     DeleteForever(u32),
 }
 
+/// The folder the model holds the message with that number in, with its
+/// labels there.
+pub fn located(mailboxes: &Mailboxes, number: u32) -> Option<(String, Vec<String>)> {
+    let message_id = format!("Message-ID: {}\r\n", seed(number).message_id());
+    mailboxes.folders().into_iter().find_map(|folder| {
+        let message = folder
+            .mail
+            .iter()
+            .find(|message| message.header.contains(&message_id))?;
+        Some((folder.name.clone(), message.labels.clone()))
+    })
+}
+
 /// The change as the scripted server's model takes it; a flag on Gmail
 /// shows as a label too.
 pub fn apply_to_model(mailboxes: &Mailboxes, change: Change) {

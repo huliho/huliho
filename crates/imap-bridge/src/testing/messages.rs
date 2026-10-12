@@ -13,7 +13,7 @@ use std::fmt::Write as _;
 use super::behavior::{Behavior, Storing};
 use super::fetch;
 use super::folder::Folder;
-use super::mailboxes::{Mailboxes, Refusal, unquote};
+use super::mailboxes::{Mailboxes, Refusal, is_transfer, labels_of, unquote};
 use super::parts::Part;
 
 /// Where the scripted Gmail ids start, so no UID reads as one.
@@ -194,6 +194,7 @@ pub(super) struct Conversation {
     writable: bool,
     fetches: usize,
     stores: usize,
+    selects: usize,
     searched: bool,
 }
 
@@ -203,6 +204,7 @@ impl Conversation {
     pub(super) fn stalls(&self, command: &str, behavior: Behavior) -> bool {
         (command.starts_with("UID FETCH ") && behavior.stalls_at == Some(self.fetches))
             || (command.starts_with("UID STORE ") && self.storing(behavior) == Storing::Stalls)
+            || (is_transfer(command) && behavior.moving == Storing::Stalls)
     }
 
     /// How the next UID STORE of this connection is taken.
@@ -224,6 +226,9 @@ impl Conversation {
         tag: &str,
     ) -> Option<String> {
         let open = (self.selected.as_deref(), self.writable);
+        if is_transfer(command) && mailboxes.behavior.moving == Storing::Drops {
+            return None;
+        }
         if let Some(reply) = mailboxes.transfer(open, command, tag) {
             return Some(reply);
         }
@@ -231,9 +236,10 @@ impl Conversation {
         let mut access = "";
         let reply = if let Some(rest) = command.strip_prefix("EXAMINE ") {
             access = "[READ-ONLY] ";
-            self.open(mailboxes, rest, false)
+            self.open(mailboxes, rest, None)
         } else if let Some(rest) = command.strip_prefix("SELECT ") {
-            let opened = self.open(mailboxes, rest, true);
+            let opened = self.open(mailboxes, rest, Some(self.selects));
+            self.selects += 1;
             access = if self.writable {
                 "[READ-WRITE] "
             } else {
@@ -283,9 +289,10 @@ impl Conversation {
     }
 
     /// `UID STORE <set> +FLAGS.SILENT (<flags>)` or `-FLAGS.SILENT` on
-    /// the mailbox a SELECT opened: NO on one an EXAMINE opened, for a
-    /// flag the folder does not keep and where the behavior refuses, BAD
-    /// where it says so.
+    /// the mailbox a SELECT opened, and the same of X-GM-LABELS on a
+    /// Gmail account: NO on one an EXAMINE opened, for a flag the folder
+    /// does not keep and where the behavior refuses, BAD where it says
+    /// so or the extension is off.
     fn store(
         &self,
         mailboxes: &Mailboxes,
@@ -296,38 +303,55 @@ impl Conversation {
             return Err(Refusal::Bad);
         }
         let (set, items) = rest.split_once(' ').ok_or(Refusal::Bad)?;
-        let (add, flags) = match items.split_once("FLAGS.SILENT (") {
-            Some(("+", flags)) => (true, flags),
-            Some(("-", flags)) => (false, flags),
+        let (head, list) = items.split_once(".SILENT (").ok_or(Refusal::Bad)?;
+        let list = list.strip_suffix(')').ok_or(Refusal::Bad)?;
+        let (add, item) = match head.split_at_checked(1) {
+            Some(("+", item)) => (true, item),
+            Some(("-", item)) => (false, item),
             _ => return Err(Refusal::Bad),
         };
-        let flags: Vec<&str> = flags
-            .strip_suffix(')')
-            .ok_or(Refusal::Bad)?
-            .split(' ')
-            .collect();
         let selected = self.selected.as_deref().filter(|_| self.writable);
-        selected
-            .filter(|_| storing != Storing::Refuses)
-            .and_then(|name| mailboxes.store(name, (set, &flags), add))
-            .ok_or(Refusal::No)
+        let selected = selected.filter(|_| storing != Storing::Refuses);
+        match item {
+            "FLAGS" => {
+                let flags: Vec<&str> = list.split(' ').collect();
+                selected.and_then(|name| mailboxes.store(name, (set, &flags), add))
+            }
+            "X-GM-LABELS" if mailboxes.has(super::mailboxes::Extension::Gmail) => {
+                let labels = labels_of(list).ok_or(Refusal::Bad)?;
+                selected.and_then(|name| mailboxes.store_labels(name, (set, &labels), add))
+            }
+            _ => return Err(Refusal::Bad),
+        }
+        .ok_or(Refusal::No)
     }
 
-    /// EXAMINE or SELECT; a SELECT names the flags the folder keeps and
-    /// opens a read-only folder read-only.
-    fn open(&mut self, mailboxes: &Mailboxes, rest: &str, writable: bool) -> Option<String> {
+    /// EXAMINE, or the SELECT with that index on this connection; a
+    /// SELECT names the flags the folder keeps and opens a read-only
+    /// folder, or one the behavior closes to writes, read-only. The
+    /// SELECT the behavior renumbers shows the UIDVALIDITY one past the
+    /// folder's.
+    fn open(&mut self, mailboxes: &Mailboxes, rest: &str, select: Option<usize>) -> Option<String> {
         let (name, _) = unquote(rest)?;
         let folder = mailboxes
             .folders()
             .into_iter()
             .find(|folder| folder.name == name)?;
+        let behavior = mailboxes.behavior;
+        let writable = select.is_some_and(|index| behavior.read_only_at != Some(index));
+        let renumbered = select.is_some_and(|index| behavior.renumbered_at == Some(index));
+        let uid_validity = if renumbered {
+            folder.uid_validity + 1
+        } else {
+            folder.uid_validity
+        };
         self.selected = Some(name);
         self.writable = writable && !folder.read_only;
         let permanent = match folder.permanent.filter(|_| writable) {
             Some(flags) => format!("* OK [PERMANENTFLAGS ({flags})] Flags permitted\r\n"),
             None => String::new(),
         };
-        let exists = if mailboxes.behavior.no_exists {
+        let exists = if behavior.no_exists {
             String::new()
         } else {
             format!("* {} EXISTS\r\n", folder.mail.len())
@@ -338,8 +362,8 @@ impl Conversation {
             String::new()
         };
         Some(format!(
-            "* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n{permanent}{exists}* 0 RECENT\r\n* OK [UIDVALIDITY {}] UIDs valid\r\n* OK [UIDNEXT {}] Predicted next UID\r\n{modseq}",
-            folder.uid_validity, folder.uid_next
+            "* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n{permanent}{exists}* 0 RECENT\r\n* OK [UIDVALIDITY {uid_validity}] UIDs valid\r\n* OK [UIDNEXT {}] Predicted next UID\r\n{modseq}",
+            folder.uid_next
         ))
     }
 

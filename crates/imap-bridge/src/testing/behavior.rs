@@ -45,12 +45,23 @@ pub struct Behavior {
     /// The code a UID MOVE or a UID COPY answers with in place of the
     /// `COPYUID` of what it did, written as the wire carries it.
     pub copyuid: Option<&'static str>,
+    /// What a UID MOVE, a UID COPY or a UID EXPUNGE comes to.
+    pub moving: Storing,
+    /// The SELECT with this index on a connection opens its folder
+    /// `[READ-ONLY]`, as a folder whose rights changed under the client
+    /// does; a MOVE into the folder before that still lands.
+    pub read_only_at: Option<usize>,
+    /// The SELECT with this index on a connection shows a UIDVALIDITY
+    /// one past the folder's, as a folder deleted and made again under
+    /// the client does; a MOVE into the folder before that names the
+    /// folder's own.
+    pub renumbered_at: Option<usize>,
 }
 
-/// How the server takes a UID STORE.
+/// How the server takes a write command.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Storing {
-    /// The flags change and the tagged OK follows.
+    /// The command does what it says and the tagged OK follows.
     #[default]
     Stores,
     /// NO, with nothing changed.

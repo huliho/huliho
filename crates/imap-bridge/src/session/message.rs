@@ -74,17 +74,27 @@ impl Writable {
 /// line.
 pub const MAX_STORE_UIDS: usize = 100;
 
-/// One STORE: the flags these messages of the selected mailbox gain or
-/// lose.
+/// What one STORE changes on its messages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreItem {
+    /// `FLAGS` (RFC 3501 section 6.4.6).
+    Flags,
+    /// `X-GM-LABELS`, the labels of a message on a Gmail account.
+    Labels,
+}
+
+/// One STORE: the flags or labels these messages of the selected
+/// mailbox gain or lose.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreAsk<'a> {
     /// The messages, `MAX_STORE_UIDS` at most.
     pub uids: &'a [u32],
-    /// The flags as the wire carries them: a system flag a keyword maps
-    /// to or an atom.
+    /// The flags as the wire carries them, a system flag a keyword maps
+    /// to or an atom; or the labels as the server spells them.
     pub flags: &'a [String],
-    /// Whether the messages gain the flags; they lose them otherwise.
+    /// Whether the messages gain them; they lose them otherwise.
     pub add: bool,
+    pub item: StoreItem,
 }
 
 /// One `UID MOVE` or `UID COPY`: these messages of the selected mailbox

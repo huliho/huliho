@@ -3,9 +3,10 @@
 // Additional terms apply, see NOTICE.
 
 //! One window of the emails of a mailbox by `receivedAt` (RFC 8621
-//! section 4.4), answered from the memberships. Newest first is the
-//! order of the window index; oldest first is its exact reverse, so
-//! both walk the index and ties fall the same way in every answer.
+//! section 4.4), answered from the memberships, with or without a
+//! keyword. Newest first is the order of the window index; oldest first
+//! is its exact reverse, so both walk the index and ties fall the same
+//! way in every answer.
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -16,9 +17,14 @@ use super::{AccountKey, EmailId, Store, StoreError};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Query<'a> {
     pub mailbox: &'a str,
+    /// The keyword every email of the result carries, in lower case.
+    pub has_keyword: Option<&'a str>,
+    /// The keyword no email of the result carries, in lower case.
+    pub not_keyword: Option<&'a str>,
     pub ascending: bool,
     /// Whether only the first email of each thread stays (RFC 8621
-    /// section 4.4.3).
+    /// section 4.4.3); a thread's emails outside the filter do not
+    /// count.
     pub collapse_threads: bool,
 }
 
@@ -54,7 +60,7 @@ pub struct Queried {
 struct Direction {
     /// Whether the membership `n` sorts ahead of `m`.
     ahead: &'static str,
-    /// Whether `m` sorts ahead of the anchor at `?4` and `?5`.
+    /// Whether `m` sorts ahead of the anchor at `?6` and `?7`.
     before_anchor: &'static str,
     order: &'static str,
 }
@@ -62,27 +68,45 @@ struct Direction {
 const NEWEST_FIRST: Direction = Direction {
     ahead: "(n.received_at > m.received_at
              OR (n.received_at = m.received_at AND n.email_id < m.email_id))",
-    before_anchor: "(m.received_at > ?4 OR (m.received_at = ?4 AND m.email_id < ?5))",
+    before_anchor: "(m.received_at > ?6 OR (m.received_at = ?6 AND m.email_id < ?7))",
     order: "m.received_at DESC, m.email_id ASC",
 };
 
 const OLDEST_FIRST: Direction = Direction {
     ahead: "(n.received_at < m.received_at
              OR (n.received_at = m.received_at AND n.email_id > m.email_id))",
-    before_anchor: "(m.received_at < ?4 OR (m.received_at = ?4 AND m.email_id > ?5))",
+    before_anchor: "(m.received_at < ?6 OR (m.received_at = ?6 AND m.email_id > ?7))",
     order: "m.received_at ASC, m.email_id DESC",
 };
 
+/// Whether the email the column `email` names passes the keyword
+/// conditions at `?4` and `?5`: it carries the first where one is named
+/// and not the second (RFC 8621 section 4.4.1).
+fn keyword_test(email: &str) -> String {
+    let carries = |keyword: &str| {
+        format!(
+            "EXISTS (SELECT 1 FROM bridge_emails k, json_each(k.keywords) w
+                     WHERE k.account_key = ?1 AND k.id = {email} AND w.key = {keyword})"
+        )
+    };
+    format!(
+        "(?4 IS NULL OR {}) AND (?5 IS NULL OR NOT {})",
+        carries("?4"),
+        carries("?5")
+    )
+}
+
 impl Direction {
     /// The rows of the result: the memberships of the mailbox at `?2`
-    /// and, with `?3` set, only those no email of the same thread in
-    /// that mailbox sorts ahead of. CROSS JOIN fixes the join order, so
-    /// the planner takes the thread index and the membership key without
-    /// statistics instead of scanning the mailbox once per row.
+    /// that pass the keyword conditions and, with `?3` set, only those
+    /// no email of the same thread in that mailbox that passes them
+    /// sorts ahead of. CROSS JOIN fixes the join order, so the planner
+    /// takes the thread index and the membership key without statistics
+    /// instead of scanning the mailbox once per row.
     fn rows(&self) -> String {
         format!(
             "FROM bridge_memberships m
-             WHERE m.account_key = ?1 AND m.mailbox_id = ?2
+             WHERE m.account_key = ?1 AND m.mailbox_id = ?2 AND {}
                AND (?3 = 0 OR NOT EXISTS (
                    SELECT 1 FROM bridge_emails e
                    CROSS JOIN bridge_emails o
@@ -91,7 +115,9 @@ impl Direction {
                      ON n.account_key = o.account_key AND n.email_id = o.id
                     AND n.mailbox_id = m.mailbox_id
                    WHERE e.account_key = m.account_key AND e.id = m.email_id
-                     AND {}))",
+                     AND {} AND {}))",
+            keyword_test("m.email_id"),
+            keyword_test("o.id"),
             self.ahead
         )
     }
@@ -166,12 +192,15 @@ struct Scope<'a> {
 impl Scope<'_> {
     fn total(&self) -> Result<u64, StoreError> {
         let sql = format!("SELECT COUNT(*) {}", self.direction.rows());
+        let query = self.query;
         Ok(self.connection.query_row(
             &sql,
             params![
                 self.key.as_str(),
-                self.query.mailbox,
-                self.query.collapse_threads
+                query.mailbox,
+                query.collapse_threads,
+                query.has_keyword,
+                query.not_keyword
             ],
             |row| row.get(0),
         )?)
@@ -181,14 +210,17 @@ impl Scope<'_> {
     /// not hold it.
     fn index_of(&self, anchor: &str) -> Result<Option<u64>, StoreError> {
         let rows = self.direction.rows();
+        let query = self.query;
         let received_at: Option<i64> = self
             .connection
             .query_row(
-                &format!("SELECT m.received_at {rows} AND m.email_id = ?4"),
+                &format!("SELECT m.received_at {rows} AND m.email_id = ?6"),
                 params![
                     self.key.as_str(),
-                    self.query.mailbox,
-                    self.query.collapse_threads,
+                    query.mailbox,
+                    query.collapse_threads,
+                    query.has_keyword,
+                    query.not_keyword,
                     anchor
                 ],
                 |row| row.get(0),
@@ -205,8 +237,10 @@ impl Scope<'_> {
             &sql,
             params![
                 self.key.as_str(),
-                self.query.mailbox,
-                self.query.collapse_threads,
+                query.mailbox,
+                query.collapse_threads,
+                query.has_keyword,
+                query.not_keyword,
                 received_at,
                 anchor
             ],
@@ -217,17 +251,20 @@ impl Scope<'_> {
 
     fn ids(&self, position: u64, limit: u32) -> Result<Vec<EmailId>, StoreError> {
         let sql = format!(
-            "SELECT m.email_id {} ORDER BY {} LIMIT ?4 OFFSET ?5",
+            "SELECT m.email_id {} ORDER BY {} LIMIT ?6 OFFSET ?7",
             self.direction.rows(),
             self.direction.order
         );
+        let query = self.query;
         let mut statement = self.connection.prepare_cached(&sql)?;
         let ids = statement
             .query_map(
                 params![
                     self.key.as_str(),
-                    self.query.mailbox,
-                    self.query.collapse_threads,
+                    query.mailbox,
+                    query.collapse_threads,
+                    query.has_keyword,
+                    query.not_keyword,
                     limit,
                     i64::try_from(position).unwrap_or(i64::MAX)
                 ],
@@ -254,8 +291,11 @@ mod tests {
         store
             .read(|connection| {
                 let mut statement = connection.prepare(&sql)?;
+                let keywords = (None::<&str>, None::<&str>);
                 let steps = statement
-                    .query_map(params!["a", "m", 1], |row| row.get::<_, String>(3))?
+                    .query_map(params!["a", "m", 1, keywords.0, keywords.1], |row| {
+                        row.get::<_, String>(3)
+                    })?
                     .collect::<Result<_, _>>()?;
                 Ok(steps)
             })

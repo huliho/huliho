@@ -86,8 +86,15 @@ impl Labels {
         })
     }
 
+    /// The label mailbox a starred message of the folder is a member of,
+    /// where the folder shows labels: the server keeps `\Starred` and
+    /// `\Flagged` together.
+    pub(super) fn starred(&self) -> Option<&MailboxId> {
+        self.by_label.get("\\Flagged").filter(|_| self.shown)
+    }
+
     /// The mailboxes a row of `folder` with these labels is a member of.
-    fn memberships(&self, folder: &MailboxId, labels: &[String]) -> BTreeSet<MailboxId> {
+    pub(super) fn memberships(&self, folder: &MailboxId, labels: &[String]) -> BTreeSet<MailboxId> {
         let mut found = BTreeSet::from([folder.clone()]);
         if self.shown {
             found.extend(
@@ -266,7 +273,7 @@ pub(super) fn row_at(
         .optional()?)
 }
 
-fn current_memberships(
+pub(super) fn current_memberships(
     connection: &Connection,
     key: &AccountKey,
     email: &EmailId,
@@ -280,7 +287,7 @@ fn current_memberships(
     Ok(found)
 }
 
-fn replace_memberships(
+pub(super) fn replace_memberships(
     transaction: &Transaction<'_>,
     key: &AccountKey,
     row: &Labeled<'_>,

@@ -45,6 +45,32 @@ impl Capabilities {
     pub fn iter(&self) -> impl Iterator<Item = &str> {
         self.names.iter().map(String::as_str)
     }
+
+    /// The commands the server offers for moving and expunging mail.
+    #[must_use]
+    pub fn moving(&self) -> Moving {
+        Moving {
+            move_command: self.has("MOVE"),
+            uidplus: self.has("UIDPLUS"),
+        }
+    }
+}
+
+/// How a server moves mail: `UID MOVE` (RFC 6851) or, with UIDPLUS, a
+/// copy and a `UID EXPUNGE` of the same set (RFC 4315), which a destroy
+/// needs as well.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Moving {
+    pub move_command: bool,
+    pub uidplus: bool,
+}
+
+impl Moving {
+    /// Whether the server moves mail at all.
+    #[must_use]
+    pub fn moves(self) -> bool {
+        self.move_command || self.uidplus
+    }
 }
 
 impl Extend<String> for Capabilities {
@@ -134,6 +160,20 @@ fn name(capability: &Capability<'_>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn advertised(names: &[&str]) -> Capabilities {
+        names.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_server_moves_mail_with_move_or_uidplus_rfc6851_rfc4315() {
+        let both = advertised(&["move", "UIDPLUS"]).moving();
+        assert!(both.move_command && both.uidplus && both.moves());
+        assert!(advertised(&["MOVE"]).moving().moves());
+        let uidplus = advertised(&["UIDPLUS"]).moving();
+        assert!(uidplus.moves() && !uidplus.move_command);
+        assert!(!advertised(&["IMAP4rev1"]).moving().moves());
+    }
 
     #[test]
     fn a_capability_matches_without_regard_to_case_rfc9051_9_note_1() {

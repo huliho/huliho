@@ -10,7 +10,9 @@
 
 mod session_rig;
 
-use huliho_imap_bridge::session::{ImapSession, MoveAsk, Moved, Session, SessionError, StoreAsk};
+use huliho_imap_bridge::session::{
+    ImapSession, MoveAsk, Moved, Session, SessionError, StoreAsk, StoreItem,
+};
 use huliho_imap_bridge::testing::imap::FakeImap;
 use huliho_imap_bridge::testing::mailboxes::{ALL_MAIL, TRASH};
 use huliho_imap_bridge::testing::{Behavior, Extension, Folder, Mailboxes, Message, Storing};
@@ -186,6 +188,7 @@ async fn a_read_only_folder_takes_no_write_and_nothing_is_sent_rfc3501_6_3_1() {
         uids: &[1],
         flags: &flags,
         add: true,
+        item: StoreItem::Flags,
     };
     let refusals = [
         session.uid_store(&store).await.err(),

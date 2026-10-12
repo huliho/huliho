@@ -51,6 +51,62 @@ fn logins(transcript: &Transcript) -> Vec<&str> {
         .collect()
 }
 
+/// The text of a server line, its literals left out.
+fn text_of(line: &huliho_imap_bridge::testing::transcript::Line) -> String {
+    let texts = line.0.iter().filter_map(|segment| match segment {
+        Segment::Text(text) => Some(text.as_str()),
+        Segment::Literal { .. } => None,
+    });
+    texts.collect()
+}
+
+/// The last quoted string of a line, its escapes undone.
+fn last_quoted(text: &str) -> Option<String> {
+    let end = text.trim_end().strip_suffix('"')?;
+    let start = end.rfind(" \"")?;
+    Some(end[start + 2..].replace("\\\\", "\\"))
+}
+
+/// Every command of the transcript that stores `\Deleted` or expunges,
+/// each with whether a Spam or Trash store was selected when it went out.
+fn expunging(transcript: &Transcript) -> Vec<(bool, String)> {
+    let mut bins = Vec::new();
+    let mut found = Vec::new();
+    for session in &transcript.sessions {
+        let mut selected = None;
+        for exchange in &session.exchanges {
+            if let Some(client) = &exchange.client {
+                if client.contains(" SELECT ") || client.contains(" EXAMINE ") {
+                    selected = last_quoted(client);
+                }
+                if client.contains("\\Deleted") || client.contains("EXPUNGE") {
+                    let in_bin = selected.as_ref().is_some_and(|name| bins.contains(name));
+                    found.push((in_bin, client.clone()));
+                }
+            }
+            for text in exchange.server.iter().map(text_of) {
+                let bin = text.contains("\\Junk") || text.contains("\\Trash");
+                if text.starts_with("* LIST (") && bin {
+                    bins.extend(last_quoted(&text));
+                }
+            }
+        }
+    }
+    found
+}
+
+/// No `\Deleted` and no expunge outside the Spam and Trash stores, so
+/// archive never expunges whatever the account's expunge settings say;
+/// a destroy in Trash does both there.
+fn expunges_in_spam_and_trash_alone(transcript: &Transcript) {
+    let found = expunging(transcript);
+    assert!(found.iter().all(|(in_bin, _)| *in_bin), "{found:#?}");
+    assert!(
+        found.iter().any(|(_, line)| line.contains("UID EXPUNGE ")),
+        "{found:#?}"
+    );
+}
+
 /// The length of every body text the transcript holds.
 fn body_lengths(transcript: &Transcript) -> Vec<usize> {
     let mut lengths = Vec::new();
@@ -111,6 +167,7 @@ async fn the_suite_recorded_off_the_scripted_server_replays_the_same_way() {
         !body_lengths(&transcript).is_empty(),
         "the previews were fetched"
     );
+    expunges_in_spam_and_trash_alone(&transcript);
     let replayed = Suite::replaying(transcript, STEP).await;
     Scenario::new(replayed, Second::Nobody).run().await;
 }
@@ -126,6 +183,7 @@ async fn the_gmail_transcript_replays_the_scenario_suite() {
     for length in body_lengths(&transcript) {
         assert!(length <= asked, "a body of {length} bytes passes the ask");
     }
+    expunges_in_spam_and_trash_alone(&transcript);
     let replayed = Suite::replaying(transcript, STEP).await;
     Scenario::new(replayed, Second::Nobody).run().await;
 }

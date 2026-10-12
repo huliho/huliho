@@ -15,6 +15,7 @@ use rusqlite::{Connection, Row, Transaction, params};
 use super::changes::{ChangeKind, ObjectType, log, next_sequence, prune, state_of};
 use super::folders::{self, FolderWrite};
 use super::{AccountKey, MailboxId, Store, StoreError};
+use crate::session::Moving;
 
 /// What one listing pass knows about a mailbox before the store names
 /// its row: the parent by wire name, since the parent's id may not
@@ -67,6 +68,12 @@ pub struct MailboxSnapshot {
     /// folder whose first sync is done and, on Gmail, a label mailbox
     /// once the All Mail store is.
     pub done: HashSet<MailboxId>,
+    /// Whether the account is a Gmail account: some row carries a label,
+    /// which is how a write tells it too.
+    pub gmail: bool,
+    /// The commands the server offers for moving mail, as the last
+    /// mailbox pass of this process read them; none before the first.
+    pub moving: Moving,
 }
 
 const COLUMNS: &str = "id, parent_id, name, imap_name, role, sort_order, subscribed, selectable, \
@@ -90,31 +97,66 @@ impl Store {
         key: &AccountKey,
         found: &[MailboxFacts],
     ) -> Result<u64, StoreError> {
-        self.write(key, |transaction| apply(transaction, key, found))
+        self.write(key, |transaction| apply(transaction, key, found, false))
+    }
+
+    /// One mailbox pass: [`Store::apply_mailboxes`] with the commands the
+    /// server offers for moving mail as the pass read them. When either
+    /// is new to this process or changed, every mailbox reads as updated
+    /// under the pass's state, since its rights follow them. The words
+    /// are checked and recorded under one lock around the write, and a
+    /// write that fails records nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns the database error.
+    pub fn apply_pass(
+        &self,
+        key: &AccountKey,
+        found: &[MailboxFacts],
+        moving: Moving,
+    ) -> Result<u64, StoreError> {
+        let mut recorded = self.moving_lock();
+        let flipped = recorded.get(key) != Some(&moving);
+        let state = self.write(key, |transaction| apply(transaction, key, found, flipped))?;
+        recorded.insert(key.clone(), moving);
+        Ok(state)
     }
 
     /// Every mailbox of the account by sort order then name, with the
-    /// counts and the state they belong to.
+    /// counts and the state they belong to. The commands the server
+    /// offers for moving mail are read under the lock a pass records
+    /// them under, so the words belong to the rows.
     ///
     /// # Errors
     ///
     /// Returns the database error.
     pub fn mailbox_snapshot(&self, key: &AccountKey) -> Result<MailboxSnapshot, StoreError> {
+        // Held through the read, so no pass can land between the two.
+        let recorded = self.moving_lock();
+        let moving = recorded.get(key).copied().unwrap_or_default();
         self.read(|connection| {
+            let rows = read_rows(connection, key)?;
+            let gmail = rows.iter().any(|row| row.facts.gmail_label.is_some());
             Ok(MailboxSnapshot {
                 state: state_of(connection, key)?,
-                rows: read_rows(connection, key)?,
+                rows,
                 counts: read_counts(connection, key)?,
                 done: read_done(connection, key)?,
+                gmail,
+                moving,
             })
         })
     }
 }
 
+/// The pass's rows written; with `rights_moved` every mailbox the pass
+/// found reads as updated.
 fn apply(
     transaction: &Transaction<'_>,
     key: &AccountKey,
     found: &[MailboxFacts],
+    rights_moved: bool,
 ) -> Result<u64, StoreError> {
     let existing: HashMap<String, MailboxRow> = read_rows(transaction, key)?
         .into_iter()
@@ -177,6 +219,13 @@ fn apply(
             params![key.as_str(), id],
         )?;
         changes.push(((*id).clone(), ChangeKind::Destroyed));
+    }
+    if rights_moved {
+        for id in ids.values() {
+            if !changes.iter().any(|(changed, _)| changed == id) {
+                changes.push((id.clone(), ChangeKind::Updated));
+            }
+        }
     }
     if changes.is_empty() {
         return state_of(transaction, key);

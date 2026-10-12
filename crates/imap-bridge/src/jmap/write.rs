@@ -2,61 +2,151 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! The keywords an `Email/set` asked for, stored on the server between
-//! two passes over the request: per store folder a SELECT, then one
-//! STORE per set of messages that gain or lose the same flags, on the
-//! account's conversation under the lock and the deadline. What the
-//! server took is then written to the rows as one state. A write that
-//! fails leaves its rows as they were; the next refresh reads what the
-//! server holds.
+//! What an `Email/set` asked, done on the server between two passes over
+//! the request, on the account's conversation under the lock and the
+//! deadline. Per store folder a SELECT, then the keyword STOREs, the
+//! label STOREs of a Gmail account, the moves and the destroys, each
+//! group one command set; a move a Gmail account makes into All Mail
+//! has its labels stored there afterwards. What the server took is then
+//! written to the rows as one state. A write that fails leaves its rows
+//! as they were; the next refresh reads what the server holds.
 
-use std::collections::{BTreeMap, HashMap};
+mod keywords;
+mod moves;
+mod plan;
+mod restore;
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde_json::{Map, Value, json};
 use tokio::time::{Instant, timeout};
 
-use super::set::{Edit, MAX_UPDATE_KEYWORD_BYTES, Outcome, SetAsk, SetError};
+use super::set::{Outcome, SetAsk, SetError, Updated};
 use crate::mailboxes::SyncError;
 use crate::runtime::{Connector, Link, Wire};
-use crate::session::{MAX_STORE_UIDS, Session, SessionError, StoreAsk, Writable};
-use crate::store::{EmailId, KeywordChange, KeywordRow, MailboxId, MailboxRow};
-use crate::sync::{Cache, blocking, mapping};
+use crate::session::{Moving, Session, SessionError, Writable};
+use crate::store::{EmailId, MailboxId, MailboxRow, SetWrite, SetWritten};
+use crate::sync::{Cache, blocking};
 
-/// One email whose message a STORE names.
+/// One email a command names.
+#[derive(Debug, Clone)]
 struct Member {
-    /// Where its result stands among the updates of the ask.
+    /// Where its result stands among the updates and destroys of the
+    /// ask.
     index: usize,
     id: EmailId,
     uid: u32,
 }
 
-/// The messages of one folder that gain and lose the same keywords.
-struct Group {
-    edit: Edit,
-    /// The keywords the messages lose: the ones the edit clears and,
-    /// for a whole edit, the ones a row held beyond it.
-    remove: Vec<String>,
-    members: Vec<Member>,
+/// Where one update or destroy stands while the work runs: the parts it
+/// still waits on and the first failure, which ends it.
+#[derive(Debug, Clone, Default)]
+struct Tally {
+    left: u8,
+    failed: Option<SetError>,
 }
 
-/// What one ask works through: the groups by folder, the folder rows
-/// the write selects by, the result of every update and what the server
-/// took.
+/// The work of one folder, in the order it runs.
+#[derive(Default)]
+struct Folder {
+    keywords: Vec<keywords::Group>,
+    labels: Vec<moves::LabelGroup>,
+    moves: Vec<moves::MoveGroup>,
+    destroys: Vec<Member>,
+}
+
+impl Folder {
+    fn members(&self) -> impl Iterator<Item = &Member> {
+        let keywords = self.keywords.iter().flat_map(|group| &group.members);
+        let labels = self.labels.iter().flat_map(|group| &group.members);
+        let moves = self.moves.iter().flat_map(|group| &group.members);
+        keywords.chain(labels).chain(moves).chain(&self.destroys)
+    }
+}
+
+/// An email as its update should leave it: what the server changes
+/// beyond that is part of the answer (RFC 8620 section 5.3).
+#[derive(Debug, Clone, Default)]
+struct Expected {
+    mailboxes: BTreeSet<MailboxId>,
+    keywords: BTreeMap<String, bool>,
+}
+
+/// What one ask works through.
 struct Work {
-    folders: BTreeMap<MailboxId, Vec<Group>>,
+    folders: BTreeMap<MailboxId, Folder>,
     rows: HashMap<MailboxId, MailboxRow>,
-    results: Vec<(String, Result<(), SetError>)>,
-    stored: Vec<KeywordChange>,
+    /// The updates of the ask, then its destroys.
+    tallies: Vec<Tally>,
+    /// What the server took, for the rows.
+    stored: SetWrite,
+    /// Moves into All Mail whose labels are stored there afterwards.
+    restores: Vec<restore::Restore>,
+    moving: Moving,
     state: u64,
 }
 
-/// Stores what the ask names and answers what came of every update. A
-/// state other than the one `ifInState` names ends it before anything
-/// is sent. The conversation is held from that check until the rows are
-/// written, so two writes of one account never pass on one state. The
-/// writes of one round share a deadline: `until` is set by the first
-/// that goes to the server and a write that finds it over sends nothing.
+impl Work {
+    /// Whether the account is a Gmail account, as the rows are told too.
+    fn gmail(&self) -> bool {
+        self.stored.gmail
+    }
+
+    /// Whether the server moves mail for this account. A Gmail account
+    /// moves with `UID MOVE` alone: a copy and an expunge would run in
+    /// All Mail, where the account's own setting decides what an expunge
+    /// does.
+    fn moves_mail(&self) -> bool {
+        if self.gmail() {
+            self.moving.move_command
+        } else {
+            self.moving.moves()
+        }
+    }
+
+    /// A part of the member's update or destroy is done.
+    fn done(&mut self, member: &Member) {
+        let tally = &mut self.tallies[member.index];
+        tally.left = tally.left.saturating_sub(1);
+    }
+
+    /// Every update or destroy of these members ends with the error,
+    /// unless an earlier failure ended it.
+    fn settle(&mut self, members: &[Member], error: &SetError) {
+        for member in members {
+            let failed = &mut self.tallies[member.index].failed;
+            failed.get_or_insert_with(|| error.clone());
+        }
+    }
+
+    /// The members whose update or destroy still stands, in the order
+    /// of their UIDs, so neighbors fold into ranges.
+    fn standing(&self, members: &[Member]) -> Vec<Member> {
+        let mut standing: Vec<Member> = members
+            .iter()
+            .filter(|member| self.tallies[member.index].failed.is_none())
+            .cloned()
+            .collect();
+        standing.sort_unstable_by_key(|member| member.uid);
+        standing
+    }
+
+    /// The wire name of a folder the store holds.
+    fn wire_name(&self, folder: &MailboxId) -> Option<&str> {
+        let row = self.rows.get(folder)?;
+        Some(row.facts.imap_name.as_str())
+    }
+}
+
+/// Does what the ask names and answers what came of every update and
+/// destroy. A state other than the one `ifInState` names ends it before
+/// anything is sent. The conversation is held from that check until the
+/// rows are written, so two writes of one account never pass on one
+/// state. The writes of one round share a deadline: `until` is set by
+/// the first that goes to the server and a write that finds it over
+/// sends nothing.
 ///
 /// # Errors
 ///
@@ -68,7 +158,7 @@ pub(super) async fn apply<C: Connector>(
     until: &mut Option<Instant>,
 ) -> Result<Outcome, SyncError> {
     let mut wire = link.wire.lock().await;
-    let Some(mut work) = planned(cache, ask).await? else {
+    let Some((mut work, expected)) = plan::planned(cache, ask).await? else {
         return Ok(Outcome::StateMismatch);
     };
     if !work.folders.is_empty() {
@@ -77,30 +167,87 @@ pub(super) async fn apply<C: Connector>(
         send(&mut wire, cache, &mut work, left).await;
     }
     let Work {
-        mut results,
+        tallies,
         stored,
         state,
         ..
     } = work;
-    if stored.is_empty() {
-        return Ok(Outcome::Stored {
-            old_state: state,
-            new_state: state,
-            results,
-        });
-    }
-    let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
-    let written = blocking(move || store.write_keywords(&key, &stored)).await?;
-    for (id, result) in &mut results {
-        if written.gone.iter().any(|gone| gone.as_str() == id) {
-            *result = Err(SetError::NotFound);
-        }
-    }
+    let written = if stored.is_empty() {
+        None
+    } else {
+        let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
+        Some(blocking(move || store.write_set(&key, &stored)).await?)
+    };
+    let (old_state, new_state) = written
+        .as_ref()
+        .map_or((state, state), |written| (written.before, written.after));
+    let (of_updates, of_destroys) = tallies.split_at(ask.updates.len());
+    let updated = ask
+        .updates
+        .iter()
+        .zip(of_updates)
+        .zip(&expected)
+        .map(|(((id, _), tally), expected)| {
+            let written = written.as_ref();
+            let result = ended(tally).and_then(|()| beyond(id, expected.as_ref(), written));
+            (id.clone(), result)
+        })
+        .collect();
+    let destroyed = ask
+        .destroy
+        .iter()
+        .zip(of_destroys)
+        .map(|(id, tally)| (id.clone(), ended(tally)))
+        .collect();
     Ok(Outcome::Stored {
-        old_state: written.before,
-        new_state: written.after,
-        results,
+        old_state,
+        new_state,
+        updated,
+        destroyed,
     })
+}
+
+/// How an update or a destroy ended: its failure or done. One a session
+/// left before its turn could not be asked.
+fn ended(tally: &Tally) -> Result<(), SetError> {
+    match (&tally.failed, tally.left) {
+        (Some(error), _) => Err(error.clone()),
+        (None, 0) => Ok(()),
+        (None, _) => Err(SetError::ServerUnavailable),
+    }
+}
+
+/// An update done: the properties the server changed beyond what the
+/// patch asked, as they stand. A row gone or moved elsewhere by the time
+/// it was written is not found.
+fn beyond(
+    id: &str,
+    expected: Option<&Expected>,
+    written: Option<&SetWritten>,
+) -> Result<Updated, SetError> {
+    let Some(written) = written else {
+        return Ok(None);
+    };
+    if written.stale.iter().any(|stale| stale.as_str() == id) {
+        return Err(SetError::NotFound);
+    }
+    let found = written.emails.get(&EmailId::from(id.to_owned()));
+    let (Some(expected), Some(found)) = (expected, found) else {
+        return Ok(None);
+    };
+    let mut changed = Map::new();
+    if found.mailboxes != expected.mailboxes {
+        let mailboxes: Map<String, Value> = found
+            .mailboxes
+            .iter()
+            .map(|mailbox| (mailbox.to_string(), Value::Bool(true)))
+            .collect();
+        changed.insert("mailboxIds".to_owned(), Value::Object(mailboxes));
+    }
+    if found.keywords != expected.keywords {
+        changed.insert("keywords".to_owned(), json!(found.keywords));
+    }
+    Ok((!changed.is_empty()).then_some(changed))
 }
 
 /// Sends the work on the account's session within what is left of the
@@ -111,9 +258,10 @@ async fn send<C: Connector>(wire: &mut Wire<C>, cache: &Cache, work: &mut Work, 
         return;
     }
     let run = async {
-        let Ok(session) = wire.session(cache).await else {
+        let Ok((session, moving)) = wire.session_with(cache).await else {
             return false;
         };
+        work.moving = moving;
         store(session, work).await
     };
     if !timeout(left, run).await.unwrap_or(false) {
@@ -121,295 +269,95 @@ async fn send<C: Connector>(wire: &mut Wire<C>, cache: &Cache, work: &mut Work, 
     }
 }
 
-/// Where the emails lie and what each update asks of its message;
-/// `None` when the state is not the one the ask names. An id the
-/// account does not hold is not found, a row no UID names cannot be
-/// written now and an update that names no keyword is done.
-async fn planned(cache: &Cache, ask: &SetAsk) -> Result<Option<Work>, SyncError> {
-    let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
-    let ids: Vec<String> = ask.updates.iter().map(|(id, _)| id.clone()).collect();
-    let (state, found, rows) = blocking(move || {
-        let names: Vec<&str> = ids.iter().map(String::as_str).collect();
-        let (state, found) = store.keyword_rows(&key, &names)?;
-        let rows: HashMap<MailboxId, MailboxRow> = store
-            .mailbox_snapshot(&key)?
-            .rows
-            .into_iter()
-            .map(|row| (row.id.clone(), row))
-            .collect();
-        Ok((state, found, rows))
-    })
-    .await?;
-    if ask
-        .if_in_state
-        .as_ref()
-        .is_some_and(|named| *named != state.to_string())
-    {
-        return Ok(None);
-    }
-    let mut work = Work {
-        folders: BTreeMap::new(),
-        rows,
-        results: Vec::with_capacity(ask.updates.len()),
-        stored: Vec::new(),
-        state,
-    };
-    for (index, (id, edit)) in ask.updates.iter().enumerate() {
-        let row = found.iter().find(|row| row.id.as_str() == id);
-        let result = match row.map(|row| (row, row.uid)) {
-            None => Err(SetError::NotFound),
-            Some((_, None)) => Err(SetError::ServerUnavailable),
-            Some((row, Some(uid))) => {
-                let remove = removed(edit, row);
-                if edit.set.is_empty() && remove.is_empty() {
-                    Ok(())
-                } else {
-                    let member = Member {
-                        index,
-                        id: row.id.clone(),
-                        uid,
-                    };
-                    let groups = work.folders.entry(row.folder.clone()).or_default();
-                    join(groups, edit, remove, member);
-                    // Stands until the server took the flags.
-                    Err(SetError::ServerUnavailable)
-                }
-            }
-        };
-        work.results.push((id.clone(), result));
-    }
-    Ok(Some(work))
-}
-
-/// The keywords the message of this row loses under the edit.
-fn removed(edit: &Edit, row: &KeywordRow) -> Vec<String> {
-    if !edit.whole {
-        return edit.clear.clone();
-    }
-    row.keywords
-        .keys()
-        .filter(|keyword| !edit.set.contains(keyword))
-        .cloned()
-        .collect()
-}
-
-/// Puts the member with the others that gain and lose the same.
-fn join(groups: &mut Vec<Group>, edit: &Edit, remove: Vec<String>, member: Member) {
-    let same = groups
-        .iter_mut()
-        .find(|group| group.edit == *edit && group.remove == remove);
-    match same {
-        Some(group) => group.members.push(member),
-        None => groups.push(Group {
-            edit: edit.clone(),
-            remove,
-            members: vec![member],
-        }),
-    }
-}
-
-/// Every folder on one session. Whether the session still stands; a
-/// failure that ends it leaves what comes after it as it was.
+/// Every folder on one session, then the labels of what moved into All
+/// Mail. Whether the session still stands; a failure that ends it
+/// leaves what comes after it as it was.
 async fn store<S: Session>(session: &mut S, work: &mut Work) -> bool {
     let folders = std::mem::take(&mut work.folders);
-    for (folder, groups) in folders {
-        if !folder_stored(session, work, &folder, groups).await {
+    for (folder, items) in folders {
+        if !folder_stored(session, work, &folder, items).await {
             return false;
         }
     }
-    true
+    restore::restored(session, work).await
 }
 
-/// One folder: SELECT, then its groups in order. Whether the session
-/// still stands.
+/// One folder: SELECT, then its keywords, labels, moves and destroys in
+/// order. A server that offers no way to move mail gets no move and no
+/// label asked, a Gmail server without MOVE no move and one without
+/// UIDPLUS no destroy; a folder with nothing left to do is not selected.
+/// Whether the session still stands.
 async fn folder_stored<S: Session>(
     session: &mut S,
     work: &mut Work,
     folder: &MailboxId,
-    mut groups: Vec<Group>,
+    items: Folder,
 ) -> bool {
-    // A folder gone from the store or renumbered cannot be written now.
-    let Some(facts) = work.rows.get(folder).map(|row| &row.facts) else {
-        return true;
-    };
-    let (name, uid_validity) = (facts.imap_name.clone(), facts.uid_validity);
-    let writable = match session.select(&name).await {
-        Ok(writable) if Some(writable.uid_validity) == uid_validity => writable,
-        Ok(_) => return true,
-        Err(error) => {
-            let (ends, stands) = failure(&error);
-            for group in &groups {
-                settle(work, &group.members, &ends);
-            }
-            return stands;
-        }
-    };
-    // A folder the server opened read-only takes no STORE.
-    if writable.read_only {
-        for group in &groups {
-            settle(work, &group.members, &SetError::Forbidden);
-        }
+    if !work.moving.moves() {
+        let labels = items.labels.iter().flat_map(|group| &group.members);
+        let labels: Vec<Member> = labels.cloned().collect();
+        work.settle(&labels, &SetError::Forbidden);
+    }
+    if !work.moves_mail() {
+        let moves = items.moves.iter().flat_map(|group| &group.members);
+        let moves: Vec<Member> = moves.cloned().collect();
+        work.settle(&moves, &SetError::Forbidden);
+    }
+    if !work.moving.uidplus {
+        work.settle(&items.destroys, &SetError::Forbidden);
+    }
+    let members: Vec<Member> = items.members().cloned().collect();
+    if work.standing(&members).is_empty() {
         return true;
     }
-    for group in &mut groups {
-        if let Err(error) = lasting(&writable, group) {
-            settle(work, &group.members, &error);
-            continue;
-        }
-        group.members.sort_unstable_by_key(|member| member.uid);
-        if !group_stored(session, work, folder, group).await {
-            return false;
-        }
-    }
-    true
+    let Some((writable, stands)) = selected(session, work, folder, &members).await else {
+        return true;
+    };
+    let Some(writable) = writable else {
+        return stands;
+    };
+    keywords::stored(session, work, (folder, &writable), items.keywords).await
+        && moves::labeled(session, work, folder, items.labels).await
+        && moves::moved(session, work, (folder, &writable), items.moves).await
+        && moves::destroyed(session, work, (folder, &writable), &items.destroys).await
 }
 
-/// One group over sets of `MAX_STORE_UIDS` messages in the order of
-/// their UIDs, so neighbors fold into ranges. A set the server took is
-/// kept whatever comes of the next one. Whether the session still
-/// stands.
-async fn group_stored<S: Session>(
+/// SELECT of a folder for its members' writes. `None` when the folder
+/// is gone from the store or renumbered, which cannot be written now; a
+/// folder the server refused or opened read-only settles its members
+/// and comes back without a mailbox, with whether the session stands.
+async fn selected<S: Session>(
     session: &mut S,
     work: &mut Work,
     folder: &MailboxId,
-    group: &Group,
-) -> bool {
-    for members in group.members.chunks(MAX_STORE_UIDS) {
-        match commands(session, group, members).await {
-            Ok(()) => keep(work, folder, group, members),
-            Err(error) => {
-                let (ends, stands) = failure(&error);
-                settle(work, members, &ends);
-                if !stands {
-                    return false;
-                }
-            }
+    members: &[Member],
+) -> Option<(Option<Writable>, bool)> {
+    let facts = &work.rows.get(folder)?.facts;
+    let (name, uid_validity) = (facts.imap_name.clone(), facts.uid_validity);
+    match session.select(&name).await {
+        Ok(writable) if Some(writable.uid_validity) != uid_validity => None,
+        // A folder the server opened read-only takes no write.
+        Ok(writable) if writable.read_only => {
+            work.settle(members, &SetError::Forbidden);
+            Some((None, true))
+        }
+        Ok(writable) => Some((Some(writable), true)),
+        Err(error) => {
+            let (ends, stands) = failure(&error);
+            work.settle(members, &ends);
+            Some((None, stands))
         }
     }
-    true
 }
 
-/// What a failed SELECT or STORE comes to: the error its updates end
-/// with and whether the session still stands. A NO is the server's
-/// refusal and keeps the session, an answer that cannot be read is its
-/// failure and costs it, anything else leaves the server unreached.
+/// What a failed command comes to: the error its updates end with and
+/// whether the session still stands. A NO is the server's refusal and
+/// keeps the session, an answer that cannot be read is its failure and
+/// costs it, anything else leaves the server unreached.
 fn failure(error: &SessionError) -> (SetError, bool) {
     match error {
         SessionError::Refused => (SetError::ServerFail, true),
         SessionError::Protocol(_) => (SetError::ServerFail, false),
         _ => (SetError::ServerUnavailable, false),
-    }
-}
-
-/// Whether the folder keeps every flag of the group for good: a system
-/// flag it does not keep is forbidden, a keyword it does not keep is an
-/// invalid property under the path the patch named it by.
-fn lasting(writable: &Writable, group: &Group) -> Result<(), SetError> {
-    let named = || group.edit.set.iter().chain(&group.remove);
-    let lost = |keyword: &&String| !writable.keeps(&mapping::flag(keyword));
-    if named()
-        .filter(lost)
-        .any(|keyword| mapping::is_system_flag(&mapping::flag(keyword)))
-    {
-        return Err(SetError::Forbidden);
-    }
-    let paths: Vec<String> = named()
-        .filter(lost)
-        .map(|keyword| group.edit.path(keyword))
-        .collect();
-    if paths.is_empty() {
-        Ok(())
-    } else {
-        Err(SetError::InvalidProperties(paths))
-    }
-}
-
-/// The STOREs of one set of messages: what they gain, then what they
-/// lose, the flags of each in runs that fit a command line.
-async fn commands<S: Session>(
-    session: &mut S,
-    group: &Group,
-    members: &[Member],
-) -> Result<(), SessionError> {
-    let uids: Vec<u32> = members.iter().map(|member| member.uid).collect();
-    for (keywords, add) in [(&group.edit.set, true), (&group.remove, false)] {
-        let flags: Vec<String> = keywords
-            .iter()
-            .map(|keyword| mapping::flag(keyword))
-            .collect();
-        for flags in runs(&flags) {
-            let ask = StoreAsk {
-                uids: &uids,
-                flags,
-                add,
-            };
-            session.uid_store(&ask).await?;
-        }
-    }
-    Ok(())
-}
-
-/// The flags in runs of `MAX_UPDATE_KEYWORD_BYTES` at most, each flag
-/// with its separator, so a STORE of one run over a full set of UIDs
-/// stays on one command line. A whole edit removes what the row held,
-/// which the bound on what an update names does not cover.
-fn runs(flags: &[String]) -> Vec<&[String]> {
-    let mut runs = Vec::new();
-    let (mut start, mut bytes) = (0, 0);
-    for (index, flag) in flags.iter().enumerate() {
-        let wide = flag.len() + 1;
-        if bytes + wide > MAX_UPDATE_KEYWORD_BYTES && index > start {
-            runs.push(&flags[start..index]);
-            (start, bytes) = (index, 0);
-        }
-        bytes += wide;
-    }
-    if start < flags.len() {
-        runs.push(&flags[start..]);
-    }
-    runs
-}
-
-/// The server took the set: its updates are done once the rows are
-/// written.
-fn keep(work: &mut Work, folder: &MailboxId, group: &Group, members: &[Member]) {
-    for member in members {
-        work.results[member.index].1 = Ok(());
-        work.stored.push(KeywordChange {
-            id: member.id.clone(),
-            folder: folder.clone(),
-            uid: member.uid,
-            add: group.edit.set.clone(),
-            remove: group.remove.clone(),
-        });
-    }
-}
-
-/// Every update of these members ends with the error.
-fn settle(work: &mut Work, members: &[Member], error: &SetError) {
-    for member in members {
-        work.results[member.index].1 = Err(error.clone());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The longest keyword (RFC 8621 section 4.1.1).
-    const LONGEST: usize = 255;
-
-    #[test]
-    fn flags_past_one_command_line_go_out_in_runs_that_fit() {
-        let flags: Vec<String> = (0..40).map(|n| format!("{n:0LONGEST$}")).collect();
-        let found = runs(&flags);
-        assert!(found.len() > 1);
-        for run in &found {
-            let bytes: usize = run.iter().map(|flag| flag.len() + 1).sum();
-            assert!(bytes <= MAX_UPDATE_KEYWORD_BYTES, "{bytes}");
-        }
-        assert_eq!(found.concat(), flags);
-        assert_eq!(runs(&flags[..3]), [&flags[..3]]);
-        assert!(runs(&[]).is_empty());
     }
 }

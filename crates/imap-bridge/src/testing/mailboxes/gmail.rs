@@ -4,10 +4,14 @@
 
 //! The Gmail shape of the scripted server: three stores, the system
 //! folders as labels over All Mail, the counts of a label folder from
-//! the labels of All Mail's messages and the edits a second client
-//! makes to labels and stores.
+//! the labels of All Mail's messages, a STORE of X-GM-LABELS with the
+//! Starred label and the `\Flagged` flag kept together, and the edits a
+//! second client makes to labels and stores.
 
-use super::{Extension, Mailboxes};
+use std::fmt::Write as _;
+
+use super::{Extension, Mailboxes, unquote};
+use crate::testing::fetch::in_set;
 use crate::testing::folder::Folder;
 use crate::testing::messages::Message;
 
@@ -24,6 +28,10 @@ const ALL: &str = "\\All";
 /// The label every message loses when it leaves All Mail for Spam or
 /// Trash.
 const INBOX_LABEL: &str = "\\Inbox";
+
+/// The label Gmail keeps together with the `\Flagged` flag.
+const STARRED: &str = "\\Starred";
+const FLAGGED: &str = "\\Flagged";
 
 /// What Gmail answers a GETQUOTAROOT with: one root without a name over
 /// the account's storage, in units of 1024 octets.
@@ -110,6 +118,50 @@ impl Mailboxes {
         });
     }
 
+    /// A STORE of X-GM-LABELS on the folder of that name: the messages
+    /// of the set gain or lose the labels and their mod-sequence moves
+    /// past the folder's; Starred moves `\Flagged` with it. Answers a
+    /// line per message where CONDSTORE is on, as Gmail does; `None`
+    /// while the extension is off.
+    pub(in crate::testing) fn store_labels(
+        &self,
+        name: &str,
+        (set, labels): (&str, &[String]),
+        add: bool,
+    ) -> Option<String> {
+        if !self.has(Extension::Gmail) {
+            return None;
+        }
+        let condstore = self.has(Extension::Condstore);
+        let mut answered = String::new();
+        self.edit(name, |folder| {
+            let (top, modseq) = (folder.top(), folder.highest_modseq + 1);
+            for (index, message) in folder.mail.iter_mut().enumerate() {
+                if !in_set(set, message.uid, top) {
+                    continue;
+                }
+                for label in labels {
+                    message
+                        .labels
+                        .retain(|held| !held.eq_ignore_ascii_case(label));
+                    if add {
+                        message.labels.push(label.clone());
+                    }
+                }
+                flag_by_star(message);
+                message.modseq = modseq;
+                if condstore {
+                    let (number, uid) = (index + 1, message.uid);
+                    let _ = write!(
+                        answered,
+                        "* {number} FETCH (UID {uid} MODSEQ ({modseq}))\r\n"
+                    );
+                }
+            }
+        });
+        Some(answered)
+    }
+
     /// The counts STATUS answers for a label folder while the extension
     /// is on: the messages of All Mail under its label and the unseen
     /// ones among them. `None` for a folder with mail of its own.
@@ -133,5 +185,45 @@ impl Mailboxes {
             .count();
         let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
         Some((count(labeled.len()), count(unseen)))
+    }
+}
+
+/// The labels of a STORE's list as the server reads them: an atom up to
+/// the next space, a quoted string with its escapes undone.
+pub(in crate::testing) fn labels_of(mut list: &str) -> Option<Vec<String>> {
+    let mut labels = Vec::new();
+    while !list.is_empty() {
+        let (label, rest) = if list.starts_with('"') {
+            unquote(list)?
+        } else {
+            let (atom, rest) = list.split_once(' ').unwrap_or((list, ""));
+            (atom.to_owned(), rest)
+        };
+        labels.push(label);
+        list = rest.trim_start();
+    }
+    Some(labels)
+}
+
+/// The Starred label follows the `\Flagged` flag.
+pub(in crate::testing) fn star_by_flag(message: &mut Message) {
+    let flagged = message.flags.iter().any(|flag| flag == FLAGGED);
+    message
+        .labels
+        .retain(|label| !label.eq_ignore_ascii_case(STARRED));
+    if flagged {
+        message.labels.push(STARRED.to_owned());
+    }
+}
+
+/// The `\Flagged` flag follows the Starred label.
+fn flag_by_star(message: &mut Message) {
+    let starred = message
+        .labels
+        .iter()
+        .any(|label| label.eq_ignore_ascii_case(STARRED));
+    message.flags.retain(|flag| flag != FLAGGED);
+    if starred {
+        message.flags.push(FLAGGED.to_owned());
     }
 }

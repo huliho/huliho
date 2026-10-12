@@ -89,7 +89,7 @@ impl Refresher {
             Err(error) => return Ok(ended(&error, false)),
         };
         let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
-        blocking(move || store.apply_mailboxes(&key, &found)).await?;
+        blocking(move || store.apply_pass(&key, &found.facts, found.moving)).await?;
         let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
         let snapshot = blocking(move || store.mailbox_snapshot(&key)).await?;
         let undone = snapshot
