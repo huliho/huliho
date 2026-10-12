@@ -35,6 +35,8 @@ pub(super) struct PreferencesView {
     line_height: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     dark_mail: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    after_action: Option<String>,
 }
 
 impl PreferencesView {
@@ -47,6 +49,7 @@ impl PreferencesView {
             PreferenceKey::FontSize => &mut self.font_size,
             PreferenceKey::LineHeight => &mut self.line_height,
             PreferenceKey::DarkMail => &mut self.dark_mail,
+            PreferenceKey::AfterAction => &mut self.after_action,
         };
         *slot = Some(word);
     }

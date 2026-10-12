@@ -38,6 +38,10 @@ const CREATED_NAME: &str = "Bijlagen é";
 const MOVE_FOLDERS: (&str, &str) = ("Drafts", "Archive");
 const COPY_FOLDERS: (&str, &str) = ("Sent", "Trash");
 
+/// The checks that change the account take turns: a count the move
+/// checks change mid-pass is an update the listing check would read.
+static ACCOUNT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// The status items the checks read a folder's UIDVALIDITY by.
 const VALIDITY: StatusItems = StatusItems { modseq: false };
 
@@ -126,6 +130,7 @@ async fn dovecot_rejects_a_wrong_password_on_submission() {
 
 #[tokio::test]
 async fn dovecot_lists_its_mailboxes_and_a_created_one_travels_through_changes() {
+    let _account = ACCOUNT.lock().await;
     let wire = utf7::encode(CREATED_NAME);
     clear(&wire).await;
     let mut editor = editor().await;
@@ -217,6 +222,7 @@ async fn uid_of(editor: &mut Editor, word: &str, number: u32) -> u32 {
 
 #[tokio::test]
 async fn dovecot_moves_a_message_and_names_its_new_uid_rfc6851_3_2() {
+    let _account = ACCOUNT.lock().await;
     let (from, to) = MOVE_FOLDERS;
     let mut editor = fresh(MOVE_FOLDERS, "move", &[1, 2]).await;
     let mut session = bridge_session().await;
@@ -241,6 +247,7 @@ async fn dovecot_moves_a_message_and_names_its_new_uid_rfc6851_3_2() {
 #[tokio::test]
 async fn dovecot_moves_by_copy_and_uid_expunge_and_keeps_a_message_another_client_marked_rfc4315_2_1()
  {
+    let _account = ACCOUNT.lock().await;
     let (from, to) = COPY_FOLDERS;
     let mut editor = fresh(COPY_FOLDERS, "copy", &[1, 2]).await;
     within(editor.select(from)).await.unwrap();

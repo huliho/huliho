@@ -3,8 +3,9 @@
 // Additional terms apply, see NOTICE.
 
 //! The steps of the Gmail scenario suite: the mailbox list with its
-//! roles, the first sync of the stores, an inbox window, thread
-//! grouping, the properties and previews of the seeded mail, a message
+//! roles and the quota the same pass read, the first sync of the stores,
+//! an inbox window, thread grouping, the properties and previews of the
+//! seeded mail, a message
 //! opened with its body and its blobs and marked read, then what a
 //! second client changes: a delivery, a flag, a label, a move to Spam
 //! and a deletion; then the moves of the first client. Every assertion
@@ -12,6 +13,7 @@
 //! of either.
 
 mod moving;
+mod quota;
 mod reading;
 
 use std::collections::HashMap;
@@ -234,6 +236,7 @@ impl Scenario {
             .call("Mailbox/get", json!({ "accountId": ACCOUNT, "ids": null }))
             .await;
         assert_eq!(listed["list"].as_array().unwrap().len(), rows.len());
+        self.quota().await;
     }
 
     async fn sync_the_stores(&mut self) {

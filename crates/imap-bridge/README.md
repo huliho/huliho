@@ -162,7 +162,8 @@ conversation for its sync. A conversation nobody used for five minutes
 next request. The host hands every account a `runtime::Registration`:
 its key, whether it is a Gmail account and the state its session object
 shows, which the host derives from what the object is built from, so
-the state never moves with the cache. `forget` stops an account's task,
+the state never moves with the cache; the bridge marks it while the
+server advertises QUOTA. `forget` stops an account's task,
 breaks off a blob still on its way and refuses every later write for
 its key, so the host deletes the rows (`store::remove_rows`) inside the
 transaction that removes the account.
@@ -412,7 +413,8 @@ name that cannot be sent back are protocol failures too. Every write
 needs a mailbox a SELECT opened for writing: after an EXAMINE, or a
 SELECT the server answered with `[READ-ONLY]`, the session refuses it
 before anything is sent. `Email/set` sends the moves and the expunge;
-no JMAP method sends the quota root.
+the mailbox pass sends the quota root where QUOTA is advertised, last
+in a refresh, so a quota the server cannot describe costs no folder.
 
 The rows live in `bridge_` tables inside the host's database.
 `store::MIGRATIONS` carries their schema for the host's migration list
@@ -424,7 +426,8 @@ to a log that the three `/changes` methods read, kept for the newest
 ten thousand rows. `jmap::handle` runs a Request object (RFC 8620
 section 3.3) against those rows and answers `Mailbox/get`,
 `Mailbox/changes`, `Email/get`, `Email/set`, `Email/query`,
-`Email/changes`, `Thread/get`, `Thread/changes` and `Core/echo`.
+`Email/changes`, `Thread/get`, `Thread/changes`, `Quota/get`,
+`Quota/changes` and `Core/echo`.
 `Email/get` serves the
 metadata, the header properties and the preview from the rows, the
 body properties and the `header:` forms from the server. `Email/query` serves the filter
@@ -436,12 +439,24 @@ answers `unsupportedFilter` or `unsupportedSort`. Result references
 resolve under a budget of one MiB per request, measured as the memory
 a copy of the resolved values takes; a reference past it answers
 `invalidResultReference`. `jmap::session_object` renders the session
-object with the core and mail capabilities and the vendor capability
-`https://huliho.com/jmap`, which carries the Mailbox property
-`syncedEmails` and is followed only when a request names it. The host
-supplies the URLs. `Sealer` is the trait behind which the host keeps
-its cryptography for the personal fields of an email row; the sync and
-`jmap::handle` reach it through `sync::Cache`.
+object with the core, mail and quota capabilities and the vendor
+capability `https://huliho.com/jmap`, which carries the Mailbox
+property `syncedEmails` and is followed only when a request names it.
+The account lists the quota capability where the server advertises
+QUOTA. The host supplies the URLs. `Sealer` is the trait behind which
+the host keeps its cryptography for the personal fields of an email
+row; the sync and `jmap::handle` reach it through `sync::Cache`.
+
+The quota the last pass read stays in memory per account: no table
+holds it. Its state is a counter behind a mark drawn when the store
+opens, so a state from before a restart is unknown. `Quota/get`
+(RFC 9425) answers one quota per resource of a root, STORAGE in
+`octets` and MESSAGE as a `count`; each counts `Email` in the scope
+`account`. A request without the mail capability sees none.
+`Quota/changes` knows the state the account stands at and answers
+`cannotCalculateChanges` for any other; `Quota/query` and
+`Quota/queryChanges` are not served. An account whose server has no
+QUOTA answers `accountNotSupportedByMethod`.
 
 Other software reuses the bridge by running it as its own process and
 speaking JMAP to it. Linking the crate into a program instead creates a
@@ -464,8 +479,9 @@ a set of header fields, the fields alone and one window of one section
 or of the whole message
 included. UID MOVE and UID COPY give the messages new UIDs in the
 target and name them in `COPYUID`, UID EXPUNGE removes what its set
-marked `\Deleted`, GETQUOTAROOT answers the lines a test writes (none
-by default) and a folder can open `[READ-ONLY]` or show another
+marked `\Deleted`, GETQUOTAROOT answers the lines a test writes (an
+inbox under no root by default; a refusal on request) and a folder can
+open `[READ-ONLY]` or show another
 UIDVALIDITY on one SELECT. Misbehavior is a switch as well:
 volunteered lines, a connection that drops, a MODSEQ item, a NO in raw
 UTF-8, messages that leave between two searches, the Gmail items

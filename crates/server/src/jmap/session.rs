@@ -17,9 +17,13 @@ pub(crate) const CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
 /// The capability every mail account needs (RFC 8621 section 1.1).
 pub(crate) const MAIL_CAPABILITY: &str = "urn:ietf:params:jmap:mail";
 
+/// The capability of an account with a quota (RFC 9425 section 2.1); its
+/// methods pass through the API endpoint like every other.
+const QUOTA_CAPABILITY: &str = "urn:ietf:params:jmap:quota";
+
 /// The capabilities the proxy carries; every other one leaves the
 /// session object, so no upstream host name reaches the browser.
-const CARRIED: [&str; 2] = [CORE_CAPABILITY, MAIL_CAPABILITY];
+const CARRIED: [&str; 3] = [CORE_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY];
 
 /// The core limits the proxy enforces itself; the browser learns the
 /// proxy's values where the upstream's are higher.
@@ -123,6 +127,7 @@ mod tests {
                 "collationAlgorithms": ["i;unicode-casemap"]
             },
             "urn:ietf:params:jmap:mail": {},
+            "urn:ietf:params:jmap:quota": {},
             "urn:ietf:params:jmap:websocket": {
                 "url": "wss://api.example.test/jmap/ws",
                 "supportsPush": true
@@ -136,12 +141,14 @@ mod tests {
                 "accountCapabilities": {
                     "urn:ietf:params:jmap:core": {},
                     "urn:ietf:params:jmap:mail": {"maxMailboxDepth": null},
+                    "urn:ietf:params:jmap:quota": {},
                     "urn:ietf:params:jmap:websocket": {}
                 }
             }
         },
         "primaryAccounts": {
             "urn:ietf:params:jmap:mail": "u1",
+            "urn:ietf:params:jmap:quota": "u1",
             "urn:ietf:params:jmap:websocket": "u1"
         },
         "username": "sanne@example.test",
@@ -204,10 +211,17 @@ mod tests {
             keys(&session["accounts"]["u1"]["accountCapabilities"]),
             CARRIED
         );
-        assert_eq!(keys(&session["primaryAccounts"]), [MAIL_CAPABILITY]);
+        assert_eq!(
+            keys(&session["primaryAccounts"]),
+            [MAIL_CAPABILITY, QUOTA_CAPABILITY]
+        );
         assert_eq!(
             session["accounts"]["u1"]["accountCapabilities"][MAIL_CAPABILITY],
             serde_json::json!({"maxMailboxDepth": null})
+        );
+        assert_eq!(
+            session["accounts"]["u1"]["accountCapabilities"][QUOTA_CAPABILITY],
+            serde_json::json!({})
         );
         let text = serde_json::to_string(&session).unwrap();
         assert!(!text.contains("websocket"), "{text}");

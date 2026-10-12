@@ -93,7 +93,7 @@ at a time.
 Mail itself moves through one JMAP endpoint per account. `GET
 /api/jmap/{id}/session` answers the account's session object as the
 browser may see it: its URLs point at the proxy, its capabilities are
-cut to core and mail and its two request limits are at most the
+cut to core, mail and quota and its two request limits are at most the
 proxy's own.
 `POST /api/jmap/{id}` forwards a Request object to the API endpoint
 that session object named, with the account's credential added on the
@@ -180,8 +180,9 @@ within 5 MiB, are fetched and buffered at once per process; a fetch
 past that waits ten seconds for a slot before it answers 429.
 `GET /api/preferences` and `PUT /api/preferences/{key}` read and write
 the reading pane position, the theme, the density, the locale, the font
-size, the line height and the dark-mode treatment of messages, each from
-a fixed list of words. `GET /api/sender-policies` lists the signed-in
+size, the line height, the dark-mode treatment of messages and what the
+reading pane does after an action (`afterAction`: `next` or `list`),
+each from a fixed list of words. `GET /api/sender-policies` lists the signed-in
 user's per-sender policies, up to five thousand rows; `PUT
 /api/sender-policies/{sender}` writes one, the sender lowercased and at
 most 320 bytes, the key `remoteContent` with a value `{ "allow": true,

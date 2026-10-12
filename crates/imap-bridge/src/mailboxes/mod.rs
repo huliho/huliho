@@ -33,7 +33,8 @@ pub enum SyncError {
 }
 
 /// Reads the mailbox list with its counts and writes the difference to
-/// the store; answers the account's state afterwards.
+/// the store, then the quota of the inbox; answers the account's state
+/// afterwards.
 ///
 /// # Errors
 ///
@@ -41,14 +42,18 @@ pub enum SyncError {
 /// connection or a listing without a mailbox, the store's for a write
 /// that fails and `Task` when the blocking task that writes the store
 /// ends early. A STATUS that one mailbox answers with NO is no failure:
-/// that mailbox goes without counts.
+/// that mailbox goes without counts. A quota the server cannot describe
+/// fails after the rows are written.
 pub async fn sync<S: Session>(session: &mut S, cache: &Cache) -> Result<u64, SyncError> {
     let found = observe(session, cache.gmail).await?;
+    let advertised = found.quota;
     let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
-    tokio::task::spawn_blocking(move || store.apply_pass(&key, &found.facts, found.moving))
-        .await
-        .map_err(|_join| SyncError::Task)?
-        .map_err(SyncError::from)
+    let state =
+        tokio::task::spawn_blocking(move || store.apply_pass(&key, &found.facts, found.moving))
+            .await
+            .map_err(|_join| SyncError::Task)??;
+    quota(session, cache, advertised).await?;
+    Ok(state)
 }
 
 /// What one pass reads of the server.
@@ -57,6 +62,29 @@ pub(crate) struct Observed {
     /// The commands the server offers for moving mail, which the rights
     /// of every mailbox follow.
     pub moving: Moving,
+    /// Whether the server advertises QUOTA (RFC 9208).
+    pub quota: bool,
+}
+
+/// GETQUOTAROOT of the inbox where QUOTA is advertised, kept by the
+/// store; a refusal reads as an inbox under no root. Where QUOTA is not
+/// advertised the account has no quota.
+pub(crate) async fn quota<S: Session>(
+    session: &mut S,
+    cache: &Cache,
+    advertised: bool,
+) -> Result<(), SessionError> {
+    let roots = if advertised {
+        match session.quota_root().await {
+            Ok(roots) => Some(roots),
+            Err(SessionError::Refused) => Some(Vec::new()),
+            Err(error) => return Err(error),
+        }
+    } else {
+        None
+    };
+    cache.store.record_quota(&cache.key, roots.as_deref());
+    Ok(())
 }
 
 /// The listing in the form the capabilities allow, then STATUS per
@@ -88,6 +116,7 @@ pub(crate) async fn observe<S: Session>(
     Ok(Observed {
         facts: map(&listing.entries, &listing.statuses, &subscriptions, gmail),
         moving: capabilities.moving(),
+        quota: capabilities.has("QUOTA"),
     })
 }
 

@@ -10,7 +10,7 @@
 
 use std::fmt::Write as _;
 
-use super::{Extension, Mailboxes, unquote};
+use super::{Extension, Mailboxes, QuotaAnswer, unquote};
 use crate::testing::fetch::in_set;
 use crate::testing::folder::Folder;
 use crate::testing::messages::Message;
@@ -50,7 +50,7 @@ impl Mailboxes {
             label: Some(label.to_owned()),
             ..Folder::special(name, attribute)
         };
-        let mut gmail = Self::new(
+        let gmail = Self::new(
             vec![
                 Folder::labeled("INBOX", INBOX_LABEL),
                 Folder::noselect("[Gmail]"),
@@ -64,7 +64,7 @@ impl Mailboxes {
             ],
             extensions,
         );
-        gmail.quota = Some(GMAIL_QUOTA.to_owned());
+        gmail.set_quota(QuotaAnswer::Lines(GMAIL_QUOTA.to_owned()));
         gmail
     }
 

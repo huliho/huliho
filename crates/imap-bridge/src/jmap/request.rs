@@ -17,8 +17,8 @@ use super::previews::{self, PREVIEW_BATCH};
 use super::set::{Outcome, SetAsk};
 use super::values::MAX_BODY_WINDOWS;
 use super::{
-    Context, Invocation, MAX_CALLS_IN_REQUEST, MAX_SIZE_REQUEST, Request, RequestError, Response,
-    Using, references, run, using, write,
+    Context, Invocation, MAIL_CAPABILITY, MAX_CALLS_IN_REQUEST, MAX_SIZE_REQUEST, QUOTA_CAPABILITY,
+    Request, RequestError, Response, Using, references, run, session, using, write,
 };
 use crate::mailboxes::SyncError;
 use crate::runtime::{Connector, Link};
@@ -43,15 +43,16 @@ fn sync_failed(error: SyncError) -> Result<(), RequestError> {
 }
 
 /// Runs one Request object against the account and answers the Response
-/// object as JSON, its `sessionState` the value the host derived for the
-/// session object. A `/changes` call has the account refreshed first
-/// when a refresh is due; an `Email/get` that asks for previews the rows
-/// lack or for bodies has them fetched and runs again, with every call
-/// after it, at most `MAX_PASSES` passes in all; an `Email/set` has its
-/// keywords stored and answers on the next pass the same way. None
-/// waits on a server that is down: the cache answers as it stands, a
-/// body it does not hold answers `serverUnavailable` and an update that
-/// could not be stored says so.
+/// object as JSON, its `sessionState` the session object's state as the
+/// request leaves it: the value the host derived, marked while the
+/// server advertises QUOTA. A `/changes` call has the account refreshed
+/// first when a refresh is due; an `Email/get` that asks for previews
+/// the rows lack or for bodies has them fetched and runs again, with
+/// every call after it, at most `MAX_PASSES` passes in all; an
+/// `Email/set` has its keywords stored and answers on the next pass the
+/// same way. None waits on a server that is down: the cache answers as
+/// it stands, a body it does not hold answers `serverUnavailable` and
+/// an update that could not be stored says so.
 ///
 /// # Errors
 ///
@@ -76,7 +77,7 @@ pub async fn handle<C: Connector>(
         .method_calls
         .iter()
         .any(|Invocation(name, ..)| name.ends_with("/changes"));
-    if using.mail
+    if (using.has(MAIL_CAPABILITY) || using.has(QUOTA_CAPABILITY))
         && asks_changes
         && let Err(error) = link.refresh(cache).await
     {
@@ -104,10 +105,11 @@ pub async fn handle<C: Connector>(
         };
         answered = off_runtime(cache, using, &calls, Some(again)).await?;
     }
+    let quota = cache.store.quota(&cache.key).advertised;
     let response = Response {
         method_responses: answered.responses,
         created_ids: request.created_ids,
-        session_state: session_state.to_owned(),
+        session_state: session::session_state(session_state, quota),
     };
     serde_json::to_vec(&response).map_err(|error| RequestError::Store(StoreError::Encoding(error)))
 }

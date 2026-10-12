@@ -20,6 +20,7 @@ mod headers;
 mod mailbox;
 mod previews;
 mod query;
+mod quota;
 mod references;
 mod request;
 mod session;
@@ -45,7 +46,9 @@ pub use headers::MAX_HEADER_FIELDS;
 pub use previews::PREVIEW_BATCH;
 pub use query::QUERY_LIMIT;
 pub use request::handle;
-pub use session::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, Urls, session_object};
+pub use session::{
+    CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY, Urls, session_object,
+};
 pub use values::{MAX_BODY_VALUE_BYTES, MAX_BODY_WINDOWS};
 
 /// A Request object of one MiB at most, room for an `Email/set` over
@@ -131,24 +134,35 @@ struct Response {
     session_state: String,
 }
 
-/// The capabilities a request opted into (RFC 8620 section 1.8); a
-/// method runs only under its own.
+/// The capabilities the bridge carries, in the order [`Using`] keeps
+/// them.
+const CARRIED: [&str; 4] = [
+    CORE_CAPABILITY,
+    MAIL_CAPABILITY,
+    QUOTA_CAPABILITY,
+    HULIHO_CAPABILITY,
+];
+
+/// The capabilities a request opted into (RFC 8620 section 1.8), one
+/// flag per carried capability; a method runs only under its own.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct Using {
-    core: bool,
-    mail: bool,
-    huliho: bool,
+pub(crate) struct Using([bool; CARRIED.len()]);
+
+impl Using {
+    /// Whether the request opted into the capability.
+    pub(crate) fn has(self, capability: &str) -> bool {
+        CARRIED
+            .iter()
+            .zip(self.0)
+            .any(|(carried, opted)| opted && *carried == capability)
+    }
 }
 
 fn using(names: &[String]) -> Result<Using, RequestError> {
     let mut using = Using::default();
     for name in names {
-        match name.as_str() {
-            CORE_CAPABILITY => using.core = true,
-            MAIL_CAPABILITY => using.mail = true,
-            HULIHO_CAPABILITY => using.huliho = true,
-            _ => return Err(RequestError::UnknownCapability),
-        }
+        let carried = CARRIED.iter().position(|carried| carried == name);
+        using.0[carried.ok_or(RequestError::UnknownCapability)?] = true;
     }
     Ok(using)
 }
@@ -199,6 +213,9 @@ pub(crate) enum MethodError {
     InvalidArguments(&'static str),
     InvalidResultReference(&'static str),
     AccountNotFound,
+    /// The account exists but has no data of the method's type, as an
+    /// account without a quota has none for `Quota/get`.
+    AccountNotSupportedByMethod,
     RequestTooLarge,
     CannotCalculateChanges,
     UnsupportedFilter,
@@ -220,6 +237,7 @@ impl MethodError {
             Self::InvalidArguments(_) => "invalidArguments",
             Self::InvalidResultReference(_) => "invalidResultReference",
             Self::AccountNotFound => "accountNotFound",
+            Self::AccountNotSupportedByMethod => "accountNotSupportedByMethod",
             Self::RequestTooLarge => "requestTooLarge",
             Self::CannotCalculateChanges => "cannotCalculateChanges",
             Self::UnsupportedFilter => "unsupportedFilter",
@@ -262,16 +280,20 @@ fn dispatch(
     name: &str,
     arguments: &Map<String, Value>,
 ) -> Result<Map<String, Value>, MethodError> {
+    let mail = context.using.has(MAIL_CAPABILITY);
+    let quota = context.using.has(QUOTA_CAPABILITY);
     match name {
-        "Core/echo" if context.using.core => Ok(arguments.clone()),
-        "Mailbox/get" if context.using.mail => mailbox::get(context, arguments),
-        "Mailbox/changes" if context.using.mail => changes::mailbox(context, arguments),
-        "Email/get" if context.using.mail => email::get(context, arguments),
-        "Email/set" if context.using.mail => set::email(context, arguments),
-        "Email/query" if context.using.mail => query::email(context, arguments),
-        "Email/changes" if context.using.mail => changes::email(context, arguments),
-        "Thread/get" if context.using.mail => thread::get(context, arguments),
-        "Thread/changes" if context.using.mail => changes::thread(context, arguments),
+        "Core/echo" if context.using.has(CORE_CAPABILITY) => Ok(arguments.clone()),
+        "Mailbox/get" if mail => mailbox::get(context, arguments),
+        "Mailbox/changes" if mail => changes::mailbox(context, arguments),
+        "Email/get" if mail => email::get(context, arguments),
+        "Email/set" if mail => set::email(context, arguments),
+        "Email/query" if mail => query::email(context, arguments),
+        "Email/changes" if mail => changes::email(context, arguments),
+        "Thread/get" if mail => thread::get(context, arguments),
+        "Thread/changes" if mail => changes::thread(context, arguments),
+        "Quota/get" if quota => quota::get(context, arguments),
+        "Quota/changes" if quota => quota::changes(context, arguments),
         _ => Err(MethodError::UnknownMethod),
     }
 }
@@ -291,16 +313,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn using_reads_the_three_capabilities_and_refuses_a_fourth_rfc8620_3_6_1() {
-        let three = [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY].map(str::to_owned);
-        assert_eq!(
-            using(&three).unwrap(),
-            Using {
-                core: true,
-                mail: true,
-                huliho: true
-            }
-        );
+    fn using_reads_the_four_capabilities_and_refuses_a_fifth_rfc8620_3_6_1() {
+        let four = using(&CARRIED.map(str::to_owned)).unwrap();
+        assert!(CARRIED.iter().all(|capability| four.has(capability)));
+        let mail = using(&[MAIL_CAPABILITY.to_owned()]).unwrap();
+        assert!(mail.has(MAIL_CAPABILITY) && !mail.has(QUOTA_CAPABILITY));
         assert_eq!(using(&[]).unwrap(), Using::default());
         let other = ["urn:ietf:params:jmap:websocket".to_owned()];
         assert!(matches!(
@@ -341,6 +358,10 @@ mod tests {
             (MethodError::AnchorNotFound, "anchorNotFound"),
             (MethodError::StateMismatch, "stateMismatch"),
             (MethodError::ServerUnavailable, "serverUnavailable"),
+            (
+                MethodError::AccountNotSupportedByMethod,
+                "accountNotSupportedByMethod",
+            ),
         ] {
             assert_eq!(error.object()["type"], kind);
         }

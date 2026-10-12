@@ -4,10 +4,20 @@
 #
 #   docker compose -f docker-compose.dev.yml up -d --build
 #
+# A change to the content of one of the configs below does not change the
+# service hash, so a container that is already up keeps the old content.
+# After such a change recreate the containers:
+#
+#   docker compose -f docker-compose.dev.yml up -d --build --force-recreate
+#
 # Cyrus: JMAP over TLS on 8443, IMAPS on 9993, the user sanne@huliho.test
-# with the password "password". Dovecot: IMAP with STARTTLS on 31143,
-# IMAPS on 31993, submission on 31587, ManageSieve on 34190 and LMTP on
-# 31024, any user with the password "password".
+# with the password "password" and a storage quota of 1 GiB. Dovecot: IMAP
+# with STARTTLS on 31143, IMAPS on 31993, submission on 31587, ManageSieve
+# on 34190 and LMTP on 31024, any user with the password "password" and a
+# quota of 1 GiB and 10000 messages. Its learn hook writes "spam" or "ham"
+# with the Message-ID of every message copied or moved into Junk or moved
+# out of it to /tmp/learned inside the container; a move from Junk to Trash
+# writes nothing.
 
 configs:
   certs-init:
@@ -75,6 +85,9 @@ configs:
       admin() { TERM=dumb cyradm --user cyrus@huliho.test --password password --auth PLAIN --notls localhost; }
       until printf 'listmailbox user/*\n' | admin > /tmp/mailboxes 2> /dev/null; do kill -0 "$$master"; sleep 1; done
       grep -q 'user/sanne@huliho.test' /tmp/mailboxes || printf 'createmailbox user/sanne@huliho.test\n' | admin > /dev/null
+      # A storage quota of one GiB, in the units of 1024 octets cyradm counts.
+      quota_kib=1048576
+      printf 'setquota user/sanne@huliho.test STORAGE %s\n' "$$quota_kib" | admin > /dev/null
       /usr/sbin/cyrus ctl_conversationsdb -b -r
       wait "$$master"
 
@@ -105,6 +118,86 @@ configs:
           special_use = \Archive
         }
       }
+
+  dovecot-quota.conf:
+    content: |
+      # A quota per user of one GiB and ten thousand messages, reported
+      # over IMAP QUOTA (RFC 9208).
+      mail_plugins {
+        quota = yes
+      }
+      protocol imap {
+        mail_plugins {
+          imap_quota = yes
+        }
+      }
+      quota "User quota" {
+        quota_storage_size = 1G
+        quota_message_count = 10000
+      }
+
+  dovecot-learn.conf:
+    content: |
+      # The learn hook (RFC 6785): a message copied or moved into Junk runs
+      # learn-spam, one that leaves Junk runs learn-ham. Both pipe the
+      # message to the learn script. Each script keeps its compiled binary
+      # in a directory of its own under /tmp/sieve-bin.
+      sieve_plugins {
+        sieve_imapsieve = yes
+        sieve_extprograms = yes
+      }
+      sieve_global_extensions {
+        vnd.dovecot.pipe = yes
+      }
+      sieve_pipe_bin_dir = /etc/dovecot/learn
+      mailbox Junk {
+        sieve_script learn-spam {
+          type = before
+          cause = copy
+          path = /etc/dovecot/sieve/learn-spam.sieve
+          bin_path = /tmp/sieve-bin/learn-spam
+        }
+      }
+      imapsieve_from Junk {
+        sieve_script learn-ham {
+          type = before
+          cause = copy
+          path = /etc/dovecot/sieve/learn-ham.sieve
+          bin_path = /tmp/sieve-bin/learn-ham
+        }
+      }
+
+  dovecot-learn-spam.sieve:
+    content: |
+      require ["vnd.dovecot.pipe", "copy"];
+      pipe :copy "learn" ["spam"];
+
+  dovecot-learn-ham.sieve:
+    content: |
+      require ["vnd.dovecot.pipe", "copy", "imapsieve", "environment", "variables"];
+      # A message that leaves Junk for Trash says nothing about spam.
+      if environment :matches "imap.mailbox" "*" {
+        set "mailbox" "$${1}";
+      }
+      if string "$${mailbox}" "Trash" {
+        stop;
+      }
+      pipe :copy "learn" ["ham"];
+
+  dovecot-learn:
+    content: |
+      #!/bin/sh
+      # Appends the word it was given and the Message-ID of the message on
+      # stdin to /tmp/learned. Plain sh: the image carries no other tools.
+      cr=$$(printf '\r')
+      id=
+      while IFS= read -r line; do
+        line=$${line%"$$cr"}
+        case $$line in
+          [Mm][Ee][Ss][Ss][Aa][Gg][Ee]-[Ii][Dd]:*) [ -n "$$id" ] || id=$${line#*:} ;;
+        esac
+      done
+      printf '%s %s\n' "$$1" "$${id# }" >> /tmp/learned
 
 services:
   certs:
@@ -161,6 +254,23 @@ services:
       - source: dovecot-mailboxes.conf
         target: /etc/dovecot/conf.d/mailboxes.conf
         mode: 0444
+      - source: dovecot-quota.conf
+        target: /etc/dovecot/conf.d/quota.conf
+        mode: 0444
+      - source: dovecot-learn.conf
+        target: /etc/dovecot/conf.d/learn.conf
+        mode: 0444
+      # The directory for a script's compiled binary takes its mode from
+      # the script file, so these two are writable for their owner.
+      - source: dovecot-learn-spam.sieve
+        target: /etc/dovecot/sieve/learn-spam.sieve
+        mode: 0644
+      - source: dovecot-learn-ham.sieve
+        target: /etc/dovecot/sieve/learn-ham.sieve
+        mode: 0644
+      - source: dovecot-learn
+        target: /etc/dovecot/learn/learn
+        mode: 0555
     volumes:
       - dev-certs:/certs:ro
       - dovecot-mail:/srv/vmail

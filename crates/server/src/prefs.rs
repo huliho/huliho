@@ -41,12 +41,13 @@ text_enum!(
         FontSize => "fontSize",
         LineHeight => "lineHeight",
         DarkMail => "darkMail",
+        AfterAction => "afterAction",
     }
 );
 
 impl PreferenceKey {
     /// Every key the API lists.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::ReadingPane,
         Self::Theme,
         Self::Density,
@@ -54,6 +55,7 @@ impl PreferenceKey {
         Self::FontSize,
         Self::LineHeight,
         Self::DarkMail,
+        Self::AfterAction,
     ];
 
     /// The key behind its word; `None` off the list.
@@ -79,6 +81,7 @@ impl PreferenceKey {
             Self::FontSize => &["default", "large", "larger"],
             Self::LineHeight => &["default", "relaxed", "loose"],
             Self::DarkMail => &["adapt", "original"],
+            Self::AfterAction => &["next", "list"],
         }
     }
 }
@@ -348,6 +351,7 @@ mod tests {
         assert!(!PreferenceKey::Locale.accepts("en-XA"));
         assert!(!PreferenceKey::FontSize.accepts("small"));
         assert!(!PreferenceKey::DarkMail.accepts("Adapt"));
+        assert!(!PreferenceKey::AfterAction.accepts("close"));
     }
 
     #[test]

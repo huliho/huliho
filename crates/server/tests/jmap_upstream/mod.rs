@@ -45,6 +45,7 @@ const API_PATH: &str = "/jmap/api";
 const DOWNLOAD_PATH: &str = "/jmap/download/{account}/{blob}/{name}";
 const CORE: &str = "urn:ietf:params:jmap:core";
 const MAIL: &str = "urn:ietf:params:jmap:mail";
+const QUOTA: &str = "urn:ietf:params:jmap:quota";
 const WEBSOCKET: &str = "urn:ietf:params:jmap:websocket";
 const STATE: &str = "75128aab4b1b";
 
@@ -234,9 +235,11 @@ async fn session(State(shared): State<Shared>, headers: HeaderMap) -> Response {
             "maxObjectsInSet": 500,
             "collationAlgorithms": ["i;unicode-casemap"]
         },
-        MAIL: {}
+        MAIL: {},
+        QUOTA: {}
     });
-    let mut account_capabilities = json!({ CORE: {}, MAIL: { "maxMailboxDepth": null } });
+    let mut account_capabilities =
+        json!({ CORE: {}, MAIL: { "maxMailboxDepth": null }, QUOTA: {} });
     let mut primary = json!({ MAIL: UPSTREAM_ACCOUNT });
     if let Some(url) = websocket_url {
         capabilities[WEBSOCKET] = json!({ "url": url, "supportsPush": true });

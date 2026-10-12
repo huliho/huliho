@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! What `Email/get` and `Thread/get` share (RFC 8620 section 5.1): the
-//! arguments, the ids of a `/get` that cannot answer for every object at
-//! once, the properties it renders and the shape of its answer.
+//! What `Email/get`, `Thread/get` and `Quota/get` share (RFC 8620
+//! section 5.1): the arguments, the ids of a `/get` that cannot answer
+//! for every object at once, the properties it renders and the shape of
+//! its answer.
 
 use std::collections::HashSet;
 
@@ -60,12 +61,12 @@ pub(super) fn properties(
     Ok(wanted)
 }
 
-/// The answer of a `/get`: the account, the state the list belongs to,
-/// the objects found and the asked ids that name nothing, in the order
-/// asked.
-pub(super) fn answer(
+/// The answer of a `/get`: the account, the state the list belongs to
+/// as the string JMAP asks, the objects found and the asked ids that
+/// name nothing, in the order asked.
+pub(super) fn answer<S: ToString>(
     context: &Context<'_>,
-    (state, list): (u64, Vec<Value>),
+    (state, list): (S, Vec<Value>),
     asked: &[&str],
     found: &HashSet<&str>,
 ) -> Map<String, Value> {

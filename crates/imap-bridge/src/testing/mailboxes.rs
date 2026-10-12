@@ -26,7 +26,7 @@ mod tests;
 pub(super) use gmail::labels_of;
 pub use gmail::{ALL_MAIL, SPAM, TRASH};
 pub(super) use moves::is_transfer;
-pub use quota::quota_lines;
+pub use quota::{QuotaAnswer, quota_lines};
 
 /// An extension the scripted server advertises and honors; a command
 /// that needs one it does not advertise gets a BAD.
@@ -91,9 +91,9 @@ pub struct Mailboxes {
     pub chatter: bool,
     /// How the server misbehaves on a selected mailbox.
     pub behavior: Behavior,
-    /// The untagged lines a GETQUOTAROOT answers, as the wire carries
-    /// them; `None` answers that the inbox falls under no root.
-    pub quota: Option<String>,
+    /// What a GETQUOTAROOT answers, shared with the test that edits it
+    /// between passes.
+    quota: Arc<Mutex<QuotaAnswer>>,
 }
 
 /// Why a command was refused: BAD for a form outside the advertised
@@ -121,7 +121,7 @@ impl Mailboxes {
             extensions,
             chatter: false,
             behavior: Behavior::default(),
-            quota: None,
+            quota: Arc::new(Mutex::new(QuotaAnswer::default())),
         }
     }
 
