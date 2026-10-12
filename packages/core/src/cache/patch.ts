@@ -2,66 +2,93 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { EmailPatch, PendingRow } from "./store";
+import type { EmailPatch, MemberState, PendingRow } from "./store";
 
-const KEYWORDS = "keywords/";
+// The two sets of an email a patch names members of (RFC 8621 section
+// 4.1.1).
+type Members = keyof MemberState;
 
-// The keyword a path names; a pointer token writes "/" as ~1 and "~" as
-// ~0 (RFC 6901 section 3).
-function keywordOf(path: string): string {
-  if (!path.startsWith(KEYWORDS) || path.length === KEYWORDS.length) {
-    throw new Error("a patch names keywords alone");
-  }
-  return path.slice(KEYWORDS.length).replaceAll("~1", "/").replaceAll("~0", "~");
+const SETS: readonly Members[] = ["keywords", "mailboxIds"];
+
+// The path of one member of a set; a pointer token writes "~" as ~0 and
+// "/" as ~1 (RFC 6901 section 3).
+export function pathOf(set: Members, key: string): string {
+  return `${set}/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`;
 }
 
-// The keywords with a patch laid over them and the patch that takes it
-// back: each path set to what the keywords held before.
+// The set and the member a path names, its escapes undone in the order
+// RFC 6901 section 4 gives.
+export function targetOf(path: string): { set: Members; key: string } {
+  const set = SETS.find((name) => path.startsWith(`${name}/`) && path.length > name.length + 1);
+  if (set === undefined) {
+    throw new Error("a patch names keywords or mailboxes alone");
+  }
+  return {
+    set,
+    key: path
+      .slice(set.length + 1)
+      .replaceAll("~1", "/")
+      .replaceAll("~0", "~"),
+  };
+}
+
+// The state with a patch laid over it and the patch that takes it back:
+// each path set to what the state held before.
 export function patched(
-  keywords: Record<string, true>,
+  state: MemberState,
   patch: EmailPatch,
-): { keywords: Record<string, true>; inverse: EmailPatch } {
-  const held = new Map(Object.entries(keywords));
+): { state: MemberState; inverse: EmailPatch } {
+  const keywords = new Map(Object.entries(state.keywords));
+  const mailboxIds = new Map(Object.entries(state.mailboxIds));
   const inverse: [string, true | null][] = [];
   for (const [path, value] of Object.entries(patch)) {
-    const keyword = keywordOf(path);
-    inverse.push([path, held.has(keyword) ? true : null]);
+    const { set, key } = targetOf(path);
+    const members = set === "keywords" ? keywords : mailboxIds;
+    inverse.push([path, members.has(key) ? true : null]);
     if (value === null) {
-      held.delete(keyword);
+      members.delete(key);
     } else {
-      held.set(keyword, true);
+      members.set(key, true);
     }
   }
-  return { keywords: Object.fromEntries(held), inverse: Object.fromEntries(inverse) };
+  return {
+    state: { keywords: Object.fromEntries(keywords), mailboxIds: Object.fromEntries(mailboxIds) },
+    inverse: Object.fromEntries(inverse),
+  };
 }
 
-// Whether a patch changes any keyword, given the patch that takes it back.
+// The patch that takes an email out of every mailbox it stands in.
+export function emptied(state: MemberState): EmailPatch {
+  return Object.fromEntries(
+    Object.keys(state.mailboxIds).map((id) => [pathOf("mailboxIds", id), null]),
+  );
+}
+
+// Whether a patch changes anything, given the patch that takes it back.
 export function alters(patch: EmailPatch, inverse: EmailPatch): boolean {
   const before = new Map(Object.entries(inverse));
   return Object.entries(patch).some(([path, value]) => before.get(path) !== value);
 }
 
-// The keywords with every pending row of the email laid over them, the
-// oldest first. Each row comes back with the inverse that fits these
-// keywords.
+// The state with every pending row of the email laid over it, the
+// oldest first; a destroy empties the mailboxes the email stands in
+// then. Each row comes back with the inverse that fits this state.
 export function replayed(
-  keywords: Record<string, true>,
+  state: MemberState,
   rows: readonly PendingRow[],
-): { keywords: Record<string, true>; rows: PendingRow[] } {
-  let current = keywords;
+): { state: MemberState; rows: PendingRow[] } {
+  let current = state;
   const fitted = rows.map((row) => {
-    const step = patched(current, row.patch);
-    current = step.keywords;
-    return { ...row, inverse: step.inverse };
+    const patch = row.destroy === true ? emptied(current) : row.patch;
+    const step = patched(current, patch);
+    current = step.state;
+    return { ...row, patch, inverse: step.inverse };
   });
-  return { keywords: current, rows: fitted };
+  return { state: current, rows: fitted };
 }
 
-// The keywords as they stood before the pending rows, the newest undone
+// The state as it stood before the pending rows, the newest undone
 // first.
-export function unpatched(
-  keywords: Record<string, true>,
-  rows: readonly PendingRow[],
-): Record<string, true> {
-  return rows.reduceRight((current, row) => patched(current, row.inverse).keywords, keywords);
+export function unpatched(state: MemberState, rows: readonly PendingRow[]): MemberState {
+  return rows.reduceRight((current, row) => patched(current, row.inverse).state, state);
 }

@@ -8,6 +8,7 @@ import type {
   BodySize,
   EmailBody,
   EmailHeader,
+  HeldQuota,
   MailStore,
   Mailbox,
   ObjectType,
@@ -95,6 +96,10 @@ export class ChosenStore implements WorkerStore {
 
   pending(accountId: string): Promise<PendingRow[]> {
     return this.store.then((store) => store.pending(accountId));
+  }
+
+  quota(accountId: string): Promise<HeldQuota | null> {
+    return this.store.then((store) => store.quota(accountId));
   }
 
   commit(accountId: string, batch: Batch): Promise<void> {

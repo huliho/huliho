@@ -3,6 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import type { ChangesAnswer, EmailHeader, EmailState, Thread } from "../jmap/schemas";
+import { strip } from "./lists";
 import { memberOf, threadRow } from "./members";
 import type { Batch, QueryRow, ThreadRow } from "./store";
 
@@ -68,13 +69,34 @@ export function landEmails(
   folded.listMoved ||= changes.created.length > 0 || changes.destroyed.length > 0;
 }
 
+// Whether a held list of a mailbox the email stands in shows none of its
+// thread's rows, as after a move this client made into that mailbox:
+// the list may have moved since it was fetched.
+function unlisted(
+  rows: ReadonlyMap<string, QueryRow>,
+  state: EmailState,
+  thread: ThreadRow | undefined,
+): boolean {
+  const ids = new Set([state.id, ...(thread?.emailIds ?? [])]);
+  const shows = (listed: readonly string[]): boolean => listed.some((id) => ids.has(id));
+  return Object.keys(state.mailboxIds).some((id) => {
+    const row = rows.get(id);
+    return (
+      row !== undefined &&
+      !row.pages.some((page) => shows(page.ids)) &&
+      !shows(row.pending) &&
+      !shows(row.fresh?.ids ?? [])
+    );
+  });
+}
+
 // An email the store does not hold may still be new to a list it names.
 function patchHeaders(
   states: readonly EmailState[],
   held: Held,
   folded: Folded,
 ): { patched: EmailHeader[]; left: Left[]; touched: Set<string> } {
-  const lists = new Set(held.queries.map((row) => row.id));
+  const lists = new Map(held.queries.map((row) => [row.id, row]));
   const patched: EmailHeader[] = [];
   const left: Left[] = [];
   // The held threads whose members changed.
@@ -94,9 +116,9 @@ function patchHeaders(
     const from = Object.keys(header.mailboxIds).filter((id) => !(id in state.mailboxIds));
     const into = Object.keys(state.mailboxIds).some((id) => !(id in header.mailboxIds));
     if (from.length > 0 || into) {
-      folded.listMoved = true;
       left.push({ id: state.id, from });
     }
+    folded.listMoved ||= from.length > 0 || into || unlisted(lists, state, thread);
   }
   return { patched, left, touched };
 }
@@ -126,25 +148,6 @@ export function landThreads(
   folded.threads = [...new Set([...folded.threads, ...changes.updated, ...changes.destroyed])];
   folded.listMoved ||=
     changes.updated.length > 0 || changes.destroyed.length > 0 || changes.created.length > 0;
-}
-
-// Takes `ids` out of every page of the list; true when a row left.
-function strip(row: QueryRow, ids: ReadonlySet<string>): boolean {
-  let left = false;
-  for (const page of row.pages) {
-    const kept = page.ids.filter((id) => !ids.has(id));
-    if (kept.length !== page.ids.length) {
-      row.total =
-        row.total === null ? null : Math.max(0, row.total - page.ids.length + kept.length);
-      page.ids = kept;
-      left = true;
-    }
-  }
-  row.pending = row.pending.filter((id) => !ids.has(id));
-  if (row.fresh !== null) {
-    row.fresh.ids = row.fresh.ids.filter((id) => !ids.has(id));
-  }
-  return left;
 }
 
 export function mergeFolded(first: Folded, second: Folded): Folded {

@@ -4,6 +4,7 @@
 
 import type { ObjectType } from "../jmap/calls";
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
+import type { HeldQuota } from "./quota";
 import type {
   Batch,
   BodySize,
@@ -29,6 +30,7 @@ interface Rows {
   bodies: Map<string, EmailBody>;
   pending: Map<number, PendingRow>;
   states: Map<ObjectType, string>;
+  quota: HeldQuota | null;
 }
 
 function emptyRows(): Rows {
@@ -40,6 +42,7 @@ function emptyRows(): Rows {
     bodies: new Map(),
     pending: new Map(),
     states: new Map(),
+    quota: null,
   };
 }
 
@@ -105,8 +108,10 @@ function applyStates(states: Map<ObjectType, string>, change: Batch["states"]): 
   }
 }
 
-function isEmpty(rows: Rows): boolean {
-  return Object.values(rows).every((area: Map<unknown, unknown>) => area.size === 0);
+function isEmpty({ quota, ...areas }: Rows): boolean {
+  return (
+    quota === null && Object.values(areas).every((area: Map<unknown, unknown>) => area.size === 0)
+  );
 }
 
 // The store that holds everything in memory: the tests run on it and an
@@ -165,6 +170,10 @@ export class MemoryMailStore implements MailStore {
     return Promise.resolve(rows.toSorted((a, b) => a.seq - b.seq));
   }
 
+  quota(accountId: string): Promise<HeldQuota | null> {
+    return Promise.resolve(structuredClone(this.rows(accountId).quota));
+  }
+
   commit(accountId: string, batch: Batch): Promise<void> {
     const rows = this.rows(accountId);
     for (const area of batch.reset ?? []) {
@@ -177,6 +186,9 @@ export class MemoryMailStore implements MailStore {
     apply(rows.bodies, batch.bodies);
     applyPending(rows.pending, batch.pending);
     applyStates(rows.states, batch.states);
+    if (batch.quota !== undefined) {
+      rows.quota = structuredClone(batch.quota);
+    }
     return Promise.resolve();
   }
 

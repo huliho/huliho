@@ -71,6 +71,24 @@ test("a thread the store lacks counts the exemplar alone and an unread member el
   expect(elsewhere[0]).toMatchObject({ unread: false, count: 1 });
 });
 
+test("a thread with no member left in the mailbox leaves the page; one the row lacks states for reads its exemplar", () => {
+  const moved = email("e1", { threadId: "t1", mailboxIds: ["archive"], receivedAt: at(1) });
+  const gone = email("e2", { threadId: "t2", mailboxIds: [], receivedAt: at(2) });
+  const unknown = email("e3", { threadId: "t3", receivedAt: at(3) });
+  const rows = listRows(
+    page({
+      ids: ["e3", "e2", "e1"],
+      emails: { e1: moved, e2: gone, e3: unknown },
+      threads: {
+        t1: thread("t1", { e1: { keywords: {}, mailboxIds: { archive: true } } }),
+        t3: { id: "t3", emailIds: ["e3"], members: {} },
+      },
+    }),
+    INBOX,
+  );
+  expect(rows.map((row) => [row.id, row.count])).toEqual([["e3", 1]]);
+});
+
 test("the sender is the display name, else the address, else nothing; a missing header leaves the row out", () => {
   const named = email("e1", { receivedAt: at(1) });
   const bare = {

@@ -9,6 +9,7 @@ import {
   CORE_CAPABILITY,
   HULIHO_CAPABILITY,
   MAIL_CAPABILITY,
+  QUOTA_CAPABILITY,
   coreLimitsSchema,
   problemSchema,
   responseSchema,
@@ -89,6 +90,8 @@ export interface JmapSession {
   using: string[];
   // True for a bridge account, whose mailboxes count their synced emails.
   firstSync: boolean;
+  // True when the account answers the quota methods (RFC 9425 section 2.1).
+  quota: boolean;
   maxCallsInRequest: number;
   maxObjectsInGet: number;
   maxObjectsInSet: number;
@@ -154,6 +157,8 @@ export class JmapClient {
 }
 
 // An upstream that names no mail account cannot be read through the proxy.
+// A request opts into every capability the server names that the client
+// speaks, so a server that knows quota hears the quota calls.
 function sessionOf(object: SessionObject): JmapSession {
   const accountId = new Map(Object.entries(object.primaryAccounts)).get(MAIL_CAPABILITY);
   if (accountId === undefined) {
@@ -162,16 +167,19 @@ function sessionOf(object: SessionObject): JmapSession {
   const capabilities = new Map(Object.entries(object.capabilities));
   const vendor = capabilities.has(HULIHO_CAPABILITY);
   const core = coreLimitsSchema.parse(capabilities.get(CORE_CAPABILITY));
+  const account = new Map(Object.entries(object.accounts)).get(accountId);
+  const spoken = [HULIHO_CAPABILITY, QUOTA_CAPABILITY].filter((name) => capabilities.has(name));
   return {
     accountId,
     apiUrl: object.apiUrl,
     downloadUrl: object.downloadUrl,
     // An account the object does not describe takes no write.
-    readOnly: new Map(Object.entries(object.accounts)).get(accountId)?.isReadOnly ?? true,
-    using: vendor
-      ? [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY]
-      : [CORE_CAPABILITY, MAIL_CAPABILITY],
+    readOnly: account?.isReadOnly ?? true,
+    using: [CORE_CAPABILITY, MAIL_CAPABILITY, ...spoken],
     firstSync: vendor,
+    quota:
+      capabilities.has(QUOTA_CAPABILITY) &&
+      Object.hasOwn(account?.accountCapabilities ?? {}, QUOTA_CAPABILITY),
     maxCallsInRequest: core.maxCallsInRequest,
     maxObjectsInGet: core.maxObjectsInGet,
     maxObjectsInSet: core.maxObjectsInSet,

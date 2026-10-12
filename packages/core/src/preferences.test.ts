@@ -40,6 +40,10 @@ test("the answer parses with absent keys and refuses a word off a list", async (
   await expect(fetchPreferences()).rejects.toThrow(/invalid/i);
   answer(200, { darkMail: "invert" });
   await expect(fetchPreferences()).rejects.toThrow(/invalid/i);
+  answer(200, { afterAction: "list" });
+  expect(await fetchPreferences()).toEqual({ afterAction: "list" });
+  answer(200, { afterAction: "close" });
+  await expect(fetchPreferences()).rejects.toThrow(/invalid/i);
   answer(200, { locale: "en-XA" });
   await expect(fetchPreferences()).rejects.toThrow(/invalid/i);
   answer(500, { error: "internal" });
@@ -98,6 +102,10 @@ test("a change replaces one key and leaves the rest", () => {
   });
   expect(withPreference({ darkMail: "adapt" }, { key: "darkMail", value: "original" })).toEqual({
     darkMail: "original",
+  });
+  expect(withPreference(current, { key: "afterAction", value: "next" })).toEqual({
+    ...current,
+    afterAction: "next",
   });
 });
 

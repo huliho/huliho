@@ -5,7 +5,7 @@
 // @vitest-environment node
 
 import { MemoryMailStore } from "@huliho/core";
-import type { Mutation } from "@huliho/core";
+import type { PatchMutation } from "@huliho/core";
 import { ACCOUNT, FakeJmap, UPSTREAM, at, email, json, mailbox } from "@huliho/core/testing";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -50,7 +50,7 @@ interface Rig {
 
 let scope = "";
 
-function read(id: string): Mutation {
+function read(id: string): PatchMutation {
   return { type: "Email", id, patch: { [SEEN]: true } };
 }
 

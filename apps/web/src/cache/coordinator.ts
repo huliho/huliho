@@ -19,7 +19,7 @@ import type {
   ListPage,
   MailStore,
   Mailbox,
-  Mutation,
+  PatchMutation,
   StopCause,
   ThreadDetail,
 } from "@huliho/core";
@@ -81,7 +81,7 @@ export interface CacheApi {
     emailId: string,
     options: { large: boolean },
   ): Promise<CacheResult<BodyDetail | null>>;
-  mutate(accountId: string, mutation: Mutation): Promise<CacheResult<void>>;
+  mutate(accountId: string, mutation: PatchMutation): Promise<CacheResult<void>>;
 }
 
 export interface Dependencies {
@@ -119,6 +119,7 @@ function held(store: MailStore, gate: Promise<unknown>): MailStore {
     body: (accountId, emailId) => store.body(accountId, emailId),
     bodySizes: () => store.bodySizes(),
     pending: (accountId) => store.pending(accountId),
+    quota: (accountId) => store.quota(accountId),
     commit: async (accountId, batch) => {
       await gate;
       await store.commit(accountId, batch);
@@ -438,6 +439,7 @@ export class Coordinator {
         store.commit(accountId, {
           reset: EVERY_AREA,
           states: { Mailbox: null, Email: null, Thread: null },
+          quota: null,
         }),
       ),
     );

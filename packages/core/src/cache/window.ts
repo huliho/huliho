@@ -94,9 +94,16 @@ async function fetchChunk(
 ): Promise<Fetched> {
   const session = await client.session();
   const calls = callsFor(session.accountId);
+  const window = {
+    filter: { inMailbox: request.mailboxId },
+    start: request.start,
+    limit: chunk.wanted,
+    calculateTotal: request.calculateTotal,
+    collapseThreads: true,
+  };
   const responses = await client.request([
     ...(chunk.leading ? [calls.get("Email", [], "e0"), calls.get("Thread", [], "t0")] : []),
-    calls.query({ ...request, limit: chunk.wanted }, "q"),
+    calls.query(window, "q"),
     calls.get("Email", reference("q", "Email/query", "/ids"), "h", HEADER_PROPERTIES),
     calls.get("Thread", reference("h", "Email/get", "/list/*/threadId"), "t"),
     calls.get("Email", reference("t", "Thread/get", "/list/*/emailIds"), "m", STATE_PROPERTIES),
@@ -197,7 +204,9 @@ export async function queryWindow(
     queries: { put: [row] },
     states: fetched.states,
   });
-  return assemble(store, client.accountId, row, page);
+  // What landed is read back, since a pending change may take a row out.
+  const landed = (await store.query(client.accountId, mailboxId)) ?? row;
+  return assemble(store, client.accountId, landed, page);
 }
 
 function emptyRow(mailboxId: string): QueryRow {

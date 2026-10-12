@@ -5,7 +5,7 @@
 // @vitest-environment node
 
 import type { EmailBody, PendingRow } from "@huliho/core";
-import { ACCOUNT, at, email, mailbox } from "@huliho/core/testing";
+import { ACCOUNT, at, email, mailbox, quota } from "@huliho/core/testing";
 import { Dexie } from "dexie";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { afterEach, expect, test, vi } from "vitest";
@@ -179,9 +179,9 @@ test("a stored body or pending change that fails its schema is dropped and named
   await store.commit(ACCOUNT, { pending: { put: [CHANGE] } });
   await database.table("emailBodies").put({ accountId: ACCOUNT, id: "e1", row: { id: "e1" } });
   await database.table("pendingChanges").put({ accountId: ACCOUNT, seq: 2, row: { seq: 2 } });
-  // A path that names no keyword would fail every later read of the log.
-  const moved = { ...CHANGE, seq: 3, patch: { "mailboxIds/archive": true } };
-  await database.table("pendingChanges").put({ accountId: ACCOUNT, seq: 3, row: moved });
+  // A path that names neither a keyword nor a mailbox would fail every later read of the log.
+  const stray = { ...CHANGE, seq: 3, patch: { "threadId/t2": true } };
+  await database.table("pendingChanges").put({ accountId: ACCOUNT, seq: 3, row: stray });
   expect(await store.body(ACCOUNT, "e1")).toBeNull();
   expect(await store.pending(ACCOUNT)).toEqual([CHANGE]);
   expect(error).toHaveBeenCalledWith(
@@ -190,6 +190,42 @@ test("a stored body or pending change that fails its schema is dropped and named
   expect(error).toHaveBeenCalledWith(
     "cache: a row in pendingChanges failed its schema and was dropped",
   );
+});
+
+test("a move and a held destroy keep their fields in the log", async () => {
+  const move: PendingRow = {
+    ...CHANGE,
+    patch: { "mailboxIds/inbox": null, "mailboxIds/archive": true },
+    inverse: { "mailboxIds/inbox": true, "mailboxIds/archive": null },
+  };
+  const destroy: PendingRow = {
+    ...CHANGE,
+    seq: 2,
+    patch: { "mailboxIds/trash": null },
+    inverse: { "mailboxIds/trash": true },
+    destroy: true,
+    held: true,
+    lease: "tab-1",
+  };
+  await store.commit(ACCOUNT, { pending: { put: [move, destroy] } });
+  expect(await store.pending(ACCOUNT)).toEqual([move, destroy]);
+});
+
+test("the quotas sit beside the states, leave on null and a row off its schema is dropped and named", async () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const held = { state: "3", list: [quota("q1", { used: 5 })] };
+  await store.commit(ACCOUNT, { quota: held, states: { Mailbox: "3" } });
+  expect(await store.quota(ACCOUNT)).toEqual(held);
+  expect(await store.quota(OTHER)).toBeNull();
+  expect(await store.state(ACCOUNT, "Mailbox")).toBe("3");
+  await store.commit(ACCOUNT, { states: { Email: "4" } });
+  expect(await store.quota(ACCOUNT)).toEqual(held);
+  await store.commit(ACCOUNT, { quota: null });
+  expect(await store.quota(ACCOUNT)).toBeNull();
+  expect(await store.state(ACCOUNT, "Mailbox")).toBe("3");
+  await database.table("meta").put({ accountId: ACCOUNT, id: "quota", row: { state: 3 } });
+  expect(await store.quota(ACCOUNT)).toBeNull();
+  expect(error).toHaveBeenCalledWith("cache: a row in meta failed its schema and was dropped");
 });
 
 test("a database of the first version keeps its rows and gains the two tables", async () => {

@@ -2,230 +2,217 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { callsFor, outcome } from "../jmap/calls";
-import type { Outcome, PatchObject } from "../jmap/calls";
-import { JmapError, SERVER_UNAVAILABLE } from "../jmap/client";
-import type { JmapClient } from "../jmap/client";
-import { setAnswerSchema } from "../jmap/schemas";
-import type { EmailHeader } from "../jmap/schemas";
-import type { z } from "../schema";
 import { memberOf } from "./members";
-import { alters, patched, unpatched } from "./patch";
+import { alters, emptied, patched, replayed, unpatched } from "./patch";
 import type { AppliedChanges } from "./poll";
-import type { Batch, EmailPatch, MailStore, MemberState, PendingRow, ThreadRow } from "./store";
-import { movesOf, recounted } from "./unread";
+import { restate } from "./restate";
+import type { EmailPatch, MailStore, MemberState, PendingRow } from "./store";
 
-// One change to an email, as the user made it.
-export interface Mutation {
+// A change to an email's keywords and mailboxes, as the user made it. A
+// move names its removals and additions in one patch, so the email is
+// never in no mailbox (RFC 8621 section 4.1.1). The inverses the log
+// answers restore: a thread they bring back into a list takes its place
+// there again.
+export interface PatchMutation {
   type: "Email";
   // The email id.
   id: string;
   patch: EmailPatch;
+  restores?: true;
 }
 
-// What one round of a flush settled: the rows a refusal put back, which
-// the tabs read again, plus the emails whose change the server refused.
-export interface Flushed {
+// Delete forever. The email reads as gone at once; the destroy waits,
+// held, until the window releases it or takes it back.
+export interface DestroyMutation {
+  type: "Email";
+  id: string;
+  destroy: true;
+}
+
+export type Mutation = PatchMutation | DestroyMutation;
+
+// What logging some changes did: what the tabs read again, the change
+// that takes each patched email back and the held destroys by sequence
+// number.
+export interface Logged {
   changes: AppliedChanges;
-  failed: string[];
-  // Whether a next round would send rows this one did not. False while
-  // an update waits for a server out of reach, since the next round
-  // starts with that update again.
-  more: boolean;
+  inverses: PatchMutation[];
+  held: number[];
 }
 
-// The SetError of an email that is gone (RFC 8620 section 5.3); its
-// change has nothing left to stand on and nobody to tell.
-const NOT_FOUND = "notFound";
-
-// The word for an update the answer names nowhere.
-const UNNAMED = "serverFail";
-
-function nothing(): AppliedChanges {
-  return { mailboxes: false, windows: [], threads: [] };
+function nothing(): Logged {
+  return { changes: { mailboxes: false, windows: [], threads: [] }, inverses: [], held: [] };
 }
 
-// The thread row with the state of the members that changed.
-function withMembers(thread: ThreadRow, changed: ReadonlyMap<string, MemberState>): ThreadRow {
-  return {
-    ...thread,
-    members: Object.fromEntries(
-      Object.entries(thread.members).map(([id, member]) => [id, changed.get(id) ?? member]),
-    ),
-  };
+function emptyState(): MemberState {
+  return { keywords: {}, mailboxIds: {} };
 }
 
-// The rows as they stand once some emails take other keywords: their
-// headers, the members of their threads and the unread counts of their
-// mailboxes.
-async function rekeyed(
+// The row one change logs over a state, without its place in the log;
+// null for a change that moves nothing.
+type Step = Omit<PendingRow, "seq" | "sentAt">;
+
+function stepOf(state: MemberState, mutation: Mutation, lease: string | undefined): Step | null {
+  const destroy = "destroy" in mutation;
+  const patch = destroy ? emptied(state) : mutation.patch;
+  const { inverse } = patched(state, patch);
+  if (!alters(patch, inverse)) {
+    return null;
+  }
+  const row: Step = { type: "Email", id: mutation.id, patch, inverse };
+  if (!destroy) {
+    return row;
+  }
+  return { ...row, destroy: true, held: true, ...(lease === undefined ? {} : { lease }) };
+}
+
+// The change that takes an email's patches back: every path they named,
+// set to what the email held before them.
+function inverseOf(id: string, before: MemberState, steps: readonly Step[]): PatchMutation {
+  const merged: EmailPatch = {};
+  for (const step of steps) {
+    Object.assign(merged, step.patch);
+  }
+  return { type: "Email", id, patch: patched(before, merged).inverse, restores: true };
+}
+
+// Changes to several emails, taken by the rows at once and logged until
+// the server acknowledges them: the headers, the members of their
+// threads, the counts of their mailboxes and the lists they leave. A
+// change that moves nothing, names an email the store lacks or one that
+// waits to be destroyed is not logged. A held destroy carries the
+// `lease` of the tab that asked it.
+export async function mutateMany(
   store: MailStore,
   accountId: string,
-  keywords: ReadonlyMap<string, Record<string, true>>,
-): Promise<{ batch: Batch; changes: AppliedChanges }> {
-  const held = [...(await store.emails(accountId, [...keywords.keys()])).values()];
-  const headers = held.map((header): EmailHeader => ({
-    ...header,
-    keywords: keywords.get(header.id) ?? header.keywords,
-  }));
-  const after = new Map(headers.map((header) => [header.id, memberOf(header)]));
-  const threadIds = [...new Set(held.map((header) => header.threadId))];
-  const threads = [...(await store.threads(accountId, threadIds)).values()];
-  const moved = movesOf(
-    new Map(threads.map((thread) => [thread.id, thread.members])),
-    held.map((header) => ({
-      id: header.id,
-      threadId: header.threadId,
-      before: memberOf(header),
-      after: after.get(header.id) ?? memberOf(header),
-    })),
+  mutations: readonly Mutation[],
+  lease?: string,
+): Promise<Logged> {
+  const log = await store.pending(accountId);
+  const doomed = new Set(log.filter((row) => row.destroy === true).map((row) => row.id));
+  const headers = await store.emails(accountId, [...new Set(mutations.map(({ id }) => id))]);
+  const before = new Map([...headers].map(([id, header]) => [id, memberOf(header)]));
+  const states = new Map(before);
+  const steps: Step[] = [];
+  for (const mutation of mutations) {
+    const state = states.get(mutation.id);
+    const step =
+      state === undefined || doomed.has(mutation.id) ? null : stepOf(state, mutation, lease);
+    if (state !== undefined && step !== null) {
+      states.set(mutation.id, patched(state, step.patch).state);
+      steps.push(step);
+      if (step.destroy === true) {
+        doomed.add(mutation.id);
+      }
+    }
+  }
+  if (steps.length === 0) {
+    return nothing();
+  }
+  const changed = new Map(steps.map(({ id }) => [id, states.get(id) ?? emptyState()]));
+  const restores = new Set(
+    mutations.flatMap((mutation) => ("restores" in mutation ? [mutation.id] : [])),
   );
-  const mailboxes = recounted(await store.mailboxes(accountId), moved);
-  const members = threads.map((thread) => withMembers(thread, after));
+  const { batch, changes } = await restate(store, accountId, changed, restores);
+  const first = (log.at(-1)?.seq ?? 0) + 1;
+  const rows = steps.map((step, index): PendingRow => ({
+    ...step,
+    seq: first + index,
+    sentAt: null,
+  }));
+  await store.commit(accountId, { ...batch, pending: { put: rows } });
+  const destroyed = new Set(steps.filter((step) => step.destroy === true).map(({ id }) => id));
+  const kept = [...changed.keys()].filter((id) => !destroyed.has(id));
   return {
-    batch: { emails: { put: headers }, threads: { put: members }, mailboxes: { put: mailboxes } },
-    changes: {
-      mailboxes: mailboxes.length > 0,
-      windows: [...new Set(held.flatMap((header) => Object.keys(header.mailboxIds)))],
-      threads: threadIds,
-    },
+    changes,
+    inverses: kept.map((id) =>
+      inverseOf(
+        id,
+        before.get(id) ?? emptyState(),
+        steps.filter((step) => step.id === id),
+      ),
+    ),
+    held: rows.filter((row) => row.held === true).map((row) => row.seq),
   };
 }
 
-// One change, taken by the rows at once and logged until the server
-// acknowledges it: the header, the member of its thread and the unread
-// counts of its mailboxes. A change that moves nothing is not logged.
-export async function applyPatch(
+// Lets the held destroys `picked` names go out with the next flush.
+// True when one was released.
+async function releaseWhere(
   store: MailStore,
   accountId: string,
-  mutation: Mutation,
+  picked: (row: PendingRow) => boolean,
+): Promise<boolean> {
+  const released = (await store.pending(accountId)).filter(
+    (row) => row.held === true && picked(row),
+  );
+  for (const row of released) {
+    row.held = false;
+  }
+  if (released.length > 0) {
+    await store.commit(accountId, { pending: { put: released } });
+  }
+  return released.length > 0;
+}
+
+// The window's toast closed or ran out: the destroys go out.
+export function releaseHeld(
+  store: MailStore,
+  accountId: string,
+  seqs: readonly number[],
+): Promise<boolean> {
+  return releaseWhere(store, accountId, (row) => seqs.includes(row.seq));
+}
+
+// Every held destroy whose tab holds no live lease goes out, the ones
+// without a lease too; with no live lease that is every held one, as at
+// the worker's start.
+export function releaseLapsed(
+  store: MailStore,
+  accountId: string,
+  live: ReadonlySet<string>,
+): Promise<boolean> {
+  return releaseWhere(store, accountId, (row) => row.lease === undefined || !live.has(row.lease));
+}
+
+// Takes the rows `leaving` names out of the log. Each email they change
+// returns to what the server holds with its other rows laid over it
+// again, and takes its place back in the lists it left.
+export async function takeBack(
+  store: MailStore,
+  accountId: string,
+  leaving: ReadonlySet<number>,
 ): Promise<AppliedChanges> {
-  const header = (await store.emails(accountId, [mutation.id])).get(mutation.id);
-  if (header === undefined) {
-    return nothing();
+  const log = await store.pending(accountId);
+  const ids = [...new Set(log.filter((row) => leaving.has(row.seq)).map((row) => row.id))];
+  if (ids.length === 0) {
+    return nothing().changes;
   }
-  const { keywords, inverse } = patched(header.keywords, mutation.patch);
-  if (!alters(mutation.patch, inverse)) {
-    return nothing();
+  const states = new Map<string, MemberState>();
+  const kept: PendingRow[] = [];
+  for (const [id, header] of await store.emails(accountId, ids)) {
+    const rows = log.filter((row) => row.id === id);
+    const replay = replayed(
+      unpatched(memberOf(header), rows),
+      rows.filter((row) => !leaving.has(row.seq)),
+    );
+    states.set(id, replay.state);
+    kept.push(...replay.rows);
   }
-  const { batch, changes } = await rekeyed(store, accountId, new Map([[header.id, keywords]]));
-  const last = (await store.pending(accountId)).at(-1);
-  const row: PendingRow = {
-    seq: (last?.seq ?? 0) + 1,
-    type: "Email",
-    id: header.id,
-    patch: mutation.patch,
-    inverse,
-    sentAt: null,
-  };
-  await store.commit(accountId, { ...batch, pending: { put: [row] } });
+  const { batch, changes } = await restate(store, accountId, states, new Set(ids));
+  await store.commit(accountId, { ...batch, pending: { put: kept, remove: [...leaving] } });
   return changes;
 }
 
-// The rows of the first `emails` emails the log names, every row of
-// each: one /set takes no more objects than the server allows.
-function firstEmails(rows: readonly PendingRow[], emails: number): PendingRow[] {
-  const ids = new Set<string>();
-  for (const row of rows) {
-    if (ids.size < emails) {
-      ids.add(row.id);
-    }
-  }
-  return rows.filter((row) => ids.has(row.id));
-}
-
-// One patch per email, a later row winning a path an earlier one named.
-function updatesOf(rows: readonly PendingRow[]): Record<string, PatchObject> {
-  const updates = new Map<string, EmailPatch>();
-  for (const row of rows) {
-    updates.set(row.id, { ...updates.get(row.id), ...row.patch });
-  }
-  return Object.fromEntries(updates);
-}
-
-// What the answer says of the emails it does not name as updated: the
-// word the server gave each refused one, and the ones whose update
-// waits for a server out of reach and keeps its rows (RFC 8620 section
-// 3.6.2).
-interface Verdict {
-  refused: Map<string, string>;
-  waiting: Set<string>;
-}
-
-// A method error refuses every email of the call.
-function verdictOf(
-  read: Outcome<z.infer<typeof setAnswerSchema>>,
-  rows: readonly PendingRow[],
-): Verdict {
-  const ids = [...new Set(rows.map((row) => row.id))];
-  if (read.status === "error") {
-    return { refused: new Map(ids.map((id) => [id, read.type])), waiting: new Set() };
-  }
-  const updated = new Set(Object.keys(read.value.updated ?? {}));
-  const errors = new Map(Object.entries(read.value.notUpdated ?? {}));
-  const words = ids
-    .filter((id) => !updated.has(id))
-    .map((id): [string, string] => [id, errors.get(id)?.type ?? UNNAMED]);
-  return {
-    refused: new Map(words.filter(([, type]) => type !== SERVER_UNAVAILABLE)),
-    waiting: new Set(words.filter(([, type]) => type === SERVER_UNAVAILABLE).map(([id]) => id)),
-  };
-}
-
-// The log after an answer: an acknowledged row leaves, a refused one
-// leaves with its patch taken back from the rows and a waiting one
-// stays for the next flush.
-async function settle(
+// Undo of a delete forever: the held destroys leave the log and their
+// emails show again where they stood. A destroy the window released is
+// past taking back.
+export async function dropHeld(
   store: MailStore,
   accountId: string,
-  sent: readonly PendingRow[],
-  { refused, waiting }: Verdict,
-): Promise<Omit<Flushed, "more">> {
-  const held = await store.emails(accountId, [...refused.keys()]);
-  const keywords = new Map(
-    [...held.values()].map((header) => [
-      header.id,
-      unpatched(
-        header.keywords,
-        sent.filter((row) => row.id === header.id),
-      ),
-    ]),
-  );
-  const { batch, changes } = await rekeyed(store, accountId, keywords);
-  const leaving = sent.filter((row) => !waiting.has(row.id)).map((row) => row.seq);
-  await store.commit(accountId, { ...batch, pending: { remove: leaving } });
-  return {
-    changes,
-    failed: [...refused].filter(([, type]) => type !== NOT_FOUND).map(([id]) => id),
-  };
-}
-
-// One round: as much of the log as one Email/set takes, sent without a
-// state (the last write wins) and settled by the answer. A request that
-// brings no answer, or a call answered while the server is out of
-// reach, throws and leaves the log for the next flush.
-export async function flushPending(client: JmapClient, store: MailStore): Promise<Flushed> {
-  const { accountId } = client;
-  const rows = await store.pending(accountId);
-  if (rows.length === 0) {
-    return { changes: nothing(), failed: [], more: false };
-  }
-  const session = await client.session();
-  const now = Date.now();
-  const sent = firstEmails(rows, Math.max(session.maxObjectsInSet, 1));
-  for (const row of sent) {
-    row.sentAt = now;
-  }
-  await store.commit(accountId, { pending: { put: sent } });
-  const calls = callsFor(session.accountId);
-  const responses = await client.request([
-    calls.set("Email", { update: updatesOf(sent), ifInState: null }, "s"),
-  ]);
-  const read = outcome(responses, "s", setAnswerSchema);
-  if (read.status === "error" && read.type === SERVER_UNAVAILABLE) {
-    throw new JmapError("unavailable");
-  }
-  const verdict = verdictOf(read, sent);
-  const settled = await settle(store, accountId, sent, verdict);
-  return { ...settled, more: verdict.waiting.size === 0 && sent.length < rows.length };
+  seqs: readonly number[],
+): Promise<AppliedChanges> {
+  const log = await store.pending(accountId);
+  const dropping = log.filter((row) => row.held === true && seqs.includes(row.seq));
+  return takeBack(store, accountId, new Set(dropping.map((row) => row.seq)));
 }

@@ -3,7 +3,12 @@
 // Additional terms apply, see NOTICE.
 
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
-import { CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY } from "../jmap/schemas";
+import {
+  CORE_CAPABILITY,
+  HULIHO_CAPABILITY,
+  MAIL_CAPABILITY,
+  QUOTA_CAPABILITY,
+} from "../jmap/schemas";
 import { z } from "../schema";
 import { FakeMethods } from "./fake-methods";
 import type { Change, Kind, Type } from "./fake-methods";
@@ -11,7 +16,9 @@ import { ACCOUNT, MethodError, UPSTREAM } from "./fake-wire";
 import type { Args, Invocation } from "./fake-wire";
 import { passesProxy, recountMailboxes } from "./fake-writes";
 import type { FakeBody } from "./fake-writes";
+import type { Quota } from "./quota";
 
+export { quota } from "./fake-quota";
 export { ACCOUNT, UPSTREAM } from "./fake-wire";
 export type { FakeBody } from "./fake-writes";
 
@@ -19,7 +26,6 @@ const JSON_TYPE = "application/json";
 const PROBLEM_TYPE = "application/problem+json";
 const SESSION_URL = `/api/jmap/${ACCOUNT}/session`;
 const API_URL = `/api/jmap/${ACCOUNT}`;
-const KNOWN_CAPABILITIES = new Set([CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY]);
 
 function urlOf(input: RequestInfo | URL): string {
   if (typeof input === "string") {
@@ -125,7 +131,9 @@ export class FakeJmap {
   readonly mailboxes = new Map<string, Mailbox>();
   readonly emails = new Map<string, EmailHeader>();
   readonly bodies = new Map<string, FakeBody>();
-  // The emails an Email/set refuses, each with its SetError type.
+  readonly quotas = new Map<string, Quota>();
+  // The emails an Email/set refuses to update or destroy, each with its
+  // SetError type.
   readonly refused = new Map<string, string>();
   readonly requests: Recorded[] = [];
   readonly queue: Response[] = [];
@@ -141,6 +149,10 @@ export class FakeJmap {
   queryLimit = 200;
   changesCap = Number.POSITIVE_INFINITY;
   vendor = true;
+  // Whether the server names the quota capability, and whether the
+  // account lists it as well.
+  quota = false;
+  quotaAccount = true;
   sessionState = "s1";
 
   readonly fetch: typeof fetch = (input, init) =>
@@ -178,6 +190,16 @@ export class FakeJmap {
     }
     this.note("Email", id, "updated");
     this.emails.set(id, { ...held, ...facts });
+  }
+
+  putQuota(row: Quota): void {
+    this.note("Quota", row.id, this.quotas.has(row.id) ? "updated" : "created");
+    this.quotas.set(row.id, row);
+  }
+
+  removeQuota(id: string): void {
+    this.note("Quota", id, "destroyed");
+    this.quotas.delete(id);
   }
 
   destroyEmail(id: string): void {
@@ -252,14 +274,16 @@ export class FakeJmap {
       collationAlgorithms: ["i;unicode-casemap"],
     };
     const vendor = this.vendor ? { [HULIHO_CAPABILITY]: {} } : {};
+    const quota = this.quota ? { [QUOTA_CAPABILITY]: {} } : {};
+    const accountQuota = this.quotaAccount ? quota : {};
     return {
-      capabilities: { [CORE_CAPABILITY]: core, [MAIL_CAPABILITY]: {}, ...vendor },
+      capabilities: { [CORE_CAPABILITY]: core, [MAIL_CAPABILITY]: {}, ...vendor, ...quota },
       accounts: {
         [UPSTREAM]: {
           name: "sanne@example.test",
           isPersonal: true,
           isReadOnly: this.readOnly,
-          accountCapabilities: { [MAIL_CAPABILITY]: {}, ...vendor },
+          accountCapabilities: { [MAIL_CAPABILITY]: {}, ...vendor, ...accountQuota },
         },
       },
       primaryAccounts: { [MAIL_CAPABILITY]: UPSTREAM },
@@ -280,14 +304,21 @@ export class FakeJmap {
       return json(400, { type: "urn:ietf:params:jmap:error:notRequest" }, PROBLEM_TYPE);
     }
     const { using, methodCalls } = request.data;
-    if (using.some((name) => !KNOWN_CAPABILITIES.has(name))) {
+    const known = new Set([CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY]);
+    if (this.quota) {
+      known.add(QUOTA_CAPABILITY);
+    }
+    if (using.some((name) => !known.has(name))) {
       return json(400, { type: "urn:ietf:params:jmap:error:unknownCapability" }, PROBLEM_TYPE);
     }
     if (methodCalls.length > this.maxCallsInRequest) {
       const problem = { type: "urn:ietf:params:jmap:error:limit", limit: "maxCallsInRequest" };
       return json(400, problem, PROBLEM_TYPE);
     }
-    const methods = new FakeMethods(this, using.includes(HULIHO_CAPABILITY));
+    const methods = new FakeMethods(this, {
+      vendor: using.includes(HULIHO_CAPABILITY),
+      quota: using.includes(QUOTA_CAPABILITY),
+    });
     const responses: Invocation[] = [];
     for (const call of methodCalls) {
       responses.push(run(methods, responses, call));

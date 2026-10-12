@@ -4,7 +4,7 @@
 
 import { expect, test } from "vitest";
 
-import { at, email, mailbox } from "./fake-jmap";
+import { at, email, mailbox, quota } from "./fake-jmap";
 import { MemoryMailStore } from "./memory";
 import type { EmailBody, PendingRow, QueryRow } from "./store";
 
@@ -129,13 +129,29 @@ test("a body and the pending changes belong to one account, come back as copies 
   expect(await store.bodySizes()).toHaveLength(1);
 });
 
+test("the quotas belong to one account, come back as a copy and leave on null", async () => {
+  const store = new MemoryMailStore();
+  const held = { state: "4", list: [quota("q1")] };
+  await store.commit("acc-1", { quota: held });
+  expect(await store.quota("acc-2")).toBeNull();
+  const read = await store.quota("acc-1");
+  expect(read).toEqual(held);
+  read?.list.pop();
+  expect((await store.quota("acc-1"))?.list).toHaveLength(1);
+  await store.commit("acc-1", { states: { Mailbox: "5" } });
+  expect(await store.quota("acc-1")).toEqual(held);
+  await store.commit("acc-1", { quota: null });
+  expect(await store.quota("acc-1")).toBeNull();
+});
+
 test("the store names the accounts that hold a row and forgets every row at once", async () => {
   const store = new MemoryMailStore();
   await store.mailboxes("acc-0");
   expect(await store.accounts()).toEqual([]);
   await store.commit("acc-1", { states: { Email: "1" } });
   await store.commit("acc-2", { bodies: { put: [BODY] } });
-  expect(await store.accounts()).toEqual(["acc-1", "acc-2"]);
+  await store.commit("acc-3", { quota: { state: "1", list: [] } });
+  expect(await store.accounts()).toEqual(["acc-1", "acc-2", "acc-3"]);
   await store.destroy();
   expect(await store.accounts()).toEqual([]);
   expect(await store.body("acc-2", "e1")).toBeNull();

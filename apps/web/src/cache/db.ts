@@ -5,6 +5,7 @@
 import {
   emailBodySchema,
   emailHeaderSchema,
+  heldQuotaSchema,
   mailboxSchema,
   pendingRowSchema,
   queryRowSchema,
@@ -15,6 +16,7 @@ import type {
   BodySize,
   EmailBody,
   EmailHeader,
+  HeldQuota,
   MailStore,
   Mailbox,
   ObjectType,
@@ -54,14 +56,17 @@ type Stored<Row> = Table<Keyed<Row>, [string, string]>;
 const KEYS = "[accountId+id], accountId";
 const BODY_ORDER = "[fetchedAt+bytes]";
 
+// The meta row that holds the account's quotas beside the state strings.
+const QUOTA_KEY = "quota";
+
 // The tables Dexie sets up from the schema; the fields only name them.
 export class MailDatabase extends Dexie {
   declare readonly mailboxes: Stored<Mailbox>;
   declare readonly emailHeaders: Stored<EmailHeader>;
   declare readonly threads: Stored<ThreadRow>;
   declare readonly queryCache: Stored<QueryRow>;
-  // One row per object type: its state string.
-  declare readonly meta: Stored<string>;
+  // One row per object type with its state string, plus the quotas.
+  declare readonly meta: Stored<unknown>;
   declare readonly emailBodies: Table<StoredBody, [string, string]>;
   declare readonly pendingChanges: Table<StoredPending, [string, number]>;
 
@@ -200,6 +205,11 @@ export class DexieMailStore implements MailStore {
     return rows.flatMap((held) => checked("pendingChanges", held.row, pendingRowSchema));
   }
 
+  async quota(accountId: string): Promise<HeldQuota | null> {
+    const held = await this.db.meta.get([accountId, QUOTA_KEY]);
+    return held === undefined ? null : (checked("meta", held.row, heldQuotaSchema)[0] ?? null);
+  }
+
   commit(accountId: string, batch: Batch): Promise<void> {
     const { db } = this;
     return db.transaction("rw", db.tables, async () => {
@@ -221,6 +231,7 @@ export class DexieMailStore implements MailStore {
             : db.meta.put({ accountId, id: type, row: state }),
         ),
       );
+      await this.applyQuota(accountId, batch.quota);
     });
   }
 
@@ -259,6 +270,14 @@ export class DexieMailStore implements MailStore {
     await pendingChanges.bulkPut(
       (change?.put ?? []).map((row) => ({ accountId, seq: row.seq, row })),
     );
+  }
+
+  private async applyQuota(accountId: string, quota: Batch["quota"]): Promise<void> {
+    if (quota === null) {
+      await this.db.meta.delete([accountId, QUOTA_KEY]);
+    } else if (quota !== undefined) {
+      await this.db.meta.put({ accountId, id: QUOTA_KEY, row: quota });
+    }
   }
 
   private table(area: StoreArea): Table {

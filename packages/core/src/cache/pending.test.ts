@@ -7,13 +7,16 @@ import { afterEach, expect, test, vi } from "vitest";
 import { JmapClient } from "../jmap/client";
 import { z } from "../schema";
 import { ACCOUNT, FakeJmap, UPSTREAM, at, email, json, mailbox } from "./fake-jmap";
+import { flushPending } from "./flush";
 import { CHANGES_ROUNDS_MAX } from "./limits";
 import { syncMailboxes } from "./mailboxes";
 import { MemoryMailStore } from "./memory";
-import { applyPatch, flushPending } from "./pending";
-import type { Mutation } from "./pending";
+import { mutateMany } from "./pending";
+import type { PatchMutation } from "./pending";
 import { applyChanges } from "./poll";
+import type { AppliedChanges } from "./poll";
 import { listPage } from "./rows";
+import type { MailStore } from "./store";
 import { readThread } from "./thread";
 import { queryWindow } from "./window";
 
@@ -29,8 +32,13 @@ const NOTHING = { mailboxes: false, windows: [], threads: [] };
 const SETTLED = { changes: NOTHING, failed: [], more: false };
 const updateSchema = z.object({ update: z.record(z.string(), z.unknown()) });
 
-function read(id: string): Mutation {
+function read(id: string): PatchMutation {
   return { type: "Email", id, patch: { [SEEN]: true } };
+}
+
+// One change logged on its own, as a mark as read is.
+async function logOne(store: MailStore, mutation: PatchMutation): Promise<AppliedChanges> {
+  return (await mutateMany(store, ACCOUNT, [mutation])).changes;
 }
 
 // A thread of two unread emails, an unread one and a read one, all in
@@ -84,7 +92,7 @@ afterEach(() => {
 test("a mark as read moves the header, the thread member and the unread counts at once and sends nothing", async () => {
   const { server, client, store } = await serve();
   expect(await unread(store)).toEqual([3, 2]);
-  const first = await applyPatch(store, ACCOUNT, read("e1"));
+  const first = await logOne(store, read("e1"));
   expect(first).toEqual({ mailboxes: true, windows: ["inbox"], threads: ["t1"] });
   expect(await keywords(store, "e1")).toEqual({ $seen: true });
   const thread = (await store.threads(ACCOUNT, ["t1"])).get("t1");
@@ -92,7 +100,7 @@ test("a mark as read moves the header, the thread member and the unread counts a
   expect(thread?.members["e2"]?.keywords).toEqual({});
   // The thread stays unread while its other member is.
   expect(await unread(store)).toEqual([2, 2]);
-  await applyPatch(store, ACCOUNT, read("e2"));
+  await logOne(store, read("e2"));
   expect(await unread(store)).toEqual([1, 1]);
   const page = listPage(await queryWindow(client, store, "inbox", 0), "inbox");
   expect(page.rows.find((row) => row.threadId === "t1")?.unread).toBe(false);
@@ -119,26 +127,26 @@ test("a mark as read moves the header, the thread member and the unread counts a
 
 test("a change that moves nothing or names an email the store lacks is not logged", async () => {
   const { store } = await serve();
-  expect(await applyPatch(store, ACCOUNT, read("e4"))).toEqual(NOTHING);
-  expect(await applyPatch(store, ACCOUNT, read("e9"))).toEqual(NOTHING);
+  expect(await logOne(store, read("e4"))).toEqual(NOTHING);
+  expect(await logOne(store, read("e9"))).toEqual(NOTHING);
   expect(await store.pending(ACCOUNT)).toEqual([]);
   expect(await unread(store)).toEqual([3, 2]);
 });
 
-test("a patch that names anything but a keyword is refused before a row moves", async () => {
+test("a patch that names neither a keyword nor a mailbox is refused before a row moves", async () => {
   const { store } = await serve();
-  const moved: Mutation = { type: "Email", id: "e1", patch: { "mailboxIds/archive": true } };
-  await expect(applyPatch(store, ACCOUNT, moved)).rejects.toThrow("keywords alone");
-  const bare: Mutation = { type: "Email", id: "e1", patch: { "keywords/": true } };
-  await expect(applyPatch(store, ACCOUNT, bare)).rejects.toThrow("keywords alone");
+  const thread: PatchMutation = { type: "Email", id: "e1", patch: { "threadId/t2": true } };
+  await expect(logOne(store, thread)).rejects.toThrow("keywords or mailboxes alone");
+  const bare: PatchMutation = { type: "Email", id: "e1", patch: { "keywords/": true } };
+  await expect(logOne(store, bare)).rejects.toThrow("keywords or mailboxes alone");
   expect(await store.pending(ACCOUNT)).toEqual([]);
   expect(await keywords(store, "e1")).toEqual({});
 });
 
 test("a flush sends the log as one Email/set that names no state and an acknowledged patch leaves it (RFC 8620 section 5.3)", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e1"));
-  await applyPatch(store, ACCOUNT, read("e2"));
+  await logOne(store, read("e1"));
+  await logOne(store, read("e2"));
   const flushed = await flushPending(client, store);
   expect(flushed).toEqual(SETTLED);
   expect(server.posted()).toEqual([
@@ -165,12 +173,12 @@ test("a flush sends the log as one Email/set that names no state and an acknowle
 
 test("two patches of one email go out as one update, the later one winning a path", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, {
+  await logOne(store, {
     type: "Email",
     id: "e3",
     patch: { [SEEN]: true, "keywords/$flagged": true },
   });
-  await applyPatch(store, ACCOUNT, {
+  await logOne(store, {
     type: "Email",
     id: "e3",
     patch: { "keywords/$flagged": null },
@@ -186,8 +194,8 @@ test("two patches of one email go out as one update, the later one winning a pat
 test("an update the server refuses is taken back from the rows and named; the acknowledged one stands", async () => {
   const { server, client, store } = await serve();
   server.refused.set("e1", "serverFail");
-  await applyPatch(store, ACCOUNT, read("e1"));
-  await applyPatch(store, ACCOUNT, read("e2"));
+  await logOne(store, read("e1"));
+  await logOne(store, read("e2"));
   const flushed = await flushPending(client, store);
   expect(flushed).toEqual({
     changes: { mailboxes: true, windows: ["inbox"], threads: ["t1"] },
@@ -204,8 +212,8 @@ test("an update the server refuses is taken back from the rows and named; the ac
 
 test("a method error takes back every patch of the call", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e1"));
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e1"));
+  await logOne(store, read("e3"));
   server.readOnly = true;
   const flushed = await flushPending(client, store);
   expect(flushed.failed).toEqual(["e1", "e3"]);
@@ -218,7 +226,7 @@ test("a method error takes back every patch of the call", async () => {
 
 test("the patch of an email that is gone leaves the log and nobody is told", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e3"));
   server.destroyEmail("e3");
   expect((await flushPending(client, store)).failed).toEqual([]);
   expect(await store.pending(ACCOUNT)).toEqual([]);
@@ -226,7 +234,7 @@ test("the patch of an email that is gone leaves the log and nobody is told", asy
 
 test("a request that brings no answer leaves the log and the rows as they are and the next flush sends it again", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e3"));
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("down")));
   await expect(flushPending(client, store)).rejects.toMatchObject({ code: "unavailable" });
   vi.stubGlobal("fetch", server.fetch);
@@ -245,7 +253,7 @@ test("a request that brings no answer leaves the log and the rows as they are an
 
 test("a call answered serverUnavailable leaves the log and the rows as they are and the next flush sends it again (RFC 8620 section 3.6.2)", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e1"));
+  await logOne(store, read("e1"));
   server.queue.push(failed("serverUnavailable"));
   await expect(flushPending(client, store)).rejects.toMatchObject({
     name: "JmapError",
@@ -272,9 +280,9 @@ test("more pending emails than one set takes go out in rounds", async () => {
   const { server, client, store } = await serve((knobs) => {
     knobs.maxObjectsInSet = 2;
   });
-  await applyPatch(store, ACCOUNT, read("e1"));
-  await applyPatch(store, ACCOUNT, read("e2"));
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e1"));
+  await logOne(store, read("e2"));
+  await logOne(store, read("e3"));
   server.refused.set("e2", "forbidden");
   // A round answers for itself, so a later one that fails takes nothing from it.
   expect(await flushPending(client, store)).toMatchObject({ failed: ["e2"], more: true });
@@ -289,9 +297,9 @@ test("an update answered serverUnavailable keeps its rows at the head of the log
     knobs.maxObjectsInSet = 2;
   });
   server.refused.set("e1", "serverUnavailable");
-  await applyPatch(store, ACCOUNT, read("e1"));
-  await applyPatch(store, ACCOUNT, read("e2"));
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e1"));
+  await logOne(store, read("e2"));
+  await logOne(store, read("e3"));
   // The acknowledged one leaves; e3 waits past the round and is not asked for.
   expect(await flushPending(client, store)).toEqual(SETTLED);
   expect(await keywords(store, "e1")).toEqual({ $seen: true });
@@ -309,7 +317,7 @@ test("an update answered serverUnavailable keeps its rows at the head of the log
 
 test("a mailbox that lands a round ahead of the email whose lost write it counts is set right when the email lands", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e3"));
   // The server took the write; an older change keeps the email out of the first round.
   server.amend("e4", { keywords: { $seen: true, $flagged: true } });
   server.amend("e3", { keywords: { $seen: true } });
@@ -323,7 +331,7 @@ test("a mailbox that lands a round ahead of the email whose lost write it counts
 
 test("a mailbox set right by an email that lands a poll later is named as changed", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e3"));
   // The server took the write; older changes keep the email out of the first poll.
   for (let round = 0; round < CHANGES_ROUNDS_MAX; round += 1) {
     server.amend("e4", { keywords: { $seen: true, $flagged: true } });
@@ -341,7 +349,7 @@ test("a mailbox set right by an email that lands a poll later is named as change
 
 test("a list fetched after a lost write keeps the count, which already says what the server holds", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e3"));
   server.amend("e3", { keywords: { $seen: true } });
   server.recount();
   // The fetch lands the header as read; the mailbox row is still the old one.
@@ -357,7 +365,7 @@ test("a list fetched after a lost write keeps the count, which already says what
 
 test("an email that lands a round ahead of its mailbox leaves the count right once the mailbox lands", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e3"));
   // An older mailbox change keeps the inbox out of the first round.
   server.putMailbox(mailbox("archive", "archive"));
   server.amend("e3", { keywords: { $seen: true } });
@@ -370,7 +378,7 @@ test("an email that lands a round ahead of its mailbox leaves the count right on
 
 test("a poll that lands an email as the server still holds it does not flip it back", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e3"));
   // Another client flags the email; the server has not seen the patch.
   server.amend("e3", { keywords: { $flagged: true } });
   const applied = await applyChanges(client, store, ["inbox"]);
@@ -384,8 +392,8 @@ test("a poll that lands an email as the server still holds it does not flip it b
 
 test("a mailbox row that lands counts the pending patches in again, a thread once", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e1"));
-  await applyPatch(store, ACCOUNT, read("e2"));
+  await logOne(store, read("e1"));
+  await logOne(store, read("e2"));
   const inbox = server.mailboxes.get("inbox");
   server.putMailbox({ ...mailbox("inbox", "inbox"), ...inbox, name: "Post" });
   await applyChanges(client, store, ["inbox"]);
@@ -396,7 +404,7 @@ test("a mailbox row that lands counts the pending patches in again, a thread onc
 
 test("the tree fetched anew counts the pending patches in", async () => {
   const { client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e3"));
   await store.commit(ACCOUNT, { states: { Mailbox: null } });
   await syncMailboxes(client, store);
   expect(await unread(store)).toEqual([2, 1]);
@@ -404,8 +412,11 @@ test("the tree fetched anew counts the pending patches in", async () => {
 
 test("a write the server took whose answer was lost is counted once", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e3"));
-  // The server holds the keyword and its counts say so; the log does not know.
+  await logOne(store, read("e3"));
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("down")));
+  await expect(flushPending(client, store)).rejects.toMatchObject({ code: "unavailable" });
+  vi.stubGlobal("fetch", server.fetch);
+  // The server took the keyword and its counts say so; the log does not know.
   server.amend("e3", { keywords: { $seen: true } });
   server.recount();
   await applyChanges(client, store, ["inbox"]);
@@ -420,8 +431,8 @@ test("a write the server took whose answer was lost is counted once", async () =
 
 test("a window and a thread fetched while a patch waits take the patch", async () => {
   const { client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e1"));
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e1"));
+  await logOne(store, read("e3"));
   await store.commit(ACCOUNT, { reset: ["emails", "threads", "queries"] });
   const page = await queryWindow(client, store, "inbox", 0);
   expect(page.emails["e3"]?.keywords).toEqual({ $seen: true });
@@ -434,7 +445,7 @@ test("a window and a thread fetched while a patch waits take the patch", async (
 
 test("the first page refreshed by a poll while a patch waits keeps the patch", async () => {
   const { server, client, store } = await serve();
-  await applyPatch(store, ACCOUNT, read("e3"));
+  await logOne(store, read("e3"));
   server.addEmail(email("e5", { receivedAt: at(5), keywords: ["$seen"] }));
   const applied = await applyChanges(client, store, ["inbox"]);
   expect(applied.windows).toEqual(["inbox"]);
