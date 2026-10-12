@@ -37,6 +37,7 @@ const LIST_NAME = `${String(ATTACHMENT_COUNT)} attachments`;
 const WARNING = "This file can run programs on your computer.";
 const PHOTO_BUTTON = `${PHOTO_NAME} 2.4 MB`;
 const DANGEROUS_BUTTON = `${DANGEROUS_NAME} 36 kB`;
+const NOT_AN_IMAGE_CHIP = `${NOT_AN_IMAGE_NAME} 512 kB`;
 // The photo the mocked route serves is this wide.
 const PHOTO_WIDTH = 480;
 // The narrowest screen the layout holds.
@@ -102,7 +103,7 @@ test("the strip lists the chips first and the preview after them, each named and
   await expect(preview.locator("img")).toHaveAttribute("src", /type=image%2Fpng$/);
   await expect.poll(() => loaded(preview.locator("img"))).toBe(true);
   expect(await naturalWidth(preview.locator("img"))).toBe(PHOTO_WIDTH);
-  await expect(strip.getByRole("link", { name: `${NOT_AN_IMAGE_NAME} 512 kB` })).toBeVisible();
+  await expect(strip.getByRole("link", { name: NOT_AN_IMAGE_CHIP })).toBeVisible();
   await expect(strip.getByRole("button", { name: /scan\.png/ })).toHaveCount(0);
   // An image under a name that asks first never previews.
   await expect(strip.getByRole("button", { name: `${DANGEROUS_IMAGE_NAME} 20 kB` })).toBeVisible();
@@ -217,6 +218,8 @@ test("the strip reads in Dutch and in the pseudo-locale", async ({ page }) => {
     .getByRole("list", { name: `${String(ATTACHMENT_COUNT)} bijlagen` });
   await expect(strip.getByRole("link", { name: "Bijlage zonder naam 1 kB" })).toBeVisible();
   await expect(strip.getByRole("link", { name: "Bijgevoegd bericht 12 kB" })).toBeVisible();
+  // The part whose bytes are no image shows a preview until its picture fails, then a chip.
+  await expect(strip.getByRole("link", { name: NOT_AN_IMAGE_CHIP })).toBeVisible();
   await expect.poll(() => loaded(strip.locator("img"))).toBe(true);
   await settled(page);
   await expect.soft(page).toHaveScreenshot("attachments-nl-light-phone.png");
@@ -244,6 +247,7 @@ test("the strip reads in Dutch and in the pseudo-locale", async ({ page }) => {
     .getByRole("link", { name: `${LONG_NAME} 48 kB` })
     .getByText("48 kB", { exact: true });
   expect(await size.evaluate((element) => getComputedStyle(element).direction)).toBe("ltr");
+  await expect(pseudo.getByRole("link", { name: NOT_AN_IMAGE_CHIP })).toBeVisible();
   await expect.poll(() => loaded(pseudo.locator("img"))).toBe(true);
   await settled(page);
   await expect.soft(page).toHaveScreenshot("attachments-en-XA-light-phone.png");
