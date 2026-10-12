@@ -44,6 +44,10 @@ const SYSTEM_LABELS: [(&str, &str); 7] = [
     ("\\Important", "\\Important"),
 ];
 
+/// The bridge's spelling of a system label beside the one a STORE of
+/// X-GM-LABELS writes, the spelling Gmail's own answers use.
+const WRITTEN_LABELS: [(&str, &str); 2] = [("\\Flagged", "\\Starred"), ("\\Drafts", "\\Draft")];
+
 /// Whether the host's word on the account holds for this server: the
 /// capability confirms it.
 #[must_use]
@@ -98,9 +102,29 @@ pub fn canonical(label: &str) -> String {
         .map_or_else(|| label.to_owned(), |(_, folded)| (*folded).to_owned())
 }
 
+/// A label in the bridge's spelling as a STORE writes it.
+#[must_use]
+pub fn written(label: &str) -> &str {
+    WRITTEN_LABELS
+        .iter()
+        .find(|(kept, _)| *kept == label)
+        .map_or(label, |(_, written)| written)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_label_goes_out_in_the_spelling_gmail_answers_with() {
+        assert_eq!(written("\\Flagged"), "\\Starred");
+        assert_eq!(written("\\Drafts"), "\\Draft");
+        assert_eq!(written("\\Inbox"), "\\Inbox");
+        assert_eq!(written("Work/Q3"), "Work/Q3");
+        for kept in ["\\Flagged", "\\Drafts", "\\Inbox", "\\Important", "\\Sent"] {
+            assert_eq!(canonical(written(kept)), kept);
+        }
+    }
 
     fn entry(name: &str, attributes: &[&str]) -> ListEntry {
         ListEntry {

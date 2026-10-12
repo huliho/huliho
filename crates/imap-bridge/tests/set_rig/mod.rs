@@ -65,15 +65,23 @@ impl Set {
         self.set(json!({ "update": update })).await
     }
 
-    /// Every SELECT and UID STORE the server received, without its tag.
+    /// Every SELECT and every command of the write path the server
+    /// received, without its tag.
     pub fn written(&self) -> Vec<String> {
+        let writes = [
+            "SELECT ",
+            "UID STORE ",
+            "UID MOVE ",
+            "UID COPY ",
+            "UID EXPUNGE ",
+        ];
         self.rig
             .fake
             .lines()
             .iter()
             .filter_map(|line| line.split_once(' ')?.1.split_once(' '))
             .map(|(_, command)| command.to_owned())
-            .filter(|command| command.starts_with("SELECT ") || command.starts_with("UID STORE "))
+            .filter(|command| writes.iter().any(|write| command.starts_with(write)))
             .collect()
     }
 

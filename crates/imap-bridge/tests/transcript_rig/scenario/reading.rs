@@ -74,7 +74,7 @@ impl Scenario {
     }
 
     /// Whether the second client sees the message as read.
-    async fn second_sees_read(&mut self, number: u32) -> bool {
+    pub(super) async fn second_sees_read(&mut self, number: u32) -> bool {
         match &mut self.second {
             Second::Nobody => true,
             Second::Model(mailboxes) => mailboxes

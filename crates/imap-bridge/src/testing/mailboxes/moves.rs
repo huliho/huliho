@@ -14,6 +14,7 @@ use std::fmt::Write as _;
 
 use super::gmail::{SPAM, TRASH};
 use super::{Extension, Mailboxes, Refusal, unquote};
+use crate::testing::behavior::Storing;
 use crate::testing::fetch::in_set;
 use crate::testing::folder::Folder;
 use crate::testing::messages::Message;
@@ -34,6 +35,13 @@ impl Mailboxes {
         tag: &str,
     ) -> Option<String> {
         let written = open.filter(|_| writable);
+        if is_transfer(command) {
+            match self.behavior.moving {
+                Storing::Refuses => return Some(format!("{tag} NO refused\r\n")),
+                Storing::Bad => return Some(format!("{tag} BAD refused\r\n")),
+                _ => {}
+            }
+        }
         let reply = if let Some(rest) = command.strip_prefix("UID MOVE ") {
             self.moved(written, rest, true)
         } else if let Some(rest) = command.strip_prefix("UID COPY ") {
@@ -145,6 +153,13 @@ impl Mailboxes {
         let (source, target) = (folded(&source), folded(&target));
         Some(format!("COPYUID {uid_validity} {source} {target}"))
     }
+}
+
+/// Whether the command is a UID MOVE, a UID COPY or a UID EXPUNGE.
+pub(in crate::testing) fn is_transfer(command: &str) -> bool {
+    ["UID MOVE ", "UID COPY ", "UID EXPUNGE "]
+        .iter()
+        .any(|verb| command.starts_with(verb))
 }
 
 /// The message as it lands in the folder under the folder's next UID;

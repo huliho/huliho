@@ -206,7 +206,8 @@ fn write_batch(
     Ok(Some(sequence))
 }
 
-fn holds(
+/// Whether the folder holds a row under the UID.
+pub(super) fn holds(
     connection: &Connection,
     key: &AccountKey,
     folder: &MailboxId,

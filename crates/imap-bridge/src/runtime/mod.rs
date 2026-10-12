@@ -7,7 +7,7 @@
 //! syncs its folders in the background. The host hands out connections;
 //! the bridge never sees a credential and never resolves a host. A
 //! request takes the conversation only for a refresh, a preview fetch,
-//! a body fetch or a keyword write, so one that reads the cache never
+//! a body fetch or an `Email/set`, so one that reads the cache never
 //! waits on IMAP; a blob takes it one window at a time.
 
 mod bridge;
@@ -25,7 +25,7 @@ pub use bridge::{Bridge, Registration};
 
 use crate::gmail;
 use crate::mailboxes::SyncError;
-use crate::session::{Session, SessionError};
+use crate::session::{Moving, Session, SessionError};
 use crate::store::{AccountKey, MailboxId};
 use crate::sync::refresh::{Given, Refreshed, Refresher};
 use crate::sync::{Cache, NARROWING_BUDGET};
@@ -44,9 +44,9 @@ pub const GMAIL_CONNECTIONS: usize = 2;
 pub const SESSION_IDLE_CLOSE: Duration = Duration::from_mins(5);
 
 /// What one turn on the conversation may take: a refresh, a preview
-/// fetch, a body fetch, a keyword write, one window of a blob or one
-/// batch of the header sync. It also bounds one UID FETCH answer, which
-/// has per-line timeouts alone.
+/// fetch, a body fetch, the writes of an `Email/set`, one window of a
+/// blob or one batch of the header sync. It also bounds one UID FETCH
+/// answer, which has per-line timeouts alone.
 pub const CONVERSATION_DEADLINE: Duration = Duration::from_secs(60);
 
 /// The accounts whose header sync runs at once, process wide.
@@ -152,6 +152,8 @@ pub struct Wire<C: Connector> {
     session: Option<C::Session>,
     /// Whether the server advertises CONDSTORE, read once per session.
     condstore: bool,
+    /// The commands the server offers for moving mail, read with it.
+    moving: Moving,
     /// Whether the host's word that the account is a Gmail account holds
     /// on this server, read with it.
     gmail: bool,
@@ -263,6 +265,7 @@ impl<C: Connector> Wire<C> {
             connector,
             session: None,
             condstore: false,
+            moving: Moving::default(),
             gmail: false,
             timing,
             refreshed: None,
@@ -291,11 +294,31 @@ impl<C: Connector> Wire<C> {
             let mut fresh = self.connector.connect(&cache.key).await?;
             let capabilities = fresh.capabilities().await?;
             self.condstore = capabilities.has("CONDSTORE");
+            self.moving = capabilities.moving();
             self.gmail = gmail::confirmed(cache.gmail, &capabilities);
             fresh
         };
         self.last_used = Some(Instant::now());
         Ok(self.session.insert(session))
+    }
+
+    /// The session as [`Wire::session`] answers it, with the commands
+    /// its server offers for moving mail.
+    ///
+    /// # Errors
+    ///
+    /// As [`Wire::session`].
+    pub(crate) async fn session_with(
+        &mut self,
+        cache: &Cache,
+    ) -> Result<(&mut C::Session, Moving), ConnectError> {
+        self.session(cache).await?;
+        let moving = self.moving;
+        let session = self
+            .session
+            .as_mut()
+            .ok_or(ConnectError::Failed(SessionError::Closed))?;
+        Ok((session, moving))
     }
 
     /// Drops the session after a failure, since its stream may hold

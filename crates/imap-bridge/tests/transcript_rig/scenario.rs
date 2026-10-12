@@ -7,9 +7,11 @@
 //! grouping, the properties and previews of the seeded mail, a message
 //! opened with its body and its blobs and marked read, then what a
 //! second client changes: a delivery, a flag, a label, a move to Spam
-//! and a deletion. Every assertion holds against the live account, the
-//! scripted server and a transcript of either.
+//! and a deletion; then the moves of the first client. Every assertion
+//! holds against the live account, the scripted server and a transcript
+//! of either.
 
+mod moving;
 mod reading;
 
 use std::collections::HashMap;
@@ -89,6 +91,13 @@ impl Scenario {
         self.label().await;
         self.spam().await;
         self.deletion().await;
+        self.archive().await;
+        self.move_to_label().await;
+        self.not_spam().await;
+        self.junk().await;
+        self.trash().await;
+        self.delete_forever().await;
+        self.mark_all_read().await;
         if let Second::Account { editor, stores } = &mut self.second {
             gmail::clear(editor, stores).await;
             gmail::within(editor.logout()).await.unwrap();

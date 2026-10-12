@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 use huliho_imap_bridge::jmap::{MAX_OBJECTS_IN_GET, QUERY_LIMIT};
 use huliho_imap_bridge::testing::Message;
+use huliho_imap_bridge::testing::messages::SIZE_ABOVE_UID;
 use serde_json::{Map, Value, json};
 use sync_rig::{ACCOUNT, Rig, inbox};
 
@@ -136,8 +137,12 @@ async fn email_query_refuses_what_it_does_not_serve_rfc8621_4_4() {
             "unsupportedFilter",
         ),
         (
-            json!({ "accountId": ACCOUNT, "filter": { "inMailbox": inbox, "hasKeyword": "$seen" } }),
+            json!({ "accountId": ACCOUNT, "filter": { "inMailbox": inbox, "text": "x" } }),
             "unsupportedFilter",
+        ),
+        (
+            json!({ "accountId": ACCOUNT, "filter": { "inMailbox": inbox, "notKeyword": "a b" } }),
+            "invalidArguments",
         ),
         (
             json!({
@@ -294,4 +299,54 @@ async fn thread_get_answers_the_emails_oldest_first_and_names_what_it_lacks_rfc8
         let answer = synced.call("Thread/get", arguments).await;
         assert_eq!(answer["type"], expected, "{expected}");
     }
+}
+
+/// The UIDs a query over the INBOX answers, newest first; the size of a
+/// scripted message names its UID.
+async fn uids(rig: &Rig, filter: Value, collapse: bool) -> (Vec<u64>, Value) {
+    let arguments = json!({
+        "accountId": ACCOUNT,
+        "filter": filter,
+        "collapseThreads": collapse,
+        "calculateTotal": true,
+    });
+    let queried = rig.call(&json!(["Email/query", arguments, "q"])).await;
+    let ids = queried["ids"].clone();
+    let got = json!({ "accountId": ACCOUNT, "ids": ids, "properties": ["size"] });
+    let listed = rig.call(&json!(["Email/get", got, "g"])).await;
+    let sizes = listed["list"].as_array().unwrap().iter();
+    let uids = sizes.map(|email| email["size"].as_u64().unwrap() - u64::from(SIZE_ABOVE_UID));
+    (uids.collect(), queried["total"].clone())
+}
+
+#[tokio::test]
+async fn a_keyword_the_emails_carry_or_lack_narrows_the_window_and_its_threads_rfc8621_4_4_1() {
+    let mail = vec![
+        Message::new(1).flagged(&[]),
+        reply(2, 1),
+        Message::new(3).flagged(&["\\Seen", "\\Flagged"]),
+        Message::new(4).flagged(&["work"]),
+    ];
+    let rig = Rig::start(inbox(mail)).await;
+    rig.sync("INBOX").await;
+    let mailbox = rig.folder("INBOX").id.to_string();
+    let filter = |extra: Value| {
+        let mut filter = json!({ "inMailbox": mailbox });
+        filter
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        filter
+    };
+    let unread = uids(&rig, filter(json!({ "notKeyword": "$seen" })), false).await;
+    assert_eq!(unread, (vec![4, 1], json!(2)));
+    let flagged = uids(&rig, filter(json!({ "hasKeyword": "$Flagged" })), false).await;
+    assert_eq!(flagged, (vec![3], json!(1)));
+    let both = json!({ "hasKeyword": "$seen", "notKeyword": "$flagged" });
+    assert_eq!(uids(&rig, filter(both), false).await, (vec![2], json!(1)));
+    // The reply is read, so the unread first message stands for its thread.
+    let collapsed = uids(&rig, filter(json!({ "notKeyword": "$seen" })), true).await;
+    assert_eq!(collapsed, (vec![4, 1], json!(2)));
+    let threads = uids(&rig, filter(json!({})), true).await;
+    assert_eq!(threads, (vec![4, 3, 2], json!(3)));
 }

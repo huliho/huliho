@@ -243,6 +243,17 @@ async fn uid_of(editor: &mut Editor, number: u32) -> u32 {
     uids.into_iter().next().unwrap()
 }
 
+/// Whether the second client finds the message with that number in the
+/// store, under the label when one is named.
+pub async fn holds(editor: &mut Editor, store: &str, number: u32, label: Option<&str>) -> bool {
+    within(editor.select(store)).await.unwrap();
+    let label = label.map_or_else(String::new, |label| {
+        format!("X-GM-LABELS {} ", quoted(label))
+    });
+    let query = format!("{label}HEADER Message-ID {}", seed(number).message_id());
+    !within(editor.uid_search(&query)).await.unwrap().is_empty()
+}
+
 /// Whether the second client finds the message with that number among
 /// the seen ones of All Mail.
 pub async fn seen(editor: &mut Editor, stores: &Stores, number: u32) -> bool {

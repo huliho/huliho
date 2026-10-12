@@ -13,6 +13,7 @@ mod ids;
 mod keywords;
 mod ledger;
 mod mailboxes;
+mod moves;
 mod personal;
 mod previews;
 mod progress;
@@ -20,13 +21,14 @@ mod query;
 mod refresh;
 mod threads;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use thiserror::Error;
 
 use crate::seal::SealError;
+use crate::session::Moving;
 
 pub use changes::{CHANGES_HORIZON, Change, ChangeKind, ChangesSince, ObjectType};
 pub use emails::{Batch, EmailFacts, EmailRow, EmailSnapshot};
@@ -34,8 +36,9 @@ pub use folders::{REMATCH_LIMIT, Standing};
 pub use gmail::GmailFacts;
 pub(crate) use ids::ID_LENGTH;
 pub use ids::{AccountKey, EmailId, MailboxId, ThreadId};
-pub use keywords::{KeywordChange, KeywordRow, KeywordsWritten};
+pub use keywords::{KeywordChange, KeywordRow};
 pub use mailboxes::{Counts, MailboxFacts, MailboxRow, MailboxSnapshot};
+pub use moves::{GoneRow, LabelChange, MoveChange, SetWrite, SetWritten, Written};
 pub use personal::{Address, Personal, PreviewPart};
 pub use previews::Located;
 pub use progress::{Advance, Progress};
@@ -87,6 +90,12 @@ pub struct Store {
     /// The accounts the host forgot: a write for one is refused, so no
     /// row lands after the host deleted the account's rows.
     forgotten: Mutex<HashSet<AccountKey>>,
+    /// The commands the server behind each account offers for moving
+    /// mail, as the last mailbox pass of this process read them; the
+    /// rights of its mailboxes follow them. No column holds them: the
+    /// next pass reads them again. Its lock comes before the
+    /// connection's and is never taken while that one is held.
+    moving: Mutex<HashMap<AccountKey, Moving>>,
 }
 
 impl Store {
@@ -96,6 +105,7 @@ impl Store {
         Self {
             connection: Mutex::new(connection),
             forgotten: Mutex::new(HashSet::new()),
+            moving: Mutex::new(HashMap::new()),
         }
     }
 
@@ -126,6 +136,11 @@ impl Store {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(key.clone());
+        self.moving_lock().remove(key);
+    }
+
+    fn moving_lock(&self) -> MutexGuard<'_, HashMap<AccountKey, Moving>> {
+        self.moving.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     pub(crate) fn read<T>(

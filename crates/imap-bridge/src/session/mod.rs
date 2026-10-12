@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use tokio_rustls::rustls::ClientConfig;
 
-pub use capability::Capabilities;
+pub use capability::{Capabilities, Moving};
 pub use error::SessionError;
 pub(crate) use error::io_error;
 pub use guard::{MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
@@ -35,12 +35,12 @@ pub use message::{
     GmailItems, Leaf, MAX_FETCH_MESSAGES, MAX_FLAGGED, MAX_HEADER_BYTES, MAX_PART_FIELD_BYTES,
     MAX_PART_FIELDS, MAX_PREVIEW_TEXT_BYTES, MAX_PREVIEWS, MAX_STORE_UIDS, MESSAGE_LIMIT, MoveAsk,
     Moved, Multipart, PREVIEW_HEADER_BYTES, PartAsk, PartWindow, PreviewAsk, PreviewBytes,
-    QuotaRoot, Selected, StoreAsk, Structure, UidRange, Usage, Writable,
+    QuotaRoot, Selected, StoreAsk, StoreItem, Structure, UidRange, Usage, Writable,
 };
 pub use quota::MAX_QUOTA_ROOTS;
 pub(crate) use read::sendable_field;
 pub use read::{MAX_TREE_BYTES, MAX_WIRE_NAME_BYTES};
-pub use write::MAX_COMMAND_BYTES;
+pub use write::{MAX_COMMAND_BYTES, label_bytes};
 
 /// One connect attempt or one step of a command gets this long: the
 /// whole command where the client library runs it, each response where
@@ -185,17 +185,18 @@ pub trait Session: Sized + Send {
         mailbox: &str,
     ) -> impl Future<Output = Result<Writable, SessionError>> + Send;
 
-    /// `UID STORE` of flags on messages of the selected mailbox, silent
-    /// (RFC 3501 section 6.4.6). A server passes over a UID the mailbox
-    /// does not hold.
+    /// `UID STORE` of flags or Gmail labels on messages of the selected
+    /// mailbox, silent (RFC 3501 section 6.4.6). A server passes over a
+    /// UID the mailbox does not hold.
     ///
     /// # Errors
     ///
     /// As [`Session::list`]; `Protocol` as well, before anything is
     /// sent, when no mailbox is open for writing, the ask names no
-    /// message, more than `MAX_STORE_UIDS` or no flag, a flag is neither
-    /// a system flag a keyword maps to nor an atom or the command would
-    /// pass `MAX_COMMAND_BYTES`.
+    /// message, more than `MAX_STORE_UIDS` or nothing to store, a flag
+    /// is neither a system flag a keyword maps to nor an atom, a label
+    /// cannot go on the line as the bridge writes labels or the command
+    /// would pass `MAX_COMMAND_BYTES`.
     fn uid_store(
         &mut self,
         ask: &StoreAsk<'_>,

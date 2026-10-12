@@ -14,7 +14,7 @@ use thiserror::Error;
 
 use crate::gmail;
 use crate::session::{
-    Capabilities, ListEntry, ListReturn, Session, SessionError, StatusEntry, StatusItems,
+    Capabilities, ListEntry, ListReturn, Moving, Session, SessionError, StatusEntry, StatusItems,
 };
 use crate::store::{MailboxFacts, StoreError};
 use crate::sync::Cache;
@@ -45,10 +45,18 @@ pub enum SyncError {
 pub async fn sync<S: Session>(session: &mut S, cache: &Cache) -> Result<u64, SyncError> {
     let found = observe(session, cache.gmail).await?;
     let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
-    tokio::task::spawn_blocking(move || store.apply_mailboxes(&key, &found))
+    tokio::task::spawn_blocking(move || store.apply_pass(&key, &found.facts, found.moving))
         .await
         .map_err(|_join| SyncError::Task)?
         .map_err(SyncError::from)
+}
+
+/// What one pass reads of the server.
+pub(crate) struct Observed {
+    pub facts: Vec<MailboxFacts>,
+    /// The commands the server offers for moving mail, which the rights
+    /// of every mailbox follow.
+    pub moving: Moving,
 }
 
 /// The listing in the form the capabilities allow, then STATUS per
@@ -58,7 +66,7 @@ pub async fn sync<S: Session>(session: &mut S, cache: &Cache) -> Result<u64, Syn
 pub(crate) async fn observe<S: Session>(
     session: &mut S,
     gmail: bool,
-) -> Result<Vec<MailboxFacts>, SessionError> {
+) -> Result<Observed, SessionError> {
     let capabilities = session.capabilities().await?;
     let gmail = gmail::confirmed(gmail, &capabilities);
     let options = list_return(&capabilities);
@@ -77,12 +85,10 @@ pub(crate) async fn observe<S: Session>(
     } else {
         Subscriptions::Lsub(session.lsub().await?.into_iter().collect())
     };
-    Ok(map(
-        &listing.entries,
-        &listing.statuses,
-        &subscriptions,
-        gmail,
-    ))
+    Ok(Observed {
+        facts: map(&listing.entries, &listing.statuses, &subscriptions, gmail),
+        moving: capabilities.moving(),
+    })
 }
 
 /// STATUS for every selectable entry. A mailbox that answers NO goes

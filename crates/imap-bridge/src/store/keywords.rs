@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! The keywords an `Email/set` writes: where the message of an email
-//! lies with the keywords its row holds, and the write that keeps what
-//! a STORE changed on the server as one state.
+//! The rows an `Email/set` works on: where the message of an email lies
+//! with the keywords and the mailboxes its row holds, and the keywords a
+//! STORE changed on the server, written to the row.
 
 use std::collections::BTreeMap;
 
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use super::changes::{ChangeKind, ObjectType, next_sequence, prune, state_of};
+use super::changes::{ChangeKind, ObjectType, state_of};
 use super::ledger::Ledger;
 use super::{AccountKey, EmailId, MailboxId, Store, StoreError};
 
-/// An email as a keyword write finds it.
+/// An email as an `Email/set` finds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeywordRow {
     pub id: EmailId,
@@ -24,6 +24,8 @@ pub struct KeywordRow {
     /// no UID names its message.
     pub uid: Option<u32>,
     pub keywords: BTreeMap<String, bool>,
+    /// The mailboxes it is a member of.
+    pub mailboxes: Vec<MailboxId>,
 }
 
 /// The keywords a STORE gave to and took from the message of one email.
@@ -38,19 +40,9 @@ pub struct KeywordChange {
     pub remove: Vec<String>,
 }
 
-/// What a keyword write left behind.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeywordsWritten {
-    /// The state the account stood at before the write.
-    pub before: u64,
-    /// The state it stands at after it; the same when no row differed.
-    pub after: u64,
-    /// The emails whose row was gone or lay elsewhere by then.
-    pub gone: Vec<EmailId>,
-}
-
 impl Store {
-    /// The rows among `ids` the account holds, with their keywords.
+    /// The rows among `ids` the account holds, with their keywords and
+    /// their mailboxes.
     ///
     /// # Errors
     ///
@@ -66,6 +58,10 @@ impl Store {
                 "SELECT id, folder_id, uid, keywords FROM bridge_emails
                  WHERE account_key = ?1 AND id = ?2",
             )?;
+            let mut memberships = connection.prepare_cached(
+                "SELECT mailbox_id FROM bridge_memberships
+                 WHERE account_key = ?1 AND email_id = ?2 ORDER BY mailbox_id",
+            )?;
             let mut rows = Vec::new();
             for id in ids {
                 let found: Option<(EmailId, MailboxId, i64, String)> = statement
@@ -74,58 +70,27 @@ impl Store {
                     })
                     .optional()?;
                 if let Some((id, folder, uid, keywords)) = found {
+                    let mailboxes = memberships
+                        .query_map(params![key.as_str(), id], |row| row.get(0))?
+                        .collect::<Result<_, _>>()?;
                     rows.push(KeywordRow {
                         id,
                         folder,
                         uid: u32::try_from(uid).ok().filter(|uid| *uid > 0),
                         keywords: serde_json::from_str(&keywords)?,
+                        mailboxes,
                     });
                 }
             }
             Ok((state_of(connection, key)?, rows))
         })
     }
-
-    /// Writes the keywords as one state: each row that differs is
-    /// updated, its email logged as updated and every mailbox it is a
-    /// member of as well, since its counts moved.
-    ///
-    /// # Errors
-    ///
-    /// Returns the database error.
-    pub fn write_keywords(
-        &self,
-        key: &AccountKey,
-        changes: &[KeywordChange],
-    ) -> Result<KeywordsWritten, StoreError> {
-        self.write(key, |transaction| {
-            let before = state_of(transaction, key)?;
-            let mut ledger = Ledger::default();
-            let mut gone = Vec::new();
-            for change in changes {
-                if !apply(transaction, key, change, &mut ledger)? {
-                    gone.push(change.id.clone());
-                }
-            }
-            let after = if ledger.is_empty() {
-                before
-            } else {
-                let sequence = next_sequence(transaction, key)?;
-                ledger.write(transaction, key, sequence)?;
-                prune(transaction, key)?;
-                sequence
-            };
-            Ok(KeywordsWritten {
-                before,
-                after,
-                gone,
-            })
-        })
-    }
 }
 
-/// One change on its row; whether the row was there.
-fn apply(
+/// One change on its row: the email reads as updated and so does every
+/// mailbox it is a member of, since its counts moved. Whether the row
+/// was there.
+pub(super) fn apply(
     transaction: &Transaction<'_>,
     key: &AccountKey,
     change: &KeywordChange,

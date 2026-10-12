@@ -42,6 +42,78 @@ fn changes(store: &Store, since: u64) -> Vec<(String, ChangeKind)> {
         .collect()
 }
 
+/// A server that moves mail with UIDPLUS alone.
+const UIDPLUS: Moving = Moving {
+    move_command: false,
+    uidplus: true,
+};
+
+/// A server that offers MOVE and UIDPLUS.
+const BOTH: Moving = Moving {
+    move_command: true,
+    uidplus: true,
+};
+
+/// The commands the snapshot says the server offers for moving mail.
+fn moving(store: &Store) -> Moving {
+    store.mailbox_snapshot(&key()).unwrap().moving
+}
+
+#[test]
+fn whether_the_server_moves_mail_shows_in_the_rights_and_a_change_of_it_updates_every_row() {
+    let store = Store::in_memory().unwrap();
+    let found = [facts("INBOX", None), facts("Archive", None)];
+    store.apply_mailboxes(&key(), &found).unwrap();
+    assert_eq!(moving(&store), Moving::default());
+    let learned = store.apply_pass(&key(), &found, UIDPLUS).unwrap();
+    assert_eq!(learned, 2, "the first pass of the process logs its rights");
+    let kinds: Vec<ChangeKind> = changes(&store, 1)
+        .into_iter()
+        .map(|(_, kind)| kind)
+        .collect();
+    assert_eq!(kinds, [ChangeKind::Updated, ChangeKind::Updated]);
+    assert_eq!(moving(&store), UIDPLUS);
+    assert_eq!(
+        store.apply_pass(&key(), &found, UIDPLUS).unwrap(),
+        2,
+        "nothing moved"
+    );
+    assert_eq!(
+        store.apply_pass(&key(), &found, BOTH).unwrap(),
+        3,
+        "one of the two words changed"
+    );
+    assert_eq!(moving(&store), BOTH);
+    store.forget(&key());
+    assert_eq!(moving(&store), Moving::default());
+}
+
+/// Which thread wins the connection is the scheduler's choice, so the
+/// race runs several times.
+const TRIALS: usize = 8;
+
+/// A snapshot that lands while a pass writes sees the rows and the words
+/// from before the pass or both from after it, never one of each.
+#[test]
+fn a_snapshot_during_a_pass_pairs_the_rows_with_the_words_they_belong_to() {
+    for _ in 0..TRIALS {
+        let store = Store::in_memory().unwrap();
+        let found = [facts("INBOX", None)];
+        store.apply_mailboxes(&key(), &found).unwrap();
+        let seen = std::thread::scope(|scope| {
+            // The connection held here parks both threads, so they meet.
+            let held = store.lock().unwrap();
+            let pass = scope.spawn(|| store.apply_pass(&key(), &found, BOTH));
+            let snapshot = scope.spawn(|| store.mailbox_snapshot(&key()));
+            drop(held);
+            pass.join().unwrap().unwrap();
+            snapshot.join().unwrap().unwrap()
+        });
+        assert_eq!(seen.moving == BOTH, seen.state == 2, "{seen:?}");
+        assert_eq!(moving(&store), BOTH);
+    }
+}
+
 #[test]
 fn a_first_pass_creates_every_row_under_one_state_with_parents_by_id() {
     let store = Store::in_memory().unwrap();
