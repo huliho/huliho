@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-use super::{Context, MAX_OBJECTS_IN_GET, MethodError, arguments};
+use super::{Context, HULIHO_CAPABILITY, MAX_OBJECTS_IN_GET, MethodError, arguments};
 use crate::session::Moving;
 use crate::store::{MailboxRow, MailboxSnapshot};
 
@@ -55,7 +55,8 @@ pub(super) fn get(
     {
         return Err(MethodError::RequestTooLarge);
     }
-    let wanted = properties(arguments.properties.as_deref(), context.using.huliho)?;
+    let huliho = context.using.has(HULIHO_CAPABILITY);
+    let wanted = properties(arguments.properties.as_deref(), huliho)?;
     let snapshot = context.store.mailbox_snapshot(context.key)?;
     let mut list = Vec::new();
     let mut not_found: Vec<&str> = Vec::new();

@@ -79,6 +79,12 @@ const GMAIL_PATIENCE: Duration = Duration::from_secs(300);
 /// The roles Dovecot lists with the compose defaults.
 const DOVECOT_ROLES: [&str; 6] = ["inbox", "drafts", "sent", "archive", "junk", "trash"];
 
+/// The storage quota of a GiB both compose targets set on the user.
+const COMPOSE_QUOTA_OCTETS: u64 = 1 << 30;
+
+/// The message count Dovecot's quota adds to it.
+const COMPOSE_QUOTA_MESSAGES: u64 = 10_000;
+
 /// The variables that name the Gmail test account.
 const GMAIL_ADDRESS: &str = "HULIHO_LIVE_GMAIL_ADDRESS";
 const GMAIL_APP_PASSWORD: &str = "HULIHO_LIVE_GMAIL_APP_PASSWORD";
@@ -155,6 +161,7 @@ async fn suite(target: Target) {
     }
     let inbox = live.wait_synced(&mail, "inbox", SCENARIO_PATIENCE).await;
     let inbox = inbox["id"].as_str().unwrap().to_owned();
+    quota(&live, &mail, target).await;
     let window = Window {
         mailbox: &inbox,
         position: 0,
@@ -180,6 +187,28 @@ async fn suite(target: Target) {
     flagging(&live, &mail, &corpus, &mut editor).await;
     expunging(&live, &mail, &corpus, &mut editor).await;
     leave(&live, &mail, editor).await;
+}
+
+/// The quota of the account: on both targets a storage quota over its
+/// email, on Dovecot a message count beside it (RFC 9425 section 4.1).
+async fn quota(live: &Live, mail: &Mail, target: Target) {
+    let arguments = json!({ "accountId": mail.account, "ids": null });
+    let answer = live.call(mail, "Quota/get", arguments).await;
+    let list = answer["list"].as_array().unwrap();
+    let of = |kind: &str| list.iter().find(|quota| quota["resourceType"] == kind);
+    let octets = of("octets").unwrap_or_else(|| panic!("{answer}"));
+    assert_eq!(octets["hardLimit"], COMPOSE_QUOTA_OCTETS, "{answer}");
+    assert_eq!(octets["scope"], "account");
+    assert!(
+        octets["types"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("Email"))
+    );
+    if target == Target::Dovecot {
+        let count = of("count").unwrap_or_else(|| panic!("{answer}"));
+        assert_eq!(count["hardLimit"], COMPOSE_QUOTA_MESSAGES, "{answer}");
+    }
 }
 
 /// The four of the first thread share a thread the next root does not;

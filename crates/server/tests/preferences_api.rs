@@ -71,6 +71,7 @@ async fn a_fresh_user_has_no_preferences_and_a_round_trip_holds() {
         ("fontSize", "large"),
         ("lineHeight", "loose"),
         ("darkMail", "original"),
+        ("afterAction", "list"),
     ] {
         let (status, text) = put(&router, &cookie, key, &json!(word)).await;
         assert_eq!(status, StatusCode::NO_CONTENT, "{key}: {text}");
@@ -86,17 +87,21 @@ async fn a_fresh_user_has_no_preferences_and_a_round_trip_holds() {
             "locale": "nl",
             "fontSize": "large",
             "lineHeight": "loose",
-            "darkMail": "original"
+            "darkMail": "original",
+            "afterAction": "list"
         })
     );
     let (status, _) = put(&router, &cookie, "readingPane", &json!("off")).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
     let (status, _) = put(&router, &cookie, "fontSize", &json!("larger")).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = put(&router, &cookie, "afterAction", &json!("next")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
     let (_, preferences) = listed(&router, &cookie).await;
     assert_eq!(preferences["readingPane"], "off");
     assert_eq!(preferences["fontSize"], "larger");
     assert_eq!(preferences["lineHeight"], "loose");
+    assert_eq!(preferences["afterAction"], "next");
 }
 
 #[tokio::test]
@@ -111,6 +116,7 @@ async fn a_word_off_the_list_is_invalid_and_a_key_off_the_list_is_not_found() {
         ("fontSize", json!("small")),
         ("lineHeight", json!("tight")),
         ("darkMail", json!("Adapt")),
+        ("afterAction", json!("close")),
     ] {
         let (status, text) = put(&router, &cookie, key, &value).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{key}: {text}");

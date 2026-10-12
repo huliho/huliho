@@ -15,7 +15,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use huliho_imap_bridge::blob;
-use huliho_imap_bridge::jmap::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, handle};
+use huliho_imap_bridge::jmap::{
+    CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY, handle,
+};
 use huliho_imap_bridge::mailboxes::{self, SyncError};
 use huliho_imap_bridge::runtime::Link;
 use huliho_imap_bridge::session::{ImapSession, Session, Target, TlsMode};
@@ -223,7 +225,7 @@ impl Suite {
     /// capability.
     pub async fn call(&self, call: &Value) -> Value {
         let body = json!({
-            "using": [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY],
+            "using": [CORE_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY, HULIHO_CAPABILITY],
             "methodCalls": [call],
         });
         let bytes = handle(

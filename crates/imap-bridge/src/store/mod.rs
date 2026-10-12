@@ -18,6 +18,7 @@ mod personal;
 mod previews;
 mod progress;
 mod query;
+mod quota;
 mod refresh;
 mod threads;
 
@@ -43,6 +44,7 @@ pub use personal::{Address, Personal, PreviewPart};
 pub use previews::Located;
 pub use progress::{Advance, Progress};
 pub use query::{Queried, Query, Start, Window};
+pub use quota::{QuotaRow, QuotaSnapshot, Resource};
 pub use refresh::{FlagChange, Synced};
 pub use threads::ThreadSnapshot;
 
@@ -96,6 +98,9 @@ pub struct Store {
     /// next pass reads them again. Its lock comes before the
     /// connection's and is never taken while that one is held.
     moving: Mutex<HashMap<AccountKey, Moving>>,
+    /// The quota of each account as the last mailbox pass read it. Its
+    /// lock is never held together with another lock of the store.
+    quotas: quota::Quotas,
 }
 
 impl Store {
@@ -106,6 +111,7 @@ impl Store {
             connection: Mutex::new(connection),
             forgotten: Mutex::new(HashSet::new()),
             moving: Mutex::new(HashMap::new()),
+            quotas: quota::Quotas::new(),
         }
     }
 
@@ -137,6 +143,14 @@ impl Store {
             .unwrap_or_else(PoisonError::into_inner)
             .insert(key.clone());
         self.moving_lock().remove(key);
+        self.quotas.forget(key);
+    }
+
+    fn is_forgotten(&self, key: &AccountKey) -> bool {
+        self.forgotten
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains(key)
     }
 
     fn moving_lock(&self) -> MutexGuard<'_, HashMap<AccountKey, Moving>> {
@@ -158,12 +172,7 @@ impl Store {
         key: &AccountKey,
         operation: impl FnOnce(&Transaction<'_>) -> Result<T, StoreError>,
     ) -> Result<T, StoreError> {
-        if self
-            .forgotten
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .contains(key)
-        {
+        if self.is_forgotten(key) {
             return Err(StoreError::Forgotten);
         }
         let mut connection = self.lock()?;

@@ -423,7 +423,7 @@ async fn the_session_object_says_no_limit_on_mailboxes_per_email_for_a_gmail_acc
         gmail: true,
         session_state: "s1".to_owned(),
     };
-    let bytes = session_object(&registration, "sanne@example.test", &urls).unwrap();
+    let bytes = session_object(&registration, "s@example.test", &urls, &rig.cache.store).unwrap();
     let session: Value = serde_json::from_slice(&bytes).unwrap();
     let mail = &session["accounts"][ACCOUNT]["accountCapabilities"][MAIL_CAPABILITY];
     assert_eq!(mail["maxMailboxesPerEmail"], Value::Null);

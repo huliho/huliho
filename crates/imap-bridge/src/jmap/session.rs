@@ -3,8 +3,8 @@
 // Additional terms apply, see NOTICE.
 
 //! The session object of one bridge account (RFC 8620 section 2): the
-//! core and mail capabilities with the bridge's limits, the vendor
-//! capability and the state the host derived.
+//! core, mail and quota capabilities with the bridge's limits, the
+//! vendor capability and the state the host derived.
 
 use std::collections::BTreeMap;
 
@@ -16,7 +16,7 @@ use super::{
     MAX_SIZE_REQUEST,
 };
 use crate::runtime::Registration;
-use crate::store::StoreError;
+use crate::store::{Store, StoreError};
 
 /// The core capability (RFC 8620 section 2).
 pub const CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
@@ -24,9 +24,17 @@ pub const CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
 /// The mail capability (RFC 8621 section 1.3.1).
 pub const MAIL_CAPABILITY: &str = "urn:ietf:params:jmap:mail";
 
+/// The quota capability (RFC 9425 section 2.1).
+pub const QUOTA_CAPABILITY: &str = "urn:ietf:params:jmap:quota";
+
 /// The vendor capability (RFC 8620 section 1.8) on the product domain;
 /// it carries the Mailbox property `syncedEmails`.
 pub const HULIHO_CAPABILITY: &str = "https://huliho.com/jmap";
+
+/// What the state of the session object gains while the server behind
+/// the account advertises QUOTA, since the object then lists the quota
+/// capability on the account.
+const QUOTA_STATE_MARK: &str = "-quota";
 
 /// A mailbox name on the wire is 255 octets at most on every server
 /// the bridge meets.
@@ -83,10 +91,10 @@ struct AccountObject {
 }
 
 /// The session object for one account as JSON: writable, since
-/// `Email/set` takes keywords, the vendor capability on the account, the
-/// state as the host derived it from what the object is built from.
-/// Nothing here touches the store, so the object never moves with the
-/// cache.
+/// `Email/set` takes keywords, the vendor capability on the account and
+/// the quota capability where the server advertises QUOTA, the state the
+/// host derived with that word on it. No row is read, so the object
+/// never moves with the cache.
 ///
 /// # Errors
 ///
@@ -96,18 +104,26 @@ pub fn session_object(
     registration: &Registration,
     address: &str,
     urls: &Urls,
+    store: &Store,
 ) -> Result<Vec<u8>, StoreError> {
     let key = &registration.key;
-    let account_capabilities: BTreeMap<&'static str, Value> = [
+    let quota = store.quota(key).advertised;
+    let mut account_capabilities: BTreeMap<&'static str, Value> = [
         (MAIL_CAPABILITY, mail_capability(registration.gmail)),
         (HULIHO_CAPABILITY, Value::Object(Map::new())),
     ]
     .into_iter()
     .collect();
-    // RFC 8621 section 1.3.1: at session level the mail capability is an empty object.
+    if quota {
+        account_capabilities.insert(QUOTA_CAPABILITY, Value::Object(Map::new()));
+    }
+    // RFC 8621 section 1.3.1 and RFC 9425 section 2.1: at session level
+    // both are empty objects; the bridge answers the quota methods for
+    // every account, each account says whether it has a quota.
     let capabilities: BTreeMap<&'static str, Value> = [
         (CORE_CAPABILITY, core_capability()),
         (MAIL_CAPABILITY, Value::Object(Map::new())),
+        (QUOTA_CAPABILITY, Value::Object(Map::new())),
         (HULIHO_CAPABILITY, Value::Object(Map::new())),
     ]
     .into_iter()
@@ -132,9 +148,20 @@ pub fn session_object(
         download_url: &urls.download,
         upload_url: &urls.upload,
         event_source_url: &urls.event_source,
-        state: registration.session_state.clone(),
+        state: session_state(&registration.session_state, quota),
     };
     Ok(serde_json::to_vec(&object)?)
+}
+
+/// The state of the session object and of every Response (RFC 8620
+/// section 3.4): the host's, derived from what it builds the object
+/// from, marked while the server advertises QUOTA.
+pub(crate) fn session_state(host: &str, quota: bool) -> String {
+    if quota {
+        format!("{host}{QUOTA_STATE_MARK}")
+    } else {
+        host.to_owned()
+    }
 }
 
 fn core_capability() -> Value {

@@ -20,10 +20,13 @@ use std::time::Duration;
 use answers::answer;
 use axum::http::{Method, StatusCode};
 use bridge_rig::{ADDRESS, Instance, mailboxes, using};
-use huliho_imap_bridge::jmap::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY};
+use huliho_imap_bridge::jmap::{
+    CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY,
+};
 use huliho_imap_bridge::runtime::{ConnectError, Connector};
 use huliho_imap_bridge::store::AccountKey;
 use huliho_imap_bridge::testing::imap::HOST;
+use huliho_imap_bridge::testing::mailboxes::{QuotaAnswer, quota_lines};
 use huliho_imap_bridge::testing::{CLOSED, Extension, Folder, Mailboxes, Message, PASSWORD};
 use huliho_server::accounts::{self, StopCause};
 use huliho_server::bridge::{self, HostConnector};
@@ -138,8 +141,12 @@ async fn a_stopped_imap_account_answers_409_with_its_cause_before_anything_conne
 }
 
 #[tokio::test]
-async fn the_session_object_of_a_bridge_account_carries_the_vendor_capability_and_its_own_state() {
-    let instance = instance().await;
+async fn the_session_object_of_a_bridge_account_carries_its_capabilities_and_its_own_state() {
+    let mut model = model();
+    model.extensions.insert(Extension::Quota);
+    let lines = quota_lines("User quota", (420, 1024), (17, 1000));
+    model.set_quota(QuotaAnswer::Lines(lines));
+    let instance = Instance::start(model, RUN_WINDOW).await;
     let id = instance.add_account(PASSWORD);
     let cookie = instance.sign_in().await;
     let (status, session) = instance.session(&cookie, &id).await;
@@ -150,10 +157,14 @@ async fn the_session_object_of_a_bridge_account_carries_the_vendor_capability_an
     assert_eq!(session["downloadUrl"], urls.download);
     assert_eq!(session["uploadUrl"], urls.upload);
     assert_eq!(session["eventSourceUrl"], urls.event_source);
-    assert_eq!(
-        keys(&session["capabilities"]),
-        [HULIHO_CAPABILITY, CORE_CAPABILITY, MAIL_CAPABILITY]
-    );
+    let all = [
+        HULIHO_CAPABILITY,
+        CORE_CAPABILITY,
+        MAIL_CAPABILITY,
+        QUOTA_CAPABILITY,
+    ];
+    assert_eq!(keys(&session["capabilities"]), all);
+    // No pass has read the server yet, so the account shows no quota.
     assert_eq!(
         keys(&session["accounts"][&id]["accountCapabilities"]),
         [HULIHO_CAPABILITY, MAIL_CAPABILITY]
@@ -165,23 +176,26 @@ async fn the_session_object_of_a_bridge_account_carries_the_vendor_capability_an
     assert_eq!(core["maxConcurrentRequests"], MAX_CONCURRENT_REQUESTS);
     let text = session.to_string();
     assert!(!text.contains(HOST), "{text}");
-    // The state is the host's and every response carries the same value.
+    // The state is the host's; once a pass found QUOTA the object lists
+    // it on the account, its state moves and every response carries it.
     let state = session["state"].as_str().unwrap().to_owned();
     assert!(!state.is_empty());
-    let (status, answer) = instance
-        .request(&cookie, &id, &using(&[mailboxes(&id)]))
-        .await;
-    assert_eq!(status, StatusCode::OK, "{answer}");
-    assert_eq!(answer["sessionState"], state);
     assert!(
         instance.wait_synced(&cookie, &id).await,
         "{:?}",
         instance.fake.lines()
     );
-    let (_, later) = instance
-        .request(&cookie, &id, &using(&[mailboxes(&id)]))
-        .await;
-    assert_eq!(later["sessionState"], state);
+    let (_, session) = instance.session(&cookie, &id).await;
+    assert!(session["accounts"][&id]["accountCapabilities"][QUOTA_CAPABILITY].is_object());
+    let marked = session["state"].as_str().unwrap().to_owned();
+    assert_ne!(marked, state);
+    let quota = json!(["Quota/get", { "accountId": id, "ids": null }, "c1"]);
+    let body = json!({ "using": all, "methodCalls": [quota] });
+    let (status, answer) = instance.request(&cookie, &id, &body).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert_eq!(answer["sessionState"], marked);
+    let used = &answer["methodResponses"][0][1]["list"][0]["used"];
+    assert_eq!(*used, 420 * 1024);
 }
 
 #[tokio::test]

@@ -10,7 +10,7 @@
 mod session_rig;
 
 use huliho_imap_bridge::session::{MAX_WIRE_NAME_BYTES, QuotaRoot, Session, SessionError, Usage};
-use huliho_imap_bridge::testing::mailboxes::quota_lines;
+use huliho_imap_bridge::testing::mailboxes::{QuotaAnswer, quota_lines};
 use huliho_imap_bridge::testing::{Extension, Mailboxes};
 use session_rig::{session, start};
 
@@ -21,7 +21,7 @@ const KIB: u64 = 1024;
 fn quota(lines: Option<String>) -> Mailboxes {
     let mut mailboxes = Mailboxes::dovecot();
     mailboxes.extensions.insert(Extension::Quota);
-    mailboxes.quota = lines;
+    mailboxes.set_quota(lines.map_or(QuotaAnswer::Unrooted, QuotaAnswer::Lines));
     mailboxes
 }
 
@@ -74,6 +74,9 @@ async fn an_inbox_under_no_root_has_no_quota_and_a_server_without_quota_refuses(
         refused,
         Err(SessionError::Protocol("the server answered BAD"))
     ));
+    let mailboxes = quota(None);
+    mailboxes.set_quota(QuotaAnswer::Refused);
+    assert!(matches!(read(mailboxes).await, Err(SessionError::Refused)));
 }
 
 #[tokio::test]

@@ -4,10 +4,11 @@
 
 //! The on-demand refresh of an account: one mailbox pass, then per
 //! folder that is done the new mail above its recorded UIDNEXT, the
-//! flags that changed and the messages that left. Every write is one
-//! state and goes through only while the folder stands as the refresh
-//! read it. On Gmail a row whose UID left waits for the pass to find it
-//! in another store; what the pass does not find leaves at its end.
+//! flags that changed and the messages that left, then the quota of the
+//! inbox. Every write is one state and goes through only while the
+//! folder stands as the refresh read it. On Gmail a row whose UID left
+//! waits for the pass to find it in another store; what the pass does
+//! not find leaves at its end.
 
 mod folder;
 
@@ -88,6 +89,7 @@ impl Refresher {
             Ok(found) => found,
             Err(error) => return Ok(ended(&error, false)),
         };
+        let quota = found.quota;
         let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
         blocking(move || store.apply_pass(&key, &found.facts, found.moving)).await?;
         let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
@@ -121,6 +123,10 @@ impl Refresher {
         if given.gmail {
             let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
             blocking(move || store.sweep_parked(&key)).await?;
+        }
+        // Last, so a quota the server cannot describe costs no folder.
+        if let Err(error) = mailboxes::quota(session, cache, quota).await {
+            return Ok(ended(&error, undone));
         }
         Ok(Refreshed {
             stands: true,

@@ -7,6 +7,8 @@
 //! its message count. The QUOTAROOT and QUOTA lines are read under the
 //! line bounds and every value under the bounds of RFC 9208.
 
+use std::collections::HashSet;
+
 use async_imap::imap_proto::{self, QuotaResourceName, Response};
 
 use super::read::{Room, Selection, wire_name};
@@ -34,8 +36,8 @@ struct Answered {
     quotas: Vec<QuotaRoot>,
 }
 
-/// The quota roots of the inbox in the order the server names them; a
-/// root without a QUOTA line has neither resource.
+/// The quota roots of the inbox, each once, in the order the server
+/// first names them; a root without a QUOTA line has neither resource.
 pub(super) async fn quota_root(
     selection: &mut Selection<'_>,
     room: Room,
@@ -59,7 +61,11 @@ impl Answered {
                     return Err(SessionError::Protocol(TOO_MANY_ROOTS));
                 }
                 let names = found.quota_root_names.iter().map(|name| kept(name));
-                let names = names.collect::<Result<Vec<_>, _>>()?;
+                let mut names = names.collect::<Result<Vec<_>, _>>()?;
+                // A root the line names twice is one root; the store keys
+                // its rows by root name.
+                let mut seen = HashSet::new();
+                names.retain(|name| seen.insert(name.clone()));
                 self.roots.get_or_insert(names);
             }
             Response::Quota(quota) => {
@@ -100,7 +106,8 @@ fn kept(name: &str) -> Result<String, SessionError> {
 }
 
 /// One QUOTA line: STORAGE in octets, MESSAGE as it is, any other
-/// resource passed by. Of a resource named twice the first counts.
+/// resource passed by. Of a resource named twice the first counts, and
+/// both must stand within the bounds.
 fn described(quota: &imap_proto::Quota<'_>) -> Result<QuotaRoot, SessionError> {
     let mut root = QuotaRoot {
         name: kept(&quota.root_name)?,
@@ -191,6 +198,21 @@ mod tests {
         assert_eq!(roots[1].storage, None);
         assert_eq!(read(&["* QUOTAROOT INBOX\r\n"]).unwrap(), []);
         assert_eq!(read(&["* QUOTAROOT inbox x\r\n"]).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_root_named_twice_on_the_quotaroot_line_is_one_root() {
+        let roots = read(&[
+            "* QUOTAROOT INBOX \"User quota\" \"User quota\"\r\n",
+            "* QUOTA \"User quota\" (STORAGE 1 10)\r\n",
+        ])
+        .unwrap();
+        let names: Vec<&str> = roots.iter().map(|root| root.name.as_str()).collect();
+        assert_eq!(names, ["User quota"]);
+        assert_eq!(roots[0].storage.map(|usage| usage.used), Some(1024));
+        let roots = read(&["* QUOTAROOT INBOX \"\" user \"\"\r\n"]).unwrap();
+        let names: Vec<&str> = roots.iter().map(|root| root.name.as_str()).collect();
+        assert_eq!(names, ["", "user"]);
     }
 
     #[test]

@@ -9,7 +9,7 @@ mod jmap_rig;
 
 use huliho_imap_bridge::jmap::{
     CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, MAX_CALLS_IN_REQUEST, MAX_OBJECTS_IN_GET,
-    MAX_SIZE_REQUEST, RequestError, Urls, session_object,
+    MAX_SIZE_REQUEST, QUOTA_CAPABILITY, RequestError, Urls, session_object,
 };
 use huliho_imap_bridge::runtime::Registration;
 use huliho_imap_bridge::store::AccountKey;
@@ -51,7 +51,7 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
     let rig = Rig::start().await;
     rig.edit();
     assert_eq!(rig.pass().await, 2);
-    let bytes = session_object(&registration(), ADDRESS, &urls()).unwrap();
+    let bytes = session_object(&registration(), ADDRESS, &urls(), &rig.store).unwrap();
     let session: Value = serde_json::from_slice(&bytes).unwrap();
     // The state is the host's; the counter of the cache stands at 2.
     assert_eq!(session["state"], SESSION_STATE);
@@ -62,8 +62,14 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
     assert_eq!(session["eventSourceUrl"], urls().event_source);
     assert_eq!(
         keys(&session["capabilities"]),
-        [HULIHO_CAPABILITY, CORE_CAPABILITY, MAIL_CAPABILITY]
+        [
+            HULIHO_CAPABILITY,
+            CORE_CAPABILITY,
+            MAIL_CAPABILITY,
+            QUOTA_CAPABILITY
+        ]
     );
+    assert_eq!(session["capabilities"][QUOTA_CAPABILITY], json!({}));
     let core = &session["capabilities"][CORE_CAPABILITY];
     assert_eq!(core["maxSizeRequest"], 1_048_576);
     assert_eq!(core["maxConcurrentRequests"], 4);

@@ -15,12 +15,23 @@ use serde_json::{Map, Value};
 use super::{Context, MethodError, arguments};
 use crate::store::{Change, ChangeKind, ObjectType};
 
+/// The arguments of a `/changes` (RFC 8620 section 5.2).
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ChangesArguments {
-    account_id: String,
-    since_state: String,
-    max_changes: Option<u64>,
+pub(super) struct ChangesArguments {
+    pub account_id: String,
+    pub since_state: String,
+    pub max_changes: Option<u64>,
+}
+
+/// A `maxChanges` of zero leaves no room for an answer.
+pub(super) fn checked(arguments: &ChangesArguments) -> Result<(), MethodError> {
+    if arguments.max_changes == Some(0) {
+        return Err(MethodError::InvalidArguments(
+            "maxChanges must be above zero",
+        ));
+    }
+    Ok(())
 }
 
 /// `Mailbox/changes` (RFC 8621 section 2.2): `updatedProperties` is
@@ -58,11 +69,7 @@ fn changes(
 ) -> Result<Map<String, Value>, MethodError> {
     let arguments: ChangesArguments = arguments(raw)?;
     context.account(&arguments.account_id)?;
-    if arguments.max_changes == Some(0) {
-        return Err(MethodError::InvalidArguments(
-            "maxChanges must be above zero",
-        ));
-    }
+    checked(&arguments)?;
     // The log issues a state as the plain decimal text of its number.
     let since = arguments
         .since_state

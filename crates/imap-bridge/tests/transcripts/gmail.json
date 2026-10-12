@@ -50,13 +50,13 @@
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
             ],
             [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16142 MESSAGES 9 UIDNEXT 299 UIDVALIDITY 1 UNSEEN 1)"
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17428 MESSAGES 9 UIDNEXT 320 UIDVALIDITY 1 UNSEEN 1)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
             ],
             [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16142 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17428 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 65 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
@@ -65,43 +65,43 @@
               "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
             ],
             [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16142 MESSAGES 9 UIDNEXT 299 UIDVALIDITY 12 UNSEEN 1)"
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17428 MESSAGES 9 UIDNEXT 320 UIDVALIDITY 12 UNSEEN 1)"
             ],
             [
               "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
             ],
             [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16142 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17428 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
             ],
             [
               "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
             ],
             [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16142 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17428 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
             ],
             [
               "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
             ],
             [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16142 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 4 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17428 MESSAGES 0 UIDNEXT 49 UIDVALIDITY 4 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
             ],
             [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16142 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17428 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
             ],
             [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16142 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17428 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
             ],
             [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16142 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17428 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
             ],
             [
               "A0002 OK Success"
@@ -109,13 +109,27 @@
           ]
         },
         {
-          "client": "A0003 LOGOUT",
+          "client": "A0003 GETQUOTAROOT INBOX",
+          "server": [
+            [
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
+            [
+              "A0003 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0004 LOGOUT",
           "server": [
             [
               "* BYE LOGOUT Requested"
             ],
             [
-              "A0003 OK 73 good day (Success)"
+              "A0004 OK 73 good day (Success)"
             ]
           ]
         }
@@ -183,10 +197,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 299] Predicted next UID."
+              "* OK [UIDNEXT 320] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16142]"
+              "* OK [HIGHESTMODSEQ 17428]"
             ],
             [
               "A0002 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
@@ -197,7 +211,7 @@
           "client": "A0003 UID SEARCH 1:9",
           "server": [
             [
-              "* SEARCH 1 2 3 4 294 295 296 297 298"
+              "* SEARCH 1 2 3 4 315 316 317 318 319"
             ],
             [
               "A0003 OK SEARCH completed (Success)"
@@ -205,7 +219,7 @@
           ]
         },
         {
-          "client": "A0004 UID FETCH 1:298 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE X-GM-LABELS X-GM-MSGID X-GM-THRID BODY.PEEK[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])",
+          "client": "A0004 UID FETCH 1:319 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE X-GM-LABELS X-GM-MSGID X-GM-THRID BODY.PEEK[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])",
           "server": [
             [
               "* 1 FETCH (X-GM-THRID 1 X-GM-MSGID 1 X-GM-LABELS (\"\\\\Inbox\") UID 1 RFC822.SIZE 12431 INTERNALDATE \"22-Sep-2026 20:00:17 +0000\" FLAGS (\\Seen) BODYSTRUCTURE ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"UTF-8\" \"DELSP\" \"yes\" \"FORMAT\" \"flowed\") NIL NIL \"BASE64\" 976 20 NIL NIL NIL)(\"TEXT\" \"HTML\" (\"CHARSET\" \"UTF-8\") NIL NIL \"QUOTED-PRINTABLE\" 5222 105 NIL NIL NIL) \"ALTERNATIVE\" (\"BOUNDARY\" \"000000000000949fc4065c17d0d8\") NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
@@ -236,35 +250,35 @@
               ")"
             ],
             [
-              "* 5 FETCH (X-GM-THRID 4 X-GM-MSGID 5 X-GM-LABELS (\"\\\\Inbox\") UID 294 RFC822.SIZE 249 INTERNALDATE \"11-Oct-2026 17:26:16 +0000\" FLAGS (\\Seen) BODYSTRUCTURE (\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 20 1 NIL NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
+              "* 5 FETCH (X-GM-THRID 4 X-GM-MSGID 5 X-GM-LABELS (\"\\\\Inbox\") UID 315 RFC822.SIZE 249 INTERNALDATE \"12-Oct-2026 09:50:16 +0000\" FLAGS (\\Seen) BODYSTRUCTURE (\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 20 1 NIL NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
               {
                 "literal": "From: Sanne <sanne@example.test>\r\nTo: mo@example.test\r\nSubject: Message 1\r\nDate: 01 Jan 2027 12:00:00 +0000\r\nMessage-ID: <m1@example.test>\r\n\r\n"
               },
               ")"
             ],
             [
-              "* 6 FETCH (X-GM-THRID 4 X-GM-MSGID 6 X-GM-LABELS (\"\\\\Inbox\") UID 295 RFC822.SIZE 316 INTERNALDATE \"11-Oct-2026 17:26:18 +0000\" FLAGS (\\Seen) BODYSTRUCTURE (\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 20 1 NIL NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
+              "* 6 FETCH (X-GM-THRID 4 X-GM-MSGID 6 X-GM-LABELS (\"\\\\Inbox\") UID 316 RFC822.SIZE 316 INTERNALDATE \"12-Oct-2026 09:50:18 +0000\" FLAGS (\\Seen) BODYSTRUCTURE (\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 20 1 NIL NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
               {
                 "literal": "From: Sanne <sanne@example.test>\r\nTo: mo@example.test\r\nSubject: Re: Message 1\r\nDate: 02 Jan 2027 12:00:00 +0000\r\nMessage-ID: <m2@example.test>\r\nIn-Reply-To: <m1@example.test>\r\nReferences: <m1@example.test>\r\n\r\n"
               },
               ")"
             ],
             [
-              "* 7 FETCH (X-GM-THRID 5 X-GM-MSGID 7 X-GM-LABELS (\"\\\\Inbox\") UID 296 RFC822.SIZE 425 INTERNALDATE \"11-Oct-2026 17:26:19 +0000\" FLAGS (\\Seen) BODYSTRUCTURE ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 18 1 NIL NIL NIL)(\"TEXT\" \"PLAIN\" (\"NAME\" \"notes.txt\") NIL NIL \"7BIT\" 5 1 NIL (\"ATTACHMENT\" (\"FILENAME\" \"notes.txt\")) NIL) \"MIXED\" (\"BOUNDARY\" \"b1\") NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
+              "* 7 FETCH (X-GM-THRID 5 X-GM-MSGID 7 X-GM-LABELS (\"\\\\Inbox\") UID 317 RFC822.SIZE 425 INTERNALDATE \"12-Oct-2026 09:50:20 +0000\" FLAGS (\\Seen) BODYSTRUCTURE ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 18 1 NIL NIL NIL)(\"TEXT\" \"PLAIN\" (\"NAME\" \"notes.txt\") NIL NIL \"7BIT\" 5 1 NIL (\"ATTACHMENT\" (\"FILENAME\" \"notes.txt\")) NIL) \"MIXED\" (\"BOUNDARY\" \"b1\") NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
               {
                 "literal": "From: Sanne <sanne@example.test>\r\nTo: mo@example.test\r\nSubject: Message 3\r\nDate: 03 Jan 2027 12:00:00 +0000\r\nMessage-ID: <m3@example.test>\r\n\r\n"
               },
               ")"
             ],
             [
-              "* 8 FETCH (X-GM-THRID 6 X-GM-MSGID 8 X-GM-LABELS (\"\\\\Inbox\") UID 297 RFC822.SIZE 3231 INTERNALDATE \"11-Oct-2026 17:26:21 +0000\" FLAGS (\\Seen) BODYSTRUCTURE (\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 3002 61 NIL NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
+              "* 8 FETCH (X-GM-THRID 6 X-GM-MSGID 8 X-GM-LABELS (\"\\\\Inbox\") UID 318 RFC822.SIZE 3231 INTERNALDATE \"12-Oct-2026 09:50:22 +0000\" FLAGS (\\Seen) BODYSTRUCTURE (\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 3002 61 NIL NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
               {
                 "literal": "From: Sanne <sanne@example.test>\r\nTo: mo@example.test\r\nSubject: Message 4\r\nDate: 04 Jan 2027 12:00:00 +0000\r\nMessage-ID: <m4@example.test>\r\n\r\n"
               },
               ")"
             ],
             [
-              "* 9 FETCH (X-GM-THRID 7 X-GM-MSGID 9 X-GM-LABELS (\"\\\\Inbox\") UID 298 RFC822.SIZE 249 INTERNALDATE \"11-Oct-2026 17:26:22 +0000\" FLAGS () BODYSTRUCTURE (\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 20 1 NIL NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
+              "* 9 FETCH (X-GM-THRID 7 X-GM-MSGID 9 X-GM-LABELS (\"\\\\Inbox\") UID 319 RFC822.SIZE 249 INTERNALDATE \"12-Oct-2026 09:50:25 +0000\" FLAGS () BODYSTRUCTURE (\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 20 1 NIL NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
               {
                 "literal": "From: Sanne <sanne@example.test>\r\nTo: mo@example.test\r\nSubject: Message 5\r\nDate: 05 Jan 2027 12:00:00 +0000\r\nMessage-ID: <m5@example.test>\r\n\r\n"
               },
@@ -350,10 +364,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 46] Predicted next UID."
+              "* OK [UIDNEXT 52] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16142]"
+              "* OK [HIGHESTMODSEQ 17428]"
             ],
             [
               "A0002 OK [READ-ONLY] [Gmail]/Spam selected. (Success)"
@@ -435,10 +449,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 288] Predicted next UID."
+              "* OK [UIDNEXT 306] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16142]"
+              "* OK [HIGHESTMODSEQ 17428]"
             ],
             [
               "A0002 OK [READ-ONLY] [Gmail]/Prullenbak selected. (Success)"
@@ -520,10 +534,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 299] Predicted next UID."
+              "* OK [UIDNEXT 320] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16142]"
+              "* OK [HIGHESTMODSEQ 17428]"
             ],
             [
               "A0002 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
@@ -531,10 +545,10 @@
           ]
         },
         {
-          "client": "A0003 UID FETCH 296 (UID BODY.PEEK[1.MIME]<0.4096> BODY.PEEK[1]<0.2048>)",
+          "client": "A0003 UID FETCH 317 (UID BODY.PEEK[1.MIME]<0.4096> BODY.PEEK[1]<0.2048>)",
           "server": [
             [
-              "* 7 FETCH (UID 296 BODY[1]<0> ",
+              "* 7 FETCH (UID 317 BODY[1]<0> ",
               {
                 "literal": "Text of the messag"
               },
@@ -576,10 +590,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 299] Predicted next UID."
+              "* OK [UIDNEXT 320] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16142]"
+              "* OK [HIGHESTMODSEQ 17428]"
             ],
             [
               "A0005 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
@@ -587,10 +601,10 @@
           ]
         },
         {
-          "client": "A0006 UID FETCH 297 (UID BODY.PEEK[HEADER.FIELDS (CONTENT-TYPE CONTENT-TRANSFER-ENCODING)]<0.4096> BODY.PEEK[TEXT]<0.2048>)",
+          "client": "A0006 UID FETCH 318 (UID BODY.PEEK[HEADER.FIELDS (CONTENT-TYPE CONTENT-TRANSFER-ENCODING)]<0.4096> BODY.PEEK[TEXT]<0.2048>)",
           "server": [
             [
-              "* 8 FETCH (UID 297 BODY[TEXT]<0> ",
+              "* 8 FETCH (UID 318 BODY[TEXT]<0> ",
               {
                 "literal": "Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replac"
               },
@@ -632,10 +646,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 299] Predicted next UID."
+              "* OK [UIDNEXT 320] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16142]"
+              "* OK [HIGHESTMODSEQ 17428]"
             ],
             [
               "A0008 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
@@ -643,10 +657,10 @@
           ]
         },
         {
-          "client": "A0009 UID FETCH 296 (UID BODYSTRUCTURE)",
+          "client": "A0009 UID FETCH 317 (UID BODYSTRUCTURE)",
           "server": [
             [
-              "* 7 FETCH (UID 296 BODYSTRUCTURE ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 18 1 NIL NIL NIL)(\"TEXT\" \"PLAIN\" (\"NAME\" \"notes.txt\") NIL NIL \"7BIT\" 5 1 NIL (\"ATTACHMENT\" (\"FILENAME\" \"notes.txt\")) NIL) \"MIXED\" (\"BOUNDARY\" \"b1\") NIL NIL))"
+              "* 7 FETCH (UID 317 BODYSTRUCTURE ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 18 1 NIL NIL NIL)(\"TEXT\" \"PLAIN\" (\"NAME\" \"notes.txt\") NIL NIL \"7BIT\" 5 1 NIL (\"ATTACHMENT\" (\"FILENAME\" \"notes.txt\")) NIL) \"MIXED\" (\"BOUNDARY\" \"b1\") NIL NIL))"
             ],
             [
               "A0009 OK Success"
@@ -654,10 +668,10 @@
           ]
         },
         {
-          "client": "A0010 UID FETCH 296 (UID BODY.PEEK[1]<0.18>)",
+          "client": "A0010 UID FETCH 317 (UID BODY.PEEK[1]<0.18>)",
           "server": [
             [
-              "* 7 FETCH (UID 296 BODY[1]<0> ",
+              "* 7 FETCH (UID 317 BODY[1]<0> ",
               {
                 "literal": "Text of the messag"
               },
@@ -695,10 +709,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 299] Predicted next UID."
+              "* OK [UIDNEXT 320] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16142]"
+              "* OK [HIGHESTMODSEQ 17428]"
             ],
             [
               "A0012 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
@@ -706,10 +720,10 @@
           ]
         },
         {
-          "client": "A0013 UID FETCH 296 (UID BODYSTRUCTURE)",
+          "client": "A0013 UID FETCH 317 (UID BODYSTRUCTURE)",
           "server": [
             [
-              "* 7 FETCH (UID 296 BODYSTRUCTURE ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 18 1 NIL NIL NIL)(\"TEXT\" \"PLAIN\" (\"NAME\" \"notes.txt\") NIL NIL \"7BIT\" 5 1 NIL (\"ATTACHMENT\" (\"FILENAME\" \"notes.txt\")) NIL) \"MIXED\" (\"BOUNDARY\" \"b1\") NIL NIL))"
+              "* 7 FETCH (UID 317 BODYSTRUCTURE ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 18 1 NIL NIL NIL)(\"TEXT\" \"PLAIN\" (\"NAME\" \"notes.txt\") NIL NIL \"7BIT\" 5 1 NIL (\"ATTACHMENT\" (\"FILENAME\" \"notes.txt\")) NIL) \"MIXED\" (\"BOUNDARY\" \"b1\") NIL NIL))"
             ],
             [
               "A0013 OK Success"
@@ -717,10 +731,10 @@
           ]
         },
         {
-          "client": "A0014 UID FETCH 296 (UID BODY.PEEK[2]<0.524288>)",
+          "client": "A0014 UID FETCH 317 (UID BODY.PEEK[2]<0.524288>)",
           "server": [
             [
-              "* 7 FETCH (UID 296 BODY[2]<0> ",
+              "* 7 FETCH (UID 317 BODY[2]<0> ",
               {
                 "literal": "Text "
               },
@@ -758,10 +772,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 299] Predicted next UID."
+              "* OK [UIDNEXT 320] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16142]"
+              "* OK [HIGHESTMODSEQ 17428]"
             ],
             [
               "A0016 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
@@ -769,10 +783,10 @@
           ]
         },
         {
-          "client": "A0017 UID FETCH 296 (UID BODY.PEEK[]<0.524288>)",
+          "client": "A0017 UID FETCH 317 (UID BODY.PEEK[]<0.524288>)",
           "server": [
             [
-              "* 7 FETCH (UID 296 BODY[]<0> ",
+              "* 7 FETCH (UID 317 BODY[]<0> ",
               {
                 "literal": "Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, replaced. Text of the message body, rep"
               },
@@ -810,10 +824,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 299] Predicted next UID."
+              "* OK [UIDNEXT 320] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16142]"
+              "* OK [HIGHESTMODSEQ 17428]"
             ],
             [
               "A0019 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
@@ -821,10 +835,10 @@
           ]
         },
         {
-          "client": "A0020 UID STORE 298 +FLAGS.SILENT (\\Seen)",
+          "client": "A0020 UID STORE 319 +FLAGS.SILENT (\\Seen)",
           "server": [
             [
-              "* 9 FETCH (UID 298 FLAGS (\\Seen))"
+              "* 9 FETCH (UID 319 FLAGS (\\Seen))"
             ],
             [
               "A0020 OK Success"
@@ -857,13 +871,13 @@
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
             ],
             [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16163 MESSAGES 9 UIDNEXT 299 UIDVALIDITY 1 UNSEEN 0)"
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17449 MESSAGES 9 UIDNEXT 320 UIDVALIDITY 1 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
             ],
             [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 65 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
@@ -872,43 +886,43 @@
               "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
             ],
             [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16163 MESSAGES 9 UIDNEXT 299 UIDVALIDITY 12 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17449 MESSAGES 9 UIDNEXT 320 UIDVALIDITY 12 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
             ],
             [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
             ],
             [
               "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
             ],
             [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
             ],
             [
               "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
             ],
             [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 4 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 49 UIDVALIDITY 4 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
             ],
             [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
             ],
             [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
             ],
             [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
             ],
             [
               "A0022 OK Success"
@@ -934,10 +948,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 299] Predicted next UID."
+              "* OK [UIDNEXT 320] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16163]"
+              "* OK [HIGHESTMODSEQ 17449]"
             ],
             [
               "A0023 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
@@ -945,10 +959,10 @@
           ]
         },
         {
-          "client": "A0024 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16142)",
+          "client": "A0024 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17428)",
           "server": [
             [
-              "* 9 FETCH (X-GM-LABELS (\"\\\\Inbox\") UID 298 MODSEQ (16147) FLAGS (\\Seen))"
+              "* 9 FETCH (X-GM-LABELS (\"\\\\Inbox\") UID 319 MODSEQ (17433) FLAGS (\\Seen))"
             ],
             [
               "A0024 OK Success"
@@ -974,10 +988,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 46] Predicted next UID."
+              "* OK [UIDNEXT 52] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16163]"
+              "* OK [HIGHESTMODSEQ 17449]"
             ],
             [
               "A0025 OK [READ-ONLY] [Gmail]/Spam selected. (Success)"
@@ -985,7 +999,7 @@
           ]
         },
         {
-          "client": "A0026 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16142)",
+          "client": "A0026 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17428)",
           "server": [
             [
               "A0026 OK Success"
@@ -1011,10 +1025,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 288] Predicted next UID."
+              "* OK [UIDNEXT 306] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16163]"
+              "* OK [HIGHESTMODSEQ 17449]"
             ],
             [
               "A0027 OK [READ-ONLY] [Gmail]/Prullenbak selected. (Success)"
@@ -1022,7 +1036,7 @@
           ]
         },
         {
-          "client": "A0028 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16142)",
+          "client": "A0028 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17428)",
           "server": [
             [
               "A0028 OK Success"
@@ -1030,10 +1044,24 @@
           ]
         },
         {
-          "client": "A0029 NOOP",
+          "client": "A0029 GETQUOTAROOT INBOX",
           "server": [
             [
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
+            [
               "A0029 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0030 NOOP",
+          "server": [
+            [
+              "A0030 OK Success"
             ]
           ]
         },
@@ -1049,19 +1077,19 @@
           ]
         },
         {
-          "client": "A0030 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "client": "A0031 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
           "server": [
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
             ],
             [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16163 MESSAGES 9 UIDNEXT 299 UIDVALIDITY 1 UNSEEN 0)"
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17449 MESSAGES 9 UIDNEXT 320 UIDVALIDITY 1 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
             ],
             [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 65 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
@@ -1070,127 +1098,57 @@
               "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
             ],
             [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16163 MESSAGES 9 UIDNEXT 299 UIDVALIDITY 12 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17449 MESSAGES 9 UIDNEXT 320 UIDVALIDITY 12 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
             ],
             [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
             ],
             [
               "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
             ],
             [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
             ],
             [
               "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
             ],
             [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 4 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 49 UIDVALIDITY 4 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
             ],
             [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
             ],
             [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
             ],
             [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
             ],
-            [
-              "A0030 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0031 NOOP",
-          "server": [
             [
               "A0031 OK Success"
             ]
           ]
         },
         {
-          "client": "C5 CAPABILITY",
+          "client": "A0032 GETQUOTAROOT INBOX",
           "server": [
             [
-              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
+              "* QUOTAROOT \"INBOX\" \"\""
             ],
             [
-              "C5 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0032 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
-          "server": [
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
-            ],
-            [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16163 MESSAGES 9 UIDNEXT 299 UIDVALIDITY 1 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
-            ],
-            [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
-            ],
-            [
-              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16163 MESSAGES 9 UIDNEXT 299 UIDVALIDITY 12 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 4 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+              "* QUOTA \"\" (STORAGE 0 15728640)"
             ],
             [
               "A0032 OK Success"
@@ -1206,6 +1164,104 @@
           ]
         },
         {
+          "client": "C5 CAPABILITY",
+          "server": [
+            [
+              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
+            ],
+            [
+              "C5 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0034 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "server": [
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
+            ],
+            [
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17449 MESSAGES 9 UIDNEXT 320 UIDVALIDITY 1 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
+            ],
+            [
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 65 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
+            ],
+            [
+              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17449 MESSAGES 9 UIDNEXT 320 UIDVALIDITY 12 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 49 UIDVALIDITY 4 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+            ],
+            [
+              "A0034 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0035 GETQUOTAROOT INBOX",
+          "server": [
+            [
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
+            [
+              "A0035 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0036 NOOP",
+          "server": [
+            [
+              "A0036 OK Success"
+            ]
+          ]
+        },
+        {
           "client": "C6 CAPABILITY",
           "server": [
             [
@@ -1217,19 +1273,19 @@
           ]
         },
         {
-          "client": "A0034 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "client": "A0037 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
           "server": [
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
             ],
             [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16163 MESSAGES 9 UIDNEXT 299 UIDVALIDITY 1 UNSEEN 0)"
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17449 MESSAGES 9 UIDNEXT 320 UIDVALIDITY 1 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
             ],
             [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 65 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
@@ -1238,54 +1294,68 @@
               "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
             ],
             [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16163 MESSAGES 9 UIDNEXT 299 UIDVALIDITY 12 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17449 MESSAGES 9 UIDNEXT 320 UIDVALIDITY 12 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
             ],
             [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
             ],
             [
               "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
             ],
             [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
             ],
             [
               "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
             ],
             [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 4 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 49 UIDVALIDITY 4 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
             ],
             [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
             ],
             [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
             ],
             [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
             ],
             [
-              "A0034 OK Success"
+              "A0037 OK Success"
             ]
           ]
         },
         {
-          "client": "A0035 NOOP",
+          "client": "A0038 GETQUOTAROOT INBOX",
           "server": [
             [
-              "A0035 OK Success"
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
+            [
+              "A0038 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0039 NOOP",
+          "server": [
+            [
+              "A0039 OK Success"
             ]
           ]
         },
@@ -1301,19 +1371,19 @@
           ]
         },
         {
-          "client": "A0036 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "client": "A0040 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
           "server": [
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
             ],
             [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16163 MESSAGES 9 UIDNEXT 299 UIDVALIDITY 1 UNSEEN 0)"
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17449 MESSAGES 9 UIDNEXT 320 UIDVALIDITY 1 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
             ],
             [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 65 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
@@ -1322,54 +1392,68 @@
               "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
             ],
             [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16163 MESSAGES 9 UIDNEXT 299 UIDVALIDITY 12 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17449 MESSAGES 9 UIDNEXT 320 UIDVALIDITY 12 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
             ],
             [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
             ],
             [
               "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
             ],
             [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
             ],
             [
               "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
             ],
             [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 4 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 49 UIDVALIDITY 4 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
             ],
             [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
             ],
             [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
             ],
             [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16163 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17449 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
             ],
             [
-              "A0036 OK Success"
+              "A0040 OK Success"
             ]
           ]
         },
         {
-          "client": "A0037 NOOP",
+          "client": "A0041 GETQUOTAROOT INBOX",
           "server": [
             [
-              "A0037 OK Success"
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
+            [
+              "A0041 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0042 NOOP",
+          "server": [
+            [
+              "A0042 OK Success"
             ]
           ]
         },
@@ -1385,19 +1469,19 @@
           ]
         },
         {
-          "client": "A0038 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "client": "A0043 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
           "server": [
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
             ],
             [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16178 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17464 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 1 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
             ],
             [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 65 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
@@ -1406,51 +1490,51 @@
               "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
             ],
             [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16178 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17464 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 12 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
             ],
             [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
             ],
             [
               "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
             ],
             [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
             ],
             [
               "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
             ],
             [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 4 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 49 UIDVALIDITY 4 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
             ],
             [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
             ],
             [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
             ],
             [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
             ],
             [
-              "A0038 OK Success"
+              "A0043 OK Success"
             ]
           ]
         },
         {
-          "client": "A0039 EXAMINE \"[Gmail]/Alle e-mail\"",
+          "client": "A0044 EXAMINE \"[Gmail]/Alle e-mail\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -1468,44 +1552,44 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 300] Predicted next UID."
+              "* OK [UIDNEXT 321] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16178]"
+              "* OK [HIGHESTMODSEQ 17464]"
             ],
             [
-              "A0039 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
+              "A0044 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0040 UID FETCH 299:299 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE X-GM-LABELS X-GM-MSGID X-GM-THRID BODY.PEEK[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])",
+          "client": "A0045 UID FETCH 320:320 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE X-GM-LABELS X-GM-MSGID X-GM-THRID BODY.PEEK[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])",
           "server": [
             [
-              "* 10 FETCH (X-GM-THRID 8 X-GM-MSGID 10 X-GM-LABELS (\"\\\\Inbox\") UID 299 RFC822.SIZE 249 MODSEQ (16165) INTERNALDATE \"11-Oct-2026 17:26:29 +0000\" FLAGS (\\Seen) BODYSTRUCTURE (\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 20 1 NIL NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
+              "* 10 FETCH (X-GM-THRID 8 X-GM-MSGID 10 X-GM-LABELS (\"\\\\Inbox\") UID 320 RFC822.SIZE 249 MODSEQ (17451) INTERNALDATE \"12-Oct-2026 09:50:32 +0000\" FLAGS (\\Seen) BODYSTRUCTURE (\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 20 1 NIL NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
               {
                 "literal": "From: Sanne <sanne@example.test>\r\nTo: mo@example.test\r\nSubject: Message 6\r\nDate: 06 Jan 2027 12:00:00 +0000\r\nMessage-ID: <m6@example.test>\r\n\r\n"
               },
               ")"
             ],
             [
-              "A0040 OK Success"
+              "A0045 OK Success"
             ]
           ]
         },
         {
-          "client": "A0041 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16163)",
+          "client": "A0046 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17449)",
           "server": [
             [
-              "* 10 FETCH (X-GM-LABELS (\"\\\\Inbox\") UID 299 MODSEQ (16165) FLAGS (\\Seen))"
+              "* 10 FETCH (X-GM-LABELS (\"\\\\Inbox\") UID 320 MODSEQ (17451) FLAGS (\\Seen))"
             ],
             [
-              "A0041 OK Success"
+              "A0046 OK Success"
             ]
           ]
         },
         {
-          "client": "A0042 EXAMINE \"[Gmail]/Spam\"",
+          "client": "A0047 EXAMINE \"[Gmail]/Spam\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -1523,26 +1607,26 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 46] Predicted next UID."
+              "* OK [UIDNEXT 52] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16178]"
+              "* OK [HIGHESTMODSEQ 17464]"
             ],
             [
-              "A0042 OK [READ-ONLY] [Gmail]/Spam selected. (Success)"
+              "A0047 OK [READ-ONLY] [Gmail]/Spam selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0043 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16163)",
+          "client": "A0048 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17449)",
           "server": [
             [
-              "A0043 OK Success"
+              "A0048 OK Success"
             ]
           ]
         },
         {
-          "client": "A0044 EXAMINE \"[Gmail]/Prullenbak\"",
+          "client": "A0049 EXAMINE \"[Gmail]/Prullenbak\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -1560,194 +1644,18 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 288] Predicted next UID."
+              "* OK [UIDNEXT 306] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16178]"
+              "* OK [HIGHESTMODSEQ 17464]"
             ],
             [
-              "A0044 OK [READ-ONLY] [Gmail]/Prullenbak selected. (Success)"
+              "A0049 OK [READ-ONLY] [Gmail]/Prullenbak selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0045 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16163)",
-          "server": [
-            [
-              "A0045 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0046 NOOP",
-          "server": [
-            [
-              "A0046 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "C9 CAPABILITY",
-          "server": [
-            [
-              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
-            ],
-            [
-              "C9 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0047 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
-          "server": [
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
-            ],
-            [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16178 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
-            ],
-            [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
-            ],
-            [
-              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16178 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 4 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
-            ],
-            [
-              "A0047 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0048 NOOP",
-          "server": [
-            [
-              "A0048 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "C10 CAPABILITY",
-          "server": [
-            [
-              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
-            ],
-            [
-              "C10 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0049 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
-          "server": [
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
-            ],
-            [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16178 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
-            ],
-            [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
-            ],
-            [
-              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16178 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 4 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
-            ],
-            [
-              "A0049 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0050 NOOP",
+          "client": "A0050 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17449)",
           "server": [
             [
               "A0050 OK Success"
@@ -1755,75 +1663,13 @@
           ]
         },
         {
-          "client": "C11 CAPABILITY",
+          "client": "A0051 GETQUOTAROOT INBOX",
           "server": [
             [
-              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
+              "* QUOTAROOT \"INBOX\" \"\""
             ],
             [
-              "C11 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0051 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
-          "server": [
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
-            ],
-            [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16178 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
-            ],
-            [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
-            ],
-            [
-              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16178 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 4 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+              "* QUOTA \"\" (STORAGE 0 15728640)"
             ],
             [
               "A0051 OK Success"
@@ -1839,6 +1685,300 @@
           ]
         },
         {
+          "client": "C9 CAPABILITY",
+          "server": [
+            [
+              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
+            ],
+            [
+              "C9 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0053 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "server": [
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
+            ],
+            [
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17464 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 1 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
+            ],
+            [
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 65 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
+            ],
+            [
+              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17464 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 12 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 49 UIDVALIDITY 4 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+            ],
+            [
+              "A0053 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0054 GETQUOTAROOT INBOX",
+          "server": [
+            [
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
+            [
+              "A0054 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0055 NOOP",
+          "server": [
+            [
+              "A0055 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "C10 CAPABILITY",
+          "server": [
+            [
+              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
+            ],
+            [
+              "C10 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0056 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "server": [
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
+            ],
+            [
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17464 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 1 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
+            ],
+            [
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 65 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
+            ],
+            [
+              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17464 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 12 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 49 UIDVALIDITY 4 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+            ],
+            [
+              "A0056 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0057 GETQUOTAROOT INBOX",
+          "server": [
+            [
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
+            [
+              "A0057 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0058 NOOP",
+          "server": [
+            [
+              "A0058 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "C11 CAPABILITY",
+          "server": [
+            [
+              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
+            ],
+            [
+              "C11 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0059 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "server": [
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
+            ],
+            [
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17464 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 1 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
+            ],
+            [
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 65 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
+            ],
+            [
+              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17464 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 12 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 49 UIDVALIDITY 4 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+            ],
+            [
+              "A0059 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0060 GETQUOTAROOT INBOX",
+          "server": [
+            [
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
+            [
+              "A0060 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0061 NOOP",
+          "server": [
+            [
+              "A0061 OK Success"
+            ]
+          ]
+        },
+        {
           "client": "C12 CAPABILITY",
           "server": [
             [
@@ -1850,19 +1990,19 @@
           ]
         },
         {
-          "client": "A0053 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "client": "A0062 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
           "server": [
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
             ],
             [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16178 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17464 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 1 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
             ],
             [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 65 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
@@ -1871,54 +2011,68 @@
               "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
             ],
             [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16178 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17464 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 12 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
             ],
             [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
             ],
             [
               "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
             ],
             [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
             ],
             [
               "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
             ],
             [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 4 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 49 UIDVALIDITY 4 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
             ],
             [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
             ],
             [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
             ],
             [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17464 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
             ],
             [
-              "A0053 OK Success"
+              "A0062 OK Success"
             ]
           ]
         },
         {
-          "client": "A0054 NOOP",
+          "client": "A0063 GETQUOTAROOT INBOX",
           "server": [
             [
-              "A0054 OK Success"
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
+            [
+              "A0063 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0064 NOOP",
+          "server": [
+            [
+              "A0064 OK Success"
             ]
           ]
         },
@@ -1934,301 +2088,19 @@
           ]
         },
         {
-          "client": "A0055 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
-          "server": [
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
-            ],
-            [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16178 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
-            ],
-            [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
-            ],
-            [
-              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16178 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 4 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16178 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
-            ],
-            [
-              "A0055 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0056 NOOP",
-          "server": [
-            [
-              "A0056 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "C14 CAPABILITY",
-          "server": [
-            [
-              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
-            ],
-            [
-              "C14 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0057 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
-          "server": [
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
-            ],
-            [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16188 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
-            ],
-            [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16188 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 62 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
-            ],
-            [
-              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16188 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16188 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16188 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16188 MESSAGES 1 UIDNEXT 47 UIDVALIDITY 4 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16188 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16188 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16188 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
-            ],
-            [
-              "A0057 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0058 EXAMINE \"[Gmail]/Alle e-mail\"",
-          "server": [
-            [
-              "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
-            ],
-            [
-              "* OK [PERMANENTFLAGS ()] Flags permitted."
-            ],
-            [
-              "* OK [UIDVALIDITY 12] UIDs valid."
-            ],
-            [
-              "* 10 EXISTS"
-            ],
-            [
-              "* 0 RECENT"
-            ],
-            [
-              "* OK [UIDNEXT 300] Predicted next UID."
-            ],
-            [
-              "* OK [HIGHESTMODSEQ 16188]"
-            ],
-            [
-              "A0058 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
-            ]
-          ]
-        },
-        {
-          "client": "A0059 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16178)",
-          "server": [
-            [
-              "* 5 FETCH (X-GM-LABELS (\"\\\\Inbox\" \"\\\\Starred\") UID 294 MODSEQ (16182) FLAGS (\\Flagged \\Seen))"
-            ],
-            [
-              "A0059 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0060 EXAMINE \"[Gmail]/Spam\"",
-          "server": [
-            [
-              "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
-            ],
-            [
-              "* OK [PERMANENTFLAGS ()] Flags permitted."
-            ],
-            [
-              "* OK [UIDVALIDITY 3] UIDs valid."
-            ],
-            [
-              "* 0 EXISTS"
-            ],
-            [
-              "* 0 RECENT"
-            ],
-            [
-              "* OK [UIDNEXT 46] Predicted next UID."
-            ],
-            [
-              "* OK [HIGHESTMODSEQ 16188]"
-            ],
-            [
-              "A0060 OK [READ-ONLY] [Gmail]/Spam selected. (Success)"
-            ]
-          ]
-        },
-        {
-          "client": "A0061 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16178)",
-          "server": [
-            [
-              "A0061 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0062 EXAMINE \"[Gmail]/Prullenbak\"",
-          "server": [
-            [
-              "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
-            ],
-            [
-              "* OK [PERMANENTFLAGS ()] Flags permitted."
-            ],
-            [
-              "* OK [UIDVALIDITY 2] UIDs valid."
-            ],
-            [
-              "* 0 EXISTS"
-            ],
-            [
-              "* 0 RECENT"
-            ],
-            [
-              "* OK [UIDNEXT 288] Predicted next UID."
-            ],
-            [
-              "* OK [HIGHESTMODSEQ 16188]"
-            ],
-            [
-              "A0062 OK [READ-ONLY] [Gmail]/Prullenbak selected. (Success)"
-            ]
-          ]
-        },
-        {
-          "client": "A0063 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16178)",
-          "server": [
-            [
-              "A0063 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0064 NOOP",
-          "server": [
-            [
-              "A0064 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "C15 CAPABILITY",
-          "server": [
-            [
-              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
-            ],
-            [
-              "C15 OK Success"
-            ]
-          ]
-        },
-        {
           "client": "A0065 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
           "server": [
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
             ],
             [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16193 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17474 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 1 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
             ],
             [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16193 MESSAGES 1 UIDNEXT 2 UIDVALIDITY 62 UNSEEN 0)"
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17474 MESSAGES 0 UIDNEXT 1 UIDVALIDITY 65 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
@@ -2237,43 +2109,43 @@
               "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
             ],
             [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16193 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17474 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 12 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
             ],
             [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17474 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
             ],
             [
               "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
             ],
             [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17474 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
             ],
             [
               "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
             ],
             [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16193 MESSAGES 1 UIDNEXT 47 UIDVALIDITY 4 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17474 MESSAGES 1 UIDNEXT 50 UIDVALIDITY 4 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
             ],
             [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17474 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
             ],
             [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17474 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
             ],
             [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17474 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
             ],
             [
               "A0065 OK Success"
@@ -2299,10 +2171,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 300] Predicted next UID."
+              "* OK [UIDNEXT 321] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16193]"
+              "* OK [HIGHESTMODSEQ 17474]"
             ],
             [
               "A0066 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
@@ -2310,10 +2182,10 @@
           ]
         },
         {
-          "client": "A0067 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16188)",
+          "client": "A0067 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17464)",
           "server": [
             [
-              "* 6 FETCH (X-GM-LABELS (\"\\\\Inbox\" Project) UID 295 MODSEQ (16190) FLAGS (\\Seen))"
+              "* 5 FETCH (X-GM-LABELS (\"\\\\Inbox\" \"\\\\Starred\") UID 315 MODSEQ (17468) FLAGS (\\Flagged \\Seen))"
             ],
             [
               "A0067 OK Success"
@@ -2339,10 +2211,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 46] Predicted next UID."
+              "* OK [UIDNEXT 52] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16193]"
+              "* OK [HIGHESTMODSEQ 17474]"
             ],
             [
               "A0068 OK [READ-ONLY] [Gmail]/Spam selected. (Success)"
@@ -2350,7 +2222,7 @@
           ]
         },
         {
-          "client": "A0069 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16188)",
+          "client": "A0069 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17464)",
           "server": [
             [
               "A0069 OK Success"
@@ -2376,10 +2248,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 288] Predicted next UID."
+              "* OK [UIDNEXT 306] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16193]"
+              "* OK [HIGHESTMODSEQ 17474]"
             ],
             [
               "A0070 OK [READ-ONLY] [Gmail]/Prullenbak selected. (Success)"
@@ -2387,7 +2259,7 @@
           ]
         },
         {
-          "client": "A0071 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16188)",
+          "client": "A0071 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17464)",
           "server": [
             [
               "A0071 OK Success"
@@ -2395,343 +2267,105 @@
           ]
         },
         {
-          "client": "A0072 NOOP",
+          "client": "A0072 GETQUOTAROOT INBOX",
           "server": [
+            [
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
             [
               "A0072 OK Success"
             ]
           ]
         },
         {
-          "client": "C16 CAPABILITY",
+          "client": "A0073 NOOP",
           "server": [
-            [
-              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
-            ],
-            [
-              "C16 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0073 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
-          "server": [
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
-            ],
-            [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16193 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
-            ],
-            [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16193 MESSAGES 1 UIDNEXT 2 UIDVALIDITY 62 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
-            ],
-            [
-              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16193 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16193 MESSAGES 1 UIDNEXT 47 UIDVALIDITY 4 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
-            ],
             [
               "A0073 OK Success"
             ]
           ]
         },
         {
-          "client": "A0074 NOOP",
+          "client": "C14 CAPABILITY",
           "server": [
+            [
+              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
+            ],
+            [
+              "C14 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0074 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "server": [
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
+            ],
+            [
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17479 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 1 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
+            ],
+            [
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17479 MESSAGES 1 UIDNEXT 2 UIDVALIDITY 65 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
+            ],
+            [
+              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17479 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 12 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17479 MESSAGES 1 UIDNEXT 50 UIDVALIDITY 4 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+            ],
             [
               "A0074 OK Success"
             ]
           ]
         },
         {
-          "client": "C17 CAPABILITY",
-          "server": [
-            [
-              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
-            ],
-            [
-              "C17 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0075 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
-          "server": [
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
-            ],
-            [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16193 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
-            ],
-            [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16193 MESSAGES 1 UIDNEXT 2 UIDVALIDITY 62 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
-            ],
-            [
-              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16193 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16193 MESSAGES 1 UIDNEXT 47 UIDVALIDITY 4 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
-            ],
-            [
-              "A0075 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0076 NOOP",
-          "server": [
-            [
-              "A0076 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "C18 CAPABILITY",
-          "server": [
-            [
-              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
-            ],
-            [
-              "C18 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0077 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
-          "server": [
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
-            ],
-            [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16193 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
-            ],
-            [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16193 MESSAGES 1 UIDNEXT 2 UIDVALIDITY 62 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
-            ],
-            [
-              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16193 MESSAGES 10 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16193 MESSAGES 1 UIDNEXT 47 UIDVALIDITY 4 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 46 UIDVALIDITY 3 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16193 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
-            ],
-            [
-              "A0077 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0078 NOOP",
-          "server": [
-            [
-              "A0078 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "C19 CAPABILITY",
-          "server": [
-            [
-              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
-            ],
-            [
-              "C19 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0079 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
-          "server": [
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
-            ],
-            [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16213 MESSAGES 9 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
-            ],
-            [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16213 MESSAGES 1 UIDNEXT 2 UIDVALIDITY 62 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
-            ],
-            [
-              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16213 MESSAGES 9 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16213 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16213 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16213 MESSAGES 1 UIDNEXT 47 UIDVALIDITY 4 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16213 MESSAGES 0 UIDNEXT 288 UIDVALIDITY 2 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16213 MESSAGES 1 UIDNEXT 47 UIDVALIDITY 3 UNSEEN 0)"
-            ],
-            [
-              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
-            ],
-            [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16213 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
-            ],
-            [
-              "A0079 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0080 EXAMINE \"[Gmail]/Alle e-mail\"",
+          "client": "A0075 EXAMINE \"[Gmail]/Alle e-mail\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -2743,43 +2377,35 @@
               "* OK [UIDVALIDITY 12] UIDs valid."
             ],
             [
-              "* 9 EXISTS"
+              "* 10 EXISTS"
             ],
             [
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 300] Predicted next UID."
+              "* OK [UIDNEXT 321] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16213]"
+              "* OK [HIGHESTMODSEQ 17479]"
             ],
             [
-              "A0080 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
+              "A0075 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0081 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16193)",
+          "client": "A0076 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17474)",
           "server": [
             [
-              "A0081 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0082 UID SEARCH 1:9",
-          "server": [
-            [
-              "* SEARCH 1 2 3 4 294 295 297 298 299"
+              "* 6 FETCH (X-GM-LABELS (\"\\\\Inbox\" Project) UID 316 MODSEQ (17476) FLAGS (\\Seen))"
             ],
             [
-              "A0082 OK SEARCH completed (Success)"
+              "A0076 OK Success"
             ]
           ]
         },
         {
-          "client": "A0083 EXAMINE \"[Gmail]/Spam\"",
+          "client": "A0077 EXAMINE \"[Gmail]/Spam\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -2791,50 +2417,32 @@
               "* OK [UIDVALIDITY 3] UIDs valid."
             ],
             [
-              "* 1 EXISTS"
+              "* 0 EXISTS"
             ],
             [
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 47] Predicted next UID."
+              "* OK [UIDNEXT 52] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16213]"
+              "* OK [HIGHESTMODSEQ 17479]"
             ],
             [
-              "A0083 OK [READ-ONLY] [Gmail]/Spam selected. (Success)"
+              "A0077 OK [READ-ONLY] [Gmail]/Spam selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0084 UID FETCH 46:46 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE X-GM-LABELS X-GM-MSGID X-GM-THRID BODY.PEEK[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])",
+          "client": "A0078 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17474)",
           "server": [
             [
-              "* 1 FETCH (X-GM-THRID 5 X-GM-MSGID 7 X-GM-LABELS () UID 46 RFC822.SIZE 425 MODSEQ (16211) INTERNALDATE \"11-Oct-2026 17:26:19 +0000\" FLAGS (\\Seen) BODYSTRUCTURE ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 18 1 NIL NIL NIL)(\"TEXT\" \"PLAIN\" (\"NAME\" \"notes.txt\") NIL NIL \"7BIT\" 5 1 NIL (\"ATTACHMENT\" (\"FILENAME\" \"notes.txt\")) NIL) \"MIXED\" (\"BOUNDARY\" \"b1\") NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
-              {
-                "literal": "From: Sanne <sanne@example.test>\r\nTo: mo@example.test\r\nSubject: Message 3\r\nDate: 03 Jan 2027 12:00:00 +0000\r\nMessage-ID: <m3@example.test>\r\n\r\n"
-              },
-              ")"
-            ],
-            [
-              "A0084 OK Success"
+              "A0078 OK Success"
             ]
           ]
         },
         {
-          "client": "A0085 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16193)",
-          "server": [
-            [
-              "* 1 FETCH (X-GM-LABELS () UID 46 MODSEQ (16211) FLAGS (\\Seen))"
-            ],
-            [
-              "A0085 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0086 EXAMINE \"[Gmail]/Prullenbak\"",
+          "client": "A0079 EXAMINE \"[Gmail]/Prullenbak\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -2852,19 +2460,229 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 288] Predicted next UID."
+              "* OK [UIDNEXT 306] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16213]"
+              "* OK [HIGHESTMODSEQ 17479]"
             ],
             [
-              "A0086 OK [READ-ONLY] [Gmail]/Prullenbak selected. (Success)"
+              "A0079 OK [READ-ONLY] [Gmail]/Prullenbak selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0087 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16193)",
+          "client": "A0080 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17474)",
           "server": [
+            [
+              "A0080 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0081 GETQUOTAROOT INBOX",
+          "server": [
+            [
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
+            [
+              "A0081 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0082 NOOP",
+          "server": [
+            [
+              "A0082 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "C15 CAPABILITY",
+          "server": [
+            [
+              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
+            ],
+            [
+              "C15 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0083 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "server": [
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
+            ],
+            [
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17479 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 1 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
+            ],
+            [
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17479 MESSAGES 1 UIDNEXT 2 UIDVALIDITY 65 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
+            ],
+            [
+              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17479 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 12 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17479 MESSAGES 1 UIDNEXT 50 UIDVALIDITY 4 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+            ],
+            [
+              "A0083 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0084 GETQUOTAROOT INBOX",
+          "server": [
+            [
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
+            [
+              "A0084 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0085 NOOP",
+          "server": [
+            [
+              "A0085 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "C16 CAPABILITY",
+          "server": [
+            [
+              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
+            ],
+            [
+              "C16 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0086 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "server": [
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
+            ],
+            [
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17479 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 1 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
+            ],
+            [
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17479 MESSAGES 1 UIDNEXT 2 UIDVALIDITY 65 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
+            ],
+            [
+              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17479 MESSAGES 10 UIDNEXT 321 UIDVALIDITY 12 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17479 MESSAGES 1 UIDNEXT 50 UIDVALIDITY 4 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 52 UIDVALIDITY 3 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17479 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+            ],
+            [
+              "A0086 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0087 GETQUOTAROOT INBOX",
+          "server": [
+            [
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
             [
               "A0087 OK Success"
             ]
@@ -2879,13 +2697,13 @@
           ]
         },
         {
-          "client": "C20 CAPABILITY",
+          "client": "C17 CAPABILITY",
           "server": [
             [
               "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
             ],
             [
-              "C20 OK Success"
+              "C17 OK Success"
             ]
           ]
         },
@@ -2896,13 +2714,13 @@
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
             ],
             [
-              "* STATUS \"INBOX\" (HIGHESTMODSEQ 16241 MESSAGES 8 UIDNEXT 300 UIDVALIDITY 1 UNSEEN 0)"
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17501 MESSAGES 9 UIDNEXT 321 UIDVALIDITY 1 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
             ],
             [
-              "* STATUS \"Project\" (HIGHESTMODSEQ 16241 MESSAGES 1 UIDNEXT 2 UIDVALIDITY 62 UNSEEN 0)"
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17501 MESSAGES 1 UIDNEXT 2 UIDVALIDITY 65 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
@@ -2911,43 +2729,43 @@
               "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
             ],
             [
-              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 16241 MESSAGES 8 UIDNEXT 300 UIDVALIDITY 12 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17501 MESSAGES 9 UIDNEXT 321 UIDVALIDITY 12 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
             ],
             [
-              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 16241 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17501 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
             ],
             [
               "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
             ],
             [
-              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 16241 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17501 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
             ],
             [
               "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
             ],
             [
-              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 16241 MESSAGES 1 UIDNEXT 47 UIDVALIDITY 4 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17501 MESSAGES 1 UIDNEXT 50 UIDVALIDITY 4 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
             ],
             [
-              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 16241 MESSAGES 0 UIDNEXT 289 UIDVALIDITY 2 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17501 MESSAGES 0 UIDNEXT 306 UIDVALIDITY 2 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
             ],
             [
-              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 16241 MESSAGES 1 UIDNEXT 47 UIDVALIDITY 3 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17501 MESSAGES 1 UIDNEXT 53 UIDVALIDITY 3 UNSEEN 0)"
             ],
             [
               "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
             ],
             [
-              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 16241 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17501 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
             ],
             [
               "A0089 OK Success"
@@ -2967,16 +2785,16 @@
               "* OK [UIDVALIDITY 12] UIDs valid."
             ],
             [
-              "* 8 EXISTS"
+              "* 9 EXISTS"
             ],
             [
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 300] Predicted next UID."
+              "* OK [UIDNEXT 321] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16241]"
+              "* OK [HIGHESTMODSEQ 17501]"
             ],
             [
               "A0090 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
@@ -2984,7 +2802,7 @@
           ]
         },
         {
-          "client": "A0091 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16213)",
+          "client": "A0091 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17479)",
           "server": [
             [
               "A0091 OK Success"
@@ -2992,10 +2810,10 @@
           ]
         },
         {
-          "client": "A0092 UID SEARCH 1:8",
+          "client": "A0092 UID SEARCH 1:9",
           "server": [
             [
-              "* SEARCH 1 2 3 4 294 295 297 299"
+              "* SEARCH 1 2 3 4 315 316 318 319 320"
             ],
             [
               "A0092 OK SEARCH completed (Success)"
@@ -3021,10 +2839,10 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 47] Predicted next UID."
+              "* OK [UIDNEXT 53] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16241]"
+              "* OK [HIGHESTMODSEQ 17501]"
             ],
             [
               "A0093 OK [READ-ONLY] [Gmail]/Spam selected. (Success)"
@@ -3032,15 +2850,33 @@
           ]
         },
         {
-          "client": "A0094 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16213)",
+          "client": "A0094 UID FETCH 52:52 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE X-GM-LABELS X-GM-MSGID X-GM-THRID BODY.PEEK[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])",
           "server": [
+            [
+              "* 1 FETCH (X-GM-THRID 5 X-GM-MSGID 7 X-GM-LABELS () UID 52 RFC822.SIZE 425 MODSEQ (17497) INTERNALDATE \"12-Oct-2026 09:50:20 +0000\" FLAGS (\\Seen) BODYSTRUCTURE ((\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \"7BIT\" 18 1 NIL NIL NIL)(\"TEXT\" \"PLAIN\" (\"NAME\" \"notes.txt\") NIL NIL \"7BIT\" 5 1 NIL (\"ATTACHMENT\" (\"FILENAME\" \"notes.txt\")) NIL) \"MIXED\" (\"BOUNDARY\" \"b1\") NIL NIL) BODY[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] ",
+              {
+                "literal": "From: Sanne <sanne@example.test>\r\nTo: mo@example.test\r\nSubject: Message 3\r\nDate: 03 Jan 2027 12:00:00 +0000\r\nMessage-ID: <m3@example.test>\r\n\r\n"
+              },
+              ")"
+            ],
             [
               "A0094 OK Success"
             ]
           ]
         },
         {
-          "client": "A0095 EXAMINE \"[Gmail]/Prullenbak\"",
+          "client": "A0095 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17479)",
+          "server": [
+            [
+              "* 1 FETCH (X-GM-LABELS () UID 52 MODSEQ (17497) FLAGS (\\Seen))"
+            ],
+            [
+              "A0095 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0096 EXAMINE \"[Gmail]/Prullenbak\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -3058,26 +2894,18 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 289] Predicted next UID."
+              "* OK [UIDNEXT 306] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16241]"
+              "* OK [HIGHESTMODSEQ 17501]"
             ],
             [
-              "A0095 OK [READ-ONLY] [Gmail]/Prullenbak selected. (Success)"
+              "A0096 OK [READ-ONLY] [Gmail]/Prullenbak selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0096 UID FETCH 288:288 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE X-GM-LABELS X-GM-MSGID X-GM-THRID BODY.PEEK[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])",
-          "server": [
-            [
-              "A0096 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0097 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 16213)",
+          "client": "A0097 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17479)",
           "server": [
             [
               "A0097 OK Success"
@@ -3085,66 +2913,111 @@
           ]
         },
         {
-          "client": "A0098 NOOP",
+          "client": "A0098 GETQUOTAROOT INBOX",
           "server": [
+            [
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
             [
               "A0098 OK Success"
             ]
           ]
         },
         {
-          "client": "A0099 SELECT \"[Gmail]/Alle e-mail\"",
+          "client": "A0099 NOOP",
           "server": [
             [
-              "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
-            ],
-            [
-              "* OK [PERMANENTFLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk \\*)] Flags permitted."
-            ],
-            [
-              "* OK [UIDVALIDITY 12] UIDs valid."
-            ],
-            [
-              "* 8 EXISTS"
-            ],
-            [
-              "* 0 RECENT"
-            ],
-            [
-              "* OK [UIDNEXT 300] Predicted next UID."
-            ],
-            [
-              "* OK [HIGHESTMODSEQ 16241]"
-            ],
-            [
-              "A0099 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
+              "A0099 OK Success"
             ]
           ]
         },
         {
-          "client": "A0100 UID STORE 297 -X-GM-LABELS.SILENT (\\Inbox)",
+          "client": "C18 CAPABILITY",
           "server": [
+            [
+              "* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH UTF8=ACCEPT LIST-EXTENDED LIST-STATUS LITERAL- SPECIAL-USE APPENDLIMIT=35651584"
+            ],
+            [
+              "C18 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0100 LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))",
+          "server": [
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"INBOX\""
+            ],
+            [
+              "* STATUS \"INBOX\" (HIGHESTMODSEQ 17530 MESSAGES 8 UIDNEXT 321 UIDVALIDITY 1 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed) \"/\" \"Project\""
+            ],
+            [
+              "* STATUS \"Project\" (HIGHESTMODSEQ 17530 MESSAGES 1 UIDNEXT 2 UIDVALIDITY 65 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasChildren \\NonExistent \\Subscribed) \"/\" \"[Gmail]\""
+            ],
+            [
+              "* LIST (\\All \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Alle e-mail\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Alle e-mail\" (HIGHESTMODSEQ 17530 MESSAGES 8 UIDNEXT 321 UIDVALIDITY 12 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Important \\Subscribed) \"/\" \"[Gmail]/Belangrijk\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Belangrijk\" (HIGHESTMODSEQ 17530 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 9 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Drafts \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Concepten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Concepten\" (HIGHESTMODSEQ 17530 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 6 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\Flagged \\HasNoChildren \\Subscribed) \"/\" \"[Gmail]/Met ster\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Met ster\" (HIGHESTMODSEQ 17530 MESSAGES 1 UIDNEXT 50 UIDVALIDITY 4 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Subscribed \\Trash) \"/\" \"[Gmail]/Prullenbak\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Prullenbak\" (HIGHESTMODSEQ 17530 MESSAGES 0 UIDNEXT 307 UIDVALIDITY 2 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Junk \\Subscribed) \"/\" \"[Gmail]/Spam\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Spam\" (HIGHESTMODSEQ 17530 MESSAGES 1 UIDNEXT 53 UIDVALIDITY 3 UNSEEN 0)"
+            ],
+            [
+              "* LIST (\\HasNoChildren \\Sent \\Subscribed) \"/\" \"[Gmail]/Verzonden berichten\""
+            ],
+            [
+              "* STATUS \"[Gmail]/Verzonden berichten\" (HIGHESTMODSEQ 17530 MESSAGES 0 UIDNEXT 2 UIDVALIDITY 5 UNSEEN 0)"
+            ],
             [
               "A0100 OK Success"
             ]
           ]
         },
         {
-          "client": "A0101 NOOP",
-          "server": [
-            [
-              "A0101 OK Success"
-            ]
-          ]
-        },
-        {
-          "client": "A0102 SELECT \"[Gmail]/Alle e-mail\"",
+          "client": "A0101 EXAMINE \"[Gmail]/Alle e-mail\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
             ],
             [
-              "* OK [PERMANENTFLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk \\*)] Flags permitted."
+              "* OK [PERMANENTFLAGS ()] Flags permitted."
             ],
             [
               "* OK [UIDVALIDITY 12] UIDs valid."
@@ -3156,37 +3029,66 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 300] Predicted next UID."
+              "* OK [UIDNEXT 321] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16250]"
+              "* OK [HIGHESTMODSEQ 17530]"
             ],
             [
-              "A0102 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
+              "A0101 OK [READ-ONLY] [Gmail]/Alle e-mail selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0103 UID STORE 299 -FLAGS.SILENT (\\Seen)",
+          "client": "A0102 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17501)",
           "server": [
             [
-              "* 8 FETCH (UID 299 MODSEQ (16253) FLAGS ())"
-            ],
-            [
-              "A0103 OK Success"
+              "A0102 OK Success"
             ]
           ]
         },
         {
-          "client": "A0104 UID STORE 299 +X-GM-LABELS.SILENT (\"Project\")",
+          "client": "A0103 UID SEARCH 1:8",
           "server": [
             [
-              "A0104 OK Success"
+              "* SEARCH 1 2 3 4 315 316 318 320"
+            ],
+            [
+              "A0103 OK SEARCH completed (Success)"
             ]
           ]
         },
         {
-          "client": "A0105 UID STORE 299 -X-GM-LABELS.SILENT (\\Inbox)",
+          "client": "A0104 EXAMINE \"[Gmail]/Spam\"",
+          "server": [
+            [
+              "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
+            ],
+            [
+              "* OK [PERMANENTFLAGS ()] Flags permitted."
+            ],
+            [
+              "* OK [UIDVALIDITY 3] UIDs valid."
+            ],
+            [
+              "* 1 EXISTS"
+            ],
+            [
+              "* 0 RECENT"
+            ],
+            [
+              "* OK [UIDNEXT 53] Predicted next UID."
+            ],
+            [
+              "* OK [HIGHESTMODSEQ 17530]"
+            ],
+            [
+              "A0104 OK [READ-ONLY] [Gmail]/Spam selected. (Success)"
+            ]
+          ]
+        },
+        {
+          "client": "A0105 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17501)",
           "server": [
             [
               "A0105 OK Success"
@@ -3194,15 +3096,183 @@
           ]
         },
         {
-          "client": "A0106 NOOP",
+          "client": "A0106 EXAMINE \"[Gmail]/Prullenbak\"",
           "server": [
             [
-              "A0106 OK Success"
+              "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
+            ],
+            [
+              "* OK [PERMANENTFLAGS ()] Flags permitted."
+            ],
+            [
+              "* OK [UIDVALIDITY 2] UIDs valid."
+            ],
+            [
+              "* 0 EXISTS"
+            ],
+            [
+              "* 0 RECENT"
+            ],
+            [
+              "* OK [UIDNEXT 307] Predicted next UID."
+            ],
+            [
+              "* OK [HIGHESTMODSEQ 17530]"
+            ],
+            [
+              "A0106 OK [READ-ONLY] [Gmail]/Prullenbak selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0107 SELECT \"[Gmail]/Spam\"",
+          "client": "A0107 UID FETCH 306:306 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE X-GM-LABELS X-GM-MSGID X-GM-THRID BODY.PEEK[HEADER.FIELDS (FROM SENDER REPLY-TO TO CC BCC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])",
+          "server": [
+            [
+              "A0107 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0108 UID FETCH 1:* (UID FLAGS X-GM-LABELS) (CHANGEDSINCE 17501)",
+          "server": [
+            [
+              "A0108 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0109 GETQUOTAROOT INBOX",
+          "server": [
+            [
+              "* QUOTAROOT \"INBOX\" \"\""
+            ],
+            [
+              "* QUOTA \"\" (STORAGE 0 15728640)"
+            ],
+            [
+              "A0109 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0110 NOOP",
+          "server": [
+            [
+              "A0110 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0111 SELECT \"[Gmail]/Alle e-mail\"",
+          "server": [
+            [
+              "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
+            ],
+            [
+              "* OK [PERMANENTFLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk \\*)] Flags permitted."
+            ],
+            [
+              "* OK [UIDVALIDITY 12] UIDs valid."
+            ],
+            [
+              "* 8 EXISTS"
+            ],
+            [
+              "* 0 RECENT"
+            ],
+            [
+              "* OK [UIDNEXT 321] Predicted next UID."
+            ],
+            [
+              "* OK [HIGHESTMODSEQ 17530]"
+            ],
+            [
+              "A0111 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
+            ]
+          ]
+        },
+        {
+          "client": "A0112 UID STORE 318 -X-GM-LABELS.SILENT (\\Inbox)",
+          "server": [
+            [
+              "A0112 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0113 NOOP",
+          "server": [
+            [
+              "A0113 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0114 SELECT \"[Gmail]/Alle e-mail\"",
+          "server": [
+            [
+              "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
+            ],
+            [
+              "* OK [PERMANENTFLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk \\*)] Flags permitted."
+            ],
+            [
+              "* OK [UIDVALIDITY 12] UIDs valid."
+            ],
+            [
+              "* 8 EXISTS"
+            ],
+            [
+              "* 0 RECENT"
+            ],
+            [
+              "* OK [UIDNEXT 321] Predicted next UID."
+            ],
+            [
+              "* OK [HIGHESTMODSEQ 17539]"
+            ],
+            [
+              "A0114 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
+            ]
+          ]
+        },
+        {
+          "client": "A0115 UID STORE 320 -FLAGS.SILENT (\\Seen)",
+          "server": [
+            [
+              "* 8 FETCH (UID 320 MODSEQ (17542) FLAGS ())"
+            ],
+            [
+              "A0115 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0116 UID STORE 320 +X-GM-LABELS.SILENT (\"Project\")",
+          "server": [
+            [
+              "A0116 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0117 UID STORE 320 -X-GM-LABELS.SILENT (\\Inbox)",
+          "server": [
+            [
+              "A0117 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0118 NOOP",
+          "server": [
+            [
+              "A0118 OK Success"
+            ]
+          ]
+        },
+        {
+          "client": "A0119 SELECT \"[Gmail]/Spam\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -3220,18 +3290,18 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 47] Predicted next UID."
+              "* OK [UIDNEXT 53] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16286]"
+              "* OK [HIGHESTMODSEQ 17575]"
             ],
             [
-              "A0107 OK [READ-WRITE] [Gmail]/Spam selected. (Success)"
+              "A0119 OK [READ-WRITE] [Gmail]/Spam selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0108 UID MOVE 46 \"[Gmail]/Alle e-mail\"",
+          "client": "A0120 UID MOVE 52 \"[Gmail]/Alle e-mail\"",
           "server": [
             [
               "* 1 EXPUNGE"
@@ -3240,12 +3310,12 @@
               "* 0 EXISTS"
             ],
             [
-              "A0108 OK [COPYUID 12 46 300] (Success)"
+              "A0120 OK [COPYUID 12 52 321] (Success)"
             ]
           ]
         },
         {
-          "client": "A0109 SELECT \"[Gmail]/Alle e-mail\"",
+          "client": "A0121 SELECT \"[Gmail]/Alle e-mail\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -3263,45 +3333,45 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 301] Predicted next UID."
+              "* OK [UIDNEXT 322] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16299]"
+              "* OK [HIGHESTMODSEQ 17588]"
             ],
             [
-              "A0109 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
+              "A0121 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0110 UID STORE 300 +X-GM-LABELS.SILENT (\\Inbox)",
+          "client": "A0122 UID STORE 321 +X-GM-LABELS.SILENT (\\Inbox)",
           "server": [
             [
-              "A0110 OK Success"
+              "A0122 OK Success"
             ]
           ]
         },
         {
-          "client": "A0111 UID FETCH 300:300 (UID FLAGS X-GM-LABELS)",
+          "client": "A0123 UID FETCH 321:321 (UID FLAGS X-GM-LABELS)",
           "server": [
             [
-              "* 9 FETCH (X-GM-LABELS (\"\\\\Inbox\") UID 300 MODSEQ (16301) FLAGS (\\Seen))"
+              "* 9 FETCH (X-GM-LABELS (\"\\\\Inbox\") UID 321 MODSEQ (17590) FLAGS (\\Seen))"
             ],
             [
-              "A0111 OK Success"
+              "A0123 OK Success"
             ]
           ]
         },
         {
-          "client": "A0112 NOOP",
+          "client": "A0124 NOOP",
           "server": [
             [
-              "A0112 OK Success"
+              "A0124 OK Success"
             ]
           ]
         },
         {
-          "client": "A0113 SELECT \"[Gmail]/Alle e-mail\"",
+          "client": "A0125 SELECT \"[Gmail]/Alle e-mail\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -3319,29 +3389,29 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 301] Predicted next UID."
+              "* OK [UIDNEXT 322] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16306]"
+              "* OK [HIGHESTMODSEQ 17595]"
             ],
             [
-              "A0113 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
+              "A0125 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0114 UID STORE 294 +FLAGS.SILENT ($junk)",
+          "client": "A0126 UID STORE 315 +FLAGS.SILENT ($junk)",
           "server": [
             [
-              "* 5 FETCH (UID 294 MODSEQ (16309) FLAGS ($junk \\Flagged \\Seen))"
+              "* 5 FETCH (UID 315 MODSEQ (17598) FLAGS ($junk \\Flagged \\Seen))"
             ],
             [
-              "A0114 OK Success"
+              "A0126 OK Success"
             ]
           ]
         },
         {
-          "client": "A0115 UID MOVE 294 \"[Gmail]/Spam\"",
+          "client": "A0127 UID MOVE 315 \"[Gmail]/Spam\"",
           "server": [
             [
               "* 5 EXPUNGE"
@@ -3350,20 +3420,20 @@
               "* 8 EXISTS"
             ],
             [
-              "A0115 OK [COPYUID 3 294 47] (Success)"
+              "A0127 OK [COPYUID 3 315 53] (Success)"
             ]
           ]
         },
         {
-          "client": "A0116 NOOP",
+          "client": "A0128 NOOP",
           "server": [
             [
-              "A0116 OK Success"
+              "A0128 OK Success"
             ]
           ]
         },
         {
-          "client": "A0117 SELECT \"[Gmail]/Alle e-mail\"",
+          "client": "A0129 SELECT \"[Gmail]/Alle e-mail\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -3381,18 +3451,18 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 301] Predicted next UID."
+              "* OK [UIDNEXT 322] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16331]"
+              "* OK [HIGHESTMODSEQ 17620]"
             ],
             [
-              "A0117 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
+              "A0129 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0118 UID MOVE 295 \"[Gmail]/Prullenbak\"",
+          "client": "A0130 UID MOVE 316 \"[Gmail]/Prullenbak\"",
           "server": [
             [
               "* 5 EXPUNGE"
@@ -3401,20 +3471,20 @@
               "* 7 EXISTS"
             ],
             [
-              "A0118 OK [COPYUID 2 295 289] (Success)"
+              "A0130 OK [COPYUID 2 316 307] (Success)"
             ]
           ]
         },
         {
-          "client": "A0119 NOOP",
+          "client": "A0131 NOOP",
           "server": [
             [
-              "A0119 OK Success"
+              "A0131 OK Success"
             ]
           ]
         },
         {
-          "client": "A0120 SELECT \"[Gmail]/Prullenbak\"",
+          "client": "A0132 SELECT \"[Gmail]/Prullenbak\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -3432,29 +3502,29 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 290] Predicted next UID."
+              "* OK [UIDNEXT 308] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16348]"
+              "* OK [HIGHESTMODSEQ 17637]"
             ],
             [
-              "A0120 OK [READ-WRITE] [Gmail]/Prullenbak selected. (Success)"
+              "A0132 OK [READ-WRITE] [Gmail]/Prullenbak selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0121 UID STORE 289 +FLAGS.SILENT (\\Deleted)",
+          "client": "A0133 UID STORE 307 +FLAGS.SILENT (\\Deleted)",
           "server": [
             [
-              "* 1 FETCH (UID 289 MODSEQ (16350) FLAGS (\\Deleted \\Seen))"
+              "* 1 FETCH (UID 307 MODSEQ (17639) FLAGS (\\Deleted \\Seen))"
             ],
             [
-              "A0121 OK Success"
+              "A0133 OK Success"
             ]
           ]
         },
         {
-          "client": "A0122 UID EXPUNGE 289",
+          "client": "A0134 UID EXPUNGE 307",
           "server": [
             [
               "* 1 EXPUNGE"
@@ -3463,20 +3533,20 @@
               "* 0 EXISTS"
             ],
             [
-              "A0122 OK Success"
+              "A0134 OK Success"
             ]
           ]
         },
         {
-          "client": "A0123 NOOP",
+          "client": "A0135 NOOP",
           "server": [
             [
-              "A0123 OK Success"
+              "A0135 OK Success"
             ]
           ]
         },
         {
-          "client": "A0124 SELECT \"[Gmail]/Alle e-mail\"",
+          "client": "A0136 SELECT \"[Gmail]/Alle e-mail\"",
           "server": [
             [
               "* FLAGS (\\Answered \\Flagged \\Draft \\Deleted \\Seen $NotPhishing $Phishing $junk)"
@@ -3494,24 +3564,24 @@
               "* 0 RECENT"
             ],
             [
-              "* OK [UIDNEXT 301] Predicted next UID."
+              "* OK [UIDNEXT 322] Predicted next UID."
             ],
             [
-              "* OK [HIGHESTMODSEQ 16359]"
+              "* OK [HIGHESTMODSEQ 17648]"
             ],
             [
-              "A0124 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
+              "A0136 OK [READ-WRITE] [Gmail]/Alle e-mail selected. (Success)"
             ]
           ]
         },
         {
-          "client": "A0125 UID STORE 299 +FLAGS.SILENT (\\Seen)",
+          "client": "A0137 UID STORE 320 +FLAGS.SILENT (\\Seen)",
           "server": [
             [
-              "* 6 FETCH (UID 299 MODSEQ (16364) FLAGS (\\Seen))"
+              "* 6 FETCH (UID 320 MODSEQ (17653) FLAGS (\\Seen))"
             ],
             [
-              "A0125 OK Success"
+              "A0137 OK Success"
             ]
           ]
         }

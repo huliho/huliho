@@ -3,19 +3,42 @@
 // Additional terms apply, see NOTICE.
 
 //! GETQUOTAROOT of the scripted server behind QUOTA (RFC 9208 section
-//! 4.1.2): the lines a test wrote, or a QUOTAROOT that names no root.
+//! 4.1.2): the lines a test wrote, a QUOTAROOT that names no root or a
+//! refusal.
+
+use std::sync::PoisonError;
 
 use super::{Extension, Mailboxes, quote};
 
+/// What a GETQUOTAROOT answers.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum QuotaAnswer {
+    /// A QUOTAROOT that names no root.
+    #[default]
+    Unrooted,
+    /// These untagged lines, as the wire carries them.
+    Lines(String),
+    /// A tagged NO.
+    Refused,
+}
+
 impl Mailboxes {
+    /// What the next GETQUOTAROOT answers.
+    pub fn set_quota(&self, answer: QuotaAnswer) {
+        *self.quota.lock().unwrap_or_else(PoisonError::into_inner) = answer;
+    }
+
     /// The answer to GETQUOTAROOT with its tagged line; BAD while the
     /// extension is off.
     pub(in crate::testing) fn quota_root(&self, tag: &str) -> String {
         if !self.has(Extension::Quota) {
             return format!("{tag} BAD not offered\r\n");
         }
-        let lines = self.quota.as_deref().unwrap_or("* QUOTAROOT INBOX\r\n");
-        format!("{lines}{tag} OK done\r\n")
+        match &*self.quota.lock().unwrap_or_else(PoisonError::into_inner) {
+            QuotaAnswer::Unrooted => format!("* QUOTAROOT INBOX\r\n{tag} OK done\r\n"),
+            QuotaAnswer::Lines(lines) => format!("{lines}{tag} OK done\r\n"),
+            QuotaAnswer::Refused => format!("{tag} NO refused\r\n"),
+        }
     }
 }
 

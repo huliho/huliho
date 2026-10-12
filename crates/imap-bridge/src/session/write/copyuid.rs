@@ -38,15 +38,17 @@ pub(super) fn note(
     let ResponseCode::CopyUid(uid_validity, source, target) = code else {
         return Ok(());
     };
-    let held = moved.get_or_insert(Moved {
-        uid_validity: *uid_validity,
-        uids: Vec::new(),
-    });
-    let room = asked.len().saturating_sub(held.uids.len());
+    let room = asked
+        .len()
+        .saturating_sub(moved.as_ref().map_or(0, |held| held.uids.len()));
     let (source, target) = (expanded(source, room)?, expanded(target, room)?);
     if *uid_validity == 0 || source.contains(&0) || target.contains(&0) {
         return Err(SessionError::Protocol(ZERO));
     }
+    let held = moved.get_or_insert(Moved {
+        uid_validity: *uid_validity,
+        uids: Vec::new(),
+    });
     if held.uid_validity != *uid_validity || source.len() != target.len() {
         return Err(SessionError::Protocol(UNPAIRED));
     }
@@ -182,6 +184,12 @@ mod tests {
                 "{code}"
             );
         }
+        let mut moved = None;
+        let zero = Response::from_bytes(b"* OK [COPYUID 0 2 5] Moved\r\n")
+            .unwrap()
+            .1;
+        assert!(note(&mut moved, &zero, &[2]).is_err());
+        assert_eq!(moved, None);
     }
 
     #[test]

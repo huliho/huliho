@@ -34,6 +34,7 @@ use tower::ServiceExt;
 
 const CORE: &str = "urn:ietf:params:jmap:core";
 const MAIL: &str = "urn:ietf:params:jmap:mail";
+const QUOTA: &str = "urn:ietf:params:jmap:quota";
 
 /// A body well over the 16 KiB of the other API routes and well under
 /// the proxy's own limit.
@@ -195,10 +196,11 @@ async fn the_session_object_comes_back_rewritten_and_filtered() {
         session["eventSourceUrl"],
         format!("/api/jmap/{id}/events?types={{types}}&closeafter={{closeafter}}&ping={{ping}}")
     );
-    assert_eq!(keys(&session["capabilities"]), [CORE, MAIL]);
+    // The quota capability passes through where the upstream has it.
+    assert_eq!(keys(&session["capabilities"]), [CORE, MAIL, QUOTA]);
     assert_eq!(
         keys(&session["accounts"][UPSTREAM_ACCOUNT]["accountCapabilities"]),
-        [CORE, MAIL]
+        [CORE, MAIL, QUOTA]
     );
     assert_eq!(keys(&session["primaryAccounts"]), [MAIL]);
     let core = &session["capabilities"][CORE];

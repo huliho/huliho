@@ -20,7 +20,9 @@ use std::time::{Duration, Instant};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Method, StatusCode, header};
-use huliho_imap_bridge::jmap::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY};
+use huliho_imap_bridge::jmap::{
+    CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY,
+};
 use huliho_imap_bridge::runtime::Timing;
 use huliho_server::api::ApiState;
 use huliho_server::bridge;
@@ -199,7 +201,7 @@ impl Live {
     /// The arguments of the first response to one call; a method error
     /// fails the test.
     pub async fn call(&self, mail: &Mail, method: &str, arguments: Value) -> Value {
-        let mut using = vec![CORE_CAPABILITY, MAIL_CAPABILITY];
+        let mut using = vec![CORE_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY];
         if mail.vendor {
             using.push(HULIHO_CAPABILITY);
         }

@@ -78,8 +78,10 @@ pub(super) async fn session(
         AccountKind::Jmap => Proxy::from(&state).session(account, &scope).await?,
         AccountKind::Imap => {
             let registration = bridge::registration(&account);
-            state.bridge().start(&registration);
-            session_object(&registration, &account.address, &bridge::urls(&account_id))
+            let bridge = state.bridge();
+            bridge.start(&registration);
+            let urls = bridge::urls(&account_id);
+            session_object(&registration, &account.address, &urls, bridge.store())
                 .map_err(internal)?
         }
     };
