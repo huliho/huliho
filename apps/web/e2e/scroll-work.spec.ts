@@ -5,21 +5,22 @@
 import type { Page, Request } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
-import { accountRow, mockAccounts } from "./account-mocks";
-import { FIXED_NOW } from "./mail-corpus";
-import { MAILBOXES, mockMail } from "./mail-mocks";
-import type { MailboxBody } from "./mail-mocks";
-import { mockSignedIn } from "./session-mocks";
+import {
+  FRAME_END_MARK,
+  FRAME_MARK,
+  ROWS_PER_FRAME,
+  SCROLL_FRAMES,
+  WARM_UP_FRAMES,
+  endOf,
+  eventsOf,
+  firstRow,
+  frameTraceOf,
+  isObject,
+  openLongInbox,
+} from "./long-list";
+import type { TraceEvent } from "./long-list";
 import { VIEWPORTS } from "./sweep";
 
-// The fling: this many frames of this many rows each, the first few left
-// out while the page warms up.
-const SCROLL_FRAMES = 600;
-const ROWS_PER_FRAME = 4;
-const WARM_UP_FRAMES = 5;
-// An inbox of fifty thousand threads.
-const INBOX_THREADS = 50_000;
-const INBOX_UNREAD = 300;
 // The list renders this many rows past the ones in view on either side
 // and keeps the cursor's row mounted when a scroll leaves it behind.
 const LIST_OVERSCAN = 3;
@@ -52,42 +53,10 @@ const SCRIPT_EVENTS = new Set([
   "EvaluateScript",
 ]);
 const TRACE_CATEGORIES = ["toplevel", "blink.user_timing", "devtools.timeline"];
-const FRAME_MARK = "frame";
-const FRAME_END_MARK = "frame-end";
-const TASK_EVENT = "ThreadControllerImpl::RunTask";
 // The fling and its trace need longer than a plain test.
 const FLING_TIMEOUT_MS = 180_000;
 // Where the page sends its JMAP calls.
 const JMAP_API_PATH = /^\/api\/jmap\/[^/]+$/;
-
-const ACCOUNTS = [accountRow(FIXED_NOW)];
-
-function atFiftyThousand(row: MailboxBody): MailboxBody {
-  return {
-    ...row,
-    totalEmails: INBOX_THREADS,
-    totalThreads: INBOX_THREADS,
-    unreadEmails: INBOX_UNREAD,
-  };
-}
-
-const MAILBOXES_50K = MAILBOXES.map((row) => (row.role === "inbox" ? atFiftyThousand(row) : row));
-
-function firstRow(page: Page) {
-  return page.getByRole("grid").locator('[aria-rowindex="1"]');
-}
-
-async function openInbox(page: Page): Promise<void> {
-  await mockSignedIn(page);
-  await mockMail(page, MAILBOXES_50K);
-  await mockAccounts(page, ACCOUNTS);
-  await page.goto("/mail/acc-1/mb-inbox");
-  await expect(firstRow(page), "the inbox's first row").toBeVisible();
-}
-
-function isObject(value: unknown): value is object {
-  return typeof value === "object" && value !== null;
-}
 
 // The JMAP methods a request for a page of the list calls, by name; none
 // for any other request. A poll asks gets beside its changes but never a
@@ -177,43 +146,6 @@ async function flingInPage({ frames, rowsPerFrame, mark, endMark }: FlingArgs): 
   return rows;
 }
 
-// A trace event in the fields the frames are read from, times in
-// microseconds.
-interface TraceEvent {
-  ph: string;
-  cat: string;
-  name: string;
-  pid: number;
-  tid: number;
-  ts: number;
-  dur?: number;
-  args?: unknown;
-}
-
-function isTraceEvent(value: unknown): value is TraceEvent {
-  if (!isObject(value)) {
-    return false;
-  }
-  const typed = (keys: string[], type: string): boolean =>
-    keys.every((key) => typeof Reflect.get(value, key) === type);
-  const dur: unknown = Reflect.get(value, "dur");
-  return (
-    typed(["ph", "cat", "name"], "string") &&
-    typed(["pid", "tid", "ts"], "number") &&
-    (dur === undefined || typeof dur === "number")
-  );
-}
-
-function eventsOf(trace: Buffer): TraceEvent[] {
-  const parsed: unknown = JSON.parse(trace.toString());
-  const listed: unknown = isObject(parsed) ? Reflect.get(parsed, "traceEvents") : null;
-  return Array.isArray(listed) ? listed.filter((event) => isTraceEvent(event)) : [];
-}
-
-function endOf(event: TraceEvent): number {
-  return event.ts + (event.dur ?? 0);
-}
-
 // An event's name; a dispatch carries the DOM event it dispatched.
 function labelOf(event: TraceEvent): string {
   const data: unknown = isObject(event.args) ? Reflect.get(event.args, "data") : null;
@@ -221,20 +153,6 @@ function labelOf(event: TraceEvent): string {
   return event.name === "EventDispatch" && typeof type === "string"
     ? `${event.name}(${type})`
     : event.name;
-}
-
-function marksNamed(events: readonly TraceEvent[], name: string): TraceEvent[] {
-  return events
-    .filter((event) => event.ph === "I" && event.cat === "blink.user_timing" && event.name === name)
-    .toSorted((one, other) => one.ts - other.ts);
-}
-
-function taskAt(tasks: readonly TraceEvent[], mark: TraceEvent): TraceEvent {
-  const task = tasks.find((candidate) => candidate.ts <= mark.ts && mark.ts <= endOf(candidate));
-  if (task === undefined) {
-    throw new Error("a frame mark lies outside every task");
-  }
-  return task;
 }
 
 // The scripts an event ran under, outermost first.
@@ -256,30 +174,17 @@ interface StepRun {
 // from the task holding the frame's first mark through the task holding
 // its closing mark.
 function frameStepsOf(events: readonly TraceEvent[]): StepRun[][] {
-  const opened = marksNamed(events, FRAME_MARK);
-  const closed = marksNamed(events, FRAME_END_MARK);
-  const main = opened[0];
-  if (main === undefined || closed.length !== opened.length) {
-    throw new Error("the trace holds no frame or an unclosed one");
-  }
-  const thread = events.filter(
-    (event) => event.ph === "X" && event.pid === main.pid && event.tid === main.tid,
-  );
-  const tasks = thread.filter((event) => event.name === TASK_EVENT);
+  const { thread, frames } = frameTraceOf(events);
   const relevant = thread.filter(
     (event) => TREE_STEPS.includes(event.name) || SCRIPT_EVENTS.has(event.name),
   );
-  return opened.flatMap((mark, frame) => {
-    const close = closed.at(frame);
-    if (close === undefined) {
-      return [];
-    }
-    const from = taskAt(tasks, mark).ts;
-    const through = endOf(taskAt(tasks, close));
-    const inside = relevant.filter((event) => event.ts >= from && endOf(event) <= through);
+  return frames.map(({ from, through }) => {
+    const inside = relevant.filter(
+      (event) => event.ts >= from.ts && endOf(event) <= endOf(through),
+    );
     const scripts = inside.filter((event) => SCRIPT_EVENTS.has(event.name));
     const steps = inside.filter((event) => TREE_STEPS.includes(event.name));
-    return [steps.map((event) => ({ step: event.name, chain: chainOf(scripts, event) }))];
+    return steps.map((event) => ({ step: event.name, chain: chainOf(scripts, event) }));
   });
 }
 
@@ -371,7 +276,7 @@ for (const viewport of VIEWPORTS) {
   test(`the fling's work per frame on the ${viewport.name} viewport`, async ({ page }) => {
     test.setTimeout(FLING_TIMEOUT_MS);
     await page.setViewportSize(viewport);
-    await openInbox(page);
+    await openLongInbox(page);
     expectCountedWork(await flingCounted(page, viewport.name));
   });
 }
@@ -477,7 +382,7 @@ async function framesToAnswer(page: Page, key: string, answer: Answer): Promise<
 
 test("the keys of the long list answer before the next animation frame", async ({ page }) => {
   await page.setViewportSize(VIEWPORTS[1]);
-  await openInbox(page);
+  await openLongInbox(page);
   await firstRow(page).focus();
   for (const [key, answer] of KEY_ANSWERS) {
     await readyFor(page, key, answer);

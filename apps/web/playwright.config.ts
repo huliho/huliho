@@ -18,23 +18,30 @@ const COMPARE_SCREENSHOTS = process.env.CI !== undefined || process.platform ===
 const SNAPSHOT_PATH_TEMPLATE =
   "{snapshotDir}/{testFileDir}/{testFileName}-snapshots/{arg}{-snapshotSuffix}{ext}";
 
-// The traces run in projects of their own, one after the other and
-// after the rest of the suite, so no other worker shares the CPU while
-// one measures.
-const SCROLL_BUDGET_SPEC = "**/scroll-budget.spec.ts";
+// The image flood runs in a project of its own after the rest of the
+// suite, so its bound on hanging never shares the CPU with another worker.
 const BODY_BUDGET_SPEC = "**/body-budget.spec.ts";
+// The timed budgets run after the flood and only while this variable is
+// set, as the timing job of ci.yml does; the whole run then has one
+// worker, so no other test shares the CPU while one measures.
+const TIMING_SPECS = "**/timing/**";
+const TIMING_GATES = process.env.HULIHO_TIMING_GATES !== undefined;
+const TIMING_PROJECTS = TIMING_GATES
+  ? [{ name: "timing", testMatch: TIMING_SPECS, dependencies: ["body-budget"] }]
+  : [];
 
 export default defineConfig({
   testDir: "e2e",
   ignoreSnapshots: !COMPARE_SCREENSHOTS,
   snapshotPathTemplate: SNAPSHOT_PATH_TEMPLATE,
+  ...(TIMING_GATES ? { workers: 1 } : {}),
   use: {
     baseURL: PREVIEW_URL,
   },
   projects: [
-    { name: "suite", testIgnore: [SCROLL_BUDGET_SPEC, BODY_BUDGET_SPEC] },
-    { name: "scroll-budget", testMatch: SCROLL_BUDGET_SPEC, dependencies: ["suite"] },
-    { name: "body-budget", testMatch: BODY_BUDGET_SPEC, dependencies: ["scroll-budget"] },
+    { name: "suite", testIgnore: [BODY_BUDGET_SPEC, TIMING_SPECS] },
+    { name: "body-budget", testMatch: BODY_BUDGET_SPEC, dependencies: ["suite"] },
+    ...TIMING_PROJECTS,
   ],
   webServer: [
     {
