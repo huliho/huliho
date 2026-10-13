@@ -283,7 +283,14 @@ in.
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component
-workshop. The frame traces run alone, without the rest of the suite,
+workshop. The suite holds `e2e/scroll-work.spec.ts`: it flings the
+fifty-thousand-row list on the desktop and the phone viewport and counts
+each frame's style recalculations and layouts in a Chromium trace with
+the script they ran under, the rows mounted and the row elements
+swapped. It also counts the JMAP calls per page the fling asks and the
+animation frames between a key and its answer, for the list's keys and
+for the palette and the overlay with the Escape that closes each. The
+frame traces run alone, without the rest of the suite,
 with `pnpm exec playwright test --project scroll-budget --no-deps`.
 A frame counts the main thread's own CPU time, read from a Chromium
 trace: the task that paints it (the scroll event, the render, the
