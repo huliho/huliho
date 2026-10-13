@@ -15,7 +15,7 @@ path = "src/main.rs"
 live-targets = []
 
 [dependencies]
-ammonia = "4.2.0"
+ammonia = "4.2.3"
 argon2 = "0.6.0"
 axum = "0.8.9"
 axum-extra = { version = "0.12.6", features = ["cookie"] }
