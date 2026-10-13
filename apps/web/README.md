@@ -98,16 +98,16 @@ never reaches the server.
 
 The mail cache runs in a worker under `src/cache`: a shared worker
 (one per origin) or a dedicated worker per tab where the browser has
-none. It keeps the mailbox tree, the headers, the threads and the
-pages of each list in IndexedDB through Dexie: one database per origin
-with every row under its account id. The database's second version
-adds a table for message bodies and one for the changes the server has
-not acknowledged. The worker opens no store until a tab names the
-instance's privacy setting from the session answer: on an instance
-that keeps mail off the disk it holds the rows in memory and deletes a
-database an earlier start left. A worker that stored on disk when a
-tab names that setting starts over in memory and every tab reads its
-mail again; from then on it stays in memory, whatever a tab with an
+none. It keeps the mailbox tree, the account's quotas, the headers, the
+threads and the pages of each list in IndexedDB through Dexie: one
+database per origin with every row under its account id. The database's
+second version adds a table for message bodies and one for the changes
+the server has not acknowledged. The worker opens no store until a tab
+names the instance's privacy setting from the session answer: on an
+instance that keeps mail off the disk it holds the rows in memory and
+deletes a database an earlier start left. A worker that stored on disk
+when a tab names that setting starts over in memory and every tab reads
+its mail again; from then on it stays in memory, whatever a tab with an
 older answer names. A worker that keeps mail off the disk says so to
 every tab and a tab whose session answer says otherwise reads that
 answer again. Each account reconciles under a

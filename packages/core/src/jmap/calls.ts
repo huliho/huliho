@@ -12,6 +12,26 @@ import type { Invocation } from "./schemas";
 // The object types the cache holds, as their methods name them.
 export type ObjectType = "Mailbox" | "Email" | "Thread";
 
+// The types the cache reads and follows; a quota rides the mailbox pass.
+type ReadType = ObjectType | "Quota";
+
+// The conditions a list or a folder job asks emails by (RFC 8621
+// section 4.4.1).
+interface Filter {
+  inMailbox: string;
+  notKeyword?: string;
+}
+
+// One window of a query (RFC 8620 section 5.5), newest first.
+interface Window {
+  filter: Filter;
+  start: Start;
+  limit: number;
+  calculateTotal: boolean;
+  // One email per thread, as a list shows them.
+  collapseThreads: boolean;
+}
+
 // A result reference (RFC 8620 section 3.7): the value an earlier
 // response holds at a path.
 export interface Reference {
@@ -43,23 +63,24 @@ function idsArgument(ids: readonly string[] | Reference | null): Record<string, 
 // The method calls of one account, each carrying its account id.
 export interface Calls {
   get(
-    type: ObjectType,
+    type: ReadType,
     ids: readonly string[] | Reference | null,
     id: string,
     properties?: readonly string[],
   ): MethodCall;
-  query(
-    window: { mailboxId: string; start: Start; limit: number; calculateTotal: boolean },
-    id: string,
-  ): MethodCall;
-  changes(type: ObjectType, sinceState: string, id: string): MethodCall;
+  query(window: Window, id: string): MethodCall;
+  changes(type: ReadType, sinceState: string, id: string): MethodCall;
   // One email with its body values, each cut at `maxBodyValueBytes`.
   body(emailId: string, maxBodyValueBytes: number, id: string): MethodCall;
-  // The updates by object id; a null `ifInState` writes whatever the
-  // state is.
+  // The updates by object id and the ids to destroy; a null `ifInState`
+  // writes whatever the state is.
   set(
     type: Exclude<ObjectType, "Thread">,
-    changes: { update: Record<string, PatchObject>; ifInState: string | null },
+    changes: {
+      update?: Record<string, PatchObject>;
+      destroy?: readonly string[];
+      ifInState: string | null;
+    },
     id: string,
   ): MethodCall;
 }
@@ -75,17 +96,16 @@ export function callsFor(accountId: string): Calls {
       },
       id,
     }),
-    // The list of one mailbox, newest first, one email per thread.
     query: (window, id) => ({
       name: "Email/query",
       arguments: {
         accountId,
-        filter: { inMailbox: window.mailboxId },
+        filter: window.filter,
         sort: [{ property: "receivedAt", isAscending: false }],
         ...window.start,
         limit: window.limit,
         calculateTotal: window.calculateTotal,
-        collapseThreads: true,
+        collapseThreads: window.collapseThreads,
       },
       id,
     }),
@@ -106,9 +126,14 @@ export function callsFor(accountId: string): Calls {
       },
       id,
     }),
-    set: (type, { update, ifInState }, id) => ({
+    set: (type, { update, destroy, ifInState }, id) => ({
       name: `${type}/set`,
-      arguments: { accountId, ifInState, update },
+      arguments: {
+        accountId,
+        ifInState,
+        ...(update === undefined ? {} : { update }),
+        ...(destroy === undefined ? {} : { destroy }),
+      },
       id,
     }),
   };

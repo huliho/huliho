@@ -7,7 +7,7 @@ import type {
   EmailHeader,
   ListPage,
   MailCache,
-  Mutation,
+  PatchMutation,
   ThreadDetail,
 } from "@huliho/core";
 
@@ -50,9 +50,9 @@ export function fixtureCache(
   pages: Record<string, PageAnswer>,
   threads: Record<string, ThreadAnswer> = {},
   bodies: Record<string, BodyAnswer> = {},
-): MailCache & { revealed: string[]; mutations: Mutation[] } {
+): MailCache & { revealed: string[]; mutations: PatchMutation[] } {
   const revealed: string[] = [];
-  const mutations: Mutation[] = [];
+  const mutations: PatchMutation[] = [];
   const held = new Map(Object.entries(threads));
   const heldBodies = new Map(Object.entries(bodies));
   return {

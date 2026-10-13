@@ -20,6 +20,8 @@ import { landEmails, landThreads, mergeFolded, nothingFolded } from "./landing";
 import type { Folded, Held, Landing } from "./landing";
 import { fetchInChunks, fetchStates } from "./members";
 import { land, landRound } from "./overlay";
+import { quotaPass } from "./quota";
+import type { QuotaLanding } from "./quota";
 import type { MailStore } from "./store";
 
 const mailboxAnswerSchema = getAnswerSchema(mailboxSchema);
@@ -59,21 +61,25 @@ interface Parsed {
   thread: Read<Threads>;
 }
 
-// Every mailbox of the account and the state they stand at.
+// Every mailbox of the account and the state they stand at, with the
+// account's quotas where it has them.
 export async function hydrateMailboxes(client: JmapClient, store: MailStore): Promise<void> {
   const session = await client.session();
   const calls = callsFor(session.accountId);
-  const responses = await client.request([calls.get("Mailbox", null, "m")]);
+  const quota = await quotaPass(client, store, true);
+  const responses = await client.request([calls.get("Mailbox", null, "m"), ...quota.calls]);
   const got = answer(responses, "m", mailboxAnswerSchema);
   await land(store, client.accountId, {
     reset: ["mailboxes"],
     mailboxes: { put: got.list },
     states: { Mailbox: got.state },
+    ...(await quota.land(responses)).batch,
   });
 }
 
 // The changes since the states the store holds for `types`, applied in
-// one batch per round; a type without a state is left alone.
+// one batch per round; a type without a state is left alone. A round
+// that follows the mailboxes follows the account's quotas as well.
 export async function followChanges(
   client: JmapClient,
   store: MailStore,
@@ -86,14 +92,42 @@ export async function followChanges(
   }
   const session = await client.session();
   const calls = callsFor(session.accountId);
-  const responses = await client.request(plans.flatMap((plan) => callsOf(calls, plan)));
+  const mailboxes = plans.some((plan) => plan.type === "Mailbox");
+  const quota = mailboxes ? await quotaPass(client, store, false) : null;
+  const responses = await client.request([
+    ...plans.flatMap((plan) => callsOf(calls, plan)),
+    ...(quota?.calls ?? []),
+  ]);
   const parsed = parse(plans, responses);
-  const folded = await apply(client, store, parsed);
+  const quotaLanded = (await quota?.land(responses)) ?? { batch: {}, moved: false };
+  const folded = await apply(client, store, parsed, quotaLanded);
   const more = plans.filter((plan) => hasMore(parsed, plan.type)).map((plan) => plan.type);
   if (more.length === 0 || rounds <= 1) {
     return folded;
   }
   return mergeFolded(folded, await followChanges(client, store, more, rounds - 1));
+}
+
+// The mailbox part of a request that writes: the calls that follow the
+// mailbox changes since the held state behind the write and the landing
+// of their answers as a round of the change logs. With no held state
+// the pass carries no call and lands nothing.
+export interface MailboxPass {
+  calls: MethodCall[];
+  land(responses: readonly Invocation[]): Promise<Folded>;
+}
+
+export async function mailboxPass(client: JmapClient, store: MailStore): Promise<MailboxPass> {
+  const plans = await plansFor(store, client.accountId, ["Mailbox"]);
+  const session = await client.session();
+  const calls = callsFor(session.accountId);
+  return {
+    calls: plans.flatMap((plan) => callsOf(calls, plan)),
+    land: (responses) =>
+      plans.length === 0
+        ? Promise.resolve(nothingFolded())
+        : apply(client, store, parse(plans, responses), { batch: {}, moved: false }),
+  };
 }
 
 async function plansFor(
@@ -235,12 +269,21 @@ function hasMore(parsed: Parsed, type: ObjectType): boolean {
   return read !== null && read !== "refetch" && read.changes.hasMoreChanges;
 }
 
-// The round lands in one batch. A state past the horizon on emails or
-// threads drops every email, thread and list, so the next window fetch
-// starts afresh; mailboxes are fetched whole in their own request.
-async function apply(client: JmapClient, store: MailStore, parsed: Parsed): Promise<Folded> {
+// The round lands in one batch with the quotas. A state past the
+// horizon on emails or threads drops every email, thread and list, so
+// the next window fetch starts afresh; mailboxes are fetched whole in
+// their own request. A quota that moved reads as a changed tree.
+async function apply(
+  client: JmapClient,
+  store: MailStore,
+  parsed: Parsed,
+  quota: QuotaLanding,
+): Promise<Folded> {
   const { accountId } = client;
-  const landing: Landing = { batch: {}, folded: nothingFolded() };
+  const landing: Landing = {
+    batch: { ...quota.batch },
+    folded: { ...nothingFolded(), mailboxes: quota.moved },
+  };
   if (parsed.mailbox !== null && parsed.mailbox !== "refetch") {
     await landMailboxes(client, parsed.mailbox, landing);
   }
@@ -274,7 +317,7 @@ async function landMailboxes(
     (await fetchInChunks(client, { type: "Mailbox", ids: [...named] }, mailboxSchema));
   batch.mailboxes = { put: put.filter((row) => named.has(row.id)), remove: changes.destroyed };
   batch.states = { Mailbox: changes.newState };
-  folded.mailboxes = named.size > 0 || changes.destroyed.length > 0;
+  folded.mailboxes ||= named.size > 0 || changes.destroyed.length > 0;
 }
 
 async function applyObjects(

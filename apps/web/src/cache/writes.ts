@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { applyPatch, flushPending as flushPatchLog, mayPatch } from "@huliho/core";
-import type { AppliedChanges, Flushed, JmapClient, MailStore, Mutation } from "@huliho/core";
+import { flushPending as flushPatchLog, mayPatch, mutateMany } from "@huliho/core";
+import type { AppliedChanges, Flushed, JmapClient, MailStore, PatchMutation } from "@huliho/core";
 
 import type { CacheMessage } from "./messages";
 import { attempt } from "./outcome";
@@ -34,13 +34,15 @@ export class Writes {
     this.host = host;
   }
 
-  // One change, under the account's lock: the rows take it, every tab
+  // One patch, under the account's lock: the rows take it, every tab
   // hears it and the server hears it once the flush window closed. A
   // change the account or a mailbox of the email refuses moves nothing.
-  async mutate(accountId: string, mutation: Mutation): Promise<void> {
+  async mutate(accountId: string, mutation: PatchMutation): Promise<void> {
     const client = this.host.client(accountId);
     const changes = await this.host.locked(accountId, async (store) =>
-      (await mayPatch(client, store, mutation)) ? applyPatch(store, accountId, mutation) : null,
+      (await mayPatch(client, store, mutation))
+        ? (await mutateMany(store, accountId, [mutation])).changes
+        : null,
     );
     if (changes === null || !moved(changes)) {
       return;

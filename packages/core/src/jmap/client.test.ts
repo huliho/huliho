@@ -8,7 +8,7 @@ import { ACCOUNT, FakeJmap, UPSTREAM, json, mailbox } from "../cache/fake-jmap";
 import { z } from "../schema";
 import { answer, outcome } from "./calls";
 import { JmapClient, JmapError, MethodFailure } from "./client";
-import { CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY } from "./schemas";
+import { CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY } from "./schemas";
 
 const listSchema = z.object({ list: z.array(z.unknown()) });
 
@@ -36,6 +36,7 @@ test("the session comes from the account's route and names the upstream account,
     readOnly: false,
     using: [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY],
     firstSync: true,
+    quota: false,
     maxCallsInRequest: 16,
     maxObjectsInGet: 500,
     maxObjectsInSet: 500,
@@ -57,6 +58,26 @@ test("a native account without the vendor capability opts into core and mail alo
   const session = await new JmapClient(ACCOUNT).session();
   expect(session.using).toEqual([CORE_CAPABILITY, MAIL_CAPABILITY]);
   expect(session.firstSync).toBe(false);
+});
+
+test("a server that names quota is spoken to with it, and the account answers quota where it lists the capability (RFC 9425 section 2.1)", async () => {
+  const server = serve();
+  server.quota = true;
+  const session = await new JmapClient(ACCOUNT).session();
+  expect(session.using).toEqual([
+    CORE_CAPABILITY,
+    MAIL_CAPABILITY,
+    HULIHO_CAPABILITY,
+    QUOTA_CAPABILITY,
+  ]);
+  expect(session.quota).toBe(true);
+  server.quotaAccount = false;
+  expect((await new JmapClient(ACCOUNT).session()).quota).toBe(false);
+  const object = server.session();
+  server.queue.push(json(200, { ...object, accounts: { [UPSTREAM]: { isReadOnly: false } } }));
+  const bare = await new JmapClient(ACCOUNT).session();
+  expect(bare.quota).toBe(false);
+  expect(bare.readOnly).toBe(false);
 });
 
 test("a session naming no mail account, an endpoint off this origin or no core limits is refused", async () => {

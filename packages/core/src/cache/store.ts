@@ -6,6 +6,7 @@ import type { Authentication } from "../auth-results";
 import type { EmailBodyPart, EmailBodyValue } from "../jmap/body";
 import type { ObjectType } from "../jmap/calls";
 import type { EmailHeader, Mailbox, Thread } from "../jmap/schemas";
+import type { HeldQuota } from "./quota";
 
 // The keywords and mailboxes of one email of a thread, so a list row
 // reads its thread's unread and flagged state without every header.
@@ -75,12 +76,13 @@ export interface BodySize {
   bytes: number;
 }
 
-// The keywords an email gains (true) and loses (null), by the path a
-// /set update names them with (RFC 8620 section 5.3).
+// The keywords and mailboxes an email gains (true) and loses (null), by
+// the path a /set update names them with (RFC 8620 section 5.3).
 export type EmailPatch = Record<string, true | null>;
 
 // One change the server has not acknowledged: the patch the rows took
-// and the patch that takes it back.
+// and the patch that takes it back. A destroy takes the email out of
+// every mailbox in the rows and goes out as a destroy.
 export interface PendingRow {
   seq: number;
   type: "Email";
@@ -90,6 +92,12 @@ export interface PendingRow {
   inverse: EmailPatch;
   // When a request last carried the patch, null before the first.
   sentAt: number | null;
+  destroy?: true;
+  // True while the window can still take the destroy back; the flush
+  // passes it over.
+  held?: boolean;
+  // The lease of the tab that logged a held destroy.
+  lease?: string;
 }
 
 export type StoreArea = "mailboxes" | "emails" | "threads" | "queries" | "bodies" | "pending";
@@ -106,6 +114,8 @@ export interface Batch {
   // A pending row leaves by its sequence number.
   pending?: { put?: readonly PendingRow[]; remove?: readonly number[] };
   states?: Partial<Record<ObjectType, string | null>>;
+  // The account's quotas as the server last answered them; null forgets them.
+  quota?: HeldQuota | null;
 }
 
 // The cache contract, keyed by the Huliho account id and the object id.
@@ -123,5 +133,6 @@ export interface MailStore {
   bodySizes(): Promise<BodySize[]>;
   // The unacknowledged changes of the account, oldest first.
   pending(accountId: string): Promise<PendingRow[]>;
+  quota(accountId: string): Promise<HeldQuota | null>;
   commit(accountId: string, batch: Batch): Promise<void>;
 }

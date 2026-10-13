@@ -4,7 +4,7 @@
 
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
 import type { MemberState, ThreadRow } from "./store";
-import { SEEN } from "./unread";
+import { SEEN } from "./counts";
 import type { WindowPage } from "./window";
 
 // One row of a list: the thread as this mailbox shows it, read from the
@@ -42,7 +42,7 @@ function senderOf(email: EmailHeader): string | null {
 }
 
 // The members that stand in the mailbox; the exemplar alone when the
-// thread row is missing or names none there.
+// thread row names none there and the exemplar does.
 function membersIn(
   email: EmailHeader,
   thread: ThreadRow | undefined,
@@ -50,11 +50,14 @@ function membersIn(
 ): MemberState[] {
   const members = thread === undefined ? [email] : Object.values(thread.members);
   const inside = members.filter((member) => mailboxId in member.mailboxIds);
-  return inside.length === 0 ? [email] : inside;
+  if (inside.length > 0) {
+    return inside;
+  }
+  return mailboxId in email.mailboxIds ? [email] : [];
 }
 
 // The rows of one page, in the server's order; an id without a header
-// is left out.
+// is left out, and so is a thread with no member left in the mailbox.
 export function listRows(page: WindowPage, mailboxId: string): ListRow[] {
   const emails = new Map(Object.entries(page.emails));
   const threads = new Map(Object.entries(page.threads));
@@ -64,6 +67,9 @@ export function listRows(page: WindowPage, mailboxId: string): ListRow[] {
       return [];
     }
     const members = membersIn(email, threads.get(email.threadId), mailboxId);
+    if (members.length === 0) {
+      return [];
+    }
     return [
       {
         id,

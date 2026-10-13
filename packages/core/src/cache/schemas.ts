@@ -63,8 +63,12 @@ export const emailBodySchema: z.ZodType<EmailBody> = z.object({
   bytes: countSchema,
 });
 
-// A path names one keyword, as the code that reads a patch asks.
-const patchSchema = z.record(z.string().regex(/^keywords\/./u), z.literal(true).nullable());
+// A path names one keyword or one mailbox, as the code that reads a
+// patch asks.
+const patchSchema = z.record(
+  z.string().regex(/^(?:keywords|mailboxIds)\/./u),
+  z.literal(true).nullable(),
+);
 
 export const pendingRowSchema: z.ZodType<PendingRow> = z.object({
   seq: z.number().int().positive(),
@@ -73,4 +77,7 @@ export const pendingRowSchema: z.ZodType<PendingRow> = z.object({
   patch: patchSchema,
   inverse: patchSchema,
   sentAt: z.number().nullable(),
+  destroy: z.literal(true).exactOptional(),
+  held: z.boolean().exactOptional(),
+  lease: z.string().exactOptional(),
 });

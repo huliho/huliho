@@ -38,13 +38,19 @@ export { fitsAddress, fitsHostName } from "./address";
 export type { Authentication, AuthenticationResults, AuthVerdict } from "./auth-results";
 export type { BodyDetail, MailCache, ThreadDetail } from "./cache/api";
 export { readBody } from "./cache/bodies";
+export { flushPending } from "./cache/flush";
+export type { Flushed } from "./cache/flush";
+export { jobRound, jobStarted, runJob } from "./cache/jobs";
+export type { Job, JobControls, JobProgress, JobRound, JobState } from "./cache/jobs";
 export { CHANGES_ROUNDS_MAX, PREVIEW_BATCH, WINDOW_SIZE } from "./cache/limits";
 export { syncMailboxes } from "./cache/mailboxes";
 export { MemoryMailStore } from "./cache/memory";
-export { applyPatch, flushPending } from "./cache/pending";
-export type { Flushed, Mutation } from "./cache/pending";
+export { dropHeld, mutateMany, releaseHeld, releaseLapsed } from "./cache/pending";
+export type { DestroyMutation, Logged, Mutation, PatchMutation } from "./cache/pending";
 export { applyChanges } from "./cache/poll";
 export type { AppliedChanges } from "./cache/poll";
+export { heldQuotaSchema, readQuota } from "./cache/quota";
+export type { HeldQuota, Quota, QuotaReading } from "./cache/quota";
 export { revealNewMail } from "./cache/refresh";
 export { mayPatch } from "./cache/rights";
 export { firstSyncOf, listPage } from "./cache/rows";
@@ -104,6 +110,7 @@ export {
   withPreference,
 } from "./preferences";
 export type {
+  AfterAction,
   DarkMail,
   Density,
   FontSize,

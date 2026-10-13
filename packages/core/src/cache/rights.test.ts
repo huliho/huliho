@@ -97,3 +97,67 @@ test("an email the store does not hold takes no change", async () => {
   const { client, store } = await serve([mailbox("inbox", "inbox")]);
   expect(await mayPatch(client, store, { ...READ, id: "gone" })).toBe(false);
 });
+
+const ARCHIVE: Mutation = {
+  type: "Email",
+  id: "e1",
+  patch: { "mailboxIds/inbox": null, "mailboxIds/archive": true },
+};
+
+const MOVABLE = { mayAddItems: true, mayRemoveItems: true };
+
+test("a move asks mayRemoveItems where the email leaves and mayAddItems where it enters (RFC 8621 section 2)", async () => {
+  const both = await serve([withRights("inbox", MOVABLE)], (server) => {
+    server.putMailbox(withRights("archive", MOVABLE));
+  });
+  expect(await mayPatch(both.client, both.store, ARCHIVE)).toBe(true);
+  vi.unstubAllGlobals();
+  const stuck = await serve([withRights("inbox", { mayRemoveItems: false })], (server) => {
+    server.putMailbox(withRights("archive", MOVABLE));
+  });
+  expect(await mayPatch(stuck.client, stuck.store, ARCHIVE)).toBe(false);
+  vi.unstubAllGlobals();
+  const closed = await serve([withRights("inbox", MOVABLE)], (server) => {
+    server.putMailbox(withRights("archive", { mayAddItems: false }));
+  });
+  expect(await mayPatch(closed.client, closed.store, ARCHIVE)).toBe(false);
+});
+
+test("a move into a mailbox the store does not hold or one that leaves the email in none is refused", async () => {
+  const { client, store } = await serve([withRights("inbox", MOVABLE)]);
+  expect(await mayPatch(client, store, ARCHIVE)).toBe(false);
+  const out: Mutation = { type: "Email", id: "e1", patch: { "mailboxIds/inbox": null } };
+  expect(await mayPatch(client, store, out)).toBe(false);
+});
+
+test("spam with its keywords asks maySetKeywords of the mailbox the email leaves", async () => {
+  const spam: Mutation = {
+    type: "Email",
+    id: "e1",
+    patch: { "mailboxIds/inbox": null, "mailboxIds/junk": true, "keywords/$junk": true },
+  };
+  const { client, store } = await serve(
+    [withRights("inbox", { ...MOVABLE, maySetKeywords: false })],
+    (server) => {
+      server.putMailbox(withRights("junk", MOVABLE));
+    },
+  );
+  expect(await mayPatch(client, store, spam)).toBe(false);
+  const plain: Mutation = {
+    ...spam,
+    patch: { "mailboxIds/inbox": null, "mailboxIds/junk": true },
+  };
+  expect(await mayPatch(client, store, plain)).toBe(true);
+});
+
+test("a destroy asks mayRemoveItems of every mailbox the email stands in", async () => {
+  const destroy: Mutation = { type: "Email", id: "e1", destroy: true };
+  const open = await serve([withRights("trash", MOVABLE)]);
+  expect(await mayPatch(open.client, open.store, destroy)).toBe(true);
+  vi.unstubAllGlobals();
+  const shared = await serve([
+    withRights("trash", MOVABLE),
+    withRights("shared", { mayRemoveItems: false }),
+  ]);
+  expect(await mayPatch(shared.client, shared.store, destroy)).toBe(false);
+});

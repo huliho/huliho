@@ -3,22 +3,59 @@
 // Additional terms apply, see NOTICE.
 
 import type { JmapClient } from "../jmap/client";
-import type { Mailbox } from "../jmap/schemas";
-import type { Mutation } from "./pending";
+import type { EmailHeader, Mailbox } from "../jmap/schemas";
+import { SEEN } from "./counts";
+import { memberOf } from "./members";
+import { patched, targetOf } from "./patch";
+import type { Mutation, PatchMutation } from "./pending";
 import type { MailStore } from "./store";
-import { SEEN } from "./unread";
 
-const SEEN_PATH = `keywords/${SEEN}`;
+type Rights = Mailbox["myRights"];
 
-// Whether a mailbox takes every path of a patch: $seen asks maySetSeen
-// and any other keyword maySetKeywords (RFC 8621 section 2).
-function allows(rights: Mailbox["myRights"], paths: readonly string[]): boolean {
-  return paths.every((path) => (path === SEEN_PATH ? rights.maySetSeen : rights.maySetKeywords));
+// Whether a mailbox the email stands in takes one path. $seen asks
+// maySetSeen and any other keyword maySetKeywords (RFC 8621 section 2).
+// A move asks mayRemoveItems where the email leaves; where it enters,
+// the mailbox has to be one the store holds and asks mayAddItems.
+function allows(
+  path: string,
+  value: true | null,
+  inside: readonly Rights[],
+  boxes: ReadonlyMap<string, Mailbox>,
+): boolean {
+  const { set, key } = targetOf(path);
+  if (set === "keywords") {
+    return inside.every((rights) => (key === SEEN ? rights.maySetSeen : rights.maySetKeywords));
+  }
+  const box = boxes.get(key);
+  if (value === true) {
+    return box?.myRights.mayAddItems === true;
+  }
+  return box === undefined || box.myRights.mayRemoveItems;
 }
 
-// Whether the account and every mailbox of the email take a change, so
-// a write the server said it refuses is never logged. A mailbox the
-// store does not hold is the server's to judge.
+// A patch every mailbox involved takes that leaves the email in at least
+// one mailbox (RFC 8621 section 4.1.1).
+function patchAllowed(
+  header: EmailHeader,
+  mutation: PatchMutation,
+  boxes: ReadonlyMap<string, Mailbox>,
+): boolean {
+  const inside = Object.keys(header.mailboxIds).flatMap((id) => {
+    const box = boxes.get(id);
+    return box === undefined ? [] : [box.myRights];
+  });
+  const paths = Object.entries(mutation.patch);
+  const after = patched(memberOf(header), mutation.patch).state;
+  return (
+    Object.keys(after.mailboxIds).length > 0 &&
+    paths.every(([path, value]) => allows(path, value, inside, boxes))
+  );
+}
+
+// Whether the account and the mailboxes involved take a change, so a
+// write the server said it refuses is never logged. A mailbox the email
+// stands in that the store does not hold is the server's to judge; a
+// destroy asks mayRemoveItems of every mailbox the email stands in.
 export async function mayPatch(
   client: JmapClient,
   store: MailStore,
@@ -33,8 +70,11 @@ export async function mayPatch(
   if (header === undefined) {
     return false;
   }
-  const inside = new Set(Object.keys(header.mailboxIds));
-  const boxes = (await store.mailboxes(accountId)).filter((box) => inside.has(box.id));
-  const paths = Object.keys(mutation.patch);
-  return boxes.every((box) => allows(box.myRights, paths));
+  const boxes = new Map((await store.mailboxes(accountId)).map((box) => [box.id, box]));
+  if ("destroy" in mutation) {
+    return Object.keys(header.mailboxIds).every(
+      (id) => boxes.get(id)?.myRights.mayRemoveItems ?? true,
+    );
+  }
+  return patchAllowed(header, mutation, boxes);
 }

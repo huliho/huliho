@@ -77,7 +77,8 @@ function fetchHeaders(client: JmapClient, ids: readonly string[]): Promise<Email
 // The thread as the reading pane opens it: its row and every member's
 // header. A member the store holds no header for, or whose preview is
 // still empty, is fetched with its preview; a thread the store does not
-// hold is fetched first. Null for a thread the server does not have.
+// hold is fetched first. Null for a thread the server does not have and
+// for one whose every email waits to be destroyed.
 export async function readThread(
   client: JmapClient,
   store: MailStore,
@@ -108,11 +109,24 @@ export async function readThread(
   return detailOf(landed, await store.emails(accountId, landed.emailIds));
 }
 
-function detailOf(thread: ThreadRow, held: ReadonlyMap<string, EmailHeader>): ThreadDetail {
+// The detail without the emails a destroy waiting in the log hides,
+// which stand in no mailbox; null when it hides every one.
+function detailOf(thread: ThreadRow, held: ReadonlyMap<string, EmailHeader>): ThreadDetail | null {
+  const hidden = new Set(
+    thread.emailIds.filter((id) => {
+      const header = held.get(id);
+      return header !== undefined && Object.keys(header.mailboxIds).length === 0;
+    }),
+  );
+  const emailIds = thread.emailIds.filter((id) => !hidden.has(id));
+  if (emailIds.length === 0) {
+    return null;
+  }
+  const members = Object.entries(thread.members).filter(([id]) => !hidden.has(id));
   return {
-    thread,
+    thread: { ...thread, emailIds, members: Object.fromEntries(members) },
     emails: Object.fromEntries(
-      thread.emailIds.flatMap((id): [string, EmailHeader][] => {
+      emailIds.flatMap((id): [string, EmailHeader][] => {
         const header = held.get(id);
         return header === undefined ? [] : [[id, header]];
       }),

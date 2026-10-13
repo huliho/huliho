@@ -16,6 +16,9 @@ export const FONT_SIZES = ["default", "large", "larger"] as const;
 export const LINE_HEIGHTS = ["default", "relaxed", "loose"] as const;
 // Whether a light-only message is adapted to the dark theme or shown as sent.
 const DARK_MAILS = ["adapt", "original"] as const;
+// What the reading pane does after an action took its thread away: open
+// the next conversation or go back to the list.
+const AFTER_ACTIONS = ["next", "list"] as const;
 
 const preferencesSchema = z.object({
   readingPane: z.enum(READING_PANES).optional(),
@@ -25,6 +28,7 @@ const preferencesSchema = z.object({
   fontSize: z.enum(FONT_SIZES).optional(),
   lineHeight: z.enum(LINE_HEIGHTS).optional(),
   darkMail: z.enum(DARK_MAILS).optional(),
+  afterAction: z.enum(AFTER_ACTIONS).optional(),
 });
 
 export type ReadingPane = (typeof READING_PANES)[number];
@@ -34,6 +38,7 @@ export type PreferenceLocale = (typeof PREFERENCE_LOCALES)[number];
 export type FontSize = (typeof FONT_SIZES)[number];
 export type LineHeight = (typeof LINE_HEIGHTS)[number];
 export type DarkMail = (typeof DARK_MAILS)[number];
+export type AfterAction = (typeof AFTER_ACTIONS)[number];
 // The user's choices; a key never chosen is absent.
 export type Preferences = z.infer<typeof preferencesSchema>;
 
@@ -45,7 +50,8 @@ export type PreferenceChange =
   | { key: "locale"; value: PreferenceLocale }
   | { key: "fontSize"; value: FontSize }
   | { key: "lineHeight"; value: LineHeight }
-  | { key: "darkMail"; value: DarkMail };
+  | { key: "darkMail"; value: DarkMail }
+  | { key: "afterAction"; value: AfterAction };
 
 export type PreferencesFailureCode = "unauthenticated" | "unavailable";
 
@@ -78,8 +84,10 @@ export function withPreference(current: Preferences, change: PreferenceChange): 
       return { ...current, fontSize: change.value };
     case "lineHeight":
       return { ...current, lineHeight: change.value };
-    default:
+    case "darkMail":
       return { ...current, darkMail: change.value };
+    default:
+      return { ...current, afterAction: change.value };
   }
 }
 

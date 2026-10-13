@@ -10,6 +10,9 @@ export const CORE_CAPABILITY = "urn:ietf:params:jmap:core";
 // The mail capability (RFC 8621 section 1.1).
 export const MAIL_CAPABILITY = "urn:ietf:params:jmap:mail";
 
+// The quota capability (RFC 9425 section 2.1).
+export const QUOTA_CAPABILITY = "urn:ietf:params:jmap:quota";
+
 // The vendor capability a bridge account advertises; it carries the
 // Mailbox property syncedEmails.
 export const HULIHO_CAPABILITY = "https://huliho.com/jmap";
@@ -70,9 +73,16 @@ const downloadUrlSchema = z
   .regex(SAME_ORIGIN_PATH)
   .refine((template) => DOWNLOAD_VARIABLES.every((variable) => template.includes(variable)));
 
+// An account without its capabilities reads as one that has none beyond
+// what the session names.
+const accountSchema = z.object({
+  isReadOnly: z.boolean(),
+  accountCapabilities: z.record(z.string(), z.unknown()).optional(),
+});
+
 export const sessionObjectSchema = z.object({
   capabilities: z.record(z.string(), z.unknown()),
-  accounts: z.record(z.string(), z.object({ isReadOnly: z.boolean() })),
+  accounts: z.record(z.string(), accountSchema),
   primaryAccounts: z.record(z.string(), idSchema),
   apiUrl: z.string().regex(SAME_ORIGIN_PATH),
   downloadUrl: downloadUrlSchema,
@@ -176,13 +186,15 @@ export const queryAnswerSchema = z.object({
 // Why one object of a /set was not written (RFC 8620 section 5.3).
 const setErrorSchema = z.object({ type: z.string() });
 
-// The answer of a /set that updates (RFC 8620 section 5.3); a server may
-// leave an empty map out instead of naming it null.
+// The answer of a /set that updates and destroys (RFC 8620 section 5.3);
+// a server may leave an empty map out instead of naming it null.
 export const setAnswerSchema = z.object({
   oldState: z.string().nullish(),
   newState: z.string(),
   updated: z.record(z.string(), z.unknown()).nullish(),
   notUpdated: z.record(z.string(), setErrorSchema).nullish(),
+  destroyed: z.array(idSchema).nullish(),
+  notDestroyed: z.record(z.string(), setErrorSchema).nullish(),
 });
 
 // The problem details of a request that was not run (RFC 8620 section 3.6.1).

@@ -3,11 +3,12 @@
 // Additional terms apply, see NOTICE.
 
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
+import { movesOf, recounted, shiftOf } from "./counts";
+import type { MemberChange, Moves } from "./counts";
+import { strip } from "./lists";
 import { memberOf } from "./members";
 import { replayed, unpatched } from "./patch";
-import type { Batch, MailStore, MemberState, PendingRow, ThreadRow } from "./store";
-import { movesOf, recounted, shiftOf } from "./unread";
-import type { MemberChange, Moves } from "./unread";
+import type { Batch, MailStore, MemberState, PendingRow, QueryRow, ThreadRow } from "./store";
 
 type Pending = Map<string, PendingRow[]>;
 
@@ -15,7 +16,7 @@ type Pending = Map<string, PendingRow[]>;
 // up to date within its poll; a fetch of a list or a thread brings none.
 type LandingKind = "round" | "fetch";
 
-// The rows a landing writes that the unread counts read.
+// The rows a landing writes that the counts and the lists read.
 interface Landed {
   headers: EmailHeader[];
   threads: ThreadRow[];
@@ -33,7 +34,7 @@ interface Recount {
 // the landing or the store holds them.
 interface Standing {
   headers: Map<string, EmailHeader>;
-  members: Map<string, Record<string, MemberState>>;
+  threads: Map<string, ThreadRow>;
 }
 
 function byEmail(rows: readonly PendingRow[]): Pending {
@@ -63,18 +64,16 @@ function relaidHeaders(
     if (rows === undefined) {
       return header;
     }
-    const replay = replayed(header.keywords, rows);
+    const replay = replayed(memberOf(header), rows);
     fitted.push(...refitted(rows, replay.rows));
-    return { ...header, keywords: replay.keywords };
+    return { ...header, ...replay.state };
   });
   return { headers: relaid, fitted };
 }
 
 function relaidMember(id: string, member: MemberState, pending: Pending): MemberState {
   const rows = pending.get(id);
-  return rows === undefined
-    ? member
-    : { ...member, keywords: replayed(member.keywords, rows).keywords };
+  return rows === undefined ? member : replayed(member, rows).state;
 }
 
 function relaidThreads(threads: readonly ThreadRow[], pending: Pending): ThreadRow[] {
@@ -106,21 +105,21 @@ async function standingOf(
   const headers = await known(landing.headers, emailIds, (ids) => store.emails(accountId, ids));
   const threadIds = [...new Set([...headers.values()].map((header) => header.threadId))];
   const threads = await known(landing.threads, threadIds, (ids) => store.threads(accountId, ids));
-  return { headers, members: new Map([...threads].map(([id, thread]) => [id, thread.members])) };
+  return { headers, threads };
 }
 
-// How far the pending rows move the unread counts away from what the
-// server holds, which their inverses say.
-function pendingMoves({ headers, members }: Standing, pending: Pending): Moves {
+// How far the pending rows move the counts away from what the server
+// holds, which their inverses say.
+function pendingMoves({ headers, threads }: Standing, pending: Pending): Moves {
   const changes = [...pending].flatMap(([id, rows]): MemberChange[] => {
     const header = headers.get(id);
     if (header === undefined) {
       return [];
     }
     const after = memberOf(header);
-    const before = { ...after, keywords: unpatched(header.keywords, rows) };
-    return [{ id, threadId: header.threadId, before, after }];
+    return [{ id, threadId: header.threadId, before: unpatched(after, rows), after }];
   });
+  const members = new Map([...threads].map(([id, thread]) => [id, thread.members]));
   return movesOf(members, changes);
 }
 
@@ -130,13 +129,12 @@ function pendingMoves({ headers, members }: Standing, pending: Pending): Moves {
 async function relaidMailboxes(
   store: MailStore,
   accountId: string,
-  landing: Landed,
+  { landing, standing }: { landing: Landed; standing: Standing },
   logs: { held: Pending; pending: Pending; shifts: boolean },
 ): Promise<Recount> {
   if (landing.mailboxes.length === 0 && !logs.shifts) {
     return { fresh: [], shifted: [] };
   }
-  const standing = await standingOf(store, accountId, landing, [...logs.pending.keys()]);
   const moved = pendingMoves(standing, logs.pending);
   const fresh = landing.mailboxes.map((row) => recounted([row], moved).at(0) ?? row);
   if (!logs.shifts) {
@@ -145,6 +143,34 @@ async function relaidMailboxes(
   const landed = new Set(landing.mailboxes.map((row) => row.id));
   const stored = (await store.mailboxes(accountId)).filter((row) => !landed.has(row.id));
   return { fresh, shifted: recounted(stored, shiftOf(pendingMoves(standing, logs.held), moved)) };
+}
+
+// The lists that land without the threads a pending change took out of
+// their mailbox: an archived thread stays archived whatever a poll
+// fetched, and a destroy waiting in the log hides its email.
+function relaidLists(
+  queries: readonly QueryRow[],
+  { headers, threads }: Standing,
+  pending: Pending,
+): QueryRow[] {
+  const gone = [...pending.keys()].flatMap((id) => {
+    const header = headers.get(id);
+    if (header === undefined) {
+      return [];
+    }
+    const thread = threads.get(header.threadId);
+    const members = { ...thread?.members, [id]: memberOf(header) };
+    return [{ ids: new Set([id, ...(thread?.emailIds ?? [])]), members: Object.values(members) }];
+  });
+  return queries.map((query) => {
+    const row = structuredClone(query);
+    for (const { ids, members } of gone) {
+      if (!members.some((member) => row.id in member.mailboxIds)) {
+        strip(row, ids);
+      }
+    }
+    return row;
+  });
 }
 
 function putOf<Row>(change: { put?: readonly Row[] } | undefined): readonly Row[] {
@@ -164,15 +190,17 @@ async function overlaid(
   const refit = new Map(fitted.map((row) => [row.seq, row]));
   const pending = byEmail(rows.map((row) => refit.get(row.seq) ?? row));
   const threads = relaidThreads(putOf(batch.threads), pending);
-  const landed = { headers, threads, mailboxes: putOf(batch.mailboxes) };
+  const landing = { headers, threads, mailboxes: putOf(batch.mailboxes) };
+  const standing = await standingOf(store, accountId, landing, [...pending.keys()]);
   const logs = { held, pending, shifts: kind === "round" && fitted.length > 0 };
-  const { fresh, shifted } = await relaidMailboxes(store, accountId, landed, logs);
+  const { fresh, shifted } = await relaidMailboxes(store, accountId, { landing, standing }, logs);
   return {
     batch: {
       ...batch,
       emails: { ...batch.emails, put: headers },
       threads: { ...batch.threads, put: threads },
       mailboxes: { ...batch.mailboxes, put: [...fresh, ...shifted] },
+      queries: { ...batch.queries, put: relaidLists(putOf(batch.queries), standing, pending) },
       pending: { ...batch.pending, put: [...putOf(batch.pending), ...fitted] },
     },
     shifted: shifted.length > 0,

@@ -4,7 +4,7 @@
 
 import type { DownloadSource } from "../download";
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
-import type { Mutation } from "./pending";
+import type { PatchMutation } from "./pending";
 import type { ListPage } from "./rows";
 import type { EmailBody, ThreadRow } from "./store";
 
@@ -23,7 +23,7 @@ export interface BodyDetail {
 
 // The cache as a client reads it, whatever runs it: the mailbox tree, a
 // page of a list, a thread, the marker's action, the body of one email
-// and one change to an email. A failure throws JmapError, so a caller
+// and one patch to an email. A failure throws JmapError, so a caller
 // reads the stop cause or the limit's name.
 export interface MailCache {
   mailboxes(accountId: string): Promise<Mailbox[]>;
@@ -35,5 +35,5 @@ export interface MailCache {
   body(accountId: string, emailId: string, options: { large: boolean }): Promise<BodyDetail | null>;
   // The rows take the change at once and the server hears it behind
   // them; a change the account or a mailbox refuses moves nothing.
-  mutate(accountId: string, mutation: Mutation): Promise<void>;
+  mutate(accountId: string, mutation: PatchMutation): Promise<void>;
 }

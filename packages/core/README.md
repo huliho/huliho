@@ -21,24 +21,36 @@ one account's endpoint on the proxy: the session object, then Request
 objects whose method calls it sends in one round trip. `MailStore` is
 the contract a store implements (mailboxes, email headers, threads with
 the state of every member, the pages of each list, message bodies, the
-changes the server has not acknowledged and one state per object
-type), written in batches that land whole; `MemoryMailStore` is
-the one that keeps everything in memory. On top of both, `syncMailboxes`
+changes the server has not acknowledged, the account's quotas and one
+state per object type), written in batches that land whole;
+`MemoryMailStore` is the one that keeps everything in memory. On top of
+both, `syncMailboxes`
 brings the mailbox tree up to date, `queryWindow` serves a page of a
 list and fetches it when the store lacks it, `applyChanges` follows the
 change logs of every type, `revealNewMail` lands the new mail a poll
 held back for the user and `readThread` answers a thread with the
 headers the store holds. `readBody` answers the body of one email: the
 stored row, else one request whose answer is stored; the bodies fetched
-longest ago leave past 500 rows or 64 MiB. `applyPatch` takes a change
-to an email's keywords into the rows at once and logs it;
-`flushPending` sends one round of the log as one `Email/set`, drops
-what the server acknowledged and takes back what it refused. Rows that land
-from the server while a change waits take that change again, so a poll
-leaves a message the user read as read. `mayPatch` says whether the
-account and the mailboxes of an email take a change at all, so one the
-server said it refuses is never logged. `MailCache` is what an adapter
-offers the query hooks: the tree, a page, a thread, the reveal, the
+longest ago leave past 500 rows or 64 MiB. `mutateMany` takes changes
+to the keywords and mailboxes of emails into the rows at once and logs
+them, answering the change that takes each one back. A thread that
+leaves a mailbox leaves its list at once and an undo puts it back where
+it stood; a thread that enters a mailbox waits for the next fetch of
+that list. A delete forever hides the email at once and waits in the
+log until `releaseHeld` lets it go or `dropHeld` takes it back;
+`releaseLapsed` lets go of the ones whose tab holds no lease.
+`flushPending` sends one round of the log as one `Email/set` with its
+updates and destroys, drops what the server acknowledged and takes back
+what it refused; rows that add up to nothing leave without a request.
+Rows that land from the server while a change waits take that change
+again, so a poll leaves a message the user read as read and an archived
+thread out of its list. `mayPatch` says whether the account and the
+mailboxes involved take a change at all, so one the server said it
+refuses is never logged. `runJob` marks a whole mailbox read or empties
+it, one `jobRound` at a time. `readQuota` answers the quota a bar shows,
+which the mailbox pass keeps current where the account has quota.
+`MailCache` is what an adapter offers the query hooks: the tree, a
+page, a thread, the reveal, the
 body of one email with where its parts download from and one change to
 an email, each answered from the cache. A store that keeps rows on
 disk checks them against the row schemas when they come back.

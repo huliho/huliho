@@ -5,12 +5,13 @@
 import type { EmailHeader } from "../jmap/schemas";
 import { z } from "../schema";
 import type { FakeJmap } from "./fake-jmap";
+import { quotaAccount, quotaGet } from "./fake-quota";
 import { MethodError, UPSTREAM } from "./fake-wire";
 import type { Args } from "./fake-wire";
 import { bodyOf, emailSet } from "./fake-writes";
 
 export type Kind = "created" | "updated" | "destroyed";
-export type Type = "Mailbox" | "Email" | "Thread";
+export type Type = "Mailbox" | "Email" | "Thread" | "Quota";
 
 export interface Change {
   sequence: number;
@@ -39,7 +40,7 @@ const queryArgsSchema = z.object({
   collapseThreads: z.boolean().optional(),
 });
 
-const inMailboxSchema = z.strictObject({ inMailbox: z.string() });
+const filterSchema = z.strictObject({ inMailbox: z.string(), notKeyword: z.string().optional() });
 
 const changesArgsSchema = z.object({ accountId: z.string(), sinceState: z.string() });
 
@@ -54,17 +55,31 @@ function parse<Value extends { accountId: string }>(schema: z.ZodType<Value>, ar
   return read.data;
 }
 
-// The methods the cache calls, answered from the fake's maps.
+// The capabilities a request opted into beyond core and mail.
+interface Using {
+  vendor: boolean;
+  quota: boolean;
+}
+
+// The methods the cache calls, answered from the fake's maps. A quota
+// method outside a request that opts into quota is unknown (RFC 8620
+// section 3.6.2).
 export class FakeMethods {
   private readonly server: FakeJmap;
-  private readonly vendor: boolean;
+  private readonly using: Using;
 
-  constructor(server: FakeJmap, vendor: boolean) {
+  constructor(server: FakeJmap, using: Using) {
     this.server = server;
-    this.vendor = vendor;
+    this.using = using;
   }
 
   dispatch(name: string, args: Args): Args {
+    const quota: [string, (raw: Args) => Args][] = this.using.quota
+      ? [
+          ["Quota/get", (raw) => quotaGet(this.server, raw)],
+          ["Quota/changes", (raw) => this.quotaChanges(raw)],
+        ]
+      : [];
     const methods = new Map<string, (raw: Args) => Args>([
       ["Mailbox/get", (raw) => this.mailboxGet(raw)],
       ["Mailbox/changes", (raw) => this.changes("Mailbox", raw)],
@@ -74,6 +89,7 @@ export class FakeMethods {
       ["Email/set", (raw) => emailSet(this.server, raw)],
       ["Thread/get", (raw) => this.threadGet(raw)],
       ["Thread/changes", (raw) => this.changes("Thread", raw)],
+      ...quota,
     ]);
     const method = methods.get(name);
     if (method === undefined) {
@@ -108,7 +124,7 @@ export class FakeMethods {
         return [];
       }
       const { syncedEmails, ...plain } = row;
-      return [this.vendor ? { ...plain, syncedEmails } : plain];
+      return [this.using.vendor ? { ...plain, syncedEmails } : plain];
     });
     const found = new Set(list.map((row) => row.id));
     return {
@@ -154,14 +170,15 @@ export class FakeMethods {
 
   private emailQuery(raw: Args): Args {
     const args = parse(queryArgsSchema, raw);
-    const filter = inMailboxSchema.safeParse(args.filter);
+    const filter = filterSchema.safeParse(args.filter);
     if (!filter.success) {
       throw new MethodError("unsupportedFilter");
     }
-    const box = filter.data.inMailbox;
+    const { inMailbox, notKeyword } = filter.data;
     const ascending = direction(args.sort ?? []);
     const rows = [...this.server.emails.values()]
-      .filter((row) => box in row.mailboxIds)
+      .filter((row) => inMailbox in row.mailboxIds)
+      .filter((row) => notKeyword === undefined || !(notKeyword in row.keywords))
       .toSorted((a, b) => order(a, b, ascending));
     const ids = args.collapseThreads === true ? collapse(rows) : rows.map((row) => row.id);
     const position = start(args, ids);
@@ -181,6 +198,11 @@ export class FakeMethods {
       answer["limit"] = limit;
     }
     return answer;
+  }
+
+  private quotaChanges(raw: Args): Args {
+    quotaAccount(this.server, raw["accountId"]);
+    return this.changes("Quota", raw);
   }
 
   private changes(type: Type, raw: Args): Args {
