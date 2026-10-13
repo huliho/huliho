@@ -186,7 +186,8 @@ test("a link inside a sandboxed frame opens the page in a tab of its own, which 
   await expect(tab.getByRole("button", { name: "Cancel" })).toBeFocused();
   await expect(page).toHaveURL(/\/sign-in$/);
   const closed = tab.waitForEvent("close");
-  await tab.getByRole("button", { name: "Cancel" }).click();
+  // Cancel closes the tab, so the click goes in as an event that waits for nothing after it.
+  await tab.getByRole("button", { name: "Cancel" }).dispatchEvent("click");
   await closed;
 });
 
