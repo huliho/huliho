@@ -290,25 +290,39 @@ the script they ran under, the rows mounted and the row elements
 swapped. It also counts the JMAP calls per page the fling asks and the
 animation frames between a key and its answer, for the list's keys and
 for the palette and the overlay with the Escape that closes each. The
-frame traces run alone, without the rest of the suite,
-with `pnpm exec playwright test --project scroll-budget --no-deps`.
-A frame counts the main thread's own CPU time, read from a Chromium
-trace: the task that paints it (the scroll event, the render, the
-layout and the paint) and the tasks that run before the frame's closing
-timer. Time the thread waits for a core does not count. The phone
-trace slows the CPU by the host's Lighthouse benchmark index over 1000,
-the middle of the high-end mobile bracket in Lighthouse's throttling
-doc, so a mid-range phone means the same on every machine. Each trace
-prints one line with the index, the factor, the longest frame, the 95th
-percentile and any frame past the budget. The `body-budget` project
-runs after it: it opens a newsletter of 102 KB, the weight Gmail clips
-a message at, on the phone profile and prints the time to the still
-lines and the longest task of the main thread while the message
-builds. It also opens a mail of twenty thousand remote images, which
-has to stand at its height within twenty seconds.
+`body-budget` project runs after the suite on its own: it opens a mail
+of twenty thousand remote images, which has to stand at its height
+within twenty seconds.
 
-`pnpm lighthouse` audits the built app against the performance and
-accessibility budgets in `lighthouserc.cjs`.
+The timed budgets live in `e2e/timing/` and run in the `timing`
+project, which exists only while `HULIHO_TIMING_GATES` is set. It runs
+after `body-budget` and the variable gives the whole run one worker, so
+no other test shares the CPU while one measures. The `timing` job of
+`ci.yml` sets the variable every night on `main` and on a manual
+dispatch (`gh workflow run ci.yml`). From this directory, once the app
+and Storybook are built, this runs the project alone:
+`HULIHO_TIMING_GATES=1 pnpm exec playwright test --project timing --no-deps`.
+`timing/scroll.spec.ts` traces the same fling on the desktop and the
+phone profile. A frame counts the main thread's own CPU time, read from
+a Chromium trace: the task that paints it (the scroll event, the
+render, the layout and the paint) and the tasks that run before the
+frame's closing timer. Time the thread waits for a core does not count.
+The phone trace slows the CPU by the host's Lighthouse benchmark index
+over 1000, the middle of the high-end mobile bracket in Lighthouse's
+throttling doc, so a mid-range phone means the same on every machine.
+Each trace prints one line with the index, the factor, the longest
+frame, the 95th percentile and any frame past the budget.
+`timing/keys.spec.ts` times each key of the long list, the palette's
+and the overlay's included, from the key going down to the frame that
+paints the focus it moved. `timing/body.spec.ts` opens a newsletter of
+102 KB, the weight Gmail clips a message at, on the phone profile and
+prints the time to the still lines and the longest task of the main
+thread while the message builds.
+
+`pnpm lighthouse` audits the built app once against the accessibility,
+layout shift and cold-load budgets in `lighthouserc.cjs`. With
+`HULIHO_TIMING_GATES` set it runs five times and also holds the
+performance score, LCP and TBT to their budgets over the median.
 
 The app preview sends the same Content Security Policy as the server,
 read from `crates/server/src/csp.txt`, so every e2e test against the
