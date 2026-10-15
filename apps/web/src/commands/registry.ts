@@ -29,7 +29,8 @@ let snapshot: readonly Command[] = [];
 // key, from a frame inside it as well. Escape alone passes from such a
 // frame, since no layer hears a key pressed inside one.
 const CLAIMED_BY_TYPING = "input, textarea, select, [contenteditable]";
-const CLAIMED_BY_LAYER = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
+export const CLAIMED_BY_LAYER =
+  '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
 
 interface Prefix {
   key: string;

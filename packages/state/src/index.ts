@@ -7,6 +7,7 @@ export { MAIL_KEY_WORDS, queryKeys } from "./keys";
 export {
   bodyQueryOptions,
   mailboxesQueryOptions,
+  quotaQueryOptions,
   threadQueryOptions,
   threadWindowQueryOptions,
 } from "./mail";

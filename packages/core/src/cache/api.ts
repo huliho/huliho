@@ -4,7 +4,9 @@
 
 import type { DownloadSource } from "../download";
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
-import type { PatchMutation } from "./pending";
+import type { Job } from "./jobs";
+import type { Mutation, PatchMutation } from "./pending";
+import type { QuotaReading } from "./quota";
 import type { ListPage } from "./rows";
 import type { EmailBody, ThreadRow } from "./store";
 
@@ -21,10 +23,18 @@ export interface BodyDetail {
   download: DownloadSource;
 }
 
+// What takes some changes back: the changes that restore each email,
+// the held destroys by sequence number and the threads that moved.
+export interface Undo {
+  inverses: PatchMutation[];
+  held: number[];
+  threads: string[];
+}
+
 // The cache as a client reads it, whatever runs it: the mailbox tree, a
-// page of a list, a thread, the marker's action, the body of one email
-// and one patch to an email. A failure throws JmapError, so a caller
-// reads the stop cause or the limit's name.
+// page of a list, a thread, the marker's action, the body of one email,
+// the changes to emails, the folder jobs and the quota. A failure throws
+// JmapError, so a caller reads the stop cause or the limit's name.
 export interface MailCache {
   mailboxes(accountId: string): Promise<Mailbox[]>;
   window(accountId: string, mailboxId: string, page: number): Promise<ListPage>;
@@ -36,4 +46,17 @@ export interface MailCache {
   // The rows take the change at once and the server hears it behind
   // them; a change the account or a mailbox refuses moves nothing.
   mutate(accountId: string, mutation: PatchMutation): Promise<void>;
+  // Several changes at once, as `mutate` takes one; a destroy waits held
+  // until `release` lets it go or `drop` takes it back.
+  mutateMany(accountId: string, mutations: readonly Mutation[]): Promise<Undo>;
+  release(accountId: string, held: readonly number[]): Promise<void>;
+  drop(accountId: string, held: readonly number[]): Promise<void>;
+  // Starts a folder job, one per account at a time; its progress reaches
+  // every tab. A job asked while one of the account runs is left alone
+  // and the call resolves all the same. `cancelJob` ends the running job
+  // after the round that runs.
+  job(accountId: string, job: Job): Promise<void>;
+  cancelJob(accountId: string): Promise<void>;
+  // The quota the bar shows, null where the account reports none.
+  quota(accountId: string): Promise<QuotaReading | null>;
 }

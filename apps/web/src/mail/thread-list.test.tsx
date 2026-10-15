@@ -27,6 +27,7 @@ import {
   rows,
   withPage,
 } from "./list-rig";
+import type { OpenFocus } from "./thread-history";
 
 const NEW_MAIL = 2;
 // The still rows after a syncing list.
@@ -245,8 +246,8 @@ test("a first sync shows its sentence once and its count beside three still rows
   expect(grid.querySelector(`[data-index="${String(INBOX_PAGE.rows.length)}"]`)).toBeNull();
 });
 
-test("Enter, o and a click open the cursor's row; the open thread's row is drawn selected", async () => {
-  const onOpen = vi.fn<(row: ListRow) => void>();
+test("Enter, o and a click open the cursor's row with the focus to its title; the open thread's row is drawn selected", async () => {
+  const onOpen = vi.fn<(row: ListRow, focus: OpenFocus) => void>();
   const open = INBOX_PAGE.rows[2];
   renderList({ onOpen, openThreadId: open?.threadId ?? null });
   await screen.findByRole("grid");
@@ -255,12 +256,12 @@ test("Enter, o and a click open the cursor's row; the open thread's row is drawn
   expect(row(0).getAttribute("aria-selected")).toBeNull();
   row(0).focus();
   press("Enter");
-  expect(onOpen).toHaveBeenLastCalledWith(INBOX_PAGE.rows[0]);
+  expect(onOpen).toHaveBeenLastCalledWith(INBOX_PAGE.rows[0], "title");
   press("ArrowDown");
   command("o");
-  expect(onOpen).toHaveBeenLastCalledWith(INBOX_PAGE.rows[1]);
+  expect(onOpen).toHaveBeenLastCalledWith(INBOX_PAGE.rows[1], "title");
   fireEvent.click(row(3));
-  expect(onOpen).toHaveBeenLastCalledWith(INBOX_PAGE.rows[3]);
+  expect(onOpen).toHaveBeenLastCalledWith(INBOX_PAGE.rows[3], "title");
   expect(onOpen).toHaveBeenCalledTimes(3);
 });
 

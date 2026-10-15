@@ -40,7 +40,7 @@ function pick(name: string, word: string): void {
 
 afterEach(cleanup);
 
-test("seven named groups show the choices in order, with the defaults for keys never chosen", () => {
+test("eight named groups show the choices in order, with the defaults for keys never chosen", () => {
   renderForm({ theme: "dark", readingPane: "off", lineHeight: "loose" });
   expect(
     screen.getAllByRole("radiogroup").map((found) => found.getAttribute("aria-labelledby")),
@@ -53,6 +53,7 @@ test("seven named groups show the choices in order, with the defaults for keys n
     "Font size",
     "Line height",
     "Dark mode for messages",
+    "After archiving or deleting",
     "Reading pane",
     "Language",
   ]);
@@ -61,6 +62,7 @@ test("seven named groups show the choices in order, with the defaults for keys n
   expect(checkedIn("Font size")).toBe("Default");
   expect(checkedIn("Line height")).toBe("Loose");
   expect(checkedIn("Dark mode for messages")).toBe("Adapt light messages");
+  expect(checkedIn("After archiving or deleting")).toBe("Open the next conversation");
   expect(checkedIn("Reading pane")).toBe("Off");
   expect(checkedIn("Language")).toBe("English");
 });
@@ -91,6 +93,12 @@ test("a hint describes its group and a group without one carries no description"
       description: /^A light message takes the dark theme’s colors/,
     }),
   ).toBeDefined();
+  expect(
+    screen.getByRole("radiogroup", {
+      name: "After archiving or deleting",
+      description: "Also after marking as spam or moving.",
+    }),
+  ).toBeDefined();
   for (const name of ["Theme", "Line height", "Language"]) {
     expect(group(name).getAttribute("aria-describedby")).toBe(null);
   }
@@ -108,9 +116,11 @@ test("a pick names its key and word; the language group switches instead", () =>
   expect(rendered.onChange).toHaveBeenLastCalledWith({ key: "readingPane", value: "bottom" });
   pick("Dark mode for messages", "Show as sent");
   expect(rendered.onChange).toHaveBeenLastCalledWith({ key: "darkMail", value: "original" });
+  pick("After archiving or deleting", "Go back to the list");
+  expect(rendered.onChange).toHaveBeenLastCalledWith({ key: "afterAction", value: "list" });
   pick("Language", "Nederlands");
   expect(rendered.onSwitchLocale).toHaveBeenLastCalledWith("nl");
-  expect(rendered.onChange).toHaveBeenCalledTimes(5);
+  expect(rendered.onChange).toHaveBeenCalledTimes(6);
 });
 
 test("a development build lists the pseudo locale in its own spelling", () => {

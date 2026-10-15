@@ -34,9 +34,11 @@ export type {
   StopCause,
   TlsMode,
 } from "./accounts";
+export { actionFor, actionMutations, offeredActions, verbOf } from "./actions";
+export type { ActionTarget, ChangeVerb, MailAction, Offered } from "./actions";
 export { fitsAddress, fitsHostName } from "./address";
 export type { Authentication, AuthenticationResults, AuthVerdict } from "./auth-results";
-export type { BodyDetail, MailCache, ThreadDetail } from "./cache/api";
+export type { BodyDetail, MailCache, ThreadDetail, Undo } from "./cache/api";
 export { readBody } from "./cache/bodies";
 export { flushPending } from "./cache/flush";
 export type { Flushed } from "./cache/flush";

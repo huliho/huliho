@@ -7,8 +7,12 @@ import {
   JmapError,
   MemoryMailStore,
   applyChanges,
+  dropHeld,
   listPage,
+  mutateMany,
   queryWindow,
+  readQuota,
+  releaseHeld,
   revealNewMail,
 } from "@huliho/core";
 import type { ListPage, ListRow, MailCache, Mailbox } from "@huliho/core";
@@ -26,6 +30,7 @@ import type { PageAnswer } from "./fixture-cache";
 import { FASTMAIL, FIXED_NOW, INBOX_ID, INBOX_PAGE, MAILBOXES, pageOf } from "./fixtures";
 import type { Draft } from "./fixtures";
 import { startOfDay } from "./row-time";
+import type { OpenFocus } from "./thread-history";
 import { ThreadList } from "./thread-list";
 
 // The rig the thread list tests render in: a scroll box of ten rows of
@@ -39,20 +44,25 @@ const SECOND_MS = 1000;
 
 interface Filled {
   mailbox: Mailbox;
+  mailboxes: readonly Mailbox[];
   cache: MailCache;
   online: boolean;
   client: QueryClient;
   openThreadId: string | null;
-  onOpen: (row: ListRow) => void;
+  onOpen: (row: ListRow, focus: OpenFocus) => void;
+  onClose: () => void;
 }
 
 export interface Options {
   mailbox?: Mailbox | undefined;
+  // The account's tree, the fixtures' by default.
+  mailboxes?: readonly Mailbox[];
   cache?: MailCache;
   online?: boolean;
   client?: QueryClient;
   openThreadId?: string | null;
-  onOpen?: (row: ListRow) => void;
+  onOpen?: (row: ListRow, focus: OpenFocus) => void;
+  onClose?: () => void;
   // A component around the tree, for a probe that has to render with it.
   wrapper?: JSXElementConstructor<{ children: ReactNode }>;
 }
@@ -64,7 +74,7 @@ export function inbox(): Mailbox {
   return INBOX;
 }
 
-function tree({ mailbox, cache, online, client, openThreadId, onOpen }: Filled) {
+function tree({ mailbox, mailboxes, cache, online, client, openThreadId, ...on }: Filled) {
   return (
     <QueryClientProvider client={client}>
       <ThreadList
@@ -73,10 +83,12 @@ function tree({ mailbox, cache, online, client, openThreadId, onOpen }: Filled) 
         cache={cache}
         accountId={FASTMAIL.id}
         mailbox={mailbox}
+        mailboxes={mailboxes}
         online={online}
         openThreadId={openThreadId}
         empty={<p>nothing here</p>}
-        onOpen={onOpen}
+        onOpen={on.onOpen}
+        onClose={on.onClose}
       />
     </QueryClientProvider>
   );
@@ -86,15 +98,21 @@ function opensNothing(): void {
   // The rig's default: a row opened goes nowhere.
 }
 
+function closesNothing(): void {
+  // The rig's default: a thread closed goes nowhere.
+}
+
 export function renderList(options: Options = {}) {
   const mailbox = options.mailbox ?? inbox();
   const filled: Filled = {
     mailbox,
+    mailboxes: options.mailboxes ?? MAILBOXES,
     cache: options.cache ?? fixtureCache({ [`${mailbox.id}/0`]: INBOX_PAGE }),
     online: options.online ?? true,
     client: options.client ?? new QueryClient(),
     openThreadId: options.openThreadId ?? null,
     onOpen: options.onOpen ?? opensNothing,
+    onClose: options.onClose ?? closesNothing,
   };
   const rendered = render(tree(filled), { wrapper: options.wrapper });
   return {
@@ -134,6 +152,19 @@ export function coreCache(server: FakeJmap): MailCache & { poll: () => Promise<v
     reveal: (accountId, mailboxId) => revealNewMail(store, accountId, mailboxId),
     body: () => Promise.resolve(null),
     mutate: () => Promise.resolve(),
+    mutateMany: async (accountId, mutations) => {
+      const logged = await mutateMany(store, accountId, mutations);
+      return { inverses: logged.inverses, held: logged.held, threads: logged.changes.threads };
+    },
+    release: async (accountId, held) => {
+      await releaseHeld(store, accountId, held);
+    },
+    drop: async (accountId, held) => {
+      await dropHeld(store, accountId, held);
+    },
+    job: () => Promise.resolve(),
+    cancelJob: () => Promise.resolve(),
+    quota: (accountId) => readQuota(store, accountId),
     poll: async () => {
       await applyChanges(client, store, [INBOX_ID]);
     },

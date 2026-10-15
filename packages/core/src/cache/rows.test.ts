@@ -46,6 +46,7 @@ test("a row reads its state from the members in the mailbox alone", () => {
       unread: true,
       flagged: true,
       hasAttachment: false,
+      memberIds: ["e2", "e3"],
       count: 2,
     },
   ]);

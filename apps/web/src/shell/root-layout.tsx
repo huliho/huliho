@@ -10,20 +10,19 @@ import { useEffect } from "react";
 
 import { useSignedOutElsewhere } from "../auth/use-signed-out-elsewhere";
 import { installCacheListener } from "../cache/client";
+import type { RefusedMessage } from "../cache/client";
 import { installCommandListener } from "../commands/registry";
-import { ToastProvider, Toasts, toastManager } from "../design-system/toast";
-import { m } from "../paraglide/messages.js";
+import { ToastProvider, Toasts } from "../design-system/toast";
+import { showRefused } from "../mail/actions/refusals";
 import { getLocale } from "../paraglide/runtime.js";
 import { flushPendingOnPageHide, reapplyPendingAfterFetch } from "../undo/pending";
 
 // Every tab hears of a change the server refused; the one in view that
 // holds the session says so, never the link page or the sign-in screen.
-function tellRefused(queryClient: QueryClient): void {
+function heardRefusal(queryClient: QueryClient, message: RefusedMessage): void {
   const session = queryClient.getQueryData(sessionQueryOptions.queryKey);
   const signedIn = session !== undefined && session !== null;
-  if (signedIn && document.visibilityState === "visible") {
-    toastManager.add({ description: m.body_mark_read_failed({}, { locale: getLocale() }) });
-  }
+  showRefused(message, getLocale(), signedIn && document.visibilityState === "visible");
 }
 
 export function RootLayout() {
@@ -35,8 +34,8 @@ export function RootLayout() {
     const uninstallReapply = reapplyPendingAfterFetch(queryClient);
     const uninstallCache = installCacheListener(queryClient, {
       cleared: signedOutElsewhere,
-      refused: () => {
-        tellRefused(queryClient);
+      refused: (message) => {
+        heardRefusal(queryClient, message);
       },
     });
     return () => {

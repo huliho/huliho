@@ -256,7 +256,6 @@
   "thread_field_reply_to": "Antwoord aan",
   "thread_unread": "Ongelezen",
   "thread_gone": "Dit gesprek is niet gevonden. Misschien is het verplaatst of verwijderd.",
-  "body_mark_read_failed": "Markeren als gelezen is niet gelukt. Je mail is veilig.",
   "body_frame_title": "Bericht van {sender} over {subject}",
   "body_frame_title_no_subject": "Bericht van {sender}",
   "body_error": "Dit bericht kon niet worden geladen. Je mail is veilig; er ging niets verloren.",
@@ -332,5 +331,12 @@
   "hint_move": "bladeren",
   "hint_open": "openen",
   "hint_undo": "ongedaan maken",
-  "hint_shortcuts": "sneltoetsen"
+  "hint_shortcuts": "sneltoetsen",
+  "command_thread": "{action, select, archive {Archiveren} delete {Verwijderen} deleteForever {Definitief verwijderen} spam {Markeren als spam} notSpam {Geen spam} read {Markeren als gelezen} unread {Markeren als ongelezen} star {Ster toevoegen} unstar {Ster weghalen} other {Verplaatsen naar…}}",
+  "action_done": "{action, select, archive {{count, plural, one {Gearchiveerd.} other {{count, number} gesprekken gearchiveerd.}}} delete {{count, plural, one {Verwijderd.} other {{count, number} gesprekken verwijderd.}}} deleteForever {{count, plural, one {Definitief verwijderd.} other {{count, number} gesprekken definitief verwijderd.}}} spam {{count, plural, one {Gemarkeerd als spam.} other {{count, number} gesprekken gemarkeerd als spam.}}} other {{count, plural, one {Gemarkeerd als geen spam.} other {{count, number} gesprekken gemarkeerd als geen spam.}}}}",
+  "refused_change": "{verb, select, archive {Archiveren is niet gelukt. Je mail is veilig.} delete {Verwijderen is niet gelukt. Je mail is veilig.} deleteForever {Definitief verwijderen is niet gelukt. Je mail is veilig.} spam {Markeren als spam is niet gelukt. Je mail is veilig.} notSpam {Markeren als geen spam is niet gelukt. Je mail is veilig.} read {Markeren als gelezen is niet gelukt. Je mail is veilig.} unread {Markeren als ongelezen is niet gelukt. Je mail is veilig.} star {Ster toevoegen is niet gelukt. Je mail is veilig.} unstar {Ster weghalen is niet gelukt. Je mail is veilig.} other {Verplaatsen is niet gelukt. Je mail is veilig.}}",
+  "appearance_after_action": "Na archiveren of verwijderen",
+  "appearance_after_action_next": "Het volgende gesprek openen",
+  "appearance_after_action_list": "Terug naar de lijst",
+  "appearance_after_action_hint": "Ook na markeren als spam of verplaatsen."
 }

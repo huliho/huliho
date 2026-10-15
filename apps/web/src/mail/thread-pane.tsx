@@ -45,6 +45,9 @@ export interface ThreadPaneProps {
   position: PanePosition;
   // Whether the way back shows its key; a phone has none.
   keyHints: boolean;
+  // Whether an action from a row opened the thread with the focus left
+  // in the list, where the title then leaves it.
+  listKeepsFocus: boolean;
   onClose: () => void;
 }
 
@@ -229,28 +232,46 @@ function ThreadBody(props: BodyProps) {
   );
 }
 
+// The title takes the focus once the thread is in, once per thread; a
+// thread opened with the focus kept in the list leaves it there.
+function useTitleFocus(
+  titleRef: RefObject<HTMLHeadingElement | null>,
+  threadId: string,
+  kept: boolean,
+): void {
+  const focusedForRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (focusedForRef.current === threadId) {
+      return;
+    }
+    if (kept) {
+      focusedForRef.current = threadId;
+      return;
+    }
+    const title = titleRef.current;
+    if (title === null) {
+      return;
+    }
+    focusedForRef.current = threadId;
+    title.focus();
+  });
+}
+
 // One open thread: its toolbar over the cards. Escape closes it from
-// anywhere; the title takes the focus once the thread is in.
+// anywhere; the title takes the focus once the thread is in, unless an
+// action from a row opened it and the focus stays in the list.
 export function ThreadPane(props: ThreadPaneProps) {
   const { locale, cache, accountId, threadId, mailbox, position, keyHints, onClose } = props;
   const today = useToday();
   const query = useQuery(threadQueryOptions(cache, accountId, threadId));
   const titleRef = useRef<HTMLHeadingElement>(null);
-  const focusedForRef = useRef<string | null>(null);
+  useTitleFocus(titleRef, threadId, props.listKeepsFocus);
   useCommand({
     id: "thread.close",
     label: m.thread_close({}, { locale }),
     group: "navigate",
     keys: CLOSE_KEYS,
     run: onClose,
-  });
-  useLayoutEffect(() => {
-    const title = titleRef.current;
-    if (title === null || focusedForRef.current === threadId) {
-      return;
-    }
-    focusedForRef.current = threadId;
-    title.focus();
   });
   return (
     <>

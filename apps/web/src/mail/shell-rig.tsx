@@ -48,6 +48,8 @@ export interface ShellOptions {
   readingPane?: ReadingPane;
   // The accounts of the session; the fixtures' pair by default.
   accounts?: AccountRow[];
+  // The query client, for a test that changes what the worker answered.
+  client?: QueryClient;
 }
 
 // Whether the width queries match: every one at the desktop width, none on a phone.
@@ -104,7 +106,7 @@ export function renderShell(path: string, options: ShellOptions = {}) {
     ]),
     history: createMemoryHistory({ initialEntries: [path] }),
   });
-  const queryClient = new QueryClient();
+  const queryClient = options.client ?? new QueryClient();
   queryClient.setQueryData(queryKeys.session, SESSION);
   queryClient.setQueryData(queryKeys.accounts, {
     accounts: options.accounts ?? ACCOUNTS,

@@ -71,18 +71,32 @@ function relaidHeaders(
   return { headers: relaid, fitted };
 }
 
-function relaidMember(id: string, member: MemberState, pending: Pending): MemberState {
-  const rows = pending.get(id);
-  return rows === undefined ? member : replayed(member, rows).state;
-}
-
-function relaidThreads(threads: readonly ThreadRow[], pending: Pending): ThreadRow[] {
-  return threads.map((thread) => ({
+// The threads that land with the pending changes of their members laid
+// over them. An email no header stands for anywhere takes the inverse
+// that fits the member that landed, as a header refits it.
+function relaidThreads(
+  threads: readonly ThreadRow[],
+  pending: Pending,
+  headed: ReadonlySet<string>,
+): { threads: ThreadRow[]; fitted: PendingRow[] } {
+  const fitted: PendingRow[] = [];
+  const relaid = threads.map((thread) => ({
     ...thread,
     members: Object.fromEntries(
-      Object.entries(thread.members).map(([id, member]) => [id, relaidMember(id, member, pending)]),
+      Object.entries(thread.members).map(([id, member]) => {
+        const rows = pending.get(id);
+        if (rows === undefined) {
+          return [id, member];
+        }
+        const replay = replayed(member, rows);
+        if (!headed.has(id)) {
+          fitted.push(...refitted(rows, replay.rows));
+        }
+        return [id, replay.state];
+      }),
     ),
   }));
+  return { threads: relaid, fitted };
 }
 
 // The rows a landing holds or the store holds, the landing first.
@@ -96,30 +110,51 @@ async function known<Row extends { id: string }>(
   return new Map([...stored, ...landed]);
 }
 
+// The threads of the pending emails: their headers' and, for an email
+// no header stands for, the one its rows name.
 async function standingOf(
   store: MailStore,
   accountId: string,
   landing: Landed,
-  emailIds: readonly string[],
+  { headers, pending }: { headers: Map<string, EmailHeader>; pending: Pending },
 ): Promise<Standing> {
-  const headers = await known(landing.headers, emailIds, (ids) => store.emails(accountId, ids));
-  const threadIds = [...new Set([...headers.values()].map((header) => header.threadId))];
+  const named = [...pending.values()].flat().flatMap((row) => row.threadId ?? []);
+  const threadIds = [
+    ...new Set([...[...headers.values()].map((header) => header.threadId), ...named]),
+  ];
   const threads = await known(landing.threads, threadIds, (ids) => store.threads(accountId, ids));
   return { headers, threads };
 }
 
+// Where a pending email stands now: its header's thread and state, else
+// the member its rows' thread holds.
+function placeOf(
+  { headers, threads }: Standing,
+  id: string,
+  rows: readonly PendingRow[],
+): { threadId: string; state: MemberState } | null {
+  const header = headers.get(id);
+  if (header !== undefined) {
+    return { threadId: header.threadId, state: memberOf(header) };
+  }
+  const threadId = rows.find((row) => row.threadId !== undefined)?.threadId;
+  const thread = threadId === undefined ? undefined : threads.get(threadId);
+  const state = thread === undefined ? undefined : new Map(Object.entries(thread.members)).get(id);
+  return threadId === undefined || state === undefined ? null : { threadId, state };
+}
+
 // How far the pending rows move the counts away from what the server
 // holds, which their inverses say.
-function pendingMoves({ headers, threads }: Standing, pending: Pending): Moves {
+function pendingMoves(standing: Standing, pending: Pending): Moves {
   const changes = [...pending].flatMap(([id, rows]): MemberChange[] => {
-    const header = headers.get(id);
-    if (header === undefined) {
+    const place = placeOf(standing, id, rows);
+    if (place === null) {
       return [];
     }
-    const after = memberOf(header);
-    return [{ id, threadId: header.threadId, before: unpatched(after, rows), after }];
+    const after = place.state;
+    return [{ id, threadId: place.threadId, before: unpatched(after, rows), after }];
   });
-  const members = new Map([...threads].map(([id, thread]) => [id, thread.members]));
+  const members = new Map([...standing.threads].map(([id, thread]) => [id, thread.members]));
   return movesOf(members, changes);
 }
 
@@ -150,16 +185,16 @@ async function relaidMailboxes(
 // fetched, and a destroy waiting in the log hides its email.
 function relaidLists(
   queries: readonly QueryRow[],
-  { headers, threads }: Standing,
+  standing: Standing,
   pending: Pending,
 ): QueryRow[] {
-  const gone = [...pending.keys()].flatMap((id) => {
-    const header = headers.get(id);
-    if (header === undefined) {
+  const gone = [...pending].flatMap(([id, rows]) => {
+    const place = placeOf(standing, id, rows);
+    if (place === null) {
       return [];
     }
-    const thread = threads.get(header.threadId);
-    const members = { ...thread?.members, [id]: memberOf(header) };
+    const thread = standing.threads.get(place.threadId);
+    const members = { ...thread?.members, [id]: place.state };
     return [{ ids: new Set([id, ...(thread?.emailIds ?? [])]), members: Object.values(members) }];
   });
   return queries.map((query) => {
@@ -186,19 +221,32 @@ async function overlaid(
   rows: readonly PendingRow[],
 ): Promise<{ batch: Batch; shifted: boolean }> {
   const held = byEmail(rows);
-  const { headers, fitted } = relaidHeaders(putOf(batch.emails), held);
+  const relaid = relaidHeaders(putOf(batch.emails), held);
+  const { headers } = relaid;
+  const standingHeaders = await known(headers, [...held.keys()], (ids) =>
+    store.emails(accountId, ids),
+  );
+  const byHeader = new Map(relaid.fitted.map((row) => [row.seq, row]));
+  const members = relaidThreads(
+    putOf(batch.threads),
+    byEmail(rows.map((row) => byHeader.get(row.seq) ?? row)),
+    new Set(standingHeaders.keys()),
+  );
+  const fitted = [...relaid.fitted, ...members.fitted];
   const refit = new Map(fitted.map((row) => [row.seq, row]));
   const pending = byEmail(rows.map((row) => refit.get(row.seq) ?? row));
-  const threads = relaidThreads(putOf(batch.threads), pending);
-  const landing = { headers, threads, mailboxes: putOf(batch.mailboxes) };
-  const standing = await standingOf(store, accountId, landing, [...pending.keys()]);
+  const landing = { headers, threads: members.threads, mailboxes: putOf(batch.mailboxes) };
+  const standing = await standingOf(store, accountId, landing, {
+    headers: standingHeaders,
+    pending,
+  });
   const logs = { held, pending, shifts: kind === "round" && fitted.length > 0 };
   const { fresh, shifted } = await relaidMailboxes(store, accountId, { landing, standing }, logs);
   return {
     batch: {
       ...batch,
       emails: { ...batch.emails, put: headers },
-      threads: { ...batch.threads, put: threads },
+      threads: { ...batch.threads, put: members.threads },
       mailboxes: { ...batch.mailboxes, put: [...fresh, ...shifted] },
       queries: { ...batch.queries, put: relaidLists(putOf(batch.queries), standing, pending) },
       pending: { ...batch.pending, put: [...putOf(batch.pending), ...fitted] },

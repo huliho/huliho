@@ -7,7 +7,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { TAB, applyCacheMessage } from "./client";
-import type { CacheListeners } from "./client";
+import type { CacheListeners, RefusedMessage } from "./client";
 import { LEASE_RENEW_MS } from "./coordinator";
 import type { Lease } from "./coordinator";
 import { CACHE_CHANNEL, readCacheMessage } from "./messages";
@@ -63,7 +63,10 @@ function kept(queryClient: QueryClient): string[] {
 }
 
 function listeners() {
-  return { cleared: vi.fn<() => void>(), refused: vi.fn<() => void>() } satisfies CacheListeners;
+  return {
+    cleared: vi.fn<() => void>(),
+    refused: vi.fn<(message: RefusedMessage) => void>(),
+  } satisfies CacheListeners;
 }
 
 test("a change invalidates the tree, every page of a moved list and the named threads", async () => {
@@ -114,8 +117,14 @@ test("an account the server stopped refetches the accounts list and nothing else
 test("a refused change is the tab's to tell and touches no query", async () => {
   const queryClient = await client();
   const heard = listeners();
-  applyCacheMessage(queryClient, { kind: "refused" }, heard);
-  expect(heard.refused).toHaveBeenCalledOnce();
+  const refused = {
+    kind: "refused",
+    accountId: "a1",
+    emailIds: ["e1"],
+    verbs: ["archive"],
+  } as const;
+  applyCacheMessage(queryClient, { ...refused, emailIds: ["e1"], verbs: ["archive"] }, heard);
+  expect(heard.refused).toHaveBeenCalledExactlyOnceWith(refused);
   expect(heard.cleared).not.toHaveBeenCalled();
   expect(stale(queryClient)).toEqual([]);
 });
@@ -159,7 +168,18 @@ test("only a message of the worker's shape is read", () => {
   expect(readCacheMessage({ kind: "account", stoppedCause: null })).toBeNull();
   expect(readCacheMessage({ ...changed, windows: [1] })).toBeNull();
   expect(readCacheMessage({ ...changed, accountId: 1 })).toBeNull();
-  expect(readCacheMessage({ kind: "refused", extra: true })).toEqual({ kind: "refused" });
+  const refused = {
+    kind: "refused",
+    accountId: "a1",
+    emailIds: ["e1"],
+    verbs: ["archive", "read"],
+  };
+  expect(readCacheMessage({ ...refused, extra: true })).toEqual(refused);
+  expect(readCacheMessage({ ...refused, verbs: ["burn"] })).toBeNull();
+  expect(readCacheMessage({ ...refused, emailIds: [1] })).toBeNull();
+  expect(readCacheMessage({ kind: "refused" })).toBeNull();
+  const progress = { job: { kind: "markRead", mailboxId: "m1" }, done: 0, total: null };
+  expect(readCacheMessage({ kind: "job", accountId: "a1", progress })).toBeNull();
   expect(readCacheMessage({ kind: "reset", extra: true })).toEqual({ kind: "reset" });
   expect(readCacheMessage({ kind: "strict", extra: true })).toEqual({ kind: "strict" });
   expect(readCacheMessage({ kind: "other" })).toBeNull();
@@ -300,7 +320,7 @@ test("the listener hears the worker's messages on the channel and nothing else",
   const post = worker.postMessage.bind(worker);
   post({ kind: "other" });
   post({ kind: "cleared", by: "another tab" });
-  post({ kind: "refused" });
+  post({ kind: "refused", accountId: "a1", emailIds: ["e1"], verbs: ["read"] });
   await vi.waitFor(() => {
     expect(heard.refused).toHaveBeenCalledOnce();
   });

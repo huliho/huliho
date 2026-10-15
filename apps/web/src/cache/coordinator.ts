@@ -9,31 +9,26 @@ import {
   firstSyncOf,
   listPage,
   queryWindow,
+  readQuota,
   readThread,
   revealNewMail,
   syncMailboxes,
 } from "@huliho/core";
-import type {
-  AppliedChanges,
-  BodyDetail,
-  ListPage,
-  MailStore,
-  Mailbox,
-  PatchMutation,
-  StopCause,
-  ThreadDetail,
-} from "@huliho/core";
+import type { AppliedChanges, MailStore, Mailbox, StopCause } from "@huliho/core";
 
 import { bodyDetail } from "./bodies";
 import { BodyQueue } from "./body-queue";
+import { Jobs } from "./jobs";
+import { LEASE_LOCK } from "./locks";
 import type { Locks } from "./locks";
 import type { CacheMessage } from "./messages";
 import { attempt } from "./outcome";
-import type { CacheResult } from "./outcome";
+import type { CacheApi } from "./surface";
 import type { Choice, WorkerStore } from "./store-choice";
 import { Watches } from "./watches";
-import type { Watch } from "./watches";
 import { Writes } from "./writes";
+
+export type { CacheApi, Lease } from "./surface";
 
 // The client asks for changes every sixty seconds until push lands.
 export const CHANGES_POLL_MS = 60_000;
@@ -51,38 +46,6 @@ export const LEASE_RENEW_MS = 30_000;
 const FOCUS_POLL_GAP_MS = 10_000;
 
 const EVERY_AREA = ["mailboxes", "emails", "threads", "queries", "bodies", "pending"] as const;
-
-// What a tab tells the worker: the accounts the session holds, when
-// that list was fetched, the mailbox it watches and whether the instance
-// keeps mail off the disk, renewed while the tab lives. The newest list
-// wins, so a tab behind never undoes one.
-export interface Lease {
-  accounts: readonly string[];
-  listedAt: number;
-  watching: Watch | null;
-  strict: boolean;
-}
-
-// The worker's surface for one tab. A read answers a result, since a
-// thrown error loses its fields on the way to the window.
-export interface CacheApi {
-  attach(lease: Lease): Promise<void>;
-  focus(): Promise<void>;
-  persisted(): Promise<void>;
-  // Sign out: the tab names itself, so every other tab hears who did it.
-  clear(by: string): Promise<void>;
-  mailboxes(accountId: string): Promise<CacheResult<Mailbox[]>>;
-  // A page crosses as the rows the list draws, made on this side.
-  window(accountId: string, mailboxId: string, page: number): Promise<CacheResult<ListPage>>;
-  thread(accountId: string, threadId: string): Promise<CacheResult<ThreadDetail | null>>;
-  reveal(accountId: string, mailboxId: string): Promise<CacheResult<void>>;
-  body(
-    accountId: string,
-    emailId: string,
-    options: { large: boolean },
-  ): Promise<CacheResult<BodyDetail | null>>;
-  mutate(accountId: string, mutation: PatchMutation): Promise<CacheResult<void>>;
-}
 
 export interface Dependencies {
   store: WorkerStore;
@@ -135,6 +98,7 @@ export class Coordinator {
   private readonly deps: Dependencies;
   private readonly store: MailStore;
   private readonly writes: Writes;
+  private readonly jobs: Jobs;
   private readonly bodies = new BodyQueue();
   private readonly persisted = Promise.withResolvers<undefined>();
   private readonly accounts = new Map<string, Account>();
@@ -150,11 +114,19 @@ export class Coordinator {
   constructor(deps: Dependencies) {
     this.deps = deps;
     this.store = held(deps.store, this.persisted.promise);
-    this.writes = new Writes({
-      client: (accountId) => this.client(accountId),
-      locked: (accountId, run) => this.locked(accountId, run),
-      post: (message) => {
+    const host = {
+      client: (accountId: string) => this.client(accountId),
+      locked: <Value>(accountId: string, run: (store: MailStore) => Promise<Value>) =>
+        this.locked(accountId, run),
+      post: (message: CacheMessage) => {
         deps.post(message);
+      },
+    };
+    this.writes = new Writes({ ...host, leases: () => deps.locks.held(LEASE_LOCK) });
+    this.jobs = new Jobs({
+      ...host,
+      poll: (accountId) => {
+        this.schedule(accountId, 0);
       },
     });
   }
@@ -162,7 +134,15 @@ export class Coordinator {
   // The surface of one tab; its watch lives and dies with it.
   api(): CacheApi {
     this.tabs += 1;
-    const tab = this.tabs;
+    return { ...this.tabSurface(this.tabs), ...this.reads(), ...this.changes() };
+  }
+
+  // The network is back: every account polls now, its log going out first.
+  online(): void {
+    this.pollNow(Number.POSITIVE_INFINITY);
+  }
+
+  private tabSurface(tab: number): Pick<CacheApi, "attach" | "focus" | "persisted" | "clear"> {
     return {
       attach: (lease) => {
         this.choose(lease.strict);
@@ -183,6 +163,11 @@ export class Coordinator {
         return Promise.resolve();
       },
       clear: (by) => this.clear(by),
+    };
+  }
+
+  private reads(): Pick<CacheApi, "mailboxes" | "window" | "thread" | "reveal" | "body" | "quota"> {
+    return {
       mailboxes: (accountId) => attempt(() => this.mailboxes(accountId)),
       window: (accountId, mailboxId, page) =>
         attempt(async () => {
@@ -202,13 +187,32 @@ export class Coordinator {
             bodyDetail(this.client(accountId), this.guarded(), emailId, options),
           ),
         ),
-      mutate: (accountId, mutation) => attempt(() => this.writes.mutate(accountId, mutation)),
+      quota: (accountId) => attempt(() => readQuota(this.store, accountId)),
     };
   }
 
-  // The network is back: every account polls now, its log going out first.
-  online(): void {
-    this.pollNow(Number.POSITIVE_INFINITY);
+  private changes(): Pick<
+    CacheApi,
+    "mutate" | "mutateMany" | "release" | "drop" | "job" | "cancelJob"
+  > {
+    const { writes, jobs } = this;
+    return {
+      mutate: (accountId, mutation) => attempt(() => writes.mutate(accountId, mutation)),
+      mutateMany: (accountId, mutations, tab) =>
+        attempt(() => writes.mutateMany(accountId, mutations, tab)),
+      release: (accountId, seqs) => attempt(() => writes.release(accountId, seqs)),
+      drop: (accountId, seqs) => attempt(() => writes.drop(accountId, seqs)),
+      job: (accountId, job) =>
+        attempt(() => {
+          jobs.start(accountId, job);
+          return Promise.resolve();
+        }),
+      cancelJob: (accountId) =>
+        attempt(() => {
+          jobs.cancel(accountId);
+          return Promise.resolve();
+        }),
+    };
   }
 
   // A list fresh from the server also drops what the database holds of
@@ -393,6 +397,7 @@ export class Coordinator {
       clearTimeout(account.timer);
     }
     this.writes.stop(accountId);
+    this.jobs.cancel(accountId);
     this.bodies.stop(accountId);
     this.accounts.delete(accountId);
   }

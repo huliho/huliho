@@ -17,14 +17,16 @@ function without(thread: ThreadRow, leaving: ReadonlySet<string>): ThreadRow {
 // The rows once the server destroyed emails: their headers and bodies
 // leave, their threads lose them and leave with the last one, the lists
 // drop their rows and the changes still logged for them leave the log.
+// `named` holds the threads of emails the store holds no header for.
 export async function goneOf(
   store: MailStore,
   accountId: string,
   ids: readonly string[],
+  named: readonly string[] = [],
 ): Promise<{ batch: Batch; changes: AppliedChanges }> {
   const leaving = new Set(ids);
   const headers = [...(await store.emails(accountId, ids)).values()];
-  const threadIds = [...new Set(headers.map((header) => header.threadId))];
+  const threadIds = [...new Set([...headers.map((header) => header.threadId), ...named])];
   const threads = [...(await store.threads(accountId, threadIds)).values()].map((thread) =>
     without(thread, leaving),
   );

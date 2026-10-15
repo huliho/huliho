@@ -16,7 +16,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { CACHE_CHANNEL } from "../cache/messages";
 import { RootLayout } from "./root-layout";
 
-const REFUSED = { kind: "refused" };
+const REFUSED = { kind: "refused", accountId: "a1", emailIds: ["e1"], verbs: ["read"] };
 const STOPPED = { kind: "account", accountId: "a1", stoppedCause: "connection" };
 const SENTENCE = "Couldn’t mark as read. Your mail is safe.";
 
@@ -69,5 +69,18 @@ test("a change the server refused is said in the tab in view that holds the sess
   post(REFUSED);
   await screen.findByText(SENTENCE);
   expect(screen.getAllByText(SENTENCE)).toHaveLength(1);
+  worker.close();
+});
+
+test("each verb of a refusal says its own sentence, without Undo", async () => {
+  const queryClient = await mounted();
+  queryClient.setQueryData(queryKeys.session, { privacyStrict: false });
+  seenAs("visible");
+  const worker = new BroadcastChannel(CACHE_CHANNEL);
+  const post = worker.postMessage.bind(worker);
+  post({ ...REFUSED, emailIds: ["e1", "e2"], verbs: ["archive", "unstar"] });
+  await screen.findByText("Couldn’t archive. Your mail is safe.");
+  expect(screen.getByText("Couldn’t remove the star. Your mail is safe.")).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   worker.close();
 });
