@@ -155,7 +155,8 @@ async fn a_request_without_a_session_is_refused_before_anything_resolves() {
     let response = send(&rig.router, request).await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(rig.lookups(), 0);
-    assert!(rig.requests().is_empty());
+    let paths = rig.requests();
+    assert!(paths.is_empty(), "{paths:?}");
 }
 
 #[tokio::test]
@@ -187,7 +188,8 @@ async fn a_url_off_the_rules_is_refused_before_anything_resolves() {
     assert_eq!(without_url.status(), StatusCode::BAD_REQUEST);
     assert!(body_text(without_url).await.contains("invalid_request"));
     assert_eq!(rig.lookups(), 0);
-    assert!(rig.requests().is_empty());
+    let paths = rig.requests();
+    assert!(paths.is_empty(), "{paths:?}");
     let fitting = format!("{base}{}", "a".repeat(REMOTE_URL_BYTES - base.len()));
     let (status, _, _) = fetch(&rig.router, &cookie, &fitting).await;
     assert_eq!(status, StatusCode::BAD_GATEWAY);
@@ -206,7 +208,8 @@ async fn a_private_host_and_a_redirect_into_one_are_refused_before_the_connect()
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body.contains("invalid_request"), "{body}");
     assert_eq!(rig.lookups(), 1);
-    assert!(rig.requests().is_empty());
+    let paths = rig.requests();
+    assert!(paths.is_empty(), "{paths:?}");
     let (status, _, body) = refused(&rig.router, &cookie, &rig.host.url(HOST, "/to/private")).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body.contains("invalid_request"), "{body}");
@@ -374,7 +377,8 @@ async fn a_session_draws_from_its_own_allowance_and_meets_429_past_it() {
     let other = rig.sign_in_again().await;
     let (status, _, _) = refused(&rig.router, &other, &inward).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(rig.requests().is_empty());
+    let paths = rig.requests();
+    assert!(paths.is_empty(), "{paths:?}");
 }
 
 #[tokio::test]

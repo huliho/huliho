@@ -99,7 +99,8 @@ async fn archive_is_one_uid_move_and_the_row_follows_under_its_new_uid_rfc6851_3
     let mut folders = vec![mailbox(&set, INBOX), archive];
     folders.sort();
     assert_eq!(set.updated(ObjectType::Mailbox, before), folders);
-    assert!(set.rig.changes(ObjectType::Thread, before).is_empty());
+    let threads = set.rig.changes(ObjectType::Thread, before);
+    assert!(threads.is_empty(), "{threads:?}");
     // The refresh finds each message where the move put it.
     let arguments = json!({ "accountId": ACCOUNT, "sinceState": answered["newState"] });
     let changed = set
@@ -184,7 +185,8 @@ async fn a_folder_account_refuses_an_email_in_two_folders_or_in_none_rfc8621_4_6
     assert_eq!(*named, json!([format!("mailboxIds/{inbox}")]));
     let unknown = &answered["notUpdated"][&set.ids[&3]]["properties"];
     assert_eq!(*unknown, json!(["mailboxIds/m-nowhere"]));
-    assert!(set.written().is_empty());
+    let commands = set.written();
+    assert!(commands.is_empty(), "{commands:?}");
 }
 
 #[tokio::test]

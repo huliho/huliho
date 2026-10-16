@@ -223,7 +223,7 @@ mod tests {
         let token = create(&store, &keys, &user_id, &Client::default()).unwrap();
         let resolved = authenticate(&store, &keys, GENEROUS_TIMEOUTS, &token).unwrap();
         assert_eq!(resolved.user_id, user_id);
-        assert!(!resolved.id.as_str().is_empty());
+        assert!(!resolved.id.as_str().is_empty(), "the session has no id");
     }
 
     #[test]

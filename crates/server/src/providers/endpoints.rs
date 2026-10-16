@@ -117,7 +117,7 @@ mod tests {
                 let url = Url::parse(text).unwrap();
                 assert_eq!(url.scheme(), "https", "{text}");
             }
-            assert!(!provider.scopes().is_empty());
+            assert!(!provider.scopes().is_empty(), "no scope for {provider:?}");
             assert_eq!(OauthProvider::from_word(provider.as_str()), Some(provider));
         }
         assert_eq!(OauthProvider::from_word("yahoo"), None);
@@ -126,7 +126,11 @@ mod tests {
                 .scopes()
                 .contains(&"offline_access")
         );
-        assert!(OauthProvider::Microsoft.extra_params().is_empty());
+        assert!(
+            OauthProvider::Microsoft.extra_params().is_empty(),
+            "{:?}",
+            OauthProvider::Microsoft.extra_params()
+        );
         assert_eq!(OauthProvider::Google.extra_params().len(), 2);
     }
 

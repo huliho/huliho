@@ -334,7 +334,7 @@ mod tests {
         let default = wanted(None).unwrap();
         assert_eq!(default.stored.len(), PROPERTIES.len());
         assert_eq!(default.body, DEFAULT_BODY);
-        assert!(default.headers.is_empty());
+        assert!(default.headers.is_empty(), "{:?}", default.headers);
         let picked = wanted(Some(&named(&[
             "subject",
             "preview",

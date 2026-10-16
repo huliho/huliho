@@ -374,8 +374,10 @@ mod tests {
             .map(|(start, end)| &text[start..end])
             .collect();
         assert_eq!(spans, ["5b1f17b1804b1-49fbbf104a9mb2431653045e9"]);
-        assert!(opaque_tokens("OK [READ-ONLY] selected. (Success) A0001 authenticated").is_empty());
-        assert!(opaque_tokens("00000000000000000000").is_empty());
+        let tokens = opaque_tokens("OK [READ-ONLY] selected. (Success) A0001 authenticated");
+        assert!(tokens.is_empty(), "{tokens:?}");
+        let tokens = opaque_tokens("00000000000000000000");
+        assert!(tokens.is_empty(), "{tokens:?}");
         assert!(is_tagged("A0001 OK done") && !is_tagged("* OK ready") && !is_tagged("+ "));
     }
 

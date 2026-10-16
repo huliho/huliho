@@ -209,7 +209,8 @@ async fn a_malformed_request_is_refused_before_anything_connects() {
         assert_eq!(status, StatusCode::BAD_REQUEST, "{label}: {text}");
         assert!(text.contains("invalid_request"), "{label}: {text}");
     }
-    assert!(server.requests().is_empty());
+    let requests = server.requests();
+    assert!(requests.is_empty(), "{requests:?}");
     assert_eq!(listed(&router, &cookie).await, 0);
 }
 
@@ -327,7 +328,8 @@ async fn a_certificate_outside_the_roots_is_insecure() {
     let (status, body) = refused(&server, &distrusting, &url).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     assert!(body.contains("upstream_insecure"));
-    assert!(server.requests().is_empty());
+    let requests = server.requests();
+    assert!(requests.is_empty(), "{requests:?}");
 }
 
 #[tokio::test]
@@ -346,5 +348,6 @@ async fn a_private_address_is_refused_before_the_connect() {
     let (status, body) = refused(&server, &server.config(false), &url).await;
     assert_eq!(status, StatusCode::BAD_GATEWAY, "{body}");
     assert!(body.contains("upstream_unreachable"));
-    assert!(server.requests().is_empty());
+    let requests = server.requests();
+    assert!(requests.is_empty(), "{requests:?}");
 }

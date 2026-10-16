@@ -140,7 +140,8 @@ async fn a_rejected_imap_password_stops_before_smtp_and_names_no_secret() {
     assert!(matches!(error, ProbeError::CredentialRejected), "{error}");
     assert!(!format!("{error} {error:?}").contains("wrong horse"));
     assert!(saw(&servers.imap.lines(), "LOGIN"));
-    assert!(servers.smtp.lines().is_empty());
+    let smtp_lines = servers.smtp.lines();
+    assert!(smtp_lines.is_empty(), "{smtp_lines:?}");
 }
 
 #[tokio::test]
@@ -165,7 +166,8 @@ async fn a_closed_imap_port_is_unreachable() {
         .await
         .unwrap_err();
     assert!(matches!(error, ProbeError::Unreachable(_)), "{error}");
-    assert!(servers.smtp.lines().is_empty());
+    let smtp_lines = servers.smtp.lines();
+    assert!(smtp_lines.is_empty(), "{smtp_lines:?}");
 }
 
 #[tokio::test]
@@ -227,8 +229,10 @@ async fn an_imap_certificate_outside_the_roots_is_insecure() {
     .await
     .unwrap_err();
     assert!(matches!(error, ProbeError::Insecure(_)), "{error}");
-    assert!(servers.imap.lines().is_empty());
-    assert!(servers.smtp.lines().is_empty());
+    let imap_lines = servers.imap.lines();
+    assert!(imap_lines.is_empty(), "{imap_lines:?}");
+    let smtp_lines = servers.smtp.lines();
+    assert!(smtp_lines.is_empty(), "{smtp_lines:?}");
 }
 
 #[tokio::test]
@@ -254,7 +258,8 @@ async fn a_name_the_certificate_does_not_carry_is_insecure_and_names_no_host() {
         .unwrap_err();
     assert!(matches!(error, ProbeError::Insecure(_)), "{error}");
     assert!(!format!("{error} {error:?}").contains(OTHER_HOST));
-    assert!(servers.imap.lines().is_empty());
+    let imap_lines = servers.imap.lines();
+    assert!(imap_lines.is_empty(), "{imap_lines:?}");
 }
 
 #[tokio::test]
@@ -269,7 +274,8 @@ async fn starttls_absent_on_imap_is_insecure() {
     .await
     .unwrap_err();
     assert!(matches!(error, ProbeError::Insecure(_)), "{error}");
-    assert!(servers.smtp.lines().is_empty());
+    let smtp_lines = servers.smtp.lines();
+    assert!(smtp_lines.is_empty(), "{smtp_lines:?}");
 }
 
 #[tokio::test]
@@ -285,7 +291,8 @@ async fn a_private_address_is_refused_before_the_connect() {
     .unwrap_err();
     assert!(matches!(error, ProbeError::Unreachable(_)), "{error}");
     assert!(!format!("{error}").contains(imap::HOST));
-    assert!(servers.imap.lines().is_empty());
+    let imap_lines = servers.imap.lines();
+    assert!(imap_lines.is_empty(), "{imap_lines:?}");
 }
 
 #[tokio::test]
@@ -343,8 +350,10 @@ async fn a_token_on_an_imap_target_is_unsupported_without_a_connection() {
     .await
     .unwrap_err();
     assert!(matches!(error, ProbeError::Unsupported(_)), "{error}");
-    assert!(servers.imap.lines().is_empty());
-    assert!(servers.smtp.lines().is_empty());
+    let imap_lines = servers.imap.lines();
+    assert!(imap_lines.is_empty(), "{imap_lines:?}");
+    let smtp_lines = servers.smtp.lines();
+    assert!(smtp_lines.is_empty(), "{smtp_lines:?}");
 }
 
 #[tokio::test]

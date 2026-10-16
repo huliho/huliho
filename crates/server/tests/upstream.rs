@@ -95,7 +95,8 @@ async fn a_private_address_from_dns_is_refused_before_the_connect() {
     let url = url(&server, HOST, "/");
     let refusing = Upstream::with_dns(&server.config(false), Arc::clone(&dns)).unwrap();
     assert!(status(&refusing, &url).await.is_err());
-    assert!(server.requests().is_empty());
+    let requests = server.requests();
+    assert!(requests.is_empty(), "{requests:?}");
     let allowing = Upstream::with_dns(&server.config(true), dns).unwrap();
     assert_eq!(status(&allowing, &url).await.unwrap(), StatusCode::OK);
     assert_eq!(server.requests().len(), 1);
@@ -110,7 +111,8 @@ async fn a_certificate_outside_the_roots_is_refused() {
     };
     let upstream = Upstream::with_dns(&config, dns_at(&server, &[HOST])).unwrap();
     assert!(status(&upstream, &url(&server, HOST, "/")).await.is_err());
-    assert!(server.requests().is_empty());
+    let requests = server.requests();
+    assert!(requests.is_empty(), "{requests:?}");
 }
 
 #[tokio::test]
@@ -120,7 +122,8 @@ async fn a_name_the_certificate_does_not_carry_is_refused() {
         Upstream::with_dns(&server.config(true), dns_at(&server, &["unlisted.test"])).unwrap();
     let result = status(&upstream, &url(&server, "unlisted.test", "/")).await;
     assert!(result.is_err());
-    assert!(server.requests().is_empty());
+    let requests = server.requests();
+    assert!(requests.is_empty(), "{requests:?}");
 }
 
 #[tokio::test]
@@ -245,13 +248,8 @@ async fn resolve_pins_the_checked_addresses_on_the_port() {
         upstream.resolve("public.test", 993).await.unwrap(),
         [SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 993)]
     );
-    assert!(
-        upstream
-            .resolve("unknown.test", 993)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    let addresses = upstream.resolve("unknown.test", 993).await.unwrap();
+    assert!(addresses.is_empty(), "{addresses:?}");
 }
 
 #[tokio::test]

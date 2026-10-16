@@ -94,6 +94,7 @@ mod tests {
         assert_eq!(ids(None), Err(MethodError::RequestTooLarge));
         let many = vec!["x".to_owned(); MAX_OBJECTS_IN_GET + 1];
         assert_eq!(ids(Some(&many)), Err(MethodError::RequestTooLarge));
-        assert!(ids(Some(&[])).unwrap().is_empty());
+        let answered = ids(Some(&[])).unwrap();
+        assert!(answered.is_empty(), "{answered:?}");
     }
 }

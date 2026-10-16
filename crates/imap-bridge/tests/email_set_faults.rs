@@ -343,7 +343,8 @@ async fn a_host_out_of_reach_answers_per_update_and_the_cache_keeps_answering() 
         assert_eq!(refused(&set, &answered, uid), "serverUnavailable");
     }
     untouched(&set, before).await;
-    assert!(set.written().is_empty());
+    let commands = set.written();
+    assert!(commands.is_empty(), "{commands:?}");
 }
 
 #[tokio::test]

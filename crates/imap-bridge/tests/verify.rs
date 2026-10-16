@@ -228,7 +228,8 @@ async fn a_bye_greeting_is_unreachable() {
         matches!(error, VerifyError::Unreachable(SessionError::Closed)),
         "{error}"
     );
-    assert!(fake.lines().is_empty());
+    let lines = fake.lines();
+    assert!(lines.is_empty(), "{lines:?}");
 }
 
 #[tokio::test]
@@ -242,7 +243,8 @@ async fn a_server_that_does_not_speak_imap_is_unsupported() {
         matches!(error, VerifyError::Unsupported(SessionError::Protocol(_))),
         "{error}"
     );
-    assert!(fake.lines().is_empty());
+    let lines = fake.lines();
+    assert!(lines.is_empty(), "{lines:?}");
 }
 
 #[tokio::test]
@@ -256,7 +258,8 @@ async fn a_certificate_outside_the_roots_is_insecure() {
         matches!(error, VerifyError::Insecure(SessionError::Tls(_))),
         "{error}"
     );
-    assert!(fake.lines().is_empty());
+    let lines = fake.lines();
+    assert!(lines.is_empty(), "{lines:?}");
 }
 
 #[tokio::test]
@@ -270,7 +273,8 @@ async fn a_name_the_certificate_does_not_carry_is_insecure() {
         matches!(error, VerifyError::Insecure(SessionError::Tls(_))),
         "{error}"
     );
-    assert!(fake.lines().is_empty());
+    let lines = fake.lines();
+    assert!(lines.is_empty(), "{lines:?}");
 }
 
 #[tokio::test]
@@ -309,7 +313,7 @@ async fn an_implicit_target_never_speaks_plaintext() {
         matches!(error, VerifyError::Insecure(SessionError::Tls(_))),
         "{error}"
     );
-    assert!(fake.lines().is_empty());
+    assert!(fake.lines().is_empty(), "{:?}", fake.lines());
 }
 
 #[tokio::test]

@@ -159,7 +159,7 @@ async fn new_mail_is_created_and_a_flag_change_is_updated_under_condstore_rfc716
     // The two refreshes that found a change asked from the mod-sequence
     // the folder stood at before; the two that found none asked nothing.
     assert_eq!(changed_since(&rig), ["1", "2"]);
-    assert!(scanned(&rig).is_empty());
+    assert!(scanned(&rig).is_empty(), "{:?}", scanned(&rig));
 }
 
 #[tokio::test]
@@ -173,7 +173,7 @@ async fn a_folder_that_stands_as_the_cache_left_it_costs_no_command() {
         assert_eq!(lengths(&changes(&rig, "Email", synced).await), (0, 0, 0));
     }
     assert_eq!(received(&rig, " EXAMINE "), examined);
-    assert!(changed_since(&rig).is_empty());
+    assert!(changed_since(&rig).is_empty(), "{:?}", changed_since(&rig));
     model.store_flags(INBOX, 3, &["\\Seen", "\\Flagged"]);
     assert_eq!(lengths(&changes(&rig, "Email", synced).await), (0, 1, 0));
     assert_eq!(received(&rig, " EXAMINE "), examined + 1);
@@ -213,7 +213,7 @@ async fn a_changedsince_answer_past_the_bound_puts_the_folder_on_the_scan_from_t
         "the answer past the bound ends the refresh"
     );
     assert_eq!(changed_since(&rig), ["1"]);
-    assert!(scanned(&rig).is_empty());
+    assert!(scanned(&rig).is_empty(), "{:?}", scanned(&rig));
     let scans = usize::try_from(count).unwrap().div_ceil(SYNC_BATCH);
     // Ten thousand and one updates pass the horizon of the log, so the
     // client that asks from before them refetches its windows.
@@ -263,7 +263,7 @@ async fn without_condstore_only_the_folder_the_client_looks_at_gets_its_flags_sc
     model.store_flags("Work", 12, &["\\Seen", "\\Flagged"]);
     let unseen = changes(&rig, "Email", synced).await;
     assert_eq!(lengths(&unseen), (0, 0, 0), "no folder is looked at yet");
-    assert!(scanned(&rig).is_empty());
+    assert!(scanned(&rig).is_empty(), "{:?}", scanned(&rig));
     let inbox_id = rig.folder(INBOX).id;
     let query = json!({ "accountId": ACCOUNT, "filter": { "inMailbox": inbox_id } });
     rig.call(&json!(["Email/query", query, "c1"])).await;
@@ -274,7 +274,7 @@ async fn without_condstore_only_the_folder_the_client_looks_at_gets_its_flags_sc
         [json!("Message 2")]
     );
     assert_eq!(scanned(&rig), ["1:3"]);
-    assert!(changed_since(&rig).is_empty());
+    assert!(changed_since(&rig).is_empty(), "{:?}", changed_since(&rig));
 }
 
 #[tokio::test]

@@ -52,7 +52,7 @@ async fn another_users_range_request_is_not_found_and_nothing_connects() {
     let uri = path(&id, NAME, Some("image/png"));
     let (status, _, body) = download(&instance.router, &other, &uri, Some("bytes=0-99")).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body:?}");
-    assert!(instance.upstream.lines().is_empty());
+    assert_eq!(instance.upstream.lines(), Vec::<String>::new());
     assert_eq!(
         instance.account_events(),
         [(
@@ -92,7 +92,8 @@ async fn a_template_lacking_a_variable_or_off_the_rules_is_not_usable() {
         // a fresh session object.
         instance.api.endpoints.forget(&AccountId::from(id.clone()));
     }
-    assert!(downloads(&instance).is_empty());
+    let lines = downloads(&instance);
+    assert!(lines.is_empty(), "{lines:?}");
     instance.upstream.set(Script {
         download_url: "/jmap/download/{accountId}/{blobId}/{name}?accept={type}".to_owned(),
         ..Script::echo(port)

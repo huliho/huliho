@@ -273,7 +273,7 @@ async fn a_chain_hit_reaches_the_route_and_its_requests_carry_no_address() {
         Answer::NotFound => panic!("nothing found"),
     }
     let requests = server.requests();
-    assert!(!requests.is_empty());
+    assert!(!requests.is_empty(), "the chain sent no request");
     assert!(requests.iter().all(|line| !line.contains("sanne")));
 }
 
@@ -286,7 +286,8 @@ async fn an_unknown_domain_answers_not_found() {
         answer(&router, &cookie, "sanne@nowhere.test").await,
         Answer::NotFound
     ));
-    assert!(server.requests().is_empty());
+    let requests = server.requests();
+    assert!(requests.is_empty(), "{requests:?}");
 }
 
 /// The free run of the sign-in limiter is three failures; the fourth

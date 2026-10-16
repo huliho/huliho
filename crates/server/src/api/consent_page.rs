@@ -128,8 +128,14 @@ mod tests {
 
     #[test]
     fn both_catalogs_carry_the_sentence_in_their_own_words() {
-        assert!(!Language::En.close_window().is_empty());
-        assert!(!Language::Nl.close_window().is_empty());
+        assert!(
+            !Language::En.close_window().is_empty(),
+            "the en catalog has no sentence"
+        );
+        assert!(
+            !Language::Nl.close_window().is_empty(),
+            "the nl catalog has no sentence"
+        );
         assert_ne!(Language::En.close_window(), Language::Nl.close_window());
     }
 

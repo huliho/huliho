@@ -165,7 +165,7 @@ mod tests {
         let store = Store::in_memory().unwrap();
         let snapshot = store.quota(&key());
         assert!(!snapshot.advertised);
-        assert!(snapshot.rows.is_empty());
+        assert!(snapshot.rows.is_empty(), "{:?}", snapshot.rows);
         assert!(snapshot.state.ends_with("-0"), "{}", snapshot.state);
     }
 

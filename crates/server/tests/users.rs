@@ -129,7 +129,7 @@ async fn the_owner_lists_both_users_with_names_and_activity() {
     let owner_row = rows.iter().find(|row| row.login == LOGIN).unwrap();
     assert_eq!(owner_row.role, "owner");
     assert!(owner_row.last_active_at.is_some());
-    assert!(!owner_row.id.is_empty());
+    assert!(!owner_row.id.is_empty(), "the owner row has no id");
 }
 
 #[tokio::test]

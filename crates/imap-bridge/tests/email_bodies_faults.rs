@@ -183,7 +183,8 @@ async fn a_get_without_a_row_to_read_fetches_nothing_under_the_default_propertie
     let unknown = get(&rig, json!({ "accountId": ACCOUNT, "ids": ["e-nope"] })).await;
     assert_eq!(unknown["list"], json!([]));
     assert_eq!(unknown["notFound"], json!(["e-nope"]));
-    assert!(fetches(&rig).is_empty());
+    let fetched = fetches(&rig);
+    assert!(fetched.is_empty(), "{fetched:?}");
 }
 
 #[tokio::test]
@@ -295,7 +296,8 @@ async fn a_body_ask_the_bridge_cannot_serve_is_refused_rfc8620_3_6_2() {
     for (arguments, expected) in cases {
         assert_eq!(get(&rig, arguments).await["type"], expected, "{expected}");
     }
-    assert!(fetches(&rig).is_empty());
+    let fetched = fetches(&rig);
+    assert!(fetched.is_empty(), "{fetched:?}");
 }
 
 #[tokio::test]

@@ -164,7 +164,7 @@ fn a_keyword_write_is_one_state_and_a_starred_message_of_all_mail_joins_the_flag
     };
     let written = store.write_set(&account(), &write).unwrap();
     assert_eq!((written.before, written.after), (state, state + 1));
-    assert!(written.stale.is_empty());
+    assert!(written.stale.is_empty(), "{:?}", written.stale);
     assert_eq!(
         members(&store, &ids, &id),
         named(&["All", "Inbox", "Starred", "Work"])
@@ -206,7 +206,8 @@ fn a_keyword_write_is_one_state_and_a_starred_message_of_all_mail_joins_the_flag
         )
         .unwrap();
     assert_eq!((foreign.after, foreign.stale), (0, vec![id.clone()]));
-    assert!(keywords(&store, &id).is_empty());
+    let kept = keywords(&store, &id);
+    assert!(kept.is_empty(), "{kept:?}");
 }
 
 #[test]
@@ -241,7 +242,8 @@ fn labels_move_memberships_and_the_flagged_mailbox_stars_the_message() {
         ..SetWrite::default()
     };
     store.write_set(&account(), &unstar).unwrap();
-    assert!(keywords(&store, &id).is_empty());
+    let kept = keywords(&store, &id);
+    assert!(kept.is_empty(), "{kept:?}");
     assert_eq!(members(&store, &ids, &id), named(&["All", "Work"]));
 }
 
@@ -341,7 +343,8 @@ fn a_move_the_target_cannot_take_parks_the_row_on_gmail_and_destroys_it_elsewher
     let written = store.write_set(&account(), &write).unwrap();
     let outcome = (written.after, written.stale.len(), written.emails.len());
     assert_eq!(outcome, (state, 0, 0));
-    assert!(logged(&store, ObjectType::Email, state).is_empty());
+    let emails = logged(&store, ObjectType::Email, state);
+    assert!(emails.is_empty(), "{emails:?}");
     for parked in [&renumbered, &crowded] {
         let (_, rows) = store.keyword_rows(&account(), &[parked.as_str()]).unwrap();
         assert_eq!(

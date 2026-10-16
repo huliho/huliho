@@ -243,7 +243,10 @@ async fn a_gmail_account_holds_one_conversation_for_the_sync_and_one_for_the_req
             "c1"
         ]))
         .await;
-    assert!(!answer["created"].as_array().unwrap().is_empty());
+    assert!(
+        !answer["created"].as_array().unwrap().is_empty(),
+        "no mailbox was created"
+    );
     assert_eq!(rig.connects.load(Ordering::SeqCst), 2);
 }
 

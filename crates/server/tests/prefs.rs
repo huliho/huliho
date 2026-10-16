@@ -85,7 +85,8 @@ fn the_listed_preferences_come_back_as_words_and_the_rest_stays_out() {
     let store = store();
     let user = personal(&store, "mira@example.com");
     let scope = scope_of(&store, &user);
-    assert!(prefs::preferences(&store, &scope).unwrap().is_empty());
+    let listed = prefs::preferences(&store, &scope).unwrap();
+    assert!(listed.is_empty(), "{listed:?}");
     prefs::set_preference(&store, &scope, PreferenceKey::Theme.as_str(), &"dark").unwrap();
     prefs::set_preference(&store, &scope, PreferenceKey::Locale.as_str(), &"nl").unwrap();
     prefs::set_preference(
@@ -161,7 +162,8 @@ fn the_listed_policies_come_back_by_sender_and_the_rest_stays_out() {
     let store = store();
     let user = personal(&store, "mira@example.com");
     let scope = scope_of(&store, &user);
-    assert!(prefs::sender_policies(&store, &scope).unwrap().is_empty());
+    let listed = prefs::sender_policies(&store, &scope).unwrap();
+    assert!(listed.is_empty(), "{listed:?}");
     let remote = |sender| PolicyKey {
         sender,
         name: PolicyName::RemoteContent.as_str(),
