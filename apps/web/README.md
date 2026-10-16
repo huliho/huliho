@@ -336,6 +336,6 @@ built Storybook, so a stale build gives stale images. Baselines are
 rendered on Linux, so the comparison runs in CI and the images are
 refreshed from the repo root with the container whose tag matches the
 installed `@playwright/test` version, building both first:
-`docker run --rm -e CI=true -v "$PWD":/work -w /work mcr.microsoft.com/playwright:v1.63.0-noble bash -c "corepack enable && pnpm install --frozen-lockfile && pnpm build && pnpm --filter @huliho/web build:storybook && pnpm --filter @huliho/web exec playwright test --update-snapshots"`
+`docker run --rm -e CI=true -v "$PWD":/work -w /work mcr.microsoft.com/playwright:v1.64.1-noble bash -c "corepack enable && pnpm install --frozen-lockfile && pnpm build && pnpm --filter @huliho/web build:storybook && pnpm --filter @huliho/web exec playwright test --update-snapshots"`
 The container swaps `node_modules` to Linux binaries; run
 `CI=true pnpm install` afterwards to restore them.

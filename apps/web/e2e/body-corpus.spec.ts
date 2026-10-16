@@ -28,9 +28,10 @@ const SCRIPT_SCHEME = "javascript:";
 // A link the pipeline routed opens through this path; any other link
 // of a message has no address to follow.
 const BARE_LINK = 'a:not([href*="/open#"])';
-// How the console names a base address the app's policy refused. The
-// window's layer parses a case under that policy before it drops the tag.
-const BASE_REFUSED = "Setting the document's base URI";
+// How the console names a base address and an inline handler the app's
+// policy refused. The window's layer parses a case under that policy
+// before it drops them; nothing of it runs there.
+const PARSE_REFUSALS = ["Setting the document's base URI", "Executing inline event handler"];
 
 // The inbox at the size of the corpus, every message read.
 function sized(row: MailboxBody): MailboxBody {
@@ -85,14 +86,15 @@ interface Errors {
 
 // The errors the page logs from here on, each named by the case on
 // screen. A script that ran or was refused leaves one; the app's own
-// policy refusing the base address of a case is the one error expected.
+// policy refusing what the window's layer parses is the error expected.
 function errorsFrom(page: Page): Errors {
   const logged: string[] = [];
   let shown = "";
   page.on("pageerror", (error) => logged.push(`${shown}: ${error.message}`));
   page.on("console", (message) => {
-    if (message.type() === "error" && !message.text().startsWith(BASE_REFUSED)) {
-      logged.push(`${shown}: ${message.text()}`);
+    const text = message.text();
+    if (message.type() === "error" && !PARSE_REFUSALS.some((refusal) => text.startsWith(refusal))) {
+      logged.push(`${shown}: ${text}`);
     }
   });
   return {
@@ -101,6 +103,30 @@ function errorsFrom(page: Page): Errors {
       shown = title;
     },
   };
+}
+
+// Every policy refusal that names an element of the app's document. A
+// refusal in a document the window's layer parses names that document
+// instead, so an element here means a case reached the live document.
+async function recordElementRefusals(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const refused: string[] = [];
+    Object.assign(window, { __elementRefusals: refused });
+    document.addEventListener("securitypolicyviolation", (event) => {
+      if (event.target instanceof Element) {
+        refused.push(`${event.effectiveDirective} on ${event.target.localName}`);
+      }
+    });
+  });
+}
+
+function isStringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+async function elementRefusals(page: Page): Promise<string[]> {
+  const found = await page.evaluate((): unknown => Reflect.get(window, "__elementRefusals"));
+  return isStringList(found) ? found : ["the refusal list is missing"];
 }
 
 // Whether a message's frame sent the request; a worker's request has no frame.
@@ -134,6 +160,7 @@ test("every corpus case renders in the app's frame with no canary fired, no erro
       fromMessages.push(request.url());
     }
   });
+  await recordElementRefusals(page);
   const mail = await openInbox(page, "right", INBOX_PATH, {
     mailboxes: CASE_INBOX,
     mail: { corpus: corpusOfCases(INBOX_ID, CASES) },
@@ -159,6 +186,7 @@ test("every corpus case renders in the app's frame with no canary fired, no erro
   }
   expect(found).toEqual([]);
   expect(errors.logged).toEqual([]);
+  expect(await elementRefusals(page)).toEqual([]);
   expect(left).toEqual([]);
   // No case carries a part of its own, so a message has nothing to ask for.
   expect(fromMessages).toEqual([]);
