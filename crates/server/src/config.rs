@@ -275,7 +275,11 @@ mod tests {
     #[test]
     fn upstream_defaults_trust_nothing_extra() {
         let upstream = Config::default().upstream;
-        assert!(upstream.allow_private_networks.is_empty());
+        assert!(
+            upstream.allow_private_networks.is_empty(),
+            "{:?}",
+            upstream.allow_private_networks
+        );
         assert!(upstream.additional_ca_file.is_none());
         assert_eq!(
             upstream.probe_interval_minutes,

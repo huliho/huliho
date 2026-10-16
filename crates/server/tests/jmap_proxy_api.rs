@@ -108,7 +108,7 @@ async fn another_users_account_is_not_found_on_both_routes_and_nothing_connects(
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     let (status, body) = instance.request(&other, &id, &query_request()).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-    assert!(instance.upstream.lines().is_empty());
+    assert_eq!(instance.upstream.lines(), Vec::<String>::new());
     assert_eq!(
         instance.account_events(),
         [(
@@ -139,7 +139,8 @@ async fn both_routes_need_a_session_and_the_request_route_the_header() {
     let (status, text) = send(&instance, bare).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert!(text.contains("missing_csrf_header"), "{text}");
-    assert!(instance.upstream.lines().is_empty());
+    let lines = instance.upstream.lines();
+    assert!(lines.is_empty(), "{lines:?}");
 }
 
 #[tokio::test]
@@ -168,7 +169,8 @@ async fn a_stopped_account_answers_409_with_its_cause_before_anything_connects()
         assert_eq!(body["error"], "still_stopped");
         assert_eq!(body["cause"], "connection");
     }
-    assert!(instance.upstream.lines().is_empty());
+    let lines = instance.upstream.lines();
+    assert!(lines.is_empty(), "{lines:?}");
     assert_eq!(instance.stopped_cause(&id).as_deref(), Some("connection"));
 }
 

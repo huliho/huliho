@@ -149,7 +149,8 @@ async fn another_users_download_is_not_found_and_a_stopped_account_answers_409_b
     assert_eq!(status, StatusCode::CONFLICT);
     let body = String::from_utf8(body.unwrap()).unwrap();
     assert!(body.contains("still_stopped"), "{body}");
-    assert!(instance.fake.lines().is_empty());
+    let lines = instance.fake.lines();
+    assert!(lines.is_empty(), "{lines:?}");
     assert_eq!(instance.bridge_rows(&id), 0);
     assert_eq!(
         instance.account_events(),

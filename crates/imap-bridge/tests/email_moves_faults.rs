@@ -217,6 +217,7 @@ async fn a_host_out_of_reach_answers_per_object_and_writes_nothing() {
         destroyed["notDestroyed"][&set.ids[&1]]["type"],
         "serverUnavailable"
     );
-    assert!(set.written().is_empty());
+    let commands = set.written();
+    assert!(commands.is_empty(), "{commands:?}");
     untouched(&set, before).await;
 }

@@ -202,7 +202,7 @@ mod tests {
         }
         assert_eq!(found.concat(), flags);
         assert_eq!(runs(&flags[..3], str::len), [&flags[..3]]);
-        assert!(runs(&[], str::len).is_empty());
+        assert!(runs(&[], str::len).is_empty(), "{:?}", runs(&[], str::len));
         assert!(fits(LONGEST));
         assert!(fits(MAX_UPDATE_KEYWORD_BYTES - 1));
         assert!(!fits(MAX_UPDATE_KEYWORD_BYTES));

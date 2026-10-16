@@ -321,7 +321,8 @@ async fn a_private_address_from_dns_is_refused_before_the_connect() {
         run(&server, Arc::clone(&dns), false, Budget::default()).await,
         None
     );
-    assert!(server.requests().is_empty());
+    let requests = server.requests();
+    assert!(requests.is_empty(), "{requests:?}");
     assert!(run(&server, dns, true, Budget::default()).await.is_some());
 }
 
@@ -373,7 +374,8 @@ async fn a_well_known_domain_makes_no_lookup() {
         .unwrap();
     assert_eq!(found.provider, Provider::Gmail);
     assert!(dns.queries.lock().unwrap().is_empty());
-    assert!(server.requests().is_empty());
+    let requests = server.requests();
+    assert!(requests.is_empty(), "{requests:?}");
 }
 
 #[tokio::test]

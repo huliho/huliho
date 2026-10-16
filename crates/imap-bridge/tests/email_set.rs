@@ -73,7 +73,8 @@ async fn seen_on_and_off_is_one_store_and_one_state_each_rfc8621_4_6() {
     let off = set.update(&[(1, json!({ "keywords/$seen": null }))]).await;
     assert_eq!(off["newState"], (before + 2).to_string(), "{off}");
     assert_eq!(set.written()[3], "UID STORE 1 -FLAGS.SILENT (\\Seen)");
-    assert!(set.flags(INBOX, 1).is_empty());
+    let flags = set.flags(INBOX, 1);
+    assert!(flags.is_empty(), "{flags:?}");
     assert_eq!(set.keywords(1).await, json!({}));
 }
 
@@ -188,7 +189,8 @@ async fn if_in_state_is_honored_before_anything_is_sent_rfc8620_5_3() {
     let refused = set.rig.calls(&[json!(["Email/set", behind, "c1"])]).await;
     assert_eq!(refused["methodResponses"][0][0], "error", "{refused}");
     assert_eq!(refused["methodResponses"][0][1]["type"], "stateMismatch");
-    assert!(set.written().is_empty());
+    let commands = set.written();
+    assert!(commands.is_empty(), "{commands:?}");
     let current = json!({ "ifInState": state.to_string(), "update": update });
     let stored = set.set(current).await;
     assert_eq!(stored["oldState"], state.to_string(), "{stored}");
@@ -207,7 +209,8 @@ async fn a_create_is_forbidden_per_object_rfc8620_5_3() {
     );
     assert_eq!(answered["oldState"], answered["newState"]);
     assert_eq!(answered["destroyed"], Value::Null);
-    assert!(set.written().is_empty());
+    let commands = set.written();
+    assert!(commands.is_empty(), "{commands:?}");
 }
 
 #[tokio::test]
@@ -222,7 +225,8 @@ async fn an_id_the_account_does_not_hold_is_not_found_and_nothing_is_sent() {
     );
     assert_eq!(answered["notUpdated"]["nonsense"]["type"], "notFound");
     assert_eq!(answered["updated"], Value::Null);
-    assert!(set.written().is_empty());
+    let commands = set.written();
+    assert!(commands.is_empty(), "{commands:?}");
 }
 
 #[tokio::test]
@@ -253,7 +257,8 @@ async fn an_email_of_another_account_is_not_found_and_stays_as_it_was() {
         .unwrap();
     let foreign: Value = serde_json::from_slice(&foreign).unwrap();
     assert_eq!(foreign["methodResponses"][0][1]["type"], "accountNotFound");
-    assert!(set.written().is_empty());
+    let commands = set.written();
+    assert!(commands.is_empty(), "{commands:?}");
     assert_eq!(set.keywords(1).await, json!({}));
 }
 
@@ -276,12 +281,14 @@ async fn any_other_property_and_any_other_value_are_named_back_and_never_sent() 
     assert_eq!(named(1), json!(["mailboxIds/x"]));
     assert_eq!(named(2), json!(["keywords/$seen"]));
     assert_eq!(named(3), json!(["keywords/a b", "keywords/x)"]));
-    assert!(set.written().is_empty());
+    let commands = set.written();
+    assert!(commands.is_empty(), "{commands:?}");
     let both = set
         .update(&[(1, json!({ "keywords": {}, "keywords/$seen": true }))])
         .await;
     assert_eq!(refused(&set, &both, 1), "invalidPatch");
-    assert!(set.written().is_empty());
+    let commands = set.written();
+    assert!(commands.is_empty(), "{commands:?}");
 }
 
 #[tokio::test]

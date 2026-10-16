@@ -240,8 +240,10 @@ mod tests {
             client(&store, &keys(), OauthProvider::Google).unwrap(),
             None
         );
-        assert!(registered(&store).unwrap().is_empty());
-        assert!(provider_events(&store, &scope).is_empty());
+        let providers = registered(&store).unwrap();
+        assert!(providers.is_empty(), "{providers:?}");
+        let facts = provider_events(&store, &scope);
+        assert!(facts.is_empty(), "{facts:?}");
     }
 
     #[test]

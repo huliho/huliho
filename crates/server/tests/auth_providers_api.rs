@@ -181,8 +181,10 @@ async fn an_owner_without_the_flag_is_forbidden_on_both_routes() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
-    assert!(providers::registered(&store).unwrap().is_empty());
-    assert!(provider_events(&router, &store, &cookie).await.is_empty());
+    let registered = providers::registered(&store).unwrap();
+    assert!(registered.is_empty(), "{registered:?}");
+    let facts = provider_events(&router, &store, &cookie).await;
+    assert!(facts.is_empty(), "{facts:?}");
 }
 
 #[tokio::test]
@@ -314,5 +316,6 @@ async fn an_unknown_provider_word_is_not_found_and_bad_fields_are_refused() {
     )
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(providers::registered(&store).unwrap().is_empty());
+    let registered = providers::registered(&store).unwrap();
+    assert!(registered.is_empty(), "{registered:?}");
 }

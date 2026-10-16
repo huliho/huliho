@@ -234,7 +234,7 @@ async fn a_gmail_consent_adds_the_account_with_xoauth2_and_seals_its_tokens() {
         .await
         .unwrap();
     let listed: Value = serde_json::from_str(&body_text(response).await).unwrap();
-    assert!(listed["accounts"].as_array().unwrap().is_empty());
+    assert_eq!(listed["accounts"], json!([]));
 }
 
 #[tokio::test]

@@ -311,11 +311,10 @@ async fn a_submission_server_without_auth_is_smtp_auth_unavailable_and_stores_no
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     assert_eq!(body["error"], "smtp_auth_unavailable");
     assert!(imap.lines().iter().any(|line| line.contains("LOGIN")));
+    let listed = list(&instance.router, &cookie).await;
     assert!(
-        list(&instance.router, &cookie).await["accounts"]
-            .as_array()
-            .unwrap()
-            .is_empty()
+        listed["accounts"].as_array().unwrap().is_empty(),
+        "{listed}"
     );
 }
 
@@ -342,11 +341,10 @@ async fn the_added_row_stays_inside_its_user() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
     let other_cookie = signin::cookie_of(&response);
+    let listed = list(&plain, &other_cookie).await;
     assert!(
-        list(&plain, &other_cookie).await["accounts"]
-            .as_array()
-            .unwrap()
-            .is_empty()
+        listed["accounts"].as_array().unwrap().is_empty(),
+        "{listed}"
     );
 }
 

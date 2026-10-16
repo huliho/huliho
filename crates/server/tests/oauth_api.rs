@@ -194,7 +194,7 @@ async fn the_consent_url_carries_pkce_the_state_the_scopes_and_the_hint() {
     let (status, started) = rig.start_consent(&cookie, &gmail_start_body()).await;
     assert_eq!(status, StatusCode::OK, "{started}");
     let state = started["state"].as_str().unwrap();
-    assert!(!state.is_empty());
+    assert!(!state.is_empty(), "the consent has no state");
     let url = started["url"].as_str().unwrap();
     assert!(url.starts_with("https://accounts.google.com/o/oauth2/v2/auth?"));
     let pairs = query_pairs(url);
@@ -271,9 +271,12 @@ async fn cancel_ends_the_owners_open_consent_so_its_callback_lands_nothing() {
     let (status, body) = rig.callback(visit(Some(&cookie), "google", &query)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(body.contains("You can close this window."));
-    assert!(rig.token_requests().is_empty());
-    assert!(rig.imap.lines().is_empty());
-    assert!(rig.accounts(&cookie).await.is_empty());
+    let requests = rig.token_requests();
+    assert!(requests.is_empty(), "{requests:?}");
+    let lines = rig.imap.lines();
+    assert!(lines.is_empty(), "{lines:?}");
+    let rows = rig.accounts(&cookie).await;
+    assert!(rows.is_empty(), "{rows:?}");
     // A settled consent stays as it is; its outcome is still there for the poll.
     let (_, started) = rig.start_consent(&cookie, &gmail_start_body()).await;
     let state = started["state"].as_str().unwrap();
@@ -317,8 +320,10 @@ async fn a_callback_from_another_session_or_without_one_is_refused_and_the_conse
         assert!(body.contains("You can close this window."), "{label}");
     }
     assert!(rig.forms.lock().unwrap().is_empty());
-    assert!(rig.token_requests().is_empty());
-    assert!(rig.imap.lines().is_empty());
+    let requests = rig.token_requests();
+    assert!(requests.is_empty(), "{requests:?}");
+    let lines = rig.imap.lines();
+    assert!(lines.is_empty(), "{lines:?}");
     let (_, pending) = rig.pending(&cookie, state).await;
     assert_eq!(pending, json!({ "status": "pending" }));
     let denied = format!("error=access_denied&state={state}");
@@ -343,7 +348,8 @@ async fn a_callback_from_another_session_or_without_one_is_refused_and_the_conse
     let (status, _) = rig.callback(visit(Some(&cookie), "google", &query)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(rig.forms.lock().unwrap().is_empty());
-    assert!(rig.accounts(&cookie).await.is_empty());
+    let rows = rig.accounts(&cookie).await;
+    assert!(rows.is_empty(), "{rows:?}");
 }
 
 #[tokio::test]
@@ -402,5 +408,6 @@ async fn a_submission_server_without_auth_denies_with_the_outlook_word() {
             .any(|line| line.contains("AUTHENTICATE XOAUTH2"))
     );
     assert!(rig.smtp.lines().iter().any(|line| line.contains("EHLO")));
-    assert!(rig.accounts(&cookie).await.is_empty());
+    let rows = rig.accounts(&cookie).await;
+    assert!(rows.is_empty(), "{rows:?}");
 }

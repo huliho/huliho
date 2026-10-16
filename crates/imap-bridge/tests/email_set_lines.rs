@@ -128,7 +128,8 @@ async fn keywords_past_one_command_line_go_out_in_stores_that_each_fit_rfc7162_4
     let cleared = stores(&set, "-FLAGS.SILENT");
     assert_eq!(cleared.len(), 2, "{cleared:?}");
     each_fits_and_carries_once(&cleared, &held);
-    assert!(set.flags(INBOX, 1).is_empty());
+    let flags = set.flags(INBOX, 1);
+    assert!(flags.is_empty(), "{flags:?}");
     assert_eq!(set.keywords(1).await, json!({}));
 }
 
@@ -185,7 +186,8 @@ async fn a_label_as_long_as_a_name_may_be_is_never_sent_and_its_update_fails() {
     let widest = patch(&set, &[(&longest, json!(true))]);
     let answered = set.update(&[(1, widest)]).await;
     assert_eq!(refused(&set, &answered, 1), "serverFail", "{answered}");
-    assert!(set.written().is_empty());
+    let commands = set.written();
+    assert!(commands.is_empty(), "{commands:?}");
     assert_eq!(logins(&set), signed, "nothing was asked of the server");
     assert_eq!(labels(&set, 1), ["\\Inbox"]);
     let fitting = patch(&set, &[(WORK, json!(true))]);

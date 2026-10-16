@@ -174,7 +174,7 @@ async fn another_users_account_is_not_found_on_a_body_request_and_nothing_connec
         .request(&other, &id, &body_request(&full_properties()))
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-    assert!(instance.upstream.lines().is_empty());
+    assert_eq!(instance.upstream.lines(), Vec::<String>::new());
     assert_eq!(
         instance.account_events(),
         [(
@@ -235,7 +235,8 @@ async fn a_body_ask_without_html_body_or_with_fetch_all_is_refused_before_anythi
         assert_eq!(status, StatusCode::BAD_REQUEST, "{request}: {body}");
         assert_eq!(body["error"], "invalid_request", "{request}");
     }
-    assert!(instance.upstream.lines().is_empty());
+    let lines = instance.upstream.lines();
+    assert!(lines.is_empty(), "{lines:?}");
 }
 
 #[tokio::test]

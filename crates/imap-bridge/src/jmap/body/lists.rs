@@ -357,7 +357,7 @@ mod tests {
         let found = lists(&plain);
         assert_eq!(ids(&found.text), ["1"]);
         assert_eq!(ids(&found.html), ["1"]);
-        assert!(found.attachments.is_empty());
+        assert!(found.attachments.is_empty(), "{:?}", found.attachments);
         assert_eq!(ids(&leaves(&plain)), ["1"]);
         let attached = leaf("application", "pdf", Some("attachment"), Some("a.pdf"));
         let found = lists(&attached);

@@ -203,6 +203,7 @@ mod tests {
         );
         assert!(!listed.iter().any(|(_, id)| Some(id) == gamma.account_id()));
         resume(&store, &alpha, &Actor::System).unwrap();
-        assert!(stopped_on_connection(&store).unwrap().is_empty());
+        let listed = stopped_on_connection(&store).unwrap();
+        assert!(listed.is_empty(), "{listed:?}");
     }
 }
