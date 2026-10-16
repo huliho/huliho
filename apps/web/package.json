@@ -35,7 +35,7 @@
     "@babel/core": "^8.0.0",
     "@inlang/paraglide-js": "^2.25.0",
     "@lhci/cli": "0.15.1",
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.64.1",
     "@rolldown/plugin-babel": "^0.2.3",
     "@storybook/react-vite": "10.6.0",
     "@testing-library/react": "^16.3.3",
