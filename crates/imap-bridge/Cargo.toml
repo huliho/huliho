@@ -14,7 +14,7 @@ live-targets = []
 test-support = ["dep:rcgen", "tokio/macros"]
 
 [dependencies]
-async-imap = { version = "0.11.3", default-features = false, features = ["runtime-tokio"] }
+async-imap = { version = "0.12.0", default-features = false, features = ["runtime-tokio"] }
 base64 = "0.23.1"
 gethostname = "1.1.0"
 mail-parser = { version = "0.11.9", default-features = false, features = ["full_encoding"] }
