@@ -131,7 +131,8 @@ jobs:
             echo "the license check refused a choice of two allowed licenses"
             exit 1
           fi
-          pnpm licenses list --prod --json > "$RUNNER_TEMP/licenses.json"
+          # From pnpm 12.7 a listing without --recursive covers the root project alone.
+          pnpm licenses list --prod --json --recursive > "$RUNNER_TEMP/licenses.json"
           node "$RUNNER_TEMP/licenses.mjs" "$RUNNER_TEMP/licenses.json"
       - name: parser peer range guard
         run: |
