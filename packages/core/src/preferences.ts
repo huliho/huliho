@@ -21,14 +21,14 @@ const DARK_MAILS = ["adapt", "original"] as const;
 const AFTER_ACTIONS = ["next", "list"] as const;
 
 const preferencesSchema = z.object({
-  readingPane: z.enum(READING_PANES).optional(),
-  theme: z.enum(THEMES).optional(),
-  density: z.enum(DENSITIES).optional(),
-  locale: z.enum(PREFERENCE_LOCALES).optional(),
-  fontSize: z.enum(FONT_SIZES).optional(),
-  lineHeight: z.enum(LINE_HEIGHTS).optional(),
-  darkMail: z.enum(DARK_MAILS).optional(),
-  afterAction: z.enum(AFTER_ACTIONS).optional(),
+  readingPane: z.optional(z.enum(READING_PANES)),
+  theme: z.optional(z.enum(THEMES)),
+  density: z.optional(z.enum(DENSITIES)),
+  locale: z.optional(z.enum(PREFERENCE_LOCALES)),
+  fontSize: z.optional(z.enum(FONT_SIZES)),
+  lineHeight: z.optional(z.enum(LINE_HEIGHTS)),
+  darkMail: z.optional(z.enum(DARK_MAILS)),
+  afterAction: z.optional(z.enum(AFTER_ACTIONS)),
 });
 
 export type ReadingPane = (typeof READING_PANES)[number];

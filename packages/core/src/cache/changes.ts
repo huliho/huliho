@@ -188,7 +188,7 @@ function changesOf(responses: readonly Invocation[], type: ObjectType): ChangesA
 
 // The objects a get by reference answered, null when there were too
 // many for one answer; any other refusal is the caller's.
-function listed<Schema extends z.ZodType<{ list: unknown[] }>>(
+function listed<Schema extends z.ZodMiniType<{ list: unknown[] }>>(
   responses: readonly Invocation[],
   call: string,
   schema: Schema,

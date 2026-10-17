@@ -148,7 +148,7 @@ export type Outcome<Value> = { status: "ok"; value: Value } | { status: "error";
 export function outcome<Value>(
   responses: readonly Invocation[],
   call: string,
-  schema: z.ZodType<Value>,
+  schema: z.ZodMiniType<Value>,
 ): Outcome<Value> {
   const found = responses.find(([, , id]) => id === call);
   if (found === undefined) {
@@ -165,7 +165,7 @@ export function outcome<Value>(
 export function answer<Value>(
   responses: readonly Invocation[],
   call: string,
-  schema: z.ZodType<Value>,
+  schema: z.ZodMiniType<Value>,
 ): Value {
   const read = outcome(responses, call, schema);
   if (read.status === "error") {

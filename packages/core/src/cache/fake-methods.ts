@@ -22,29 +22,32 @@ export interface Change {
 
 const getArgsSchema = z.object({
   accountId: z.string(),
-  ids: z.array(z.string()).nullable().optional(),
-  properties: z.array(z.string()).optional(),
+  ids: z.nullish(z.array(z.string())),
+  properties: z.optional(z.array(z.string())),
 });
 
-const comparatorSchema = z.object({ property: z.string(), isAscending: z.boolean().optional() });
+const comparatorSchema = z.object({ property: z.string(), isAscending: z.optional(z.boolean()) });
 
 const queryArgsSchema = z.object({
   accountId: z.string(),
   filter: z.unknown(),
-  sort: z.array(comparatorSchema).optional(),
-  position: z.number().int().optional(),
-  anchor: z.string().optional(),
-  anchorOffset: z.number().int().optional(),
-  limit: z.number().int().optional(),
-  calculateTotal: z.boolean().optional(),
-  collapseThreads: z.boolean().optional(),
+  sort: z.optional(z.array(comparatorSchema)),
+  position: z.optional(z.int()),
+  anchor: z.optional(z.string()),
+  anchorOffset: z.optional(z.int()),
+  limit: z.optional(z.int()),
+  calculateTotal: z.optional(z.boolean()),
+  collapseThreads: z.optional(z.boolean()),
 });
 
-const filterSchema = z.strictObject({ inMailbox: z.string(), notKeyword: z.string().optional() });
+const filterSchema = z.strictObject({ inMailbox: z.string(), notKeyword: z.optional(z.string()) });
 
 const changesArgsSchema = z.object({ accountId: z.string(), sinceState: z.string() });
 
-function parse<Value extends { accountId: string }>(schema: z.ZodType<Value>, args: Args): Value {
+function parse<Value extends { accountId: string }>(
+  schema: z.ZodMiniType<Value>,
+  args: Args,
+): Value {
   const read = schema.safeParse(args);
   if (!read.success) {
     throw new MethodError("invalidArguments");

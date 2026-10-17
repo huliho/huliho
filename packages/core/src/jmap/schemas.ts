@@ -50,8 +50,8 @@ export const STATE_PROPERTIES = ["id", "threadId", "mailboxIds", "keywords"] as 
 // object to one, so a call never leaves the instance.
 const SAME_ORIGIN_PATH = /^\/(?![/\\])/;
 
-export const idSchema = z.string().min(1);
-export const countSchema = z.number().int().nonnegative();
+export const idSchema = z.string().check(z.minLength(1));
+export const countSchema = z.int().check(z.nonnegative());
 // A set of ids or keywords as JMAP writes it: every value true.
 export const setSchema = z.record(z.string(), z.literal(true));
 // RFC 8620 section 1.4: a UTCDate ends in Z, a Date may carry an offset.
@@ -60,31 +60,31 @@ const dateSchema = z.iso.datetime({ offset: true });
 
 // The core limits the client keeps to (RFC 8620 section 2).
 export const coreLimitsSchema = z.object({
-  maxCallsInRequest: z.number().int().positive(),
-  maxObjectsInGet: z.number().int().positive(),
-  maxObjectsInSet: z.number().int().nonnegative(),
+  maxCallsInRequest: z.int().check(z.positive()),
+  maxObjectsInGet: z.int().check(z.positive()),
+  maxObjectsInSet: z.int().check(z.nonnegative()),
 });
 
 // The variables a download template carries (RFC 8620 section 2).
 const DOWNLOAD_VARIABLES = ["{accountId}", "{blobId}", "{name}", "{type}"] as const;
 
-const downloadUrlSchema = z
-  .string()
-  .regex(SAME_ORIGIN_PATH)
-  .refine((template) => DOWNLOAD_VARIABLES.every((variable) => template.includes(variable)));
+const downloadUrlSchema = z.string().check(
+  z.regex(SAME_ORIGIN_PATH),
+  z.refine((template) => DOWNLOAD_VARIABLES.every((variable) => template.includes(variable))),
+);
 
 // An account without its capabilities reads as one that has none beyond
 // what the session names.
 const accountSchema = z.object({
   isReadOnly: z.boolean(),
-  accountCapabilities: z.record(z.string(), z.unknown()).optional(),
+  accountCapabilities: z.optional(z.record(z.string(), z.unknown())),
 });
 
 export const sessionObjectSchema = z.object({
   capabilities: z.record(z.string(), z.unknown()),
   accounts: z.record(z.string(), accountSchema),
   primaryAccounts: z.record(z.string(), idSchema),
-  apiUrl: z.string().regex(SAME_ORIGIN_PATH),
+  apiUrl: z.string().check(z.regex(SAME_ORIGIN_PATH)),
   downloadUrl: downloadUrlSchema,
   state: z.string(),
 });
@@ -104,8 +104,8 @@ const rightsSchema = z.object({
 export const mailboxSchema = z.object({
   id: idSchema,
   name: z.string(),
-  parentId: idSchema.nullable(),
-  role: z.string().nullable(),
+  parentId: z.nullable(idSchema),
+  role: z.nullable(z.string()),
   sortOrder: countSchema,
   totalEmails: countSchema,
   unreadEmails: countSchema,
@@ -114,12 +114,12 @@ export const mailboxSchema = z.object({
   myRights: rightsSchema,
   isSubscribed: z.boolean(),
   // Under the vendor capability: the emails the bridge holds for the mailbox.
-  syncedEmails: countSchema.optional(),
+  syncedEmails: z.optional(countSchema),
 });
 
-const addressSchema = z.object({ name: z.string().nullable(), email: z.string() });
-const addressesSchema = z.array(addressSchema).nullable();
-const messageIdsSchema = z.array(z.string()).nullable();
+const addressSchema = z.object({ name: z.nullable(z.string()), email: z.string() });
+const addressesSchema = z.nullable(z.array(addressSchema));
+const messageIdsSchema = z.nullable(z.array(z.string()));
 
 export const emailStateSchema = z.object({
   id: idSchema,
@@ -128,7 +128,7 @@ export const emailStateSchema = z.object({
   keywords: setSchema,
 });
 
-export const emailHeaderSchema = emailStateSchema.extend({
+export const emailHeaderSchema = z.extend(emailStateSchema, {
   blobId: z.string(),
   size: countSchema,
   receivedAt: utcDateSchema,
@@ -141,8 +141,8 @@ export const emailHeaderSchema = emailStateSchema.extend({
   cc: addressesSchema,
   bcc: addressesSchema,
   replyTo: addressesSchema,
-  subject: z.string().nullable(),
-  sentAt: dateSchema.nullable(),
+  subject: z.nullable(z.string()),
+  sentAt: z.nullable(dateSchema),
   hasAttachment: z.boolean(),
   preview: z.string(),
 });
@@ -161,7 +161,7 @@ export const responseSchema = z.object({
 export const methodErrorSchema = z.object({ type: z.string() });
 
 // The answer of a /get (RFC 8620 section 5.1) over one object shape.
-export function getAnswerSchema<Item extends z.ZodType>(item: Item) {
+export function getAnswerSchema<Item extends z.ZodMiniType>(item: Item) {
   return z.object({ state: z.string(), list: z.array(item), notFound: z.array(z.string()) });
 }
 
@@ -179,8 +179,8 @@ export const queryAnswerSchema = z.object({
   queryState: z.string(),
   position: countSchema,
   ids: z.array(idSchema),
-  total: countSchema.optional(),
-  limit: z.number().int().positive().optional(),
+  total: z.optional(countSchema),
+  limit: z.optional(z.int().check(z.positive())),
 });
 
 // Why one object of a /set was not written (RFC 8620 section 5.3).
@@ -189,16 +189,16 @@ const setErrorSchema = z.object({ type: z.string() });
 // The answer of a /set that updates and destroys (RFC 8620 section 5.3);
 // a server may leave an empty map out instead of naming it null.
 export const setAnswerSchema = z.object({
-  oldState: z.string().nullish(),
+  oldState: z.nullish(z.string()),
   newState: z.string(),
-  updated: z.record(z.string(), z.unknown()).nullish(),
-  notUpdated: z.record(z.string(), setErrorSchema).nullish(),
-  destroyed: z.array(idSchema).nullish(),
-  notDestroyed: z.record(z.string(), setErrorSchema).nullish(),
+  updated: z.nullish(z.record(z.string(), z.unknown())),
+  notUpdated: z.nullish(z.record(z.string(), setErrorSchema)),
+  destroyed: z.nullish(z.array(idSchema)),
+  notDestroyed: z.nullish(z.record(z.string(), setErrorSchema)),
 });
 
 // The problem details of a request that was not run (RFC 8620 section 3.6.1).
-export const problemSchema = z.object({ type: z.string(), limit: z.string().optional() });
+export const problemSchema = z.object({ type: z.string(), limit: z.optional(z.string()) });
 
 export type SessionObject = z.infer<typeof sessionObjectSchema>;
 export type Mailbox = z.infer<typeof mailboxSchema>;

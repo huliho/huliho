@@ -20,7 +20,7 @@ const tlsModeSchema = z.enum(["implicit", "starttls"]);
 
 const endpointSchema = z.object({
   host: z.string(),
-  port: z.number().int(),
+  port: z.int(),
   tls: tlsModeSchema,
 });
 
@@ -41,14 +41,14 @@ const accountRowSchema = z.object({
   provider: providerSchema,
   kind: accountKindSchema,
   authMethod: authMethodSchema,
-  stoppedCause: stopCauseSchema.nullable(),
-  stoppedAt: z.number().nullable(),
+  stoppedCause: z.nullable(stopCauseSchema),
+  stoppedAt: z.nullable(z.number()),
   createdAt: z.number(),
 });
 
 const accountListSchema = z.object({
   accounts: z.array(accountRowSchema),
-  probeIntervalMinutes: z.number().int().positive(),
+  probeIntervalMinutes: z.int().check(z.positive()),
 });
 
 const foundServerSchema = z.object({
@@ -61,7 +61,7 @@ const foundServerSchema = z.object({
 });
 
 const discoverySchema = z.discriminatedUnion("status", [
-  foundServerSchema.extend({ status: z.literal("found") }),
+  z.extend(foundServerSchema, { status: z.literal("found") }),
   z.object({ status: z.literal("notFound") }),
 ]);
 
@@ -80,7 +80,7 @@ const consentDeniedCauseSchema = z.enum([
 // The window goes wherever this says, so only an https URL passes.
 const startedConsentSchema = z.object({
   url: z.url({ protocol: /^https$/ }),
-  state: z.string().min(1),
+  state: z.string().check(z.minLength(1)),
 });
 
 const consentOutcomeSchema = z.discriminatedUnion("status", [

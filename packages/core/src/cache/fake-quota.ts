@@ -14,7 +14,7 @@ export const GIB = 1_073_741_824;
 
 const getArgsSchema = z.object({
   accountId: z.string(),
-  ids: z.array(z.string()).nullable().optional(),
+  ids: z.nullish(z.array(z.string())),
 });
 
 // The quota methods answer only where the account lists the capability

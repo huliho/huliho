@@ -29,16 +29,16 @@ export const BODY_PROPERTIES = [
 // One part with the default body properties (RFC 8621 section 4.1.4).
 // subParts is not asked for, so a part's children are left out.
 export const emailBodyPartSchema = z.object({
-  partId: z.string().nullable(),
-  blobId: z.string().nullable(),
+  partId: z.nullable(z.string()),
+  blobId: z.nullable(z.string()),
   size: countSchema,
-  name: z.string().nullable(),
+  name: z.nullable(z.string()),
   type: z.string(),
-  charset: z.string().nullable(),
-  disposition: z.string().nullable(),
-  cid: z.string().nullable(),
-  language: z.array(z.string()).nullable(),
-  location: z.string().nullable(),
+  charset: z.nullable(z.string()),
+  disposition: z.nullable(z.string()),
+  cid: z.nullable(z.string()),
+  language: z.nullable(z.array(z.string())),
+  location: z.nullable(z.string()),
 });
 
 export const emailBodyValueSchema = z.object({
@@ -57,7 +57,7 @@ export const bodyAnswerSchema = z.object({
   bodyValues: z.record(z.string(), emailBodyValueSchema),
   // Every instance in the order of the message, the topmost first.
   "header:Authentication-Results:asRaw:all": z.array(z.string()),
-  "header:Content-Type:asRaw": z.string().nullable(),
+  "header:Content-Type:asRaw": z.nullable(z.string()),
 });
 
 export type EmailBodyPart = z.infer<typeof emailBodyPartSchema>;

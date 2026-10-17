@@ -55,7 +55,7 @@ interface Wanted {
 // window and a poll ask them by result reference first; this is the
 // road when that answer was too large, and the road a thread's members
 // take.
-export async function fetchInChunks<Schema extends z.ZodType>(
+export async function fetchInChunks<Schema extends z.ZodMiniType>(
   client: JmapClient,
   wanted: Wanted,
   item: Schema,
