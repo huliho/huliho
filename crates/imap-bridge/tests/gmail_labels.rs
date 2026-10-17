@@ -278,13 +278,8 @@ fn a_parked_row_is_claimed_by_another_store_and_a_lone_one_leaves_at_the_sweep()
         logged(&store, ObjectType::Mailbox, claimed),
         [(spam.to_string(), ChangeKind::Updated)]
     );
-    assert!(
-        store
-            .emails(&key(), &[id.as_str()])
-            .unwrap()
-            .rows
-            .is_empty()
-    );
+    let rows = store.emails(&key(), &[id.as_str()]).unwrap().rows;
+    assert!(rows.is_empty(), "{rows:?}");
     let swept = store.state(&key()).unwrap();
     assert_eq!(store.sweep_parked(&key()).unwrap(), swept, "nothing waits");
 }

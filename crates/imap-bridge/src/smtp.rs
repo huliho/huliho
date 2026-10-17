@@ -271,6 +271,6 @@ mod tests {
 
     #[test]
     fn the_ehlo_name_is_never_empty() {
-        assert!(!ehlo_host().is_empty());
+        assert!(!ehlo_host().is_empty(), "the EHLO name is empty");
     }
 }

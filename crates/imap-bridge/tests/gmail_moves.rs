@@ -116,7 +116,8 @@ async fn archive_on_gmail_removes_the_inbox_label_and_nothing_else() {
             "UID STORE 1 -X-GM-LABELS.SILENT (\\Inbox)",
         ]
     );
-    assert!(labels(&set, ALL_MAIL, 1).is_empty());
+    let held = labels(&set, ALL_MAIL, 1);
+    assert!(held.is_empty(), "{held:?}");
     assert_eq!(members(&set, 1).await, [ALL_MAIL]);
     assert_eq!(
         set.updated(ObjectType::Mailbox, before),
@@ -221,7 +222,7 @@ async fn trash_on_gmail_is_a_move_between_the_stores_and_a_destroy_stays_there()
     );
     let folders = set.rig.fake.script().mailboxes.folders();
     let trash = folders.iter().find(|folder| folder.name == TRASH).unwrap();
-    assert!(trash.mail.is_empty());
+    assert!(trash.mail.is_empty(), "{:?}", trash.mail);
 }
 
 #[tokio::test]
@@ -230,7 +231,8 @@ async fn a_destroy_outside_spam_and_trash_is_forbidden_on_gmail() {
     let answered = set.set(json!({ "destroy": [set.ids[&1]] })).await;
     let refusal = &answered["notDestroyed"][&set.ids[&1]]["type"];
     assert_eq!(refusal, "forbidden", "{answered}");
-    assert!(set.written().is_empty());
+    let commands = set.written();
+    assert!(commands.is_empty(), "{commands:?}");
 }
 
 #[tokio::test]
@@ -281,7 +283,8 @@ async fn a_patch_gmail_cannot_hold_is_named_back_and_nothing_is_sent() {
         *named,
         json!([format!("mailboxIds/{}", mailbox(&set, WORK))])
     );
-    assert!(set.written().is_empty());
+    let commands = set.written();
+    assert!(commands.is_empty(), "{commands:?}");
 }
 
 #[tokio::test]

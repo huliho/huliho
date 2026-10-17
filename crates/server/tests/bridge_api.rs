@@ -112,7 +112,7 @@ async fn another_users_imap_account_is_not_found_on_both_routes_and_nothing_conn
         .request(&other, &id, &using(&[mailboxes(&id)]))
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-    assert!(instance.fake.lines().is_empty());
+    assert_eq!(instance.fake.lines(), Vec::<String>::new());
 }
 
 #[tokio::test]
@@ -137,7 +137,7 @@ async fn a_stopped_imap_account_answers_409_with_its_cause_before_anything_conne
         assert_eq!(body["error"], "still_stopped");
         assert_eq!(body["cause"], "connection");
     }
-    assert!(instance.fake.lines().is_empty());
+    assert_eq!(instance.fake.lines(), Vec::<String>::new());
 }
 
 #[tokio::test]
@@ -179,7 +179,7 @@ async fn the_session_object_of_a_bridge_account_carries_its_capabilities_and_its
     // The state is the host's; once a pass found QUOTA the object lists
     // it on the account, its state moves and every response carries it.
     let state = session["state"].as_str().unwrap().to_owned();
-    assert!(!state.is_empty());
+    assert!(!state.is_empty(), "the session has no state");
     assert!(
         instance.wait_synced(&cookie, &id).await,
         "{:?}",

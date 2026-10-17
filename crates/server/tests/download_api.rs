@@ -48,7 +48,7 @@ async fn another_users_account_is_not_found_and_nothing_connects() {
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body:?}");
-    assert!(instance.upstream.lines().is_empty());
+    assert_eq!(instance.upstream.lines(), Vec::<String>::new());
     assert_eq!(
         instance.account_events(),
         [(
@@ -76,7 +76,8 @@ async fn the_route_needs_a_session_like_the_request_route_and_never_the_header()
         .unwrap();
     let response = instance.router.clone().oneshot(bare).await.unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    assert!(instance.upstream.lines().is_empty());
+    let lines = instance.upstream.lines();
+    assert!(lines.is_empty(), "{lines:?}");
     let cookie = instance.sign_in().await;
     let without_header = Request::builder()
         .method(Method::GET)
@@ -115,7 +116,8 @@ async fn a_stopped_account_answers_409_before_anything_connects() {
     assert_eq!(status, StatusCode::CONFLICT);
     let body = String::from_utf8(body.unwrap()).unwrap();
     assert!(body.contains("still_stopped"), "{body}");
-    assert!(instance.upstream.lines().is_empty());
+    let lines = instance.upstream.lines();
+    assert!(lines.is_empty(), "{lines:?}");
     assert_eq!(instance.stopped_cause(&id).as_deref(), Some("connection"));
 }
 

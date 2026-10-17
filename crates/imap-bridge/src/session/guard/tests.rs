@@ -403,6 +403,6 @@ fn a_tripped_guard_withholds_the_chunk_and_fails_every_later_read() {
         let error = read(&mut guarded, &mut buf).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         assert_eq!(limit_of(&error), Some(Limit::Nesting));
-        assert!(buf.filled().is_empty());
+        assert!(buf.filled().is_empty(), "{:?}", buf.filled());
     }
 }

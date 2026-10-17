@@ -131,7 +131,8 @@ jobs:
             echo "the license check refused a choice of two allowed licenses"
             exit 1
           fi
-          pnpm licenses list --prod --json > "$RUNNER_TEMP/licenses.json"
+          # From pnpm 12.7 a listing without --recursive covers the root project alone.
+          pnpm licenses list --prod --json --recursive > "$RUNNER_TEMP/licenses.json"
           node "$RUNNER_TEMP/licenses.mjs" "$RUNNER_TEMP/licenses.json"
       - name: parser peer range guard
         run: |
@@ -191,7 +192,7 @@ jobs:
         with:
           command: check
       - name: install cargo-machete
-        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-machete
       - run: cargo machete
@@ -541,7 +542,7 @@ jobs:
           echo "$out" | grep -q "cognitive complexity" || { echo "cognitive_complexity did not fire"; exit 1; }
           echo "$out" | grep -q "must_use" || { echo "the pedantic set did not fire"; exit 1; }
       - name: install cargo-machete and cargo-deny
-        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-machete,cargo-deny
       - name: cargo-machete unused dependency
@@ -590,7 +591,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: cargo-audit
       - run: cargo audit

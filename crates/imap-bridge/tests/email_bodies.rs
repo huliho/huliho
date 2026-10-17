@@ -300,7 +300,7 @@ async fn a_gmail_account_reads_its_bodies_from_the_store_folder() {
         .into_iter()
         .filter(|line| line.contains("EXAMINE"))
         .collect();
-    assert!(!examined.is_empty());
+    assert!(!examined.is_empty(), "no EXAMINE was sent");
     assert!(
         examined
             .iter()

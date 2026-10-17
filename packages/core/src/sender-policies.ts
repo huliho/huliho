@@ -24,7 +24,7 @@ const CLOSING_DOT = /\.$/;
 // A grant with the receiving server it was given under: the authserv-id
 // of the message the reader allowed, the empty string for a header that
 // named none and null for a message without a header.
-const grantSchema = z.object({ allow: z.literal(true), authserv: z.string().nullable() });
+const grantSchema = z.object({ allow: z.literal(true), authserv: z.nullable(z.string()) });
 
 const senderPolicySchema = z.object({
   sender: z.string(),

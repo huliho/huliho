@@ -23,7 +23,7 @@ interface Rig {
   store: MemoryMailStore;
 }
 
-const setSchema = z.object({ update: z.record(z.string(), z.unknown()).optional() });
+const setSchema = z.object({ update: z.optional(z.record(z.string(), z.unknown())) });
 
 function move(id: string, from: string, to: string): PatchMutation {
   return { type: "Email", id, patch: { [`mailboxIds/${from}`]: null, [`mailboxIds/${to}`]: true } };

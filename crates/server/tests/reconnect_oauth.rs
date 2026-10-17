@@ -254,7 +254,8 @@ async fn another_user_reaches_neither_the_row_nor_its_tokens() {
         Some(&AccountId::from(id.clone())),
     );
     assert!(matches!(resolved, Err(StoreError::NotFound)));
-    assert!(rig.accounts(&other).await.is_empty());
+    let rows = rig.accounts(&other).await;
+    assert!(rows.is_empty(), "{rows:?}");
     // A plain router over the same store answers the same; the fakes see
     // nothing of it.
     let plain = router_on(Arc::clone(&rig.store));

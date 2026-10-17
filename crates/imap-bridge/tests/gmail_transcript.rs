@@ -156,7 +156,7 @@ async fn the_suite_recorded_off_the_scripted_server_replays_the_same_way() {
         .await;
     let transcript = Transcript::from_json(&std::fs::read_to_string(&path).unwrap()).unwrap();
     let logins = logins(&transcript);
-    assert!(!logins.is_empty());
+    assert!(!logins.is_empty(), "no LOGIN was recorded");
     assert!(
         logins
             .iter()

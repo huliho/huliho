@@ -316,7 +316,8 @@ async fn a_refused_refresh_stops_the_account_and_a_broken_endpoint_is_unreachabl
     assert_eq!(body["error"], "upstream_credentials");
     assert_eq!(refused.stopped_cause(&id).as_deref(), Some("credentials"));
     assert_eq!(refreshes(&forms), 1);
-    assert!(refused.upstream.lines().is_empty());
+    let lines = refused.upstream.lines();
+    assert!(lines.is_empty(), "{lines:?}");
     let (broken, _endpoint, forms) = oauth_instance(Answer::Broken).await;
     let id = broken.add_account(stale_tokens());
     let cookie = broken.sign_in().await;
@@ -325,7 +326,8 @@ async fn a_refused_refresh_stops_the_account_and_a_broken_endpoint_is_unreachabl
     assert_eq!(body["error"], "upstream_unreachable");
     assert_eq!(broken.stopped_cause(&id), None);
     assert_eq!(refreshes(&forms), 1);
-    assert!(broken.upstream.lines().is_empty());
+    let lines = broken.upstream.lines();
+    assert!(lines.is_empty(), "{lines:?}");
     let stored = accounts::credential(
         &broken.store,
         &broken.api.keys,
@@ -403,6 +405,7 @@ async fn another_user_redeems_nothing_and_reaches_nothing() {
     let (status, _) = instance.request(&other, &id, &query_request()).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(refreshes(&forms), 0);
-    assert!(instance.upstream.lines().is_empty());
+    let lines = instance.upstream.lines();
+    assert!(lines.is_empty(), "{lines:?}");
     assert_eq!(instance.stopped_cause(&id), None);
 }

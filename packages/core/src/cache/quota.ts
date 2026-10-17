@@ -33,9 +33,9 @@ const quotaSchema = z.object({
   scope: z.string(),
   name: z.string(),
   types: z.array(z.string()),
-  warnLimit: countSchema.nullish(),
-  softLimit: countSchema.nullish(),
-  description: z.string().nullish(),
+  warnLimit: z.nullish(countSchema),
+  softLimit: z.nullish(countSchema),
+  description: z.nullish(z.string()),
 });
 
 export type Quota = z.infer<typeof quotaSchema>;
@@ -128,7 +128,7 @@ const UNREADABLE = "unreadable";
 function readOf<Value>(
   responses: readonly Invocation[],
   call: string,
-  schema: z.ZodType<Value>,
+  schema: z.ZodMiniType<Value>,
 ): Outcome<Value> {
   const found = responses.find(([, , id]) => id === call);
   if (found === undefined) {

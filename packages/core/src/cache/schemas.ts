@@ -11,7 +11,7 @@ import type { EmailBody, PendingRow, QueryRow, ThreadRow } from "./store";
 // back from disk.
 const memberStateSchema = z.object({ keywords: setSchema, mailboxIds: setSchema });
 
-export const threadRowSchema: z.ZodType<ThreadRow> = threadSchema.extend({
+export const threadRowSchema: z.ZodMiniType<ThreadRow> = z.extend(threadSchema, {
   members: z.record(z.string(), memberStateSchema),
 });
 
@@ -19,17 +19,17 @@ const pageSchema = z.object({ page: countSchema, ids: z.array(idSchema) });
 
 const freshPageSchema = z.object({
   ids: z.array(idSchema),
-  total: countSchema.nullable(),
+  total: z.nullable(countSchema),
   queryState: z.string(),
 });
 
-export const queryRowSchema: z.ZodType<QueryRow> = z.object({
+export const queryRowSchema: z.ZodMiniType<QueryRow> = z.object({
   id: idSchema,
   queryState: z.string(),
-  total: countSchema.nullable(),
+  total: z.nullable(countSchema),
   pages: z.array(pageSchema),
   pending: z.array(idSchema),
-  fresh: freshPageSchema.nullable(),
+  fresh: z.nullable(freshPageSchema),
 });
 
 const verdictSchema = z.enum(["pass", "fail", "none", "unknown"]);
@@ -40,16 +40,16 @@ const authenticationSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("parsed"),
     results: z.object({
-      server: z.string().nullable(),
+      server: z.nullable(z.string()),
       spf: verdictSchema,
       dkim: verdictSchema,
       dmarc: verdictSchema,
-      dmarcFrom: z.string().nullable(),
+      dmarcFrom: z.nullable(z.string()),
     }),
   }),
 ]);
 
-export const emailBodySchema: z.ZodType<EmailBody> = z.object({
+export const emailBodySchema: z.ZodMiniType<EmailBody> = z.object({
   id: idSchema,
   bodyStructure: emailBodyPartSchema,
   textBody: z.array(emailBodyPartSchema),
@@ -57,7 +57,7 @@ export const emailBodySchema: z.ZodType<EmailBody> = z.object({
   attachments: z.array(emailBodyPartSchema),
   bodyValues: z.record(z.string(), emailBodyValueSchema),
   authentication: authenticationSchema,
-  flowed: z.object({ delSp: z.boolean() }).nullable(),
+  flowed: z.nullable(z.object({ delSp: z.boolean() })),
   large: z.boolean(),
   fetchedAt: z.number(),
   bytes: countSchema,
@@ -66,19 +66,19 @@ export const emailBodySchema: z.ZodType<EmailBody> = z.object({
 // A path names one keyword or one mailbox, as the code that reads a
 // patch asks.
 const patchSchema = z.record(
-  z.string().regex(/^(?:keywords|mailboxIds)\/./u),
-  z.literal(true).nullable(),
+  z.string().check(z.regex(/^(?:keywords|mailboxIds)\/./u)),
+  z.nullable(z.literal(true)),
 );
 
-export const pendingRowSchema: z.ZodType<PendingRow> = z.object({
-  seq: z.number().int().positive(),
+export const pendingRowSchema: z.ZodMiniType<PendingRow> = z.object({
+  seq: z.int().check(z.positive()),
   type: z.literal("Email"),
   id: idSchema,
-  threadId: idSchema.exactOptional(),
+  threadId: z.exactOptional(idSchema),
   patch: patchSchema,
   inverse: patchSchema,
-  sentAt: z.number().nullable(),
-  destroy: z.literal(true).exactOptional(),
-  held: z.boolean().exactOptional(),
-  lease: z.string().exactOptional(),
+  sentAt: z.nullable(z.number()),
+  destroy: z.exactOptional(z.literal(true)),
+  held: z.exactOptional(z.boolean()),
+  lease: z.exactOptional(z.string()),
 });

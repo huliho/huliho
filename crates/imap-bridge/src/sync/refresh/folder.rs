@@ -218,6 +218,6 @@ mod tests {
                 high: (count + 2) * 2
             }
         );
-        assert!(ranges(&[]).is_empty());
+        assert!(ranges(&[]).is_empty(), "{:?}", ranges(&[]));
     }
 }

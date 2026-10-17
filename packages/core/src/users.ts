@@ -19,7 +19,7 @@ const userRowSchema = z.object({
   name: z.string(),
   login: z.string(),
   role: roleSchema,
-  lastActiveAt: z.number().nullable(),
+  lastActiveAt: z.nullable(z.number()),
 });
 
 const issuedPasswordSchema = z.object({
@@ -27,7 +27,7 @@ const issuedPasswordSchema = z.object({
   expiresAt: z.number(),
 });
 
-const createdUserSchema = issuedPasswordSchema.extend({ user: userRowSchema });
+const createdUserSchema = z.extend(issuedPasswordSchema, { user: userRowSchema });
 
 const errorBodySchema = z.object({ error: z.string() });
 
