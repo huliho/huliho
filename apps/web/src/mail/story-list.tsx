@@ -48,6 +48,7 @@ export function FixtureList(props: FixtureListProps): JSX.Element {
       cache={fixtureCache({ [`${mailbox.id}/0`]: page }, { [THREAD_ID]: THREAD })}
       accountId={FASTMAIL.id}
       mailbox={mailbox}
+      mailboxes={MAILBOXES}
       online={online}
       openThreadId={openThreadId}
       empty={
@@ -59,6 +60,7 @@ export function FixtureList(props: FixtureListProps): JSX.Element {
         />
       }
       onOpen={nothing}
+      onClose={nothing}
     />
   );
 }

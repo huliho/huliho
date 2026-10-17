@@ -2,12 +2,14 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Additional terms apply, see NOTICE. */
 
+/* The newest toast comes first in the document and stands nearest the edge. */
 .viewport {
   position: fixed;
   inset-block-end: var(--hhx-space-5);
   inset-inline: 0;
-  display: grid;
-  justify-items: center;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
   gap: var(--hhx-space-2);
   padding-inline: var(--hhx-space-4);
   pointer-events: none;
@@ -48,6 +50,14 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--hhx-space-3);
+}
+
+.alert {
+  flex: none;
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  color: var(--hhx-toast-danger);
+  stroke-width: var(--hhx-icon-stroke);
 }
 
 .text {

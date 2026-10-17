@@ -46,6 +46,15 @@ export function threadQueryOptions(cache: MailCache, accountId: string, threadId
   });
 }
 
+// The quota the bar shows; a tree that moved reads it again.
+export function quotaQueryOptions(cache: MailCache, accountId: string) {
+  return queryOptions({
+    queryKey: queryKeys.quota(accountId),
+    queryFn: () => cache.quota(accountId),
+    ...settled,
+  });
+}
+
 // The body of one email as it was first asked for; the ask at the large
 // cap goes to the cache directly and replaces this answer.
 export function bodyQueryOptions(cache: MailCache, accountId: string, emailId: string) {

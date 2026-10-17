@@ -88,6 +88,9 @@ export interface PendingRow {
   type: "Email";
   // The email id.
   id: string;
+  // The thread it stands in, which holds its state where the store
+  // holds no header for it.
+  threadId?: string;
   patch: EmailPatch;
   inverse: EmailPatch;
   // When a request last carried the patch, null before the first.

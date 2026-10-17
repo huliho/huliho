@@ -3,12 +3,12 @@
 // Additional terms apply, see NOTICE.
 
 import type { JmapClient } from "../jmap/client";
-import type { EmailHeader, Mailbox } from "../jmap/schemas";
+import type { Mailbox } from "../jmap/schemas";
 import { SEEN } from "./counts";
-import { memberOf } from "./members";
+import { knownEmails } from "./known";
 import { patched, targetOf } from "./patch";
 import type { Mutation, PatchMutation } from "./pending";
-import type { MailStore } from "./store";
+import type { MailStore, MemberState } from "./store";
 
 type Rights = Mailbox["myRights"];
 
@@ -36,16 +36,16 @@ function allows(
 // A patch every mailbox involved takes that leaves the email in at least
 // one mailbox (RFC 8621 section 4.1.1).
 function patchAllowed(
-  header: EmailHeader,
+  state: MemberState,
   mutation: PatchMutation,
   boxes: ReadonlyMap<string, Mailbox>,
 ): boolean {
-  const inside = Object.keys(header.mailboxIds).flatMap((id) => {
+  const inside = Object.keys(state.mailboxIds).flatMap((id) => {
     const box = boxes.get(id);
     return box === undefined ? [] : [box.myRights];
   });
   const paths = Object.entries(mutation.patch);
-  const after = patched(memberOf(header), mutation.patch).state;
+  const after = patched(state, mutation.patch).state;
   return (
     Object.keys(after.mailboxIds).length > 0 &&
     paths.every(([path, value]) => allows(path, value, inside, boxes))
@@ -66,15 +66,15 @@ export async function mayPatch(
     return false;
   }
   const { accountId } = client;
-  const header = (await store.emails(accountId, [mutation.id])).get(mutation.id);
-  if (header === undefined) {
+  const state = (await knownEmails(store, accountId, [mutation])).get(mutation.id)?.state;
+  if (state === undefined) {
     return false;
   }
   const boxes = new Map((await store.mailboxes(accountId)).map((box) => [box.id, box]));
   if ("destroy" in mutation) {
-    return Object.keys(header.mailboxIds).every(
+    return Object.keys(state.mailboxIds).every(
       (id) => boxes.get(id)?.myRights.mayRemoveItems ?? true,
     );
   }
-  return patchAllowed(header, mutation, boxes);
+  return patchAllowed(state, mutation, boxes);
 }

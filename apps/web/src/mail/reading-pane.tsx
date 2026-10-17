@@ -3,11 +3,13 @@
 // Additional terms apply, see NOTICE.
 
 import type { MailCache, Mailbox } from "@huliho/core";
-import { Suspense, use } from "react";
+import { useLocation, useNavigate } from "@tanstack/react-router";
+import { Suspense, use, useEffect } from "react";
 
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { chunk } from "../shell/chunk";
+import { unmarkedForList, wantsListFocus } from "./thread-history";
 import type { PanePosition, ThreadPaneProps } from "./thread-pane";
 import { ThreadSkeleton } from "./thread-skeleton";
 import styles from "./reading-pane.module.css";
@@ -27,6 +29,55 @@ export interface OpenThread {
   accountId: string;
   threadId: string;
   mailbox: Mailbox | undefined;
+}
+
+// Whether an action from a row opened the thread with the focus left in
+// the list. The mark counts once the address names the thread shown,
+// since the address moves on before the route's params do. The entry
+// then loses its mark, so a later visit to it focuses the title as any
+// open does.
+function useListKeepsFocus({ accountId, threadId, mailbox }: OpenThread): boolean {
+  const navigate = useNavigate();
+  const mailboxId = mailbox?.id;
+  const marked = useLocation({
+    select: (location) => (wantsListFocus(location.state) ? location.pathname : null),
+  });
+  const kept = mailboxId !== undefined && marked === `/mail/${accountId}/${mailboxId}/${threadId}`;
+  useEffect(() => {
+    if (!kept) {
+      return;
+    }
+    void navigate({
+      to: "/mail/$accountId/$mailboxId/$threadId",
+      params: { accountId, mailboxId, threadId },
+      replace: true,
+      state: unmarkedForList,
+    });
+  }, [kept, accountId, mailboxId, threadId, navigate]);
+  return kept;
+}
+
+interface OpenedProps {
+  locale: Locale;
+  cache: MailCache;
+  thread: OpenThread;
+  position: PanePosition;
+  keyHints: boolean;
+  onClose: () => void;
+}
+
+// The pane of the open thread, told whether the focus stays in the list.
+function Opened({ thread, ...props }: OpenedProps) {
+  const listKeepsFocus = useListKeepsFocus(thread);
+  return (
+    <LoadedThreadPane
+      {...props}
+      accountId={thread.accountId}
+      threadId={thread.threadId}
+      mailbox={thread.mailbox}
+      listKeepsFocus={listKeepsFocus}
+    />
+  );
 }
 
 interface ReadingPaneProps {
@@ -52,12 +103,10 @@ export function ReadingPane(props: ReadingPaneProps) {
         <p className={styles.nothingOpen}>{m.thread_none_open({}, { locale })}</p>
       ) : (
         <Suspense fallback={<ThreadSkeleton locale={locale} />}>
-          <LoadedThreadPane
+          <Opened
             locale={locale}
             cache={cache}
-            accountId={thread.accountId}
-            threadId={thread.threadId}
-            mailbox={thread.mailbox}
+            thread={thread}
             position={position}
             keyHints={keyHints}
             onClose={onClose}
@@ -82,12 +131,10 @@ export function ThreadScreen({ locale, cache, thread, keyHints, onClose }: Threa
   return (
     <section className={styles.screen} aria-label={m.thread_pane({}, { locale })}>
       <Suspense fallback={<ThreadSkeleton locale={locale} />}>
-        <LoadedThreadPane
+        <Opened
           locale={locale}
           cache={cache}
-          accountId={thread.accountId}
-          threadId={thread.threadId}
-          mailbox={thread.mailbox}
+          thread={thread}
           position="screen"
           keyHints={keyHints}
           onClose={onClose}

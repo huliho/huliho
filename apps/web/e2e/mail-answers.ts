@@ -3,13 +3,14 @@
 // Additional terms apply, see NOTICE.
 
 // The JMAP methods the cache calls, answered from a corpus: the query
-// with its anchor and collapse, the gets by id or by reference with the
-// body of a message, the keyword writes, the changes since a state and
-// the mailbox list.
+// with its anchor, collapse and keyword filters, the gets by id or by
+// reference with the body of a message, the writes, the changes since a
+// state, the mailbox list and the quotas.
 
 import { bodyOf, bodyPropertiesOf } from "./mail-bodies";
 import { UPSTREAM, emailObject } from "./mail-corpus";
 import type { Corpus, CorpusEmail } from "./mail-corpus";
+import { emailSet } from "./mail-writes";
 
 type Args = Record<string, unknown>;
 export type Invocation = [string, Args, string];
@@ -44,9 +45,15 @@ export interface MailServer {
   heldBodies: (() => void)[];
   // How many body requests still answer the limit problem.
   limitBodies: number;
+  // The account's quotas, null for an account without the capability.
+  quotas: Record<string, unknown>[] | null;
 }
 
-export function serverFor(corpus: Corpus, mailboxes: Record<string, unknown>[]): MailServer {
+export function serverFor(
+  corpus: Corpus,
+  mailboxes: Record<string, unknown>[],
+  quotas: Record<string, unknown>[] | null = null,
+): MailServer {
   return {
     corpus,
     mailboxes,
@@ -59,6 +66,7 @@ export function serverFor(corpus: Corpus, mailboxes: Record<string, unknown>[]):
     holdBodies: false,
     heldBodies: [],
     limitBodies: 0,
+    quotas,
   };
 }
 
@@ -187,105 +195,6 @@ function emailGet(server: MailServer, args: Args, prior: Map<string, Args>): Arg
   return { accountId: UPSTREAM, state: stateOf(server), list, notFound };
 }
 
-const KEYWORDS = "keywords/";
-// The two keywords a corpus message carries and how a patch sets them.
-const KNOWN_KEYWORDS = new Map<string, (message: CorpusEmail, on: boolean) => CorpusEmail>([
-  ["$seen", (message, on) => ({ ...message, seen: on })],
-  ["$flagged", (message, on) => ({ ...message, flagged: on })],
-]);
-
-// The message after a patch of keyword paths, each true or null (RFC
-// 8620 section 5.3); null for a patch that names anything else.
-function patched(message: CorpusEmail, patch: Args): CorpusEmail | null {
-  let next = message;
-  for (const [path, value] of Object.entries(patch)) {
-    const set = KNOWN_KEYWORDS.get(path.slice(KEYWORDS.length));
-    if (!path.startsWith(KEYWORDS) || set === undefined || (value !== true && value !== null)) {
-      return null;
-    }
-    next = set(next, value === true);
-  }
-  return next;
-}
-
-// The unread count of a mailbox from the messages the corpus holds in it.
-function unreadIn(server: MailServer, mailboxId: string): { emails: number; threads: number } {
-  const ids = server.corpus.lists.get(mailboxId)?.ids ?? [];
-  const unread = ids.flatMap((id) => {
-    const message = server.corpus.emails.get(id);
-    return message !== undefined && !message.seen ? [message] : [];
-  });
-  return { emails: unread.length, threads: new Set(unread.map((one) => one.threadId)).size };
-}
-
-// Brings a mailbox row's counts in line with its messages; a row whose
-// counts move is logged as updated.
-function recount(server: MailServer, mailboxId: string): void {
-  const row = server.mailboxes.find((one) => one["id"] === mailboxId);
-  if (row === undefined) {
-    return;
-  }
-  const { emails, threads } = unreadIn(server, mailboxId);
-  if (row["unreadEmails"] === emails && row["unreadThreads"] === threads) {
-    return;
-  }
-  row["unreadEmails"] = emails;
-  row["unreadThreads"] = threads;
-  server.changes.push({
-    sequence: server.changes.length + 1,
-    type: "Mailbox",
-    id: mailboxId,
-    kind: "updated",
-  });
-}
-
-// One update: the SetError type when it is refused, null once written.
-function updated(server: MailServer, id: string, patch: unknown): string | null {
-  const message = server.corpus.emails.get(id);
-  const refusal = server.refused.get(id);
-  if (refusal !== undefined || message === undefined || server.gone.has(id)) {
-    return refusal ?? "notFound";
-  }
-  const next = isRecord(patch) ? patched(message, patch) : null;
-  if (next === null) {
-    return "invalidProperties";
-  }
-  server.corpus.emails.set(id, next);
-  server.changes.push({ sequence: server.changes.length + 1, type: "Email", id, kind: "updated" });
-  recount(server, message.mailboxId);
-  return null;
-}
-
-function named<Value>(entries: [string, Value][]): Record<string, Value> | null {
-  return entries.length === 0 ? null : Object.fromEntries(entries);
-}
-
-// Email/set for updates of keywords, as RFC 8621 section 4.6 has it.
-function emailSet(server: MailServer, args: Args): Args {
-  server.sets.push(args);
-  const oldState = stateOf(server);
-  const updates = isRecord(args["update"]) ? Object.entries(args["update"]) : [];
-  const outcomes = updates.map(([id, patch]): [string, string | null] => [
-    id,
-    updated(server, id, patch),
-  ]);
-  return {
-    accountId: UPSTREAM,
-    oldState,
-    newState: stateOf(server),
-    created: null,
-    updated: named(outcomes.flatMap(([id, refusal]) => (refusal === null ? [[id, null]] : []))),
-    destroyed: null,
-    notCreated: null,
-    notUpdated: named(
-      outcomes.flatMap(([id, refusal]): [string, { type: string }][] =>
-        refusal === null ? [] : [[id, { type: refusal }]],
-      ),
-    ),
-    notDestroyed: null,
-  };
-}
-
 function threadGet(server: MailServer, args: Args, prior: Map<string, Args>): Args {
   const list = idsOf(args, prior).flatMap((id) => {
     const emailIds = server.corpus.threads.get(id);
@@ -308,14 +217,41 @@ function startOf(args: Args, ids: readonly string[]): number {
   return Math.max(0, at + offset);
 }
 
-function emailQuery(server: MailServer, args: Args): Args {
-  const filter = args["filter"];
-  const mailboxId = isRecord(filter) ? filter["inMailbox"] : undefined;
-  if (typeof mailboxId !== "string") {
+// The keywords a filter may name, as a corpus message holds them.
+const HELD_KEYWORDS = new Map<string, (message: CorpusEmail) => boolean>([
+  ["$seen", (message) => message.seen],
+  ["$flagged", (message) => message.flagged],
+]);
+
+// The one filter shape the cache asks (RFC 8621 section 4.4.1): a
+// mailbox, with a keyword it must have or lack.
+function filterOf(server: MailServer, filter: unknown): (id: string) => boolean {
+  const fields = new Map(Object.entries(isRecord(filter) ? filter : {}));
+  const mailboxId = fields.get("inMailbox");
+  const known = new Set(["inMailbox", "hasKeyword", "notKeyword"]);
+  if (typeof mailboxId !== "string" || [...fields.keys()].some((key) => !known.has(key))) {
     throw new Error("unsupportedFilter");
   }
+  const has = HELD_KEYWORDS.get(String(fields.get("hasKeyword")));
+  const lacks = HELD_KEYWORDS.get(String(fields.get("notKeyword")));
+  return (id) => {
+    const message = server.corpus.emails.get(id);
+    return (
+      message !== undefined &&
+      (has === undefined || has(message)) &&
+      (lacks === undefined || !lacks(message))
+    );
+  };
+}
+
+function emailQuery(server: MailServer, args: Args): Args {
+  const filter = args["filter"];
+  const keep = filterOf(server, filter);
+  const mailboxId = String(
+    new Map(Object.entries(isRecord(filter) ? filter : {})).get("inMailbox"),
+  );
   const list = server.corpus.lists.get(mailboxId) ?? { ids: [], exemplars: [] };
-  const ids = args["collapseThreads"] === true ? list.exemplars : list.ids;
+  const ids = (args["collapseThreads"] === true ? list.exemplars : list.ids).filter(keep);
   const position = startOf(args, ids);
   const asked = typeof args["limit"] === "number" ? args["limit"] : server.queryLimit;
   const limit = Math.min(asked, server.queryLimit);
@@ -357,28 +293,56 @@ function mailboxGet(server: MailServer): Args {
   return { accountId: UPSTREAM, state: stateOf(server), list: server.mailboxes, notFound: [] };
 }
 
+// The quotas never move, so their state stands still (RFC 9425 section 4).
+const QUOTA_STATE = "q1";
+
+function quotaGet(server: MailServer): Args {
+  if (server.quotas === null) {
+    throw new Error("accountNotSupportedByMethod");
+  }
+  return { accountId: UPSTREAM, state: QUOTA_STATE, list: server.quotas, notFound: [] };
+}
+
+function quotaChanges(server: MailServer, args: Args): Args {
+  if (server.quotas === null) {
+    throw new Error("accountNotSupportedByMethod");
+  }
+  if (args["sinceState"] !== QUOTA_STATE) {
+    throw new Error("cannotCalculateChanges");
+  }
+  return {
+    accountId: UPSTREAM,
+    oldState: QUOTA_STATE,
+    newState: QUOTA_STATE,
+    hasMoreChanges: false,
+    created: [],
+    updated: [],
+    destroyed: [],
+  };
+}
+
+type Method = (server: MailServer, args: Args, prior: Map<string, Args>) => Args;
+
+const METHODS = new Map<string, Method>([
+  ["Mailbox/get", mailboxGet],
+  ["Mailbox/changes", (server, args) => changes(server, "Mailbox", args)],
+  ["Email/get", emailGet],
+  ["Email/set", emailSet],
+  ["Email/query", emailQuery],
+  ["Email/changes", (server, args) => changes(server, "Email", args)],
+  ["Thread/get", threadGet],
+  ["Thread/changes", (server, args) => changes(server, "Thread", args)],
+  ["Quota/get", quotaGet],
+  ["Quota/changes", quotaChanges],
+]);
+
 function dispatch(server: MailServer, call: Invocation, prior: Map<string, Args>): Args {
   const [name, args] = call;
-  switch (name) {
-    case "Mailbox/get":
-      return mailboxGet(server);
-    case "Mailbox/changes":
-      return changes(server, "Mailbox", args);
-    case "Email/get":
-      return emailGet(server, args, prior);
-    case "Email/set":
-      return emailSet(server, args);
-    case "Email/query":
-      return emailQuery(server, args);
-    case "Email/changes":
-      return changes(server, "Email", args);
-    case "Thread/get":
-      return threadGet(server, args, prior);
-    case "Thread/changes":
-      return changes(server, "Thread", args);
-    default:
-      throw new Error("unknownMethod");
+  const method = METHODS.get(name);
+  if (method === undefined) {
+    throw new Error("unknownMethod");
   }
+  return method(server, args, prior);
 }
 
 // The method responses of one request, in order; a call that fails

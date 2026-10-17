@@ -114,12 +114,14 @@ test("the inverse of each email restores, and the thread returns to its place by
     {
       type: "Email",
       id: "e1",
+      threadId: "t1",
       patch: { "mailboxIds/inbox": true, "mailboxIds/archive": null },
       restores: true,
     },
     {
       type: "Email",
       id: "e2",
+      threadId: "t1",
       patch: { "mailboxIds/inbox": true, "mailboxIds/archive": null },
       restores: true,
     },
@@ -148,10 +150,17 @@ test("several emails log under one call with one inverse each; an email named tw
     {
       type: "Email",
       id: "e3",
+      threadId: "t-e3",
       patch: { "keywords/$flagged": null, "keywords/$seen": null },
       restores: true,
     },
-    { type: "Email", id: "e4", patch: { "keywords/$seen": true }, restores: true },
+    {
+      type: "Email",
+      id: "e4",
+      threadId: "t-e4",
+      patch: { "keywords/$seen": true },
+      restores: true,
+    },
   ]);
   expect(await counts(store, "inbox")).toEqual([4, 3, 3, 2]);
 });

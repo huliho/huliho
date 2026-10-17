@@ -3,6 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import type {
+  AfterAction,
   DarkMail,
   Density,
   FontSize,
@@ -20,7 +21,12 @@ import type { RadioOption } from "../../design-system/radio-group";
 import { listedLocales } from "../../i18n/locale";
 import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
-import { DEFAULT_DARK_MAIL, DEFAULT_READING_PANE, appearanceOf } from "../../theme/appearance";
+import {
+  DEFAULT_AFTER_ACTION,
+  DEFAULT_DARK_MAIL,
+  DEFAULT_READING_PANE,
+  appearanceOf,
+} from "../../theme/appearance";
 import { SettingsSection } from "../settings-section";
 import styles from "./appearance.module.css";
 
@@ -67,6 +73,13 @@ function darkMailOptions(locale: Locale): RadioOption<DarkMail>[] {
   return [
     { value: "adapt", label: m.appearance_dark_mail_adapt({}, { locale }) },
     { value: "original", label: m.appearance_dark_mail_original({}, { locale }) },
+  ];
+}
+
+function afterActionOptions(locale: Locale): RadioOption<AfterAction>[] {
+  return [
+    { value: "next", label: m.appearance_after_action_next({}, { locale }) },
+    { value: "list", label: m.appearance_after_action_list({}, { locale }) },
   ];
 }
 
@@ -151,8 +164,8 @@ function LookSettings({ locale, preferences, onChange }: CardsProps) {
   );
 }
 
-// How a conversation reads: what the dark theme does to a light message
-// and where the conversation opens.
+// How a conversation reads: what the dark theme does to a light message,
+// what follows an action on it and where it opens.
 function ReadingSettings({ locale, preferences, onChange }: CardsProps) {
   return (
     <>
@@ -163,6 +176,15 @@ function ReadingSettings({ locale, preferences, onChange }: CardsProps) {
         value={preferences.darkMail ?? DEFAULT_DARK_MAIL}
         onChange={(value) => {
           onChange({ key: "darkMail", value });
+        }}
+      />
+      <Setting
+        title={m.appearance_after_action({}, { locale })}
+        hint={m.appearance_after_action_hint({}, { locale })}
+        options={afterActionOptions(locale)}
+        value={preferences.afterAction ?? DEFAULT_AFTER_ACTION}
+        onChange={(value) => {
+          onChange({ key: "afterAction", value });
         }}
       />
       <Setting

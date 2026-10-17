@@ -19,6 +19,12 @@ const CORE_CAPABILITY = "urn:ietf:params:jmap:core";
 const MAIL_CAPABILITY = "urn:ietf:params:jmap:mail";
 // The vendor capability a bridge account advertises, which brings syncedEmails.
 const HULIHO_CAPABILITY = "https://huliho.com/jmap";
+const QUOTA_CAPABILITY = "urn:ietf:params:jmap:quota";
+
+interface SessionShape {
+  vendor: boolean;
+  quota: boolean;
+}
 // The problem a request past the server's concurrency gets (RFC 8620 section 3.6.1).
 const LIMIT_PROBLEM = {
   type: "urn:ietf:params:jmap:error:limit",
@@ -110,6 +116,13 @@ export const MAILBOXES: MailboxBody[] = [
   }),
 ];
 
+// The same tree where every mailbox takes and gives up messages, as on
+// a server that moves them.
+export const WRITABLE_MAILBOXES: MailboxBody[] = MAILBOXES.map((row) => ({
+  ...row,
+  myRights: { ...row.myRights, mayAddItems: true, mayRemoveItems: true },
+}));
+
 function isInvocation(value: unknown): value is Invocation {
   return Array.isArray(value) && value.length === 3 && typeof value[0] === "string";
 }
@@ -122,9 +135,13 @@ function calls(route: Route): Invocation[] {
 }
 
 // The session object of an account on the proxy, as the worker reads
-// it; a bridge account carries the vendor capability as well.
-function sessionBody(accountId: string, vendor: boolean): object {
-  const extra = vendor ? { [HULIHO_CAPABILITY]: {} } : {};
+// it; a bridge account carries the vendor capability as well, an
+// account with quotas the quota capability.
+function sessionBody(accountId: string, { vendor, quota }: SessionShape): object {
+  const extra = {
+    ...(vendor ? { [HULIHO_CAPABILITY]: {} } : {}),
+    ...(quota ? { [QUOTA_CAPABILITY]: {} } : {}),
+  };
   return {
     capabilities: {
       [CORE_CAPABILITY]: {
@@ -171,6 +188,9 @@ export interface MailOptions {
   // The user's sender policies; a second context given the same store
   // sees the same grants.
   policies?: PolicyStore;
+  // The account's quotas (RFC 9425 section 4.1); without them the
+  // account lists no quota capability.
+  quotas?: Record<string, unknown>[];
 }
 
 // The mocked mail behind a page: the server the routes answer from, a
@@ -226,14 +246,15 @@ export async function mockMail(
       Object.entries(row).filter(([key]) => options.vendor === true || key !== "syncedEmails"),
     ),
   );
-  const server = serverFor(corpus, listed);
+  const server = serverFor(corpus, listed, options.quotas ?? null);
   const policies = options.policies ?? new Map();
   const context = page.context();
   await context.addInitScript(() => {
     Reflect.deleteProperty(window, "SharedWorker");
   });
+  const shape = { vendor: options.vendor === true, quota: options.quotas !== undefined };
   await context.route(SESSION_ROUTE, (route) =>
-    route.fulfill({ json: sessionBody(accountIdOf(route), options.vendor === true) }),
+    route.fulfill({ json: sessionBody(accountIdOf(route), shape) }),
   );
   await context.route(API_ROUTE, (route) =>
     route.request().method() === "POST" ? answered(server, route) : route.fallback(),

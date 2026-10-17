@@ -171,7 +171,10 @@ async function settle(
   const { refused, waiting, gone } = verdict;
   const taken = new Set(sent.filter((row) => refused.has(row.id)).map((row) => row.seq));
   const changes = await takeBack(store, accountId, taken);
-  const removed = gone.size > 0 ? await goneOf(store, accountId, [...gone]) : null;
+  const threads = sent.flatMap((row) =>
+    gone.has(row.id) && row.threadId !== undefined ? [row.threadId] : [],
+  );
+  const removed = gone.size > 0 ? await goneOf(store, accountId, [...gone], threads) : null;
   const acknowledged = sent
     .filter((row) => !waiting.has(row.id) && !refused.has(row.id) && !gone.has(row.id))
     .map((row) => row.seq);

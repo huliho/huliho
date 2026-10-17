@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { memberOf } from "./members";
+import { knownEmails } from "./known";
+import type { KnownEmail } from "./known";
 import { alters, emptied, patched, replayed, unpatched } from "./patch";
 import type { AppliedChanges } from "./poll";
 import { restate } from "./restate";
@@ -17,6 +18,9 @@ export interface PatchMutation {
   type: "Email";
   // The email id.
   id: string;
+  // The thread it stands in, through which the log finds an email the
+  // store holds no header for.
+  threadId?: string;
   patch: EmailPatch;
   restores?: true;
 }
@@ -26,6 +30,7 @@ export interface PatchMutation {
 export interface DestroyMutation {
   type: "Email";
   id: string;
+  threadId?: string;
   destroy: true;
 }
 
@@ -52,14 +57,18 @@ function emptyState(): MemberState {
 // null for a change that moves nothing.
 type Step = Omit<PendingRow, "seq" | "sentAt">;
 
-function stepOf(state: MemberState, mutation: Mutation, lease: string | undefined): Step | null {
+function stepOf(
+  state: MemberState,
+  mutation: Mutation,
+  { threadId, lease }: { threadId: string; lease: string | undefined },
+): Step | null {
   const destroy = "destroy" in mutation;
   const patch = destroy ? emptied(state) : mutation.patch;
   const { inverse } = patched(state, patch);
   if (!alters(patch, inverse)) {
     return null;
   }
-  const row: Step = { type: "Email", id: mutation.id, patch, inverse };
+  const row: Step = { type: "Email", id: mutation.id, threadId, patch, inverse };
   if (!destroy) {
     return row;
   }
@@ -68,19 +77,55 @@ function stepOf(state: MemberState, mutation: Mutation, lease: string | undefine
 
 // The change that takes an email's patches back: every path they named,
 // set to what the email held before them.
-function inverseOf(id: string, before: MemberState, steps: readonly Step[]): PatchMutation {
+function inverseOf(
+  { id, threadId }: { id: string; threadId: string },
+  before: MemberState,
+  steps: readonly Step[],
+): PatchMutation {
   const merged: EmailPatch = {};
   for (const step of steps) {
     Object.assign(merged, step.patch);
   }
-  return { type: "Email", id, patch: patched(before, merged).inverse, restores: true };
+  return { type: "Email", id, threadId, patch: patched(before, merged).inverse, restores: true };
+}
+
+// The rows a call logs, one per change that moves something, each over
+// the state the changes before it left; the states they leave; each
+// email logged with its thread, in the order the changes first name it.
+// A destroy logged dooms its email for the rest of the call.
+function stepsOf(
+  mutations: readonly Mutation[],
+  known: ReadonlyMap<string, KnownEmail>,
+  { doomed, lease }: { doomed: Set<string>; lease: string | undefined },
+): { steps: Step[]; states: Map<string, MemberState>; logged: Map<string, string> } {
+  const states = new Map([...known].map(([id, email]) => [id, email.state]));
+  const steps: Step[] = [];
+  const logged = new Map<string, string>();
+  for (const mutation of mutations) {
+    const email = known.get(mutation.id);
+    const state = states.get(mutation.id);
+    if (email === undefined || state === undefined || doomed.has(mutation.id)) {
+      continue;
+    }
+    const step = stepOf(state, mutation, { threadId: email.threadId, lease });
+    if (step !== null) {
+      states.set(mutation.id, patched(state, step.patch).state);
+      steps.push(step);
+      logged.set(mutation.id, email.threadId);
+      if (step.destroy === true) {
+        doomed.add(mutation.id);
+      }
+    }
+  }
+  return { steps, states, logged };
 }
 
 // Changes to several emails, taken by the rows at once and logged until
 // the server acknowledges them: the headers, the members of their
-// threads, the counts of their mailboxes and the lists they leave. A
-// change that moves nothing, names an email the store lacks or one that
-// waits to be destroyed is not logged. A held destroy carries the
+// threads, the counts of their mailboxes and the lists they leave. The
+// log skips a change that moves nothing. It skips a change to an email
+// the store knows by neither header nor thread. It skips a change to an
+// email that already waits to be destroyed. A held destroy carries the
 // `lease` of the tab that asked it.
 export async function mutateMany(
   store: MailStore,
@@ -89,31 +134,20 @@ export async function mutateMany(
   lease?: string,
 ): Promise<Logged> {
   const log = await store.pending(accountId);
-  const doomed = new Set(log.filter((row) => row.destroy === true).map((row) => row.id));
-  const headers = await store.emails(accountId, [...new Set(mutations.map(({ id }) => id))]);
-  const before = new Map([...headers].map(([id, header]) => [id, memberOf(header)]));
-  const states = new Map(before);
-  const steps: Step[] = [];
-  for (const mutation of mutations) {
-    const state = states.get(mutation.id);
-    const step =
-      state === undefined || doomed.has(mutation.id) ? null : stepOf(state, mutation, lease);
-    if (state !== undefined && step !== null) {
-      states.set(mutation.id, patched(state, step.patch).state);
-      steps.push(step);
-      if (step.destroy === true) {
-        doomed.add(mutation.id);
-      }
-    }
-  }
+  const known = await knownEmails(store, accountId, mutations);
+  const before = new Map([...known].map(([id, email]) => [id, email.state]));
+  const { steps, states, logged } = stepsOf(mutations, known, {
+    doomed: new Set(log.filter((row) => row.destroy === true).map((row) => row.id)),
+    lease,
+  });
   if (steps.length === 0) {
     return nothing();
   }
-  const changed = new Map(steps.map(({ id }) => [id, states.get(id) ?? emptyState()]));
+  const changed = new Map([...logged.keys()].map((id) => [id, states.get(id) ?? emptyState()]));
   const restores = new Set(
     mutations.flatMap((mutation) => ("restores" in mutation ? [mutation.id] : [])),
   );
-  const { batch, changes } = await restate(store, accountId, changed, restores);
+  const { batch, changes } = await restate(store, accountId, changed, { known, restores });
   const first = (log.at(-1)?.seq ?? 0) + 1;
   const rows = steps.map((step, index): PendingRow => ({
     ...step,
@@ -122,12 +156,12 @@ export async function mutateMany(
   }));
   await store.commit(accountId, { ...batch, pending: { put: rows } });
   const destroyed = new Set(steps.filter((step) => step.destroy === true).map(({ id }) => id));
-  const kept = [...changed.keys()].filter((id) => !destroyed.has(id));
+  const kept = [...logged].filter(([id]) => !destroyed.has(id));
   return {
     changes,
-    inverses: kept.map((id) =>
+    inverses: kept.map(([id, threadId]) =>
       inverseOf(
-        id,
+        { id, threadId },
         before.get(id) ?? emptyState(),
         steps.filter((step) => step.id === id),
       ),
@@ -184,22 +218,24 @@ export async function takeBack(
   leaving: ReadonlySet<number>,
 ): Promise<AppliedChanges> {
   const log = await store.pending(accountId);
-  const ids = [...new Set(log.filter((row) => leaving.has(row.seq)).map((row) => row.id))];
-  if (ids.length === 0) {
+  const taken = log.filter((row) => leaving.has(row.seq));
+  if (taken.length === 0) {
     return nothing().changes;
   }
+  const known = await knownEmails(store, accountId, taken);
   const states = new Map<string, MemberState>();
   const kept: PendingRow[] = [];
-  for (const [id, header] of await store.emails(accountId, ids)) {
+  for (const [id, email] of known) {
     const rows = log.filter((row) => row.id === id);
     const replay = replayed(
-      unpatched(memberOf(header), rows),
+      unpatched(email.state, rows),
       rows.filter((row) => !leaving.has(row.seq)),
     );
     states.set(id, replay.state);
     kept.push(...replay.rows);
   }
-  const { batch, changes } = await restate(store, accountId, states, new Set(ids));
+  const restores = new Set(taken.map(({ id }) => id));
+  const { batch, changes } = await restate(store, accountId, states, { known, restores });
   await store.commit(accountId, { ...batch, pending: { put: kept, remove: [...leaving] } });
   return changes;
 }

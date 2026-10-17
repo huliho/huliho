@@ -9,10 +9,18 @@ type Members = Record<string, MemberState>;
 
 // One email whose mailboxes may change, with where it sorts in a list
 // and whether a thread it brings into a mailbox takes its place there
-// again, as an undo or a refusal does.
+// again, as an undo or a refusal does. An email without a header has no
+// time to sort by and never stands for its thread in a list.
 export interface ListChange extends MemberChange {
-  receivedAt: string;
+  receivedAt: string | null;
   restores: boolean;
+}
+
+// An email a list can show for its thread: one with a receipt time.
+type Exemplar = ListChange & { receivedAt: string };
+
+function sortable(change: ListChange): change is Exemplar {
+  return change.receivedAt !== null;
 }
 
 // Takes `ids` out of every page of the list, the marker's count and the
@@ -55,7 +63,7 @@ function leave(row: QueryRow, ids: ReadonlySet<string>): boolean {
 // before the first held row older than it, after the last one when the
 // list holds every row, else left for the page that holds its place.
 // The total grows with the row that came back.
-function enter(row: QueryRow, exemplar: ListChange, times: ReadonlyMap<string, number>): boolean {
+function enter(row: QueryRow, exemplar: Exemplar, times: ReadonlyMap<string, number>): boolean {
   const time = Date.parse(exemplar.receivedAt);
   const older = (id: string): boolean => (times.get(id) ?? Number.POSITIVE_INFINITY) < time;
   const pages = row.pages.toSorted((a, b) => a.page - b.page);
@@ -104,15 +112,16 @@ function threadMovesOf(
 
 // The newest email a restoring change brings into the mailbox, which the
 // list shows for its thread; none for a change that moves forward.
-function returning(move: ThreadMove, mailboxId: string): ListChange | undefined {
+function returning(move: ThreadMove, mailboxId: string): Exemplar | undefined {
   return move.changes
+    .filter(sortable)
     .filter(
       (change) =>
         change.restores &&
         mailboxId in change.after.mailboxIds &&
         !(mailboxId in change.before.mailboxIds),
     )
-    .reduce<ListChange | undefined>(
+    .reduce<Exemplar | undefined>(
       (newest, change) =>
         newest === undefined || Date.parse(change.receivedAt) > Date.parse(newest.receivedAt)
           ? change
