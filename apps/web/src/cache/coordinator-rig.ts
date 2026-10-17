@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import type { Mailbox } from "@huliho/core";
 import { ACCOUNT, FakeJmap, at, email, mailbox } from "@huliho/core/testing";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { expect, vi } from "vitest";
@@ -9,9 +10,11 @@ import { expect, vi } from "vitest";
 import { CHANGES_POLL_MS, Coordinator } from "./coordinator";
 import type { CacheApi } from "./coordinator";
 import { DexieMailStore, MailDatabase } from "./db";
-import { webLocks } from "./locks";
+import { LEASE_LOCK, webLocks } from "./locks";
 import type { Locks } from "./locks";
 import type { CacheMessage } from "./messages";
+import { ChosenStore } from "./store-choice";
+import type { WorkerStore } from "./store-choice";
 
 // The rig the coordinator tests run in: a fake server, a store on a
 // fresh IndexedDB per test and the platform's locks under a name per
@@ -53,7 +56,51 @@ export function store(): DexieMailStore {
 
 function locks(): Locks {
   const platform = webLocks(navigator.locks);
-  return { request: (name, run) => platform.request(`${scope}:${name}`, run) };
+  return {
+    request: (name, run) => platform.request(`${scope}:${name}`, run),
+    held: (prefix) => platform.held(`${scope}:${prefix}`),
+  };
+}
+
+// A lease lock as a tab holds it, under the test's name; the answer
+// lets it go.
+export async function holdLease(tab: string): Promise<() => void> {
+  const granted = Promise.withResolvers<undefined>();
+  const released = Promise.withResolvers<undefined>();
+  void navigator.locks.request(`${scope}:${LEASE_LOCK}${tab}`, () => {
+    granted.resolve(undefined);
+    return released.promise;
+  });
+  await granted.promise;
+  return () => {
+    released.resolve(undefined);
+  };
+}
+
+// A mailbox that takes and gives up mail, so the worker logs a move.
+export function writable(
+  id: string,
+  role: string,
+  rights: Partial<Mailbox["myRights"]> = {},
+): Mailbox {
+  const row = mailbox(id, role);
+  return {
+    ...row,
+    myRights: { ...row.myRights, mayAddItems: true, mayRemoveItems: true, ...rights },
+  };
+}
+
+// A coordinator over a store in memory, as a lease chooses it.
+export function inMemory(memory: WorkerStore, posted: CacheMessage[]): Coordinator {
+  const chosen = new ChosenStore({ open: () => memory, erase: () => Promise.resolve() });
+  return new Coordinator({
+    store: chosen,
+    choose: (strict) => chosen.choose(strict),
+    locks: locks(),
+    post: (message) => {
+      posted.push(message);
+    },
+  });
 }
 
 // A server with an inbox and an archive and `count` emails in the inbox.
@@ -104,6 +151,12 @@ export function drained(turns = DRAIN_TURNS): Promise<void> {
   return new Promise((resolve) => {
     setImmediate(resolve);
   }).then(() => drained(turns - 1));
+}
+
+// Moves the clock on by `ms` and lets the work it fired finish.
+export async function ran(ms: number): Promise<void> {
+  await vi.advanceTimersByTimeAsync(ms);
+  await drained();
 }
 
 // Runs the given number of polls, each to its end.

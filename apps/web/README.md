@@ -72,8 +72,9 @@ out at once and reaches the server when its undo toast has run out,
 through the same deferred mutation as a revoke.
 
 Settings > Appearance holds the theme, the density, the font size, the
-line height, the dark mode for messages, the reading pane position and
-the language, each a row of segments on the preferences the server
+line height, the dark mode for messages, what follows an archive or a
+delete, the reading pane position and the language, each a row of
+segments on the preferences the server
 keeps per user. A choice shows on the screen first and reaches the
 server next; a refused save puts the word on record back and says so.
 Every route behind a session guard renders inside one layout, which
@@ -88,7 +89,8 @@ so their two lines keep the room the density gives them. A key the user
 never chose applies its default: the device's own scheme, comfortable
 rows, the type at its own size, the
 density's leading, the reading pane on the right, light messages
-adapted to the dark theme and the browser's language. The device
+adapted to the dark theme, the next conversation after an action and
+the browser's language. The device
 remembers the last theme, density, font size and line height it
 applied, so the next load starts there before the server answers.
 While a one-time password is in force the server holds
@@ -132,7 +134,13 @@ change to a message goes through the worker as well: the rows take it
 at once and every tab hears it; the server gets it within 300 ms,
 ahead of every poll and when the network comes back. A change the
 account or a mailbox does not allow moves nothing. One the server
-refuses is taken back and the tab in view says so.
+refuses is taken back and the tab in view says which change it was.
+The worker takes the changes of a whole thread at once and answers
+what takes them back. A delete forever waits until its toast ends or
+the page goes away, then goes out. The tab that asked it holds a Web
+Lock while it waits, so the worker lets go of a destroy whose tab has
+closed. A folder job runs round by
+round with one per account. The worker also reads the account's quota.
 
 A card that opens shows its message under a hairline: HTML in the
 frame the pipeline below builds, titled by who wrote and what about,
@@ -279,6 +287,19 @@ that changed since it was last read waits for the fresh read before
 its cards draw. The members' headers are fetched with their previews
 when a thread opens, in batches of the size the bridge fills previews
 in.
+
+The keys act on the open thread, or on the row in focus when the
+focus is in the list: `e` archives, `#` deletes, `!` marks as spam, `u`
+flips read and `s` flips the star. In Trash and Junk `#` deletes
+forever and in Junk `!` marks as not spam. An action takes the
+thread's messages in the mailbox shown and stands only while the
+mailbox's role and the rights of the mailboxes involved allow it, so
+the palette and the overlay list what the mailbox offers. An archive,
+a delete or a spam leaves the list at once; its toast and the list's
+status region say so and Undo or `z` puts the thread back. The focus
+stays on the next row. An action on the open thread opens the next
+one with the focus on its title, or closes it with the focus on the
+next row when the appearance setting says to go back to the list.
 
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside

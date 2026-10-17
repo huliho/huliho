@@ -7,7 +7,7 @@ import type { ListRow, Mailbox } from "@huliho/core";
 import { accountsQueryOptions, mailboxesQueryOptions } from "@huliho/state";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useLocation, useNavigate, useParams } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, Ref, RefObject } from "react";
 
 import { useRetryAccount } from "../accounts/use-retry-account";
@@ -19,12 +19,20 @@ import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { useOnline } from "../shell/use-online";
+import { focusLost } from "./list-cursor";
 import { ListFoot } from "./list-foot";
 import { OfflineBanner } from "./offline-banner";
-import { markedFromMailbox, unmarkedForList, wantsListFocus } from "./thread-history";
+import {
+  markedForList,
+  markedFromMailbox,
+  unmarkedForList,
+  wantsListFocus,
+} from "./thread-history";
+import type { OpenFocus } from "./thread-history";
 import { ThreadList } from "./thread-list";
 import type { ListHandle } from "./thread-list";
 import { ThreadListBanner } from "./thread-list-banner";
+import { useCloseThread } from "./use-close-thread";
 import { useToday } from "./use-today";
 import styles from "./mailbox-pane.module.css";
 
@@ -120,19 +128,23 @@ function useAccountBanner(
 // A row opened puts its thread in the address, where the frame draws
 // it. The first open pushes a marked entry closing can go back over;
 // another row while a thread is open replaces the entry and keeps its
-// state, so a thread reached by its address stays unmarked.
+// state, so a thread reached by its address stays unmarked. An open
+// that leaves the focus in the list marks the entry so for the pane.
 function useOpenThread(
   accountId: string,
   mailboxId: string,
   threadId: string | undefined,
-): (row: ListRow) => void {
+): (row: ListRow, focus: OpenFocus) => void {
   const navigate = useNavigate();
-  return (row) => {
+  return (row, focus) => {
     void navigate({
       to: "/mail/$accountId/$mailboxId/$threadId",
       params: { accountId, mailboxId, threadId: row.threadId },
       replace: threadId !== undefined,
-      state: threadId === undefined ? markedFromMailbox : true,
+      state: (state) => {
+        const entry = threadId === undefined ? markedFromMailbox(state) : state;
+        return focus === "list" ? markedForList(entry) : entry;
+      },
     });
   };
 }
@@ -186,6 +198,39 @@ function useJumpFocus({ accountId, mailboxId, list, empty }: JumpFocus): void {
   }, [target, path, accountId, mailboxId, list, empty, navigate]);
 }
 
+interface KnownEmptyProps {
+  locale: Locale;
+  online: boolean;
+  banner: ReactNode;
+  empty: ReactNode;
+}
+
+// A mailbox the tree knows as empty: its word, without a fetch, with
+// the foot the list has.
+function KnownEmpty({ locale, online, banner, empty }: KnownEmptyProps) {
+  return (
+    <>
+      {banner}
+      <OfflineBanner locale={locale} online={online} />
+      {empty}
+      <ListFoot locale={locale} progress={null} />
+    </>
+  );
+}
+
+// A list that empties while it holds the focus gives way to the empty
+// box the pane draws for a mailbox it knows is empty; the box takes the
+// focus the list lost. `listed` names the mailbox whose list stands.
+function useEmptiedFocus(listed: string | null, empty: RefObject<HTMLDivElement | null>): void {
+  const listedRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (listed === null && listedRef.current !== null && focusLost()) {
+      empty.current?.focus();
+    }
+    listedRef.current = listed;
+  }, [listed, empty]);
+}
+
 // The list pane of one mailbox. A mailbox the tree lacks goes back to
 // the account's inbox; one the tree knows as empty says so without a
 // fetch, with the foot the list has; every other one gets the list, a
@@ -205,10 +250,13 @@ export function MailboxPane() {
   });
   useJumpFocus({ accountId, mailboxId, list: listRef, empty: emptyRef });
   const open = useOpenThread(accountId, mailboxId, threadId);
+  const close = useCloseThread(accountId, mailboxId);
+  const mailbox = tree.data?.find((row) => row.id === mailboxId);
+  const known = mailbox !== undefined && mailbox.totalEmails === 0 && firstSyncOf(mailbox) === null;
+  useEmptiedFocus(known ? null : mailboxId, emptyRef);
   if (!tree.isSuccess) {
     return null;
   }
-  const mailbox = tree.data.find((row) => row.id === mailboxId);
   if (mailbox === undefined) {
     return <Navigate to="/mail/$accountId" params={{ accountId }} replace />;
   }
@@ -221,15 +269,8 @@ export function MailboxPane() {
       mailboxes={tree.data}
     />
   );
-  if (mailbox.totalEmails === 0 && firstSyncOf(mailbox) === null) {
-    return (
-      <>
-        {banner}
-        <OfflineBanner locale={locale} online={online} />
-        {empty}
-        <ListFoot locale={locale} progress={null} />
-      </>
-    );
+  if (known) {
+    return <KnownEmpty locale={locale} online={online} banner={banner} empty={empty} />;
   }
   return (
     <>
@@ -242,10 +283,12 @@ export function MailboxPane() {
         cache={mailCache}
         accountId={accountId}
         mailbox={mailbox}
+        mailboxes={tree.data}
         online={online}
         openThreadId={threadId ?? null}
         empty={empty}
         onOpen={open}
+        onClose={close}
       />
     </>
   );

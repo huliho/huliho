@@ -4,7 +4,9 @@
 
 import { JmapError } from "@huliho/core";
 import type { AccountRow, ListPage, Mailbox, ThreadDetail } from "@huliho/core";
-import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import { queryKeys } from "@huliho/state";
+import { QueryClient } from "@tanstack/react-query";
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { Lease } from "../cache/coordinator";
@@ -246,6 +248,35 @@ test("an empty mailbox keeps the banner and the offline strip; a pass hands the 
   await vi.waitFor(() => {
     expect(document.activeElement?.textContent).toContain("Inbox is empty.");
   });
+});
+
+test("a list that empties under the focus hands it to the empty state; a focus elsewhere stays", async () => {
+  const client = new QueryClient();
+  renderShell("/mail/acc-1/mb-inbox", { client });
+  const grid = await screen.findByRole("grid", { name: "Conversations" });
+  const first = await within(grid).findByRole("row", { name: /Mireille Dekker/ });
+  act(() => {
+    first.focus();
+  });
+  act(() => {
+    client.setQueryData(queryKeys.mailboxes("acc-1"), MAILBOXES_EMPTY_INBOX);
+  });
+  const emptyState = await screen.findByText("Inbox is empty. Nothing needs you right now.");
+  expect(document.activeElement).not.toBe(document.body);
+  expect(document.activeElement?.contains(emptyState)).toBe(true);
+  cleanup();
+  const again = new QueryClient();
+  renderShell("/mail/acc-1/mb-inbox", { client: again });
+  await screen.findByRole("grid", { name: "Conversations" });
+  const elsewhere = card("sanne@fastmail.com");
+  act(() => {
+    elsewhere.focus();
+  });
+  act(() => {
+    again.setQueryData(queryKeys.mailboxes("acc-1"), MAILBOXES_EMPTY_INBOX);
+  });
+  expect(await screen.findByText("Inbox is empty. Nothing needs you right now.")).toBeDefined();
+  expect(document.activeElement).toBe(elsewhere);
 });
 
 test("a mailbox the tree knows as empty carries the key-hint strip at its foot", async () => {

@@ -80,6 +80,7 @@ test("a delete forever hides the email from the pages, the counts and its thread
       seq: 1,
       type: "Email",
       id: "e3",
+      threadId: "t-e3",
       patch: { "mailboxIds/trash": null },
       inverse: { "mailboxIds/trash": true },
       sentAt: null,

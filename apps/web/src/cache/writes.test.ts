@@ -89,7 +89,10 @@ async function opened(knobs: (server: FakeJmap) => void = () => undefined): Prom
   const erase = vi.fn<() => Promise<void>>(() => Promise.resolve());
   const store = new ChosenStore({ open: () => new MemoryMailStore(), erase });
   const platform = webLocks(navigator.locks);
-  const locks: Locks = { request: (name, run) => platform.request(`${scope}:${name}`, run) };
+  const locks: Locks = {
+    request: (name, run) => platform.request(`${scope}:${name}`, run),
+    held: (prefix) => platform.held(`${scope}:${prefix}`),
+  };
   const coordinator = new Coordinator({
     store,
     choose: (strict) => store.choose(strict),
@@ -181,7 +184,10 @@ test("a refused change gives the rows back and tells every tab of the refusal", 
   await vi.advanceTimersByTimeAsync(SET_FLUSH_MS);
   await drained();
   expect(sets(server)).toEqual([["e1", "e3"]]);
-  expect(posted).toEqual([ROWS_MOVED, { kind: "refused" }]);
+  expect(posted).toEqual([
+    ROWS_MOVED,
+    { kind: "refused", accountId: ACCOUNT, emailIds: ["e1"], verbs: ["read"] },
+  ]);
   expect(await seen(store, "e1")).toBe(false);
   expect(await seen(store, "e3")).toBe(true);
   expect(await store.pending(ACCOUNT)).toEqual([]);

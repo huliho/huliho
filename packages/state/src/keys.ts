@@ -21,6 +21,7 @@ export const queryKeys = {
   body: (accountId: string, emailId: string) => [accountId, "body", emailId] as const,
   // The first part of one email's raw source, read for the inspector.
   source: (accountId: string, emailId: string) => [accountId, "source", emailId] as const,
+  quota: (accountId: string) => [accountId, "quota"] as const,
 } as const;
 
 // The words a mail key carries in second place, so a cache message can
@@ -31,4 +32,5 @@ export const MAIL_KEY_WORDS: ReadonlySet<unknown> = new Set([
   "thread",
   "body",
   "source",
+  "quota",
 ]);

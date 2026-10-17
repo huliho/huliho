@@ -91,9 +91,33 @@ export function keyHandler(
 }
 
 // Whether the focus is on nothing: what a closed thread leaves behind
-// when the focus stood inside it.
-function focusLost(): boolean {
+// when the focus stood inside it, and a row that left with it.
+export function focusLost(): boolean {
   return document.activeElement === null || document.activeElement === document.body;
+}
+
+// The row of the grid that holds the focus, if one does.
+function focusedRow(scroller: HTMLElement): HTMLElement | null {
+  const focused = document.activeElement;
+  return focused instanceof HTMLElement && scroller.contains(focused) ? focused : null;
+}
+
+// The cursor's row once the row that held the focus left the list, or
+// when the focus stands on another row; null where it stays.
+function keptIndex(scroller: HTMLElement, active: number, dropped: boolean): number | null {
+  return dropped ? active : activeIfFocused(scroller, active);
+}
+
+// Focuses the row at `index` if it renders. A move scrolled already; a
+// row that shifted under the focus is brought into view.
+function focusRow(scroller: HTMLElement, index: number | null, moved: boolean): boolean {
+  const row =
+    index === null ? null : scroller.querySelector<HTMLElement>(`[data-index="${String(index)}"]`);
+  if (!(row instanceof HTMLElement)) {
+    return false;
+  }
+  row.focus({ preventScroll: moved });
+  return true;
 }
 
 // The row a closed thread returns the focus to: the cursor's, or the
@@ -115,11 +139,13 @@ export function useCursor(options: CursorOptions): ListCursor {
   const [cursor, setCursor] = useState<Cursor>({ index: 0, id: null });
   const pendingFocusRef = useRef<number | null>(null);
   const openRef = useRef(openThreadId);
+  const heldRef = useRef<HTMLElement | null>(null);
   const found = cursor.id === null ? null : indexOf(rows, cursor.id);
   const active = clampIndex(found ?? cursor.index, rowCount);
   // The focus follows the cursor: to the row a move asked for, to the
-  // row the cursor's thread stands in once rows above it changed and
-  // back to the cursor's row when the thread it opened closes.
+  // row the cursor's thread stands in once rows above it changed, back
+  // to the cursor's row when the thread it opened closes and to it when
+  // the row that held the focus left the list.
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
     if (scroller === null) {
@@ -127,21 +153,17 @@ export function useCursor(options: CursorOptions): ListCursor {
     }
     const closedId = openThreadId === null && focusLost() ? openRef.current : null;
     openRef.current = openThreadId;
+    const dropped = heldRef.current?.isConnected === false && focusLost();
     const moved = pendingFocusRef.current !== null;
     const wanted =
       pendingFocusRef.current ??
       (closedId === null
-        ? activeIfFocused(scroller, active)
+        ? keptIndex(scroller, active, dropped)
         : returnRow(rows, cursor, closedId, active));
-    if (wanted === null) {
-      return;
-    }
-    const row = scroller.querySelector<HTMLElement>(`[data-index="${String(wanted)}"]`);
-    if (row instanceof HTMLElement) {
+    if (focusRow(scroller, wanted, moved)) {
       pendingFocusRef.current = null;
-      // A move scrolled already; a row that shifted under the focus is brought into view.
-      row.focus({ preventScroll: moved });
     }
+    heldRef.current = focusedRow(scroller);
   });
   return {
     active,

@@ -16,9 +16,15 @@ export function openedFromMailbox(state: object): boolean {
   return "fromMailbox" in state && state.fromMailbox === true;
 }
 
-// The mark a mailbox opened by a jump carries: the focus goes into its
-// list, where the keys that jumped were pressed. The pane spends the
-// mark once the focus moved, so a later visit to the entry (a reload, a
+// Where the focus goes once a thread opens: onto its title or left in
+// the list for a thread an action opened from one of its rows.
+export type OpenFocus = "title" | "list";
+
+// The mark an entry carries when the focus belongs in the list. A
+// mailbox opened by a jump moves the focus into its list, where the keys
+// that jumped were pressed; a thread opened by an action from a row
+// leaves the focus on the row the cursor moved to. The receiver spends
+// the mark once it acted, so a later visit to the entry (a reload, a
 // back or a forward) moves nothing.
 export function markedForList<State extends object>(state: State): State & { focusList: true } {
   return { ...state, focusList: true };

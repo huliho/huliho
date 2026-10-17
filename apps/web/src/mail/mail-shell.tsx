@@ -10,14 +10,7 @@ import {
 } from "@huliho/state";
 import { useQuery } from "@tanstack/react-query";
 import type { UseQueryResult } from "@tanstack/react-query";
-import {
-  Navigate,
-  Outlet,
-  useLocation,
-  useNavigate,
-  useParams,
-  useRouter,
-} from "@tanstack/react-router";
+import { Navigate, Outlet, useParams } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { mailCache } from "../cache/client";
@@ -30,8 +23,8 @@ import { useJumpCommands } from "./jump-commands";
 import { rememberLastAccount } from "./last-account";
 import { prefetchThreadPane } from "./reading-pane";
 import { ShellFrame } from "./shell-frame";
-import { openedFromMailbox } from "./thread-history";
 import type { TreeState } from "./tree";
+import { useCloseThread } from "./use-close-thread";
 
 function treeState(query: UseQueryResult<Mailbox[]>): TreeState {
   if (query.isSuccess) {
@@ -56,11 +49,9 @@ function treeState(query: UseQueryResult<Mailbox[]>): TreeState {
 export function MailShell() {
   const locale = useLocale();
   const layout = useLayout();
-  const navigate = useNavigate();
-  const router = useRouter();
-  const fromMailbox = useLocation({ select: (location) => openedFromMailbox(location.state) });
   const { accountId } = useParams({ from: "/signed-in/mail/$accountId" });
   const { mailboxId, threadId } = useParams({ strict: false });
+  const closeThread = useCloseThread(accountId, mailboxId);
   const list = useQuery(accountsQueryOptions);
   const tree = useQuery(mailboxesQueryOptions(mailCache, accountId));
   const preferences = useQuery(preferencesQueryOptions);
@@ -69,8 +60,8 @@ export function MailShell() {
   useEffect(() => {
     rememberLastAccount(accountId);
   }, [accountId]);
-  // The chunks of the reading pane and the account menu are fetched
-  // once the shell stands, ahead of the first open of either.
+  // The chunks of the reading pane with the actions and of the account
+  // menu are fetched once the shell stands, ahead of the first use.
   useEffect(() => {
     void prefetchThreadPane();
     void prefetchAccountMenu();
@@ -81,23 +72,6 @@ export function MailShell() {
     // The session let go of this account: the root picks another.
     return list.data === undefined ? null : <Navigate to="/" replace />;
   }
-  // Closing goes back over the entry the list pushed, so the history
-  // reads as it did before the open; a thread reached by its address
-  // leaves it in place instead.
-  const closeThread = (): void => {
-    if (mailboxId === undefined) {
-      return;
-    }
-    if (fromMailbox) {
-      router.history.back();
-      return;
-    }
-    void navigate({
-      to: "/mail/$accountId/$mailboxId",
-      params: { accountId, mailboxId },
-      replace: true,
-    });
-  };
   return (
     <ShellFrame
       locale={locale}

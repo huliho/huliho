@@ -4,15 +4,16 @@
 
 import { firstSyncOf } from "@huliho/core";
 import type { FirstSync, ListRow, MailCache, Mailbox } from "@huliho/core";
-import { useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, Ref, RefObject } from "react";
 
 import { ErrorState } from "../design-system/error-state";
 import spoken from "../design-system/spoken.module.css";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
+import { useActions } from "./actions/use-actions";
 import { useListCommands } from "./list-commands";
-import { keyHandler, useCursor } from "./list-cursor";
+import { focusLost, keyHandler, useCursor } from "./list-cursor";
 import { ListFoot } from "./list-foot";
 import type { ListCursor } from "./list-cursor";
 import { useMarker } from "./list-marker";
@@ -21,6 +22,7 @@ import { pagesFor, useListVirtualizer } from "./list-virtualizer";
 import type { VirtualList } from "./list-virtualizer";
 import { OfflineBanner } from "./offline-banner";
 import { Viewport } from "./thread-grid";
+import type { OpenFocus } from "./thread-history";
 import { EdgeRow } from "./thread-list-item";
 import { pageOf, rowAt, useThreadPages } from "./use-thread-pages";
 import { useRowHeight } from "./use-token-px";
@@ -47,12 +49,16 @@ interface ThreadListProps {
   cache: MailCache;
   accountId: string;
   mailbox: Mailbox;
+  // The account's tree, whose roles and rights decide the actions.
+  mailboxes: readonly Mailbox[];
   online: boolean;
   // The thread open beside the list, whose row is drawn as selected.
   openThreadId: string | null;
   // What the pane shows when the list holds no row.
   empty: ReactNode;
-  onOpen: (row: ListRow) => void;
+  // Told of a row opened, with where the focus goes once the thread is in.
+  onOpen: (row: ListRow, focus: OpenFocus) => void;
+  onClose: () => void;
 }
 
 // Where the first page stands: still on its way, refused or in.
@@ -169,6 +175,7 @@ interface ControlsProps {
   cache: MailCache;
   accountId: string;
   mailbox: Mailbox;
+  mailboxes: readonly Mailbox[];
   pages: ListPages;
   facts: Facts;
   rowHeight: number;
@@ -179,7 +186,8 @@ interface ControlsProps {
   onSpan: (span: string) => void;
   // Told the page of the row the cursor went to, so it stays mounted.
   onPin: (page: number) => void;
-  onOpen: (row: ListRow) => void;
+  onOpen: (row: ListRow, focus: OpenFocus) => void;
+  onClose: () => void;
 }
 
 interface ListControls {
@@ -221,7 +229,7 @@ function useListControls(props: ControlsProps): ListControls {
   const openAt = (index: number): void => {
     const row = rowAt(pages.rows, index);
     if (row !== undefined) {
-      onOpen(row);
+      onOpen(row, "title");
     }
   };
   const open = (): void => {
@@ -244,6 +252,7 @@ function useListControls(props: ControlsProps): ListControls {
     open,
     reveal: actions.reveal,
   });
+  useActions({ ...props, rows: pages.rows, cursor });
   return {
     cursor,
     list,
@@ -296,13 +305,29 @@ function useListHandle(
   }));
 }
 
+// A grid that goes while it holds the focus, as when an action takes
+// the last row, hands the focus to what stands in for it.
+function useFocusKept(listRef: RefObject<HTMLDivElement | null>, gridStands: boolean): void {
+  const heldRef = useRef(false);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (list === null) {
+      return;
+    }
+    if (!gridStands && heldRef.current && focusLost()) {
+      focusStandIn(list);
+    }
+    heldRef.current = gridStands && list.contains(document.activeElement);
+  });
+}
+
 // The threads of one mailbox as a virtualized grid over the pages the
 // cache serves: one tab stop that the arrow keys, j and k move and
 // Enter, o or a click opens, the marker for new mail, the offline strip
 // and the foot, where the first sync shows its progress and the key
 // hints stand otherwise.
 export function ThreadList({ ref, ...props }: ThreadListProps) {
-  const { locale, today, cache, accountId, mailbox, online, openThreadId, empty, onOpen } = props;
+  const { locale, today, cache, accountId, mailbox, online, openThreadId, empty } = props;
   const listRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const regionRef = useRef<HTMLDivElement>(null);
@@ -314,24 +339,20 @@ export function ThreadList({ ref, ...props }: ThreadListProps) {
   const pages = useThreadPages(cache, accountId, mailbox.id, pagesFor(span, pinned));
   const facts = factsOf(pages, mailbox);
   const controls = useListControls({
-    locale,
-    cache,
-    accountId,
-    mailbox,
+    ...props,
     pages,
     facts,
     rowHeight,
-    openThreadId,
     scrollerRef,
     regionRef,
     markerRef,
     onSpan: setSpan,
     onPin: setPinned,
-    onOpen,
   });
   // The grid mounts once the first page is in: measured laid out, its rows render with it.
   const gridStands = facts.state === "ready" && !facts.isEmpty;
   useListHandle(ref, listRef, gridStands, controls.focusFirst);
+  useFocusKept(listRef, gridStands);
   return (
     <div ref={listRef} tabIndex={-1} className={styles.list}>
       <OfflineBanner locale={locale} online={online} />

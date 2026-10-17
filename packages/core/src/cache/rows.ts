@@ -20,7 +20,9 @@ export interface ListRow {
   unread: boolean;
   flagged: boolean;
   hasAttachment: boolean;
-  // The thread's emails in this mailbox.
+  // The thread's emails in this mailbox, oldest first, which an action
+  // on the row takes.
+  memberIds: string[];
   count: number;
 }
 
@@ -41,19 +43,23 @@ function senderOf(email: EmailHeader): string | null {
   return address.name === null || address.name === "" ? address.email : address.name;
 }
 
-// The members that stand in the mailbox; the exemplar alone when the
-// thread row names none there and the exemplar does.
+// The members that stand in the mailbox in the thread's order, oldest
+// first; the exemplar alone when the thread row names none there and the
+// exemplar does.
 function membersIn(
   email: EmailHeader,
   thread: ThreadRow | undefined,
   mailboxId: string,
-): MemberState[] {
-  const members = thread === undefined ? [email] : Object.values(thread.members);
-  const inside = members.filter((member) => mailboxId in member.mailboxIds);
+): [string, MemberState][] {
+  const states = new Map(Object.entries(thread?.members ?? {}));
+  const inside = (thread?.emailIds ?? []).flatMap((id): [string, MemberState][] => {
+    const state = states.get(id);
+    return state !== undefined && mailboxId in state.mailboxIds ? [[id, state]] : [];
+  });
   if (inside.length > 0) {
     return inside;
   }
-  return mailboxId in email.mailboxIds ? [email] : [];
+  return mailboxId in email.mailboxIds ? [[email.id, email]] : [];
 }
 
 // The rows of one page, in the server's order; an id without a header
@@ -78,9 +84,10 @@ export function listRows(page: WindowPage, mailboxId: string): ListRow[] {
         subject: email.subject,
         preview: email.preview,
         receivedAt: email.receivedAt,
-        unread: members.some((member) => !(SEEN in member.keywords)),
-        flagged: members.some((member) => FLAGGED in member.keywords),
+        unread: members.some(([, member]) => !(SEEN in member.keywords)),
+        flagged: members.some(([, member]) => FLAGGED in member.keywords),
         hasAttachment: email.hasAttachment,
+        memberIds: members.map(([memberId]) => memberId),
         count: members.length,
       },
     ];

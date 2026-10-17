@@ -74,6 +74,7 @@ export const pendingRowSchema: z.ZodType<PendingRow> = z.object({
   seq: z.number().int().positive(),
   type: z.literal("Email"),
   id: idSchema,
+  threadId: idSchema.exactOptional(),
   patch: patchSchema,
   inverse: patchSchema,
   sentAt: z.number().nullable(),

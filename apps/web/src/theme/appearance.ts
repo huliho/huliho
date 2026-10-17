@@ -4,6 +4,7 @@
 
 import { DENSITIES, FONT_SIZES, LINE_HEIGHTS, THEMES } from "@huliho/core";
 import type {
+  AfterAction,
   DarkMail,
   Density,
   FontSize,
@@ -35,6 +36,9 @@ export const DEFAULT_READING_PANE: ReadingPane = "right";
 
 // A light-only message is adapted to the dark theme until the user says otherwise.
 export const DEFAULT_DARK_MAIL: DarkMail = "adapt";
+
+// After an action on the open thread the next one opens until the user says otherwise.
+export const DEFAULT_AFTER_ACTION: AfterAction = "next";
 
 const THEME_KEY = "huliho-theme";
 const DENSITY_KEY = "huliho-density";

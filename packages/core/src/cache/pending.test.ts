@@ -104,23 +104,10 @@ test("a mark as read moves the header, the thread member and the unread counts a
   expect(await unread(store)).toEqual([1, 1]);
   const page = listPage(await queryWindow(client, store, "inbox", 0), "inbox");
   expect(page.rows.find((row) => row.threadId === "t1")?.unread).toBe(false);
+  const row = { type: "Email", threadId: "t1", patch: { [SEEN]: true }, inverse: { [SEEN]: null } };
   expect(await store.pending(ACCOUNT)).toEqual([
-    {
-      seq: 1,
-      type: "Email",
-      id: "e1",
-      patch: { [SEEN]: true },
-      inverse: { [SEEN]: null },
-      sentAt: null,
-    },
-    {
-      seq: 2,
-      type: "Email",
-      id: "e2",
-      patch: { [SEEN]: true },
-      inverse: { [SEEN]: null },
-      sentAt: null,
-    },
+    { ...row, seq: 1, id: "e1", sentAt: null },
+    { ...row, seq: 2, id: "e2", sentAt: null },
   ]);
   expect(server.requests).toHaveLength(0);
 });

@@ -3,7 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import { JmapError } from "@huliho/core";
-import type { MailCache } from "@huliho/core";
+import type { MailCache, Mutation, Undo } from "@huliho/core";
 import { MAIL_KEY_WORDS, queryKeys, sessionQueryOptions } from "@huliho/state";
 import type { QueryClient } from "@tanstack/react-query";
 import { wrap } from "comlink";
@@ -11,6 +11,7 @@ import type { Remote } from "comlink";
 
 import { LEASE_RENEW_MS } from "./coordinator";
 import type { CacheApi, Lease } from "./coordinator";
+import { LEASE_LOCK } from "./locks";
 import { CACHE_CHANNEL, readCacheMessage } from "./messages";
 import type { CacheMessage } from "./messages";
 import type { CacheResult } from "./outcome";
@@ -65,7 +66,74 @@ async function unwrap<Value>(answer: Promise<CacheResult<Value>>): Promise<Value
   });
 }
 
-// The cache as the query hooks read it, served by the worker.
+// The lock that tells every worker this tab lives, held while a destroy
+// it asked waits held; one hold per answer that held one.
+interface LeaseLock {
+  granted: Promise<void>;
+  release: () => void;
+}
+
+let leaseLock: LeaseLock | null = null;
+let leaseHolds = 0;
+
+function holdLease(): Promise<void> {
+  leaseHolds += 1;
+  if (leaseLock === null) {
+    const granted = Promise.withResolvers<undefined>();
+    const released = Promise.withResolvers<undefined>();
+    void navigator.locks.request(`${LEASE_LOCK}${TAB}`, () => {
+      granted.resolve(undefined);
+      return released.promise;
+    });
+    leaseLock = {
+      granted: granted.promise,
+      release: () => {
+        released.resolve(undefined);
+      },
+    };
+  }
+  return leaseLock.granted;
+}
+
+function letLease(): void {
+  leaseHolds = Math.max(0, leaseHolds - 1);
+  if (leaseHolds === 0 && leaseLock !== null) {
+    leaseLock.release();
+    leaseLock = null;
+  }
+}
+
+// A change that destroys holds the lease before the worker logs it, so
+// no worker releases the destroy while this tab can still take it back.
+async function mutateMany(accountId: string, mutations: readonly Mutation[]): Promise<Undo> {
+  const destroying = mutations.some((mutation) => "destroy" in mutation);
+  if (!destroying) {
+    return unwrap(worker().mutateMany(accountId, mutations, TAB));
+  }
+  await holdLease();
+  try {
+    const undo = await unwrap(worker().mutateMany(accountId, mutations, TAB));
+    if (undo.held.length === 0) {
+      letLease();
+    }
+    return undo;
+  } catch (error) {
+    letLease();
+    throw error;
+  }
+}
+
+// What ends a hold: the destroys go out or come back.
+async function endHold(settle: Promise<CacheResult<void>>): Promise<void> {
+  try {
+    await unwrap(settle);
+  } finally {
+    letLease();
+  }
+}
+
+// The cache as the query hooks read it, served by the worker. Each held
+// answer of `mutateMany` ends with one `release` or one `drop`.
 export const mailCache: MailCache = {
   mailboxes: (accountId) => unwrap(worker().mailboxes(accountId)),
   window: (accountId, mailboxId, page) => unwrap(worker().window(accountId, mailboxId, page)),
@@ -73,6 +141,12 @@ export const mailCache: MailCache = {
   reveal: (accountId, mailboxId) => unwrap(worker().reveal(accountId, mailboxId)),
   body: (accountId, emailId, options) => unwrap(worker().body(accountId, emailId, options)),
   mutate: (accountId, mutation) => unwrap(worker().mutate(accountId, mutation)),
+  mutateMany,
+  release: (accountId, held) => endHold(worker().release(accountId, held)),
+  drop: (accountId, held) => endHold(worker().drop(accountId, held)),
+  job: (accountId, job) => unwrap(worker().job(accountId, job)),
+  cancelJob: (accountId) => unwrap(worker().cancelJob(accountId)),
+  quota: (accountId) => unwrap(worker().quota(accountId)),
 };
 
 // Sign out: the database goes with the session. A worker that fails the
@@ -141,21 +215,24 @@ function isMailQuery(queryKey: readonly unknown[]): boolean {
   return MAIL_KEY_WORDS.has(queryKey[1]);
 }
 
+export type RefusedMessage = Extract<CacheMessage, { kind: "refused" }>;
+
 // What a tab does about a message beyond its queries: end its session
 // once another tab cleared the database, and say that the server
 // refused a change.
 export interface CacheListeners {
   cleared(): void;
-  refused(): void;
+  refused(message: RefusedMessage): void;
 }
 
+// A tree that moved brings the quota with it, which rides the same pass.
 function invalidateChanged(
   queryClient: QueryClient,
   message: Extract<CacheMessage, { kind: "changed" }>,
 ): void {
   const { accountId } = message;
   const keys = [
-    ...(message.mailboxes ? [queryKeys.mailboxes(accountId)] : []),
+    ...(message.mailboxes ? [queryKeys.mailboxes(accountId), queryKeys.quota(accountId)] : []),
     ...message.windows.map((mailboxId) => queryKeys.windows(accountId, mailboxId)),
     ...message.threads.map((threadId) => queryKeys.thread(accountId, threadId)),
   ];
@@ -190,13 +267,16 @@ export function applyCacheMessage(
       void queryClient.invalidateQueries({ queryKey: queryKeys.accounts });
       break;
     case "refused":
-      listeners.refused();
+      listeners.refused(message);
       break;
     case "reset":
       void queryClient.invalidateQueries({ predicate: (query) => isMailQuery(query.queryKey) });
       break;
     case "strict":
       rereadSetting(queryClient);
+      break;
+    case "job":
+      // A job's progress waits for the view that shows it.
       break;
     default:
       invalidateChanged(queryClient, message);
