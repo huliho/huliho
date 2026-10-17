@@ -8,8 +8,8 @@ import { z } from "./schema";
 const SESSIONS_ENDPOINT = "/api/sessions";
 
 export const deviceSchema = z.object({
-  browser: z.string().nullable(),
-  os: z.string().nullable(),
+  browser: z.nullable(z.string()),
+  os: z.nullable(z.string()),
   phone: z.boolean(),
   installed: z.boolean(),
 });
@@ -18,7 +18,7 @@ export const sessionRowSchema = z.object({
   id: z.string(),
   current: z.boolean(),
   device: deviceSchema,
-  address: z.string().nullable(),
+  address: z.nullable(z.string()),
   createdAt: z.number(),
   lastSeenAt: z.number(),
 });

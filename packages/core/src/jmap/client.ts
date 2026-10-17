@@ -30,7 +30,7 @@ const BODY_LIMIT = "maxSizeRequest";
 const stopCauseSchema = z.enum(["credentials", "connection"]);
 
 // The error body of the API routes; the cause rides along on still_stopped.
-const apiErrorSchema = z.object({ error: z.string(), cause: stopCauseSchema.optional() });
+const apiErrorSchema = z.object({ error: z.string(), cause: z.optional(stopCauseSchema) });
 
 // How a request fails before any method ran, in the words the routes use.
 export type JmapFailureCode =

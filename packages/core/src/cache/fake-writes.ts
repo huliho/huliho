@@ -23,9 +23,9 @@ export interface FakeBody {
 }
 
 const bodyArgsSchema = z.object({
-  fetchTextBodyValues: z.boolean().optional(),
-  fetchHTMLBodyValues: z.boolean().optional(),
-  maxBodyValueBytes: z.number().int().nonnegative().optional(),
+  fetchTextBodyValues: z.optional(z.boolean()),
+  fetchHTMLBodyValues: z.optional(z.boolean()),
+  maxBodyValueBytes: z.optional(z.int().check(z.nonnegative())),
 });
 
 interface Leaf {
@@ -110,10 +110,10 @@ export function bodyOf(server: FakeJmap, row: EmailHeader, raw: Args): Args {
 }
 
 const bodyAskSchema = z.object({
-  properties: z.array(z.string()).nullish(),
-  fetchTextBodyValues: z.boolean().optional(),
-  fetchHTMLBodyValues: z.boolean().optional(),
-  fetchAllBodyValues: z.boolean().optional(),
+  properties: z.nullish(z.array(z.string())),
+  fetchTextBodyValues: z.optional(z.boolean()),
+  fetchHTMLBodyValues: z.optional(z.boolean()),
+  fetchAllBodyValues: z.optional(z.boolean()),
 });
 
 const requestSchema = z.object({
@@ -177,9 +177,9 @@ export function recountMailboxes(server: FakeJmap, mailboxIds: readonly string[]
 
 const setArgsSchema = z.object({
   accountId: z.string(),
-  ifInState: z.string().nullish(),
-  update: z.record(z.string(), z.record(z.string(), z.unknown())).nullish(),
-  destroy: z.array(z.string()).nullish(),
+  ifInState: z.nullish(z.string()),
+  update: z.nullish(z.record(z.string(), z.record(z.string(), z.unknown()))),
+  destroy: z.nullish(z.array(z.string())),
 });
 
 const SETS = ["keywords", "mailboxIds"] as const;

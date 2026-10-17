@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { z } from "zod";
+import { z } from "zod/mini";
 
-// Zod probes for eval unless told not to; a strict CSP reports that probe.
-// The flag is read when a schema is built, so every schema takes z from here.
+// No schema built on zod/mini generates code or probes for eval, which a
+// strict CSP would report; jitless keeps a later path that honors the flag
+// from doing so. Every schema takes z from here, so the flag is set before
+// one is built.
 z.config({ jitless: true });
 
 export { z };

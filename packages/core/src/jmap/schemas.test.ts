@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import * as fc from "fast-check";
 import { expect, test } from "vitest";
 
 import { email, mailbox } from "../cache/fake-jmap";
 import {
   changesAnswerSchema,
+  coreLimitsSchema,
+  countSchema,
   emailHeaderSchema,
   emailStateSchema,
+  idSchema,
   mailboxSchema,
   queryAnswerSchema,
   responseSchema,
@@ -23,6 +27,59 @@ const SESSION = {
   downloadUrl: "/api/jmap/acc-1/download/{accountId}/{blobId}/{name}?type={type}",
   state: "s1",
 };
+
+const DOWNLOAD_VARIABLES = ["{accountId}", "{blobId}", "{name}", "{type}"];
+
+// Numbers on both sides of every bound of a count or a limit, plus values
+// of other types.
+const numberish = fc.oneof(
+  fc.integer({ min: -3, max: 3 }),
+  fc.double(),
+  fc.constantFrom(Number.MAX_SAFE_INTEGER, 2 ** 53, -(2 ** 53), 0.5, -0),
+  fc.string(),
+  fc.boolean(),
+  fc.constant(null),
+);
+
+function isSafeWhole(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value);
+}
+
+test("a count is a safe whole number of zero or more and nothing else", () => {
+  fc.assert(
+    fc.property(numberish, (value) => {
+      expect(countSchema.safeParse(value).success).toBe(isSafeWhole(value) && value >= 0);
+    }),
+  );
+});
+
+test("a server limit is a safe whole number above zero and nothing else", () => {
+  fc.assert(
+    fc.property(numberish, (value) => {
+      const limits = { maxCallsInRequest: value, maxObjectsInGet: 1, maxObjectsInSet: 0 };
+      expect(coreLimitsSchema.safeParse(limits).success).toBe(isSafeWhole(value) && value > 0);
+    }),
+  );
+});
+
+test("an id is any string but the empty one", () => {
+  fc.assert(
+    fc.property(fc.oneof(fc.string(), numberish), (value) => {
+      expect(idSchema.safeParse(value).success).toBe(typeof value === "string" && value !== "");
+    }),
+  );
+});
+
+test("a download template passes only on this origin and with all four variables", () => {
+  const start = fc.constantFrom("/", "//", "/\\", "", "https://mail.example.test/");
+  fc.assert(
+    fc.property(start, fc.shuffledSubarray(DOWNLOAD_VARIABLES), (head, variables) => {
+      const downloadUrl = `${head}download/${variables.join("/")}`;
+      const passes = head === "/" && variables.length === DOWNLOAD_VARIABLES.length;
+      expect(sessionObjectSchema.safeParse({ ...SESSION, downloadUrl }).success).toBe(passes);
+    }),
+  );
+});
 
 test("a session object names an endpoint on this origin and nothing else", () => {
   expect(sessionObjectSchema.parse({ ...SESSION, extra: true }).apiUrl).toBe("/api/jmap/acc-1");
