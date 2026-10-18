@@ -263,26 +263,28 @@ test("Escape and the Close button close the thread", async () => {
   expect(onClose).toHaveBeenCalledTimes(2);
 });
 
-test("as a screen the title is the page's heading and the way back names the mailbox with its key", async () => {
+test("as a screen the title is the page's heading and the way back names the mailbox with its key beside it", async () => {
   const { onClose } = renderPane(THREAD, { position: "screen" });
   const title = await screen.findByRole("heading", { level: 1, name: SUBJECT });
   expect(screen.getByRole("region", { name: "Conversation" })).toBeDefined();
   expect(screen.queryByRole("complementary")).toBeNull();
   expect(document.activeElement).toBe(title);
   const back = screen.getByRole("button", { name: "Back to Inbox" });
-  expect(back.textContent).toContain("Inbox");
-  expect(back.textContent).toContain("esc");
+  expect(back.textContent).toBe("Inbox");
+  expect(back.nextElementSibling?.textContent).toBe("esc");
   fireEvent.click(back);
   expect(onClose).toHaveBeenCalledOnce();
   cleanup();
   renderPane(THREAD, { position: "screen", keyHints: false });
   await screen.findByRole("heading", { level: 1 });
-  expect(screen.getByRole("button", { name: "Back to Inbox" }).textContent).not.toContain("esc");
+  expect(screen.getByRole("button", { name: "Back to Inbox" }).nextElementSibling).toBeNull();
   cleanup();
   // A tree without the mailbox leaves the way back its bare word.
   renderPane(THREAD, { position: "screen", open: { ...OPEN, mailbox: undefined } });
   await screen.findByRole("heading", { level: 1 });
-  expect(screen.getByRole("button", { name: "Back" }).textContent).toBe("Backesc");
+  const bare = screen.getByRole("button", { name: "Back" });
+  expect(bare.textContent).toBe("Back");
+  expect(bare.nextElementSibling?.textContent).toBe("esc");
 });
 
 test("the thread loads, fails with Try again and says when it is gone", async () => {

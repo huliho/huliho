@@ -14,8 +14,12 @@
   background: var(--hh-surface);
 }
 
+/* The way back's own end padding spaces the key beside it, which
+   shares its weight. */
 .toolbar[data-position="screen"] {
   justify-content: flex-start;
+  gap: 0;
+  font-weight: 600;
 }
 
 .back {

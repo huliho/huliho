@@ -20,10 +20,20 @@
   color: var(--hh-text-muted);
 }
 
+/* The link spans the item and shares its columns, so the letter beside
+   it lands between the name and the count. */
+.item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "name letter count";
+}
+
 .row {
-  display: flex;
+  grid-row: 1;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: var(--hhx-space-2);
   min-block-size: var(--hhx-hit-target);
   padding: var(--hhx-space-1) var(--hhx-space-3);
   border: var(--hhx-border-width) solid transparent;
@@ -36,10 +46,14 @@
   background: var(--hh-hover);
 }
 
-/* The open mailbox is the card; weight carries it beside the tint. */
 .row[aria-current="page"] {
   border-color: var(--hh-border);
   background: var(--hh-surface);
+}
+
+/* The open mailbox is the card; weight carries it beside the tint. */
+.row[aria-current="page"],
+.row[aria-current="page"] + .letter {
   font-weight: 600;
 }
 
@@ -49,15 +63,26 @@
 }
 
 .name {
-  flex: 1;
-  min-inline-size: 0;
+  grid-column: name;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* A flex box, so the count centers on the row as the letter does. */
+.count {
+  grid-column: count;
+  display: flex;
+  padding-inline-start: var(--hhx-space-2);
+}
+
+/* The pointer passes through the letter to the row under it. */
 .letter {
+  grid-area: letter;
+  align-self: center;
+  margin-inline-start: var(--hhx-space-2);
   font-family: var(--hhx-font-mono);
   font-size: var(--hhx-type-1);
   color: var(--hh-text-muted);
+  pointer-events: none;
 }

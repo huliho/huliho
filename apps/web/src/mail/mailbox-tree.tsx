@@ -70,7 +70,7 @@ function TreeItem({ row, stopId, ...props }: ItemProps) {
   const current = mailbox.id === props.currentId;
   const count = countOf(mailbox);
   return (
-    <li role="none">
+    <li role="none" className={styles.item}>
       <Link
         role="treeitem"
         to="/mail/$accountId/$mailboxId"
@@ -86,15 +86,20 @@ function TreeItem({ row, stopId, ...props }: ItemProps) {
         onClick={props.onNavigate}
       >
         <span className={styles.name}>{mailbox.name}</span>
-        {props.showLetters && row.letter !== null && (
-          <span className={styles.letter} aria-hidden="true">
-            {row.letter}
+        {/* The space keeps the name and the count two words in the link's text. */}
+        {count > 0 && (
+          <span className={styles.count}>
+            {" "}
+            <MonoCount value={count} locale={props.locale} tone={current ? "accent" : "muted"} />
           </span>
         )}
-        {count > 0 && (
-          <MonoCount value={count} locale={props.locale} tone={current ? "accent" : "muted"} />
-        )}
       </Link>
+      {/* The letter stands outside the link, so the link shows nothing its name leaves out. */}
+      {props.showLetters && row.letter !== null && (
+        <span className={styles.letter} aria-hidden="true">
+          {row.letter}
+        </span>
+      )}
     </li>
   );
 }

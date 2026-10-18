@@ -115,7 +115,8 @@ test("the root lands in the oldest account's inbox and draws its tree", async ({
     "2",
   );
   const verbouwing = tree(page).getByRole("treeitem", { name: "Verbouwing" });
-  await expect(verbouwing.locator('[aria-hidden="true"]')).toHaveText("v");
+  await expect(verbouwing.locator('[aria-hidden="true"]')).toHaveCount(0);
+  await expect(verbouwing.locator("xpath=following-sibling::*")).toHaveText("v");
   await expect(page.getByText("Folders")).toBeVisible();
   await expect(page.getByRole("complementary", { name: "Conversation" })).toContainText(
     "Select a conversation.",
