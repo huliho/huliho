@@ -19,6 +19,7 @@ interface Hint {
 const HINTS: readonly Hint[] = [
   { ids: ["list.next", "list.previous"], label: (locale) => m.hint_move({}, { locale }) },
   { ids: ["list.open"], label: (locale) => m.hint_open({}, { locale }) },
+  { ids: ["thread.archive"], label: (locale) => m.hint_archive({}, { locale }) },
   { ids: ["undo"], label: (locale) => m.hint_undo({}, { locale }) },
   { ids: ["shortcuts.open"], label: (locale) => m.hint_shortcuts({}, { locale }) },
 ];

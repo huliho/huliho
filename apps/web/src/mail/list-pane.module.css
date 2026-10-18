@@ -4,7 +4,8 @@
 
 /* The list keeps the size the frame hands it, the device's choice or the
    design's default, clamped so the reading pane keeps its minimum. The
-   width declared here is that default beside the pane. */
+   width declared here is that default beside the pane. A row's strip
+   asks this width, by name, whether it has room for its key caps. */
 .main {
   flex: none;
   display: flex;
@@ -12,6 +13,8 @@
   inline-size: var(--hhx-mail-list-width);
   min-inline-size: 0;
   background: var(--hh-surface);
+  container-type: inline-size;
+  container-name: list;
 }
 
 /* Above the pane the list spans the stage and its height is what the seam moves. */

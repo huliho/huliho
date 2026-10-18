@@ -2,12 +2,13 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Additional terms apply, see NOTICE. */
 
+/* Five English hints fit on one line at the list's least width. */
 .strip {
   flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--hhx-space-4);
+  gap: var(--hhx-space-2);
   min-block-size: var(--hhx-foot-height);
   margin: 0;
   padding: var(--hhx-space-2) var(--hhx-pane-padding);

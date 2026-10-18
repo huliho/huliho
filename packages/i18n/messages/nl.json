@@ -330,6 +330,7 @@
   "shortcuts_jump_note": "De zes vaste mailboxen houden hun letter; een map krijgt de eerste vrije letter van zijn naam, zoals hierboven staat.",
   "hint_move": "bladeren",
   "hint_open": "openen",
+  "hint_archive": "archiveren",
   "hint_undo": "ongedaan maken",
   "hint_shortcuts": "sneltoetsen",
   "command_thread": "{action, select, archive {Archiveren} delete {Verwijderen} deleteForever {Definitief verwijderen} spam {Markeren als spam} notSpam {Geen spam} read {Markeren als gelezen} unread {Markeren als ongelezen} star {Ster toevoegen} unstar {Ster weghalen} other {Verplaatsen naar…}}",

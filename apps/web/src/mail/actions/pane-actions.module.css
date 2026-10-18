@@ -1,0 +1,75 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* The actions keep their own spacing and weight wherever the toolbar
+   puts them, after the way back's tighter row included. */
+.actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--hhx-space-1);
+  font-weight: 400;
+}
+
+/* A rule as tall as a header icon parts the actions from the way back. */
+.actions[data-parted]::before {
+  content: "";
+  inline-size: var(--hhx-border-width);
+  block-size: var(--hhx-icon-header);
+  margin-inline: var(--hhx-space-1);
+  background: var(--hh-border);
+}
+
+/* An icon button; the words and the key join the icon in a row where
+   they fit. */
+.button {
+  position: relative;
+  grid-auto-flow: column;
+  gap: var(--hhx-space-2);
+  font: inherit;
+  white-space: nowrap;
+}
+
+/* The filled star takes the star away, in the tone the row's star wears. */
+.icon[data-filled] {
+  color: var(--hh-warn);
+  fill: currentColor;
+}
+
+/* Read out, never drawn, until the pane has the room for the words. */
+.label {
+  composes: spoken from "../../design-system/spoken.module.css";
+  font-weight: 500;
+}
+
+.keys {
+  display: none;
+}
+
+/* A toolbar this wide holds archive, delete and spam with their words
+   and keys in the longest locale beside the two flips and Close. A
+   container query takes no token, so the width stands here as a number. */
+@container (min-inline-size: 640px) {
+  .button[data-labeled] {
+    inline-size: auto;
+    padding-inline: var(--hhx-space-2);
+  }
+
+  .button[data-labeled] .icon {
+    inline-size: var(--hhx-icon-inline);
+    block-size: var(--hhx-icon-inline);
+  }
+
+  .button[data-labeled] .label {
+    position: static;
+    inline-size: auto;
+    block-size: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+
+  .button[data-labeled] .keys {
+    display: inline-flex;
+  }
+}

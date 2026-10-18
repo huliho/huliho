@@ -10,6 +10,8 @@ import { cx } from "../design-system/cx";
 import { Skeleton } from "../design-system/skeleton";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
+import { RowActions } from "./actions/row-actions";
+import type { RowActionsHandle } from "./actions/row-actions";
 import { MonoCount } from "./mono-count";
 import { formatRowTime } from "./row-time";
 import styles from "./thread-list-item.module.css";
@@ -36,6 +38,9 @@ interface ItemProps extends Placement {
   // Whether this is the one row Tab lands on.
   stop: boolean;
   selection: Selection;
+  // The thread's actions, which a loaded row shows under a pointer and
+  // while it holds the focus; null on a row that carries none.
+  actions: RowActionsHandle | null;
   // Told when the row takes focus on its own, by pointer or by Tab.
   onPlace: (index: number) => void;
 }
@@ -89,14 +94,17 @@ interface FactsProps {
   locale: Locale;
   today: number;
   row: ListRow;
+  index: number;
   selection: Selection;
+  actions: RowActionsHandle | null;
 }
 
 // Sender and time on the first line; subject and preview on the second.
 // A row picked among several carries the check where the dot sits. The
 // sender and the text line are mail content and read in their own
 // direction; the line takes the subject's, the preview inside it its own.
-function Facts({ locale, today, row, selection }: FactsProps) {
+// The actions stand in for the time where the row shows them.
+function Facts({ locale, today, row, index, selection, actions }: FactsProps) {
   return (
     <>
       {selection === "multi" ? (
@@ -115,6 +123,7 @@ function Facts({ locale, today, row, selection }: FactsProps) {
         {row.flagged && <Star className={cx(styles.icon, styles.flag)} aria-hidden="true" />}
         <span className={styles.time}>{formatRowTime(row.receivedAt, today, locale)}</span>
       </span>
+      {actions !== null && <RowActions locale={locale} handle={actions} row={row} index={index} />}
       <span dir="auto" className={styles.text}>
         <span className={styles.subject}>{subjectOf(row, locale)}</span>
         {row.preview !== "" && (
@@ -132,7 +141,7 @@ function Facts({ locale, today, row, selection }: FactsProps) {
 // shows the still shape inside the same element, so the focus stays put
 // while the page lands.
 export function ThreadListItem(props: ItemProps) {
-  const { locale, today, row, index, stop, selection, start, size, onPlace } = props;
+  const { locale, today, row, index, stop, selection, actions, start, size, onPlace } = props;
   const loaded = row !== undefined;
   return (
     <div
@@ -153,7 +162,14 @@ export function ThreadListItem(props: ItemProps) {
     >
       <div role="gridcell" className={styles.cell}>
         {loaded ? (
-          <Facts locale={locale} today={today} row={row} selection={selection} />
+          <Facts
+            locale={locale}
+            today={today}
+            row={row}
+            index={index}
+            selection={selection}
+            actions={actions}
+          />
         ) : (
           <Bars shape={index % SKELETON_SHAPES} />
         )}

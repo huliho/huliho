@@ -11,6 +11,7 @@ import { ErrorState } from "../design-system/error-state";
 import spoken from "../design-system/spoken.module.css";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
+import type { RowActionsHandle } from "./actions/row-actions";
 import { useActions } from "./actions/use-actions";
 import { useListCommands } from "./list-commands";
 import { focusLost, keyHandler, useCursor } from "./list-cursor";
@@ -139,19 +140,11 @@ function ListState({ locale, facts, retry, empty }: StateProps) {
   return facts.isEmpty ? empty : null;
 }
 
-interface Actions {
-  cache: MailCache;
-  accountId: string;
-  mailboxId: string;
-  pages: ListPages;
-  cursor: ListCursor;
-  markerRef: RefObject<HTMLElement | null>;
-}
-
 // The two actions whose own element leaves once they land: the reveal
 // takes the marker away and Try again puts the grid where the button
 // stood. The focus each held goes to the cursor's row.
-function listActions({ cache, accountId, mailboxId, pages, cursor, markerRef }: Actions) {
+function listActions(props: ControlsProps, cursor: ListCursor) {
+  const { cache, accountId, mailbox, pages, markerRef } = props;
   const landAgain = async (): Promise<void> => {
     if (await pages.retry()) {
       cursor.focus();
@@ -162,7 +155,7 @@ function listActions({ cache, accountId, mailboxId, pages, cursor, markerRef }: 
       if (markerRef.current?.contains(document.activeElement) === true) {
         cursor.focus();
       }
-      void cache.reveal(accountId, mailboxId);
+      void cache.reveal(accountId, mailbox.id);
     },
     retry: (): void => {
       void landAgain();
@@ -201,6 +194,7 @@ interface ListControls {
   focusFirst: () => void;
   reveal: () => void;
   retry: () => void;
+  rowActions: RowActionsHandle;
 }
 
 // The cursor, the virtualizer, the marker and the commands over the
@@ -235,14 +229,7 @@ function useListControls(props: ControlsProps): ListControls {
   const open = (): void => {
     openAt(cursor.active);
   };
-  const actions = listActions({
-    cache,
-    accountId,
-    mailboxId: mailbox.id,
-    pages,
-    cursor,
-    markerRef,
-  });
+  const actions = listActions(props, cursor);
   useListCommands({
     locale,
     rowCount,
@@ -252,7 +239,7 @@ function useListControls(props: ControlsProps): ListControls {
     open,
     reveal: actions.reveal,
   });
-  useActions({ ...props, rows: pages.rows, cursor });
+  const rowActions = useActions({ ...props, rows: pages.rows, cursor });
   return {
     cursor,
     list,
@@ -263,6 +250,7 @@ function useListControls(props: ControlsProps): ListControls {
       goTo(0);
     },
     ...actions,
+    rowActions,
   };
 }
 
@@ -371,6 +359,7 @@ export function ThreadList({ ref, ...props }: ThreadListProps) {
           pending={facts.pending}
           cursor={controls.cursor}
           openThreadId={openThreadId}
+          rowActions={controls.rowActions}
           onKeyDown={controls.onKeyDown}
           onOpen={controls.openAt}
           onReveal={controls.reveal}

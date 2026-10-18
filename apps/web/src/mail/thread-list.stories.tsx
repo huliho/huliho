@@ -129,6 +129,7 @@ export const RowStates: StoryObj = {
           index={index}
           stop={state.stop}
           selection={state.selection}
+          actions={null}
           start={index * ROW_PX}
           size={ROW_PX}
           onPlace={nothing}

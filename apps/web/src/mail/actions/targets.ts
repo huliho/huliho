@@ -5,43 +5,13 @@
 import type { ActionTarget, AfterAction, ListRow, ThreadDetail } from "@huliho/core";
 
 import { indexOfThread, rowAt } from "../use-thread-pages";
-
-const SEEN = "$seen";
-const FLAGGED = "$flagged";
+import { targetOfDetail, targetOfRow } from "./thread-target";
 
 // The thread an action takes and where its row stands in the list, null
 // for a thread opened from elsewhere whose row no page holds.
 export interface Aim {
   target: ActionTarget;
   index: number | null;
-}
-
-function targetOfRow(row: ListRow): ActionTarget {
-  return {
-    threadId: row.threadId,
-    memberIds: row.memberIds,
-    unread: row.unread,
-    flagged: row.flagged,
-  };
-}
-
-// The open thread as the reading pane holds it: its emails in the
-// mailbox shown, in the thread's order.
-export function targetOfDetail(detail: ThreadDetail, mailboxId: string): ActionTarget | null {
-  const members = new Map(Object.entries(detail.thread.members));
-  const memberIds = detail.thread.emailIds.filter(
-    (id) => mailboxId in (members.get(id)?.mailboxIds ?? {}),
-  );
-  const keywords = memberIds.map((id) => members.get(id)?.keywords ?? {});
-  if (memberIds.length === 0) {
-    return null;
-  }
-  return {
-    threadId: detail.thread.id,
-    memberIds,
-    unread: keywords.some((held) => !(SEEN in held)),
-    flagged: keywords.some((held) => FLAGGED in held),
-  };
 }
 
 interface Where {

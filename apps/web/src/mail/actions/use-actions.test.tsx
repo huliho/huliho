@@ -16,6 +16,7 @@ import { INBOX_ID, INBOX_PAGE, MAILBOXES } from "../fixtures";
 import { command, focused, mockListBox, renderList, row, settle } from "../list-rig";
 import type { Options } from "../list-rig";
 import type { OpenFocus } from "../thread-history";
+import { runOnOpenThread } from "./open-thread";
 
 type Opened = (row: ListRow, focus: OpenFocus) => void;
 
@@ -300,4 +301,32 @@ test("under list, and at the end of the list under next, the thread closes", asy
     expect(closed).toHaveBeenCalledTimes(2);
   });
   expect(opened).not.toHaveBeenCalled();
+});
+
+test("a press in the toolbar takes the open thread whatever row the focus stands on and moves on to its title", async () => {
+  const opened = vi.fn<Opened>();
+  const open = { openThreadId: first().threadId, onOpen: opened };
+  const cache = fixtureCache({ [`${shown("inbox").id}/0`]: INBOX_PAGE });
+  renderList({
+    mailbox: shown("inbox"),
+    mailboxes: WRITABLE,
+    cache,
+    client: client("next"),
+    ...open,
+  });
+  await registered();
+  act(() => {
+    row(2).focus();
+  });
+  act(() => {
+    runOnOpenThread("thread.archive");
+  });
+  await vi.waitFor(() => {
+    expect(opened).toHaveBeenCalledExactlyOnceWith(INBOX_PAGE.rows[1], "title");
+  });
+  expect(cache.batches[0]?.map((mutation) => mutation.id)).toEqual(first().memberIds);
+  cleanup();
+  // Without a list nothing lends the toolbar a thread to act on.
+  runOnOpenThread("thread.archive");
+  expect(cache.batches).toHaveLength(1);
 });
