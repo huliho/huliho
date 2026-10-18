@@ -31,7 +31,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
+    "@axe-core/playwright": "4.14.0",
     "@babel/core": "^8.0.0",
     "@inlang/paraglide-js": "^2.25.0",
     "@lhci/cli": "0.15.1",

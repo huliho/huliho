@@ -211,6 +211,7 @@ test("with the pane off the list fills the room and a thread opens as a screen o
     CARD_MAX_WIDTH_PX + SUBPIXEL_PX,
   );
   await expect(page.getByRole("tree", { name: "Mailboxes" })).toBeVisible();
+  await expect(screen.locator("kbd")).toHaveText("esc");
   await screen.getByRole("button", { name: "Back to Inbox" }).click();
   await expect(screenOf(page)).toHaveCount(0);
   await expect(rowAt(page, 1)).toBeFocused();
@@ -222,7 +223,8 @@ test("a phone opens the thread as a screen and the way back has no key", async (
   await rowAt(page, 1).click();
   const screen = screenOf(page);
   await expect(screen.getByRole("heading", { level: 1, name: subjectOf(1) })).toBeVisible();
-  await expect(screen.getByRole("button", { name: "Back to Inbox" })).not.toContainText("Esc");
+  await expect(screen.getByRole("button", { name: "Back to Inbox" })).toBeVisible();
+  await expect(screen.locator("kbd")).toHaveCount(0);
   await page.goBack();
   await expect(screenOf(page)).toHaveCount(0);
   await expect(rowAt(page, 1)).toBeVisible();

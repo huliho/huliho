@@ -86,8 +86,9 @@ function Toolbar({ locale, position, mailbox, keyHints, onClose }: ToolbarProps)
       <button type="button" className={styles.back} aria-label={label} onClick={onClose}>
         <ChevronLeft className={cx(iconButton.icon, styles.chevron)} aria-hidden="true" />
         <span>{name}</span>
-        {keyHints && <KeyCaps keys={CLOSE_KEYS} spoken={false} />}
       </button>
+      {/* The key stands outside the button, so the button shows nothing its name leaves out. */}
+      {keyHints && <KeyCaps keys={CLOSE_KEYS} spoken={false} />}
     </div>
   );
 }

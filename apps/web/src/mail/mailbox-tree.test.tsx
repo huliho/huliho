@@ -61,15 +61,15 @@ test("the roles come first in their order, then the folders with their depth", a
       .getAllByRole("treeitem")
       .map((row) => row.textContent),
   ).toEqual([
-    "Inboxi23",
-    "Draftsd2",
-    "Sents",
-    "Archivea",
-    "Junkj1",
-    "Trasht",
-    "Facturenf3",
-    "Verbouwingv",
-    "Offerteso",
+    "Inbox 23",
+    "Drafts 2",
+    "Sent",
+    "Archive",
+    "Junk 1",
+    "Trash",
+    "Facturen 3",
+    "Verbouwing",
+    "Offertes",
   ]);
   expect(item("Offertes").getAttribute("aria-level")).toBe("2");
   expect(item("Offertes").getAttribute("aria-posinset")).toBe("1");
@@ -89,9 +89,16 @@ test("the open mailbox is current and the one tab stop; without one the first ro
   expect(item("Inbox, 23 unread").tabIndex).toBe(0);
 });
 
-test("the letters show only where asked for", async () => {
+test("each letter stands beside its row's link, and only where asked for", async () => {
+  const tree = await renderTree();
+  expect(
+    within(tree)
+      .getAllByRole("treeitem")
+      .map((row) => row.nextElementSibling?.textContent),
+  ).toEqual(["i", "d", "s", "a", "j", "t", "f", "v", "o"]);
+  cleanup();
   await renderTree({ showLetters: false });
-  expect(item("Verbouwing").textContent).toBe("Verbouwing");
+  expect(item("Verbouwing").nextElementSibling).toBeNull();
 });
 
 test("the arrow keys, Home and End move focus inside the tree", async () => {
