@@ -117,6 +117,19 @@
   color: var(--hh-text-muted);
 }
 
+/* Where a pointer can hover, a row that drew its actions shows them in
+   the time's place under the pointer and while it holds the focus; a
+   row that drew none keeps its time. */
+@media (hover: hover) {
+  .row:has([data-row-actions]):is(:hover, :focus-within) .meta {
+    display: none;
+  }
+
+  .row:is(:hover, :focus-within) [data-row-actions] {
+    display: flex;
+  }
+}
+
 .text {
   grid-area: text;
   overflow: hidden;

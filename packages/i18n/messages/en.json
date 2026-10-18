@@ -330,6 +330,7 @@
   "shortcuts_jump_note": "The six standard mailboxes keep their letters; a folder takes the first free letter of its name, as listed above.",
   "hint_move": "move",
   "hint_open": "open",
+  "hint_archive": "archive",
   "hint_undo": "undo",
   "hint_shortcuts": "shortcuts",
   "command_thread": "{action, select, archive {Archive} delete {Delete} deleteForever {Delete forever} spam {Mark as spam} notSpam {Not spam} read {Mark as read} unread {Mark as unread} star {Add star} unstar {Remove star} other {Move to…}}",

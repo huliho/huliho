@@ -18,8 +18,11 @@ import { cx } from "../design-system/cx";
 import { EmptyState } from "../design-system/empty-state";
 import { ErrorState } from "../design-system/error-state";
 import iconButton from "../design-system/icon-button.module.css";
+import { Tooltip, TooltipGroup } from "../design-system/tooltip";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
+import { PaneActions } from "./actions/pane-actions";
+import { targetOfDetail } from "./actions/thread-target";
 import { MessageCard } from "./message-card";
 import { messagesOf, planMessages, subjectOf } from "./thread-messages";
 import type { PlannedMessage } from "./thread-messages";
@@ -55,25 +58,43 @@ interface ToolbarProps {
   locale: Locale;
   position: PanePosition;
   mailbox: Mailbox | undefined;
+  // The thread as the pane holds it, whose state the flips follow.
+  detail: ThreadDetail | null;
   keyHints: boolean;
   onClose: () => void;
 }
 
-// Beside or below the list a Close button heads the pane; on a screen
-// of its own the way back to the mailbox does.
-function Toolbar({ locale, position, mailbox, keyHints, onClose }: ToolbarProps) {
+// The thread's actions while it has a member in the mailbox shown.
+function actionsOf(locale: Locale, mailbox: Mailbox | undefined, detail: ThreadDetail | null) {
+  const thread =
+    mailbox === undefined || detail === null ? null : targetOfDetail(detail, mailbox.id);
+  return mailbox === undefined || thread === null ? null : { mailbox, thread, locale };
+}
+
+// The thread's actions head the pane, with Close at its end beside or
+// below the list; on a screen of its own the way back to the mailbox
+// comes first, the actions after it. Each button names its keys in a
+// tooltip.
+function Toolbar({ locale, position, mailbox, detail, keyHints, onClose }: ToolbarProps) {
+  const actions = actionsOf(locale, mailbox, detail);
   if (position !== "screen") {
+    const label = m.thread_close({}, { locale });
     return (
-      <div className={styles.toolbar}>
-        <button
-          type="button"
-          className={iconButton.button}
-          aria-label={m.thread_close({}, { locale })}
-          onClick={onClose}
-        >
-          <X className={iconButton.icon} aria-hidden="true" />
-        </button>
-      </div>
+      <TooltipGroup>
+        <div className={styles.toolbar}>
+          {actions !== null && <PaneActions {...actions} />}
+          <Tooltip label={label} keys={CLOSE_KEYS} align="end">
+            <button
+              type="button"
+              className={cx(iconButton.button, styles.close)}
+              aria-label={label}
+              onClick={onClose}
+            >
+              <X className={iconButton.icon} aria-hidden="true" />
+            </button>
+          </Tooltip>
+        </div>
+      </TooltipGroup>
     );
   }
   const name = mailbox?.name ?? m.thread_back_unnamed({}, { locale });
@@ -82,14 +103,17 @@ function Toolbar({ locale, position, mailbox, keyHints, onClose }: ToolbarProps)
       ? m.thread_back_unnamed({}, { locale })
       : m.thread_back({ mailbox: mailbox.name }, { locale });
   return (
-    <div className={styles.toolbar} data-position="screen">
-      <button type="button" className={styles.back} aria-label={label} onClick={onClose}>
-        <ChevronLeft className={cx(iconButton.icon, styles.chevron)} aria-hidden="true" />
-        <span>{name}</span>
-      </button>
-      {/* The key stands outside the button, so the button shows nothing its name leaves out. */}
-      {keyHints && <KeyCaps keys={CLOSE_KEYS} spoken={false} />}
-    </div>
+    <TooltipGroup>
+      <div className={styles.toolbar} data-position="screen">
+        <button type="button" className={styles.back} aria-label={label} onClick={onClose}>
+          <ChevronLeft className={cx(iconButton.icon, styles.chevron)} aria-hidden="true" />
+          <span className={styles.name}>{name}</span>
+        </button>
+        {/* The key stands outside the button, so the button shows nothing its name leaves out. */}
+        {keyHints && <KeyCaps keys={CLOSE_KEYS} spoken={false} />}
+        {actions !== null && <PaneActions {...actions} parted />}
+      </div>
+    </TooltipGroup>
   );
 }
 
@@ -280,6 +304,7 @@ export function ThreadPane(props: ThreadPaneProps) {
         locale={locale}
         position={position}
         mailbox={mailbox}
+        detail={query.data ?? null}
         keyHints={keyHints}
         onClose={onClose}
       />

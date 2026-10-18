@@ -2,30 +2,37 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Additional terms apply, see NOTICE. */
 
+/* The actions read the toolbar's width to tell whether their words fit. */
 .toolbar {
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: var(--hhx-space-2);
   min-block-size: var(--hhx-toolbar-height);
   padding: var(--hhx-space-1) var(--hhx-space-3);
   border-block-end: var(--hhx-border-width) solid var(--hh-border);
   background: var(--hh-surface);
+  container-type: inline-size;
+}
+
+.close {
+  flex: none;
+  margin-inline-start: auto;
 }
 
 /* The way back's own end padding spaces the key beside it, which
    shares its weight. */
 .toolbar[data-position="screen"] {
-  justify-content: flex-start;
   gap: 0;
   font-weight: 600;
 }
 
+/* A long mailbox name gives way, so the actions after it stay in view. */
 .back {
   display: inline-flex;
   align-items: center;
   gap: var(--hhx-space-2);
+  min-inline-size: 0;
   min-block-size: var(--hhx-hit-target);
   padding-block: 0;
   padding-inline: var(--hhx-space-1) var(--hhx-space-2);
@@ -42,9 +49,19 @@
   background: var(--hh-hover);
 }
 
+.chevron {
+  flex: none;
+}
+
 /* The chevron points at the list, which is behind the reader in either direction. */
 .back:dir(rtl) .chevron {
   scale: -1 1;
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .body {

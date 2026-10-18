@@ -3,11 +3,14 @@
 // Additional terms apply, see NOTICE.
 
 import type { ListRow } from "@huliho/core";
-import type { KeyboardEvent, MouseEvent, RefObject } from "react";
+import { useState } from "react";
+import type { KeyboardEvent, MouseEvent, PointerEvent, RefObject } from "react";
 
 import type { Chord } from "../commands/keys";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
+import { ROW_ACTIONS } from "./actions/row-actions";
+import type { RowActionsHandle } from "./actions/row-actions";
 import type { ListCursor } from "./list-cursor";
 import type { ListMarker } from "./list-marker";
 import type { VirtualList } from "./list-virtualizer";
@@ -28,6 +31,7 @@ interface GridProps {
   rowCount: number;
   cursor: ListCursor;
   openThreadId: string | null;
+  rowActions: RowActionsHandle;
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
   // A scroll or a click in the grid: the user acted in the list.
   onAct: () => void;
@@ -35,21 +39,41 @@ interface GridProps {
   onOpen: (index: number) => void;
 }
 
-// The row a click landed in, by its place in the list; null off a row.
-function clickedRow(event: MouseEvent<HTMLElement>): number | null {
-  const row = event.target instanceof Element ? event.target.closest("[data-index]") : null;
+// The row an event landed in, by its place in the list; null off a row.
+function rowOf(target: EventTarget): number | null {
+  const row = target instanceof Element ? target.closest("[data-index]") : null;
   const at = row instanceof HTMLElement ? row.dataset["index"] : undefined;
   return at === undefined ? null : Number(at);
 }
 
+// The row under a pointer that can hover; a touch never hovers.
+function useHoveredRow() {
+  const [hovered, setHovered] = useState<number | null>(null);
+  return {
+    hovered,
+    onPointerOver: (event: PointerEvent<HTMLElement>): void => {
+      if (event.pointerType !== "touch") {
+        setHovered(rowOf(event.target));
+      }
+    },
+    onPointerLeave: (): void => {
+      setHovered(null);
+    },
+  };
+}
+
 // The rows in view, each placed by its offset; a row whose page is on
-// its way is still, and so are the rows past the synced edge.
+// its way is still, and so are the rows past the synced edge. The row
+// under the pointer and the cursor's row carry the thread's actions; a
+// press on one of them acts and opens nothing.
 function Grid(props: GridProps) {
   const { locale, today, scrollerRef, list, rows, rowCount, cursor, openThreadId } = props;
+  const { hovered, onPointerOver, onPointerLeave } = useHoveredRow();
   const onClick = (event: MouseEvent<HTMLElement>): void => {
     props.onAct();
-    const index = clickedRow(event);
-    if (index !== null) {
+    const index = rowOf(event.target);
+    const acted = event.target instanceof Element && event.target.closest(ROW_ACTIONS) !== null;
+    if (index !== null && !acted) {
       props.onOpen(index);
     }
   };
@@ -64,6 +88,8 @@ function Grid(props: GridProps) {
       onKeyDown={props.onKeyDown}
       onScroll={props.onAct}
       onClick={onClick}
+      onPointerOver={onPointerOver}
+      onPointerLeave={onPointerLeave}
     >
       <div className={styles.sizer} style={{ blockSize: `${String(list.totalSize)}px` }}>
         {list.items.map((item) => {
@@ -71,6 +97,8 @@ function Grid(props: GridProps) {
             return <EdgeRow key={item.key} placement={item} index={item.index} />;
           }
           const row = rowAt(rows, item.index);
+          const acts =
+            row !== undefined && (item.index === hovered || item.index === cursor.active);
           return (
             <ThreadListItem
               key={item.key}
@@ -80,6 +108,7 @@ function Grid(props: GridProps) {
               index={item.index}
               stop={item.index === cursor.active}
               selection={row !== undefined && row.threadId === openThreadId ? "selected" : "none"}
+              actions={acts ? props.rowActions : null}
               start={item.start}
               size={item.size}
               onPlace={cursor.place}

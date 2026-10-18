@@ -5,7 +5,8 @@
 import type { ListRow, ThreadDetail } from "@huliho/core";
 import { expect, test } from "vitest";
 
-import { afterOf, aimOf, targetOfDetail } from "./targets";
+import { afterOf, aimOf } from "./targets";
+import { targetOfDetail } from "./thread-target";
 
 function row(threadId: string, memberIds = [`${threadId}-1`]): ListRow {
   return {

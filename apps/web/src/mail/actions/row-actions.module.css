@@ -1,0 +1,72 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* The strip takes the time's place with no height of its own, so its
+   buttons stand out above and below while the row's lines never move.
+   Positioned, it paints over the subject line under its buttons, so a
+   button's whole box takes a press. */
+.strip {
+  grid-area: meta;
+  position: relative;
+  display: none;
+  align-items: center;
+  gap: var(--hhx-space-1);
+  block-size: 0;
+  font-weight: 400;
+}
+
+/* An icon in a square of the hit target, on the row's own ground; the
+   one under the pointer takes a frame, since the row's hover fill is
+   spent already. */
+.button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--hhx-space-1);
+  inline-size: var(--hhx-hit-target);
+  block-size: var(--hhx-hit-target);
+  padding: 0;
+  border: var(--hhx-border-width) solid transparent;
+  border-radius: var(--hhx-radius-field);
+  background: none;
+  color: var(--hh-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.button:hover {
+  border-color: var(--hh-border-strong);
+}
+
+.keys {
+  display: none;
+}
+
+/* A list this wide holds the strip with its caps past the row's middle,
+   so a press there opens the row. A container query takes no token, so
+   the width stands here as a number. */
+@container list (min-inline-size: 496px) {
+  .button {
+    inline-size: auto;
+    padding-inline: var(--hhx-space-1);
+  }
+
+  .keys {
+    display: inline-flex;
+  }
+}
+
+.icon {
+  flex: none;
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
+}
+
+/* The filled star takes the star away, in the tone the row's star wears. */
+.icon[data-filled] {
+  color: var(--hh-warn);
+  fill: currentColor;
+}

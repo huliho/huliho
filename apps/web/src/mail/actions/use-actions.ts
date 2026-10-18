@@ -9,7 +9,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 
-import type { Chord } from "../../commands/keys";
 import { CLAIMED_BY_LAYER } from "../../commands/registry";
 import type { Command } from "../../commands/registry";
 import { useCommand } from "../../commands/use-command";
@@ -18,23 +17,14 @@ import { DEFAULT_AFTER_ACTION } from "../../theme/appearance";
 import type { ListCursor } from "../list-cursor";
 import type { OpenFocus } from "../thread-history";
 import { showActionToast } from "./action-toast";
+import { ACTION_COMMANDS } from "./kinds";
+import type { ActionKind } from "./kinds";
+import { lendOpenThreadRun } from "./open-thread";
+import type { RowActionsHandle } from "./row-actions";
 import { afterOf, aimOf } from "./targets";
 import type { Aim } from "./targets";
+import { targetOfRow } from "./thread-target";
 import { actionLabel, doneSentence } from "./words";
-
-// What a key asks of a thread; the mailbox and the thread decide which
-// action that is.
-type Kind = "archive" | "delete" | "spam" | "read" | "star";
-
-// Each command's id and keys; `#` and `!` match the key the layout
-// types, whatever it takes to type them.
-const KEYS: ReadonlyMap<Kind, { id: string; keys: readonly Chord[] }> = new Map([
-  ["archive", { id: "thread.archive", keys: [{ key: "e" }] }],
-  ["delete", { id: "thread.delete", keys: [{ key: "#" }] }],
-  ["spam", { id: "thread.spam", keys: [{ key: "!" }] }],
-  ["read", { id: "thread.read", keys: [{ key: "u" }] }],
-  ["star", { id: "thread.star", keys: [{ key: "s" }] }],
-]);
 
 // The actions that take a thread out of the mailbox shown.
 const LEAVING: ReadonlySet<MailAction> = new Set([
@@ -45,7 +35,7 @@ const LEAVING: ReadonlySet<MailAction> = new Set([
   "notSpam",
 ]);
 
-const OFFERS: ReadonlyMap<Kind, (offered: Offered) => boolean> = new Map([
+const OFFERS: ReadonlyMap<ActionKind, (offered: Offered) => boolean> = new Map([
   ["archive", (offered) => offered.archive !== null],
   ["delete", (offered) => offered.delete !== null || offered.deleteForever],
   ["spam", (offered) => offered.spam !== null],
@@ -53,7 +43,7 @@ const OFFERS: ReadonlyMap<Kind, (offered: Offered) => boolean> = new Map([
   ["star", (offered) => offered.flag],
 ]);
 
-function offers(offered: Offered, kind: Kind): boolean {
+function offers(offered: Offered, kind: ActionKind): boolean {
   return OFFERS.get(kind)?.(offered) === true;
 }
 
@@ -147,15 +137,23 @@ function makeWay(context: Context, aim: Aim, fromList: boolean): void {
   }
 }
 
-// One action on the thread the focus points at: the rows take it at
-// once, the toast and the status region say so where it moved threads,
-// and an open thread it took out of the list makes way. A change the
-// log took nothing of leaves everything as it stands.
-async function runAction(context: Context, kind: Kind): Promise<void> {
+// A thread a surface names for an action, and whether the action counts
+// as one from the list; the focus decides where the surface leaves it.
+interface Aimed {
+  aim: Aim;
+  fromList?: boolean;
+}
+
+// One action on a thread: the one a surface names, else the one the
+// focus points at. A change the log took nothing of leaves everything
+// as it stands; one that took threads out of the mailbox shown says
+// so in the toast and the status region, then an open thread among
+// them makes way.
+async function runAction(context: Context, kind: ActionKind, aimed?: Aimed): Promise<void> {
   const { input } = context;
   const { cache, accountId, mailbox, locale } = input;
   const inList = focusInList(input.scrollerRef.current, document.activeElement);
-  const aim = context.aim(inList);
+  const aim = aimed === undefined ? context.aim(inList) : aimed.aim;
   if (aim === null) {
     return;
   }
@@ -175,15 +173,21 @@ async function runAction(context: Context, kind: Kind): Promise<void> {
     announce(input.regionRef.current, text);
   }
   if (LEAVING.has(action) && aim.target.threadId === input.openThreadId) {
-    makeWay(context, aim, inList);
+    makeWay(context, aim, aimed?.fromList ?? inList);
   }
+}
+
+function launch(context: Context, kind: ActionKind, aimed?: Aimed): void {
+  runAction(context, kind, aimed).catch((error: unknown) => {
+    console.error("mail: an action failed", error instanceof Error ? error.message : String(error));
+  });
 }
 
 // The command for one key while the mailbox offers its action and a
 // thread stands to take it; its label follows the state of the thread
 // the key takes from where the focus stands.
-function commandOf(context: Context, shown: Aim | null, kind: Kind): Command | null {
-  const key = KEYS.get(kind);
+function commandOf(context: Context, shown: Aim | null, kind: ActionKind): Command | null {
+  const key = ACTION_COMMANDS.get(kind);
   const { mailbox, locale } = context.input;
   if (shown === null || key === undefined || !offers(context.offered, kind)) {
     return null;
@@ -194,21 +198,20 @@ function commandOf(context: Context, shown: Aim | null, kind: Kind): Command | n
     group: "act",
     keys: key.keys,
     run: () => {
-      runAction(context, kind).catch((error: unknown) => {
-        console.error(
-          "mail: an action failed",
-          error instanceof Error ? error.message : String(error),
-        );
-      });
+      launch(context, kind);
     },
   };
 }
 
-// The thread actions of a mailbox as commands in the Act group, each
-// registered while the mailbox and its rights offer it. An action takes
-// the open thread unless the focus stands in the list, where it takes
-// the cursor's row.
-export function useActions(input: ActionsInput): void {
+function kindOf(id: string): ActionKind | null {
+  return [...ACTION_COMMANDS].find(([, command]) => command.id === id)?.[0] ?? null;
+}
+
+// The thread actions of a mailbox as commands in the Act group, lent to
+// the reading pane's toolbar for the open thread and to a row's buttons
+// for their own thread. A key takes the open thread unless the focus
+// stands in the list, where it takes the cursor's row.
+export function useActions(input: ActionsInput): RowActionsHandle {
   const { cache, accountId, mailbox, mailboxes, rows, cursor, openThreadId } = input;
   const rule = useQuery(preferencesQueryOptions).data?.afterAction ?? DEFAULT_AFTER_ACTION;
   const inGrid = useFocusInList(input.scrollerRef);
@@ -231,4 +234,21 @@ export function useActions(input: ActionsInput): void {
   useCommand(commandOf(context, shown, "spam"));
   useCommand(commandOf(context, shown, "read"));
   useCommand(commandOf(context, shown, "star"));
+  // A press in the toolbar acts from the pane, so the next thread's title
+  // takes the focus whatever held it. Each render lends its own context.
+  useEffect(() =>
+    lendOpenThreadRun((id) => {
+      const kind = kindOf(id);
+      const aim = openThreadId === null ? null : context.aim(false);
+      if (kind !== null && aim !== null) {
+        launch(context, kind, { aim, fromList: false });
+      }
+    }),
+  );
+  return {
+    mailbox,
+    run: (kind, row, index) => {
+      launch(context, kind, { aim: { target: targetOfRow(row), index } });
+    },
+  };
 }

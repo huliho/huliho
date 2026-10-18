@@ -3,10 +3,14 @@
 // Additional terms apply, see NOTICE.
 
 import { JmapError } from "@huliho/core";
-import type { BodyDetail } from "@huliho/core";
+import type { BodyDetail, Mailbox, MemberState, ThreadDetail } from "@huliho/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
+import type { Command } from "../commands/registry";
+import { useCommands } from "../commands/use-command";
+import { ACTION_COMMANDS } from "./actions/kinds";
+import type { ActionKind } from "./actions/kinds";
 import { NEWSLETTER_HTML, PASSED, REPLY_TEXT, htmlDetail, textDetail } from "./body-fixtures";
 import { fixtureCache } from "./fixture-cache";
 import type { ThreadAnswer } from "./fixture-cache";
@@ -30,7 +34,41 @@ const BODIES = new Map<string, BodyDetail>([
 ]);
 
 function nothing(): void {
-  // A drawn pane closes nothing.
+  // A drawn pane closes nothing and acts on nothing.
+}
+
+// The Act group a list of the mailbox registers, which the toolbar draws.
+function actsOf(kinds: readonly ActionKind[]): Command[] {
+  return kinds.flatMap((kind) => {
+    const command = ACTION_COMMANDS.get(kind);
+    return command === undefined ? [] : [{ ...command, label: kind, group: "act", run: nothing }];
+  });
+}
+
+const INBOX_ACTS = actsOf(["archive", "delete", "spam", "read", "star"]);
+const TRASH_ACTS = actsOf(["delete", "spam", "read", "star"]);
+
+function Acting({ acts, children }: { acts: readonly Command[]; children: JSX.Element }) {
+  useCommands(acts);
+  return children;
+}
+
+// Trash in the fixture tree, where the toolbar stands without archive.
+function trash(): Mailbox {
+  const found = MAILBOXES.find((mailbox) => mailbox.role === "trash");
+  if (found === undefined) {
+    throw new Error("the fixtures hold no Trash");
+  }
+  return found;
+}
+
+// The fixture thread with every message moved to Trash.
+function inTrash(detail: ThreadDetail): ThreadDetail {
+  const box = trash();
+  const members = Object.entries(detail.thread.members).map(
+    ([id, member]): [string, MemberState] => [id, { ...member, mailboxIds: { [box.id]: true } }],
+  );
+  return { ...detail, thread: { ...detail.thread, members: Object.fromEntries(members) } };
 }
 
 // The pane's box beside the list, so the cards have a height to scroll in.
@@ -38,19 +76,21 @@ function Box({ children }: { children: JSX.Element }): JSX.Element {
   return <div style={{ position: "relative", display: "flex", blockSize: "80vh" }}>{children}</div>;
 }
 
-function paned(answer: ThreadAnswer): JSX.Element {
+function paned(answer: ThreadAnswer, open = OPEN, acts: readonly Command[] = []): JSX.Element {
   return routed(
     () => (
-      <Box>
-        <ReadingPane
-          locale="en"
-          cache={fixtureCache({}, { [THREAD_ID]: answer })}
-          thread={OPEN}
-          position="right"
-          keyHints
-          onClose={nothing}
-        />
-      </Box>
+      <Acting acts={acts}>
+        <Box>
+          <ReadingPane
+            locale="en"
+            cache={fixtureCache({}, { [THREAD_ID]: answer })}
+            thread={open}
+            position="right"
+            keyHints
+            onClose={nothing}
+          />
+        </Box>
+      </Acting>
     ),
     undefined,
     seedMail(BODIES),
@@ -108,4 +148,37 @@ export const Failed: StoryObj = {
 
 export const Gone: StoryObj = {
   render: () => paned(null),
+};
+
+// The toolbar in the inbox: archive, delete and spam with their words
+// where the pane has the room, the two flips as icons.
+export const Toolbar: StoryObj = {
+  render: () => paned(threadDetail([UNREAD_AT]), OPEN, INBOX_ACTS),
+};
+
+// In Trash delete forever stands where delete would and archive is absent.
+export const ToolbarInTrash: StoryObj = {
+  render: () => paned(inTrash(THREAD), { ...OPEN, mailbox: trash() }, TRASH_ACTS),
+};
+
+// As a screen the actions follow the way back and its key.
+export const ScreenToolbar: StoryObj = {
+  render: () =>
+    routed(
+      () => (
+        <Acting acts={INBOX_ACTS}>
+          <Box>
+            <ThreadScreen
+              locale="en"
+              cache={fixtureCache({}, { [THREAD_ID]: THREAD })}
+              thread={OPEN}
+              keyHints
+              onClose={nothing}
+            />
+          </Box>
+        </Acting>
+      ),
+      undefined,
+      seedMail(BODIES),
+    ),
 };

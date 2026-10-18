@@ -300,6 +300,14 @@ status region say so and Undo or `z` puts the thread back. The focus
 stays on the next row. An action on the open thread opens the next
 one with the focus on its title, or closes it with the focus on the
 next row when the appearance setting says to go back to the list.
+The open thread's toolbar holds the same actions before Close, each
+with a tooltip naming its label and its key; archive, delete and spam
+show their words where the pane has the room. A press there acts on the
+open thread whatever the focus points at. A row shows archive, delete,
+the read flip and star in place of its time under a pointer and while
+it holds the focus, their keys beside the icons where the list is wide;
+a press there acts on that row and leaves the focus where it stood. The
+strip at the list's foot names `e` while the mailbox offers archive.
 
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside

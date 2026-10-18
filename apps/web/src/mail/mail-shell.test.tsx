@@ -345,7 +345,10 @@ test("a phone opens the thread as a screen whatever the preference says", async 
   expect(screen.queryByRole("complementary")).toBeNull();
   expect(screen.queryByRole("separator")).toBeNull();
   expect(document.querySelector("main")?.hasAttribute("inert")).toBe(true);
-  expect(screen.getByRole("button", { name: "Back to Inbox" }).nextElementSibling).toBeNull();
+  // The way back carries no key on a phone; the thread's actions follow it.
+  expect(
+    screen.getByRole("button", { name: "Back to Inbox" }).nextElementSibling?.tagName,
+  ).not.toBe("KBD");
 });
 
 test("the design's default is clamped when the frame leaves less room", async () => {

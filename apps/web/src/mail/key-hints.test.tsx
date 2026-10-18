@@ -44,6 +44,25 @@ test("the strip names the keys the registry holds and follows a registration", (
   expect(screen.getByText("o").parentElement?.textContent).toBe("o open");
 });
 
+test("archive joins the strip after open while the mailbox offers it", () => {
+  registerAll(["list.next", "list.previous", "list.open", "shortcuts.open"]);
+  const { container } = render(<KeyHints locale="en" hidden={false} />);
+  expect(screen.queryByText("archive")).toBeNull();
+  act(() => {
+    cleanups.push(
+      registerCommand({
+        id: "thread.archive",
+        label: "Archive",
+        group: "act",
+        keys: [{ key: "e" }],
+        run: () => undefined,
+      }),
+    );
+  });
+  const hints = [...container.querySelectorAll("p > span")].map((hint) => hint.textContent);
+  expect(hints).toEqual(["j/k move", "o open", "e archive", "? shortcuts"]);
+});
+
 test("a hint with one of its commands missing stays away; so does the strip on a phone or under the sync foot", () => {
   registerAll(["list.next", "shortcuts.open"]);
   const { rerender } = render(<KeyHints locale="en" hidden={false} />);
