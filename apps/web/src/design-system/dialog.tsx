@@ -77,9 +77,11 @@ export function Dialog({
     >
       <BaseDialog.Portal>
         <BaseDialog.Backdrop className={styles.backdrop} />
+        {/* In the tab order, so a popup taller than the screen scrolls by key in Safari too. */}
         <BaseDialog.Popup
           className={styles.popup}
           data-size={size}
+          tabIndex={0}
           initialFocus={initialFocus ?? true}
           finalFocus={finalFocus === undefined ? undefined : () => finalFocus}
         >
