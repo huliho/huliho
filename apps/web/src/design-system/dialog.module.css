@@ -46,6 +46,12 @@
   border-radius: 0;
 }
 
+/* Both fill the phone's screen, so a focused popup keeps its ring inside. */
+.popup[data-size="image"]:focus-visible,
+.popup[data-size="screen"]:focus-visible {
+  outline-offset: calc(-1 * var(--hhx-focus-ring-width));
+}
+
 /* The screen is as tall as the phone's: its heading and its foot stay in place and
    what stands between them scrolls. */
 .popup[data-size="screen"] {
@@ -59,6 +65,11 @@
     max-block-size: calc(100dvh - var(--hhx-space-6));
     border: var(--hhx-border-width) solid var(--hh-border);
     border-radius: var(--hhx-radius-overlay);
+  }
+
+  .popup[data-size="image"]:focus-visible,
+  .popup[data-size="screen"]:focus-visible {
+    outline-offset: var(--hhx-focus-ring-offset);
   }
 
   .popup[data-size="image"] {

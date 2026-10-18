@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 
 import { accountRow, mockAccounts } from "./account-mocks";
 import { FIXED_NOW } from "./mail-corpus";
-import { MAILBOXES, mockMail } from "./mail-mocks";
+import { WRITABLE_MAILBOXES, mockMail } from "./mail-mocks";
 import type { MailboxBody } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
@@ -45,7 +45,7 @@ interface InboxOptions {
 
 // The fixture tree with a flat folder per name, one message in each.
 function withFolders(names: readonly string[]): MailboxBody[] {
-  const base = MAILBOXES.find((row) => row.role === null);
+  const base = WRITABLE_MAILBOXES.find((row) => row.role === null);
   if (base === undefined) {
     throw new Error("the fixture tree has no folder");
   }
@@ -60,12 +60,13 @@ function withFolders(names: readonly string[]): MailboxBody[] {
     totalThreads: 1,
     unreadThreads: 0,
   }));
-  return [...MAILBOXES, ...extra];
+  return [...WRITABLE_MAILBOXES, ...extra];
 }
 
+// Every mailbox takes and gives up messages, so the Act group offers each verb.
 async function openInbox(page: Page, options: InboxOptions = {}): Promise<void> {
   await mockSignedIn(page);
-  await mockMail(page, options.mailboxes);
+  await mockMail(page, options.mailboxes ?? WRITABLE_MAILBOXES);
   await mockAccounts(page, ROWS);
   if (options.locale !== undefined) {
     await mockPreferences(page, { locale: options.locale });
@@ -128,6 +129,9 @@ test("the question mark opens the overlay, which lists what the palette lists", 
   expect(listed).toContain("Next conversation");
   expect(listed).toContain("Switch account");
   expect(listed).toContain("Command palette");
+  for (const verb of ["Archive", "Delete", "Mark as spam", "Mark as read", "Add star"]) {
+    expect(listed).toContain(verb);
+  }
   await expect(overlay(page).getByText("Go to Inbox").locator("xpath=..")).toContainText("g i");
   await page.keyboard.press("Escape");
   await expect(overlay(page)).toBeHidden();
