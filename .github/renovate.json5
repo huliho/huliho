@@ -38,6 +38,14 @@
       automerge: false,
     },
     {
+      description: "An async-imap minor release can bring a new protocol parser under the bridge, so it waits for approval on the dependency dashboard.",
+      matchPackageNames: ["async-imap"],
+      matchUpdateTypes: ["minor", "major"],
+      groupName: null,
+      dependencyDashboardApproval: true,
+      automerge: false,
+    },
+    {
       description: "The download carries a checksum that only a person can refresh.",
       matchPackageNames: ["gitleaks/gitleaks"],
       automerge: false,
