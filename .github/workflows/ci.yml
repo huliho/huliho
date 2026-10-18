@@ -484,13 +484,23 @@ jobs:
           echo "$out" | grep -q "found too many duplicates" || { echo "jscpd failed for another reason"; exit 1; }
           rm -rf negative-samples
       - name: size-limit budget
+        # A chunk outside the page's start fails the shared chunks; once
+        # index.html preloads it, it fails the initial JS.
         run: |
           node -e '
             const bytes = require("crypto").randomBytes(300 * 1024).toString("base64");
             require("fs").writeFileSync("apps/web/dist/assets/oversized.js", "export const noise = \"" + bytes + "\";\n");
           '
-          if out=$(pnpm size 2>&1); then echo "size-limit accepted the oversized bundle"; exit 1; fi
-          echo "$out" | grep -q "size limit has exceeded" || { echo "size-limit failed for another reason"; exit 1; }
+          failed() {
+            node -e 'console.log(JSON.parse(require("fs").readFileSync(0, "utf8")).filter((check) => !check.passed).map((check) => check.name).join(", "))'
+          }
+          if out=$(pnpm size --json); then echo "size-limit accepted the oversized chunk"; exit 1; fi
+          [ "$(echo "$out" | failed)" = "shared chunks" ] || { echo "size-limit failed on something other than the shared chunks"; exit 1; }
+          cp apps/web/dist/index.html "$RUNNER_TEMP/index.html"
+          sed -i 's|</head>|<link rel="modulepreload" crossorigin href="/assets/oversized.js"></head>|' apps/web/dist/index.html
+          if out=$(pnpm size --json); then echo "size-limit accepted the oversized start"; exit 1; fi
+          [ "$(echo "$out" | failed)" = "initial JS" ] || { echo "size-limit failed on something other than the initial JS"; exit 1; }
+          cp "$RUNNER_TEMP/index.html" apps/web/dist/index.html
           rm apps/web/dist/assets/oversized.js
       - name: oxlint type-aware rules
         run: |
