@@ -4,16 +4,22 @@
 
 import type { ListRow } from "@huliho/core";
 import { useState } from "react";
-import type { KeyboardEvent, MouseEvent, PointerEvent, RefObject } from "react";
+import type { AnimationEvent, KeyboardEvent, MouseEvent, PointerEvent, RefObject } from "react";
 
 import type { Chord } from "../commands/keys";
+import { directionOf } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { BulkSlot } from "./actions/bulk-slot";
 import type { BulkHandle } from "./actions/bulk-handle";
 import { useLongPress } from "./actions/long-press";
+import type { LongPress } from "./actions/long-press";
 import { ROW_ACTIONS } from "./actions/row-actions";
 import type { RowActionsHandle } from "./actions/row-actions";
+import { useSwipe } from "./actions/swipe";
+import type { Swipe } from "./actions/swipe";
+import { useSwipeActions } from "./actions/swipe-row";
+import type { RowSwipe } from "./actions/swipe-row";
 import type { ListCursor } from "./list-cursor";
 import type { ListMarker } from "./list-marker";
 import type { VirtualList } from "./list-virtualizer";
@@ -93,10 +99,63 @@ function checkOf(picks: PickHandle, row: ListRow | undefined, pointed: boolean):
   return pointed ? "offered" : "none";
 }
 
+// A touch that travels sideways on a row swipes it: archive toward the
+// line's end, delete toward its start, each where its key works.
+function useRowSwipe(props: GridProps, onEngage: () => void) {
+  const { rowActions, picks, locale } = props;
+  const actions = useSwipeActions(rowActions.mailbox, locale, picks.open);
+  const swipe = useSwipe({
+    rows: props.rows,
+    drawn: props.list.items,
+    rowCount: props.rowCount,
+    rowOf,
+    ways: new Set(actions.keys()),
+    rtl: directionOf(locale) === "rtl",
+    onEngage,
+    onCommit: (way, row, index) => {
+      const kind = actions.get(way)?.kind;
+      return kind === undefined ? Promise.resolve(false) : rowActions.run(kind, row, index);
+    },
+  });
+  // The swipe of the row that shows its thread; none on any other row.
+  const swipeOf = (row: ListRow | undefined): RowSwipe | null => {
+    const { view } = swipe;
+    return view === null || row?.threadId !== view.threadId
+      ? null
+      : { view, action: actions.get(view.way), onSettled: swipe.onSettled };
+  };
+  return { swipe, swipeOf };
+}
+
+// A touch's press, travel and lift feed both the long press and the
+// swipe, which also hears when the rows below a swiped row closed up.
+function touchHandlers(press: LongPress, swipe: Swipe) {
+  return {
+    onPointerDown: (event: PointerEvent<HTMLElement>): void => {
+      press.onPointerDown(event);
+      swipe.onPointerDown(event);
+    },
+    onPointerMove: swipe.onPointerMove,
+    onPointerUp: (event: PointerEvent<HTMLElement>): void => {
+      press.onPointerEnd();
+      swipe.onPointerUp(event);
+    },
+    onPointerCancel: (event: PointerEvent<HTMLElement>): void => {
+      press.onPointerEnd();
+      swipe.onPointerCancel(event);
+    },
+    onAnimationEnd: (event: AnimationEvent<HTMLElement>): void => {
+      if (event.target instanceof HTMLElement && event.target.dataset["closing"] !== undefined) {
+        swipe.onClosed();
+      }
+    },
+  };
+}
+
 // What the pointer does in the grid: the row it hovers, the row a touch
 // rests on and the handlers that tell a press on a row's controls, a
-// run with Shift, a tap while a selection stands and a plain click
-// apart.
+// run with Shift, a tap while a selection stands, a swipe and a plain
+// click apart.
 function useGridPointer(props: GridProps) {
   const { rows, cursor, picks } = props;
   const { hovered, onPointerOver, onPointerLeave } = useHoveredRow();
@@ -110,6 +169,7 @@ function useGridPointer(props: GridProps) {
     },
     picks.offered,
   );
+  const { swipe, swipeOf } = useRowSwipe(props, press.onPointerEnd);
   const onClick = (event: MouseEvent<HTMLElement>): void => {
     props.onAct();
     const index = rowOf(event.target);
@@ -127,7 +187,7 @@ function useGridPointer(props: GridProps) {
   };
   const handlers = {
     onClickCapture: (event: MouseEvent<HTMLElement>): void => {
-      if (press.takeClick()) {
+      if (press.takeClick() || swipe.takeClick()) {
         event.preventDefault();
         event.stopPropagation();
       }
@@ -144,16 +204,14 @@ function useGridPointer(props: GridProps) {
         event.preventDefault();
       }
     },
-    onPointerDown: press.onPointerDown,
-    onPointerUp: press.onPointerEnd,
-    onPointerCancel: press.onPointerEnd,
+    ...touchHandlers(press, swipe),
     onPointerOver,
     onPointerLeave: (): void => {
       onPointerLeave();
       press.onPointerEnd();
     },
   };
-  return { hovered, pressing: press.pressing, handlers };
+  return { hovered, pressing: press.pressing, closing: swipe.closing, swipeOf, handlers };
 }
 
 type GridPointer = ReturnType<typeof useGridPointer>;
@@ -181,6 +239,8 @@ function drawn(props: GridProps, pointer: GridPointer, item: VirtualList["items"
       check={checkOf(picks, row, pointed)}
       pressing={item.index === pointer.pressing}
       actions={acts ? props.rowActions : null}
+      swipe={pointer.swipeOf(row)}
+      closing={pointer.closing !== null && item.index >= pointer.closing}
       start={item.start}
       size={item.size}
       onPlace={cursor.place}

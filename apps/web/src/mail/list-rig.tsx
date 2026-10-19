@@ -24,6 +24,7 @@ import type { JSXElementConstructor, ReactNode } from "react";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import { dispatchKey } from "../commands/registry";
+import type { Locale } from "../paraglide/runtime.js";
 import { stubWidthQueries } from "../shell/width-queries-rig";
 import { fixtureCache } from "./fixture-cache";
 import type { PageAnswer } from "./fixture-cache";
@@ -43,6 +44,7 @@ const VIEW_WIDTH_PX = 360;
 const SECOND_MS = 1000;
 
 interface Filled {
+  locale: Locale;
   mailbox: Mailbox;
   mailboxes: readonly Mailbox[];
   cache: MailCache;
@@ -54,6 +56,8 @@ interface Filled {
 }
 
 export interface Options {
+  // English unless a test reads another locale.
+  locale?: Locale;
   mailbox?: Mailbox | undefined;
   // The account's tree, the fixtures' by default.
   mailboxes?: readonly Mailbox[];
@@ -74,11 +78,11 @@ export function inbox(): Mailbox {
   return INBOX;
 }
 
-function tree({ mailbox, mailboxes, cache, online, client, openThreadId, ...on }: Filled) {
+function tree({ locale, mailbox, mailboxes, cache, online, client, openThreadId, ...on }: Filled) {
   return (
     <QueryClientProvider client={client}>
       <ThreadList
-        locale="en"
+        locale={locale}
         today={TODAY}
         cache={cache}
         accountId={FASTMAIL.id}
@@ -102,9 +106,11 @@ function closesNothing(): void {
   // The rig's default: a thread closed goes nowhere.
 }
 
-export function renderList(options: Options = {}) {
+// The options with the rig's defaults where a test gave none.
+function filledOf(options: Options): Filled {
   const mailbox = options.mailbox ?? inbox();
-  const filled: Filled = {
+  return {
+    locale: options.locale ?? "en",
     mailbox,
     mailboxes: options.mailboxes ?? MAILBOXES,
     cache: options.cache ?? fixtureCache({ [`${mailbox.id}/0`]: INBOX_PAGE }),
@@ -114,6 +120,10 @@ export function renderList(options: Options = {}) {
     onOpen: options.onOpen ?? opensNothing,
     onClose: options.onClose ?? closesNothing,
   };
+}
+
+export function renderList(options: Options = {}) {
+  const filled = filledOf(options);
   const rendered = render(tree(filled), { wrapper: options.wrapper });
   return {
     rerender: (changes: Partial<Filled>) => {

@@ -23,12 +23,36 @@
 }
 
 /* A press that rests on a row picks it, so no text selection or callout
-   of the platform starts under it. */
+   of the platform starts under it. A finger moving sideways swipes the
+   row; the list keeps the vertical pan and the pinch zoom. */
 @media (any-pointer: coarse) {
   .row {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+    touch-action: pan-y pinch-zoom;
+  }
+}
+
+/* The moving cell never reaches past its row. */
+.row[data-swiping] {
+  overflow: hidden;
+}
+
+/* Once a swiped row left, the rows below it move up into its place. */
+.row[data-closing] {
+  animation: close-up var(--hhx-duration-reveal) var(--hhx-ease);
+}
+
+@keyframes close-up {
+  from {
+    translate: 0 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row[data-closing] {
+    animation: none;
   }
 }
 
