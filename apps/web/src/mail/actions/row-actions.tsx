@@ -20,10 +20,11 @@ export const ROW_ACTIONS = "[data-row-actions]";
 const ROW_KINDS: readonly ActionKind[] = ["archive", "delete", "read", "star"];
 
 // What the list lends a row: the mailbox the words follow and the call
-// that runs an action on the row's thread.
+// that runs an action on the row's thread, which resolves whether the
+// thread left the mailbox shown.
 export interface RowActionsHandle {
   mailbox: Mailbox;
-  run: (kind: ActionKind, row: ListRow, index: number) => void;
+  run: (kind: ActionKind, row: ListRow, index: number) => Promise<boolean>;
 }
 
 interface RowActionsProps {
@@ -56,7 +57,7 @@ export function RowActions({ locale, handle, row, index }: RowActionsProps) {
               event.preventDefault();
             }}
             onClick={() => {
-              handle.run(entry.kind, row, index);
+              void handle.run(entry.kind, row, index);
             }}
           >
             <Icon

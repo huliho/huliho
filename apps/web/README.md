@@ -321,6 +321,14 @@ Select brings the checks out with nothing picked; the bar keeps
 archive, delete and the read flip and puts spam behind More actions.
 The bar and the mailbox's menu load with the account menu's chunk.
 
+On a touchscreen a finger drawn along a row moves it. Toward the line's
+end archive shows behind the row and toward its start delete: the icon
+first, the word once the row has gone half its width. Let go past half
+and the action runs with the toast its key shows; the rows below then
+close up. Short of half the row slides back. A scroll, a second finger
+or a finger that leaves the row across its top or bottom edge ends the
+swipe with nothing done. No row swipes while a selection stands.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component

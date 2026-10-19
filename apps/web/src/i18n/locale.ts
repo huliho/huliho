@@ -31,7 +31,7 @@ export function useLocale(): Locale {
 }
 
 // The pseudo locale reads right to left, so every sweep in it shows the RTL state.
-function directionOf(locale: Locale): "ltr" | "rtl" {
+export function directionOf(locale: Locale): "ltr" | "rtl" {
   return locale === PSEUDO_LOCALE ? "rtl" : getTextDirection(locale);
 }
 

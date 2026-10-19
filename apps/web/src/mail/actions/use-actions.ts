@@ -171,8 +171,9 @@ function settleLeaving(context: Context, taken: readonly Aim[], fromList: boolea
 // One action on the threads a surface names, else on what the focus
 // points at. A change the log took nothing of leaves everything as it
 // stands; one that took threads out of the mailbox shown says so in the
-// toast and the status region, then settles the list.
-async function runAction(context: Context, kind: ActionKind, given?: Aimed): Promise<void> {
+// toast and the status region, then settles the list. Resolves whether
+// threads left the mailbox shown.
+async function runAction(context: Context, kind: ActionKind, given?: Aimed): Promise<boolean> {
   const { input } = context;
   const { cache, accountId, mailbox, locale } = input;
   const inList = focusInList(input.scrollerRef.current, document.activeElement);
@@ -182,14 +183,14 @@ async function runAction(context: Context, kind: ActionKind, given?: Aimed): Pro
     actionMutations(action, mailbox, context.offered, target),
   );
   if (mutations.length === 0) {
-    return;
+    return false;
   }
   const undo = await cache.mutateMany(accountId, mutations);
   if (aimed.picked) {
     input.selection.clear();
   }
   if (undo.threads.length === 0) {
-    return;
+    return false;
   }
   const text = doneSentence(action, undo.threads.length, locale);
   if (text !== null) {
@@ -197,14 +198,17 @@ async function runAction(context: Context, kind: ActionKind, given?: Aimed): Pro
     showActionToast({ cache, accountId, text, undo, emailIds });
     announce(input.regionRef.current, text);
   }
-  if (LEAVING.has(action)) {
+  const leaving = LEAVING.has(action);
+  if (leaving) {
     settleLeaving(context, taken, aimed.fromList ?? inList);
   }
+  return leaving;
 }
 
-function launch(context: Context, kind: ActionKind, aimed?: Aimed): void {
-  runAction(context, kind, aimed).catch((error: unknown) => {
+function launch(context: Context, kind: ActionKind, aimed?: Aimed): Promise<boolean> {
+  return runAction(context, kind, aimed).catch((error: unknown) => {
     console.error("mail: an action failed", error instanceof Error ? error.message : String(error));
+    return false;
   });
 }
 
@@ -223,7 +227,7 @@ function commandOf(context: Context, shown: Aimed, kind: ActionKind): Command | 
     group: "act",
     keys: key.keys,
     run: () => {
-      launch(context, kind);
+      void launch(context, kind);
     },
   };
 }
@@ -286,7 +290,7 @@ export function useActions(input: ActionsInput): ListActions {
       const kind = kindOf(id);
       const aim = context.open();
       if (kind !== null && aim !== null) {
-        launch(context, kind, { aims: [aim], picked: false, fromList: false });
+        void launch(context, kind, { aims: [aim], picked: false, fromList: false });
       }
     }),
   );
@@ -294,9 +298,8 @@ export function useActions(input: ActionsInput): ListActions {
     pickable,
     rows: {
       mailbox,
-      run: (kind, row, index) => {
-        launch(context, kind, { aims: [{ target: targetOfRow(row), index }], picked: false });
-      },
+      run: (kind, row, index) =>
+        launch(context, kind, { aims: [{ target: targetOfRow(row), index }], picked: false }),
     },
     bulk: bulkOf(context, shown),
   };
@@ -314,7 +317,7 @@ function bulkOf(context: Context, shown: Aimed): BulkHandle | null {
     count: selection.count,
     thread: combinedOf(shown.picked ? shown.aims : []),
     run: (kind) => {
-      launch(context, kind, { aims: picksOf(selection), picked: true, fromList: true });
+      void launch(context, kind, { aims: picksOf(selection), picked: true, fromList: true });
     },
     close: selection.clear,
   };

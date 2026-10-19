@@ -13,6 +13,8 @@ import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { RowActions } from "./actions/row-actions";
 import type { RowActionsHandle } from "./actions/row-actions";
+import { SwipeRow } from "./actions/swipe-row";
+import type { RowSwipe } from "./actions/swipe-row";
 import { MonoCount } from "./mono-count";
 import { formatRowTime } from "./row-time";
 import styles from "./thread-list-item.module.css";
@@ -50,6 +52,10 @@ interface ItemProps extends Placement {
   // The thread's actions, which a loaded row shows under a pointer and
   // while it holds the focus; null on a row that carries none.
   actions: RowActionsHandle | null;
+  // The swipe that moves the row; null while none does.
+  swipe: RowSwipe | null;
+  // Whether the row closes up into the place of a swiped row that left.
+  closing: boolean;
   // Told when the row takes focus on its own, by pointer or by Tab.
   onPlace: (index: number) => void;
   // Told of a press on the check, with whether Shift was down.
@@ -177,6 +183,17 @@ function selectedness(open: boolean, check: Check) {
   return { "aria-selected": open || undefined };
 }
 
+// The states the row's styles read.
+function marks({ row, open, pressing, swipe, closing }: ItemProps) {
+  return {
+    "data-unread": row?.unread === true || undefined,
+    "data-open": open || undefined,
+    "data-pressing": pressing || undefined,
+    "data-swiping": swipe !== null || undefined,
+    "data-closing": closing || undefined,
+  };
+}
+
 // One thread of the list on two lines. A row whose page is on its way
 // shows the still shape inside the same element, so the focus stays put
 // while the page lands.
@@ -192,16 +209,14 @@ export function ThreadListItem(props: ItemProps) {
       {...selectedness(open, loaded ? check : "none")}
       tabIndex={stop ? 0 : -1}
       data-index={index}
-      data-unread={(loaded && row.unread) || undefined}
-      data-open={open || undefined}
-      data-pressing={props.pressing || undefined}
+      {...marks(props)}
       className={styles.row}
       style={placed({ start, size })}
       onFocus={() => {
         onPlace(index);
       }}
     >
-      <div role="gridcell" className={styles.cell}>
+      <SwipeRow className={styles.cell} swipe={props.swipe}>
         {loaded ? (
           <Facts
             locale={locale}
@@ -215,7 +230,7 @@ export function ThreadListItem(props: ItemProps) {
         ) : (
           <Bars shape={index % SKELETON_SHAPES} />
         )}
-      </div>
+      </SwipeRow>
     </div>
   );
 }
