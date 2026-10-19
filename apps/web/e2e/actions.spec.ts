@@ -7,12 +7,12 @@ import { expect, test } from "@playwright/test";
 
 import type { MailServer } from "./mail-answers";
 import { corpusFor } from "./mail-corpus";
-import { WRITABLE_MAILBOXES } from "./mail-mocks";
 import type { MailboxBody } from "./mail-mocks";
 import { THEMES, VIEWPORTS, axeOn } from "./sweep";
 import {
   INBOX_PATH,
   READ_INBOX,
+  WRITABLE_READ_INBOX,
   grid,
   heightOf,
   openInbox,
@@ -22,15 +22,9 @@ import {
   subjectOf,
   threadIdOf,
   threadOf,
+  updates,
 } from "./thread-pane";
 
-function allRead(row: MailboxBody): MailboxBody {
-  return row.role === "inbox" ? { ...row, unreadEmails: 0 } : row;
-}
-
-// Every message read, as the thread pane's inbox has it, on a server
-// that moves messages.
-const MAILBOXES = WRITABLE_MAILBOXES.map(allRead);
 // The inbox as a shared mailbox a reader may neither mark nor move in.
 function readOnly(row: MailboxBody): MailboxBody {
   return row.role === "inbox"
@@ -57,13 +51,7 @@ const WIDE_LIST_PX = 520;
 // the first line's text.
 const LOW_PRESS_PX = 22;
 
-// Every email id each Email/set named in its update, and each destroy.
-function updates(server: MailServer): string[][] {
-  return server.sets.map(({ update }) =>
-    typeof update === "object" && update !== null ? Object.keys(update) : [],
-  );
-}
-
+// The destroy list of each Email/set that carried one.
 function destroys(server: MailServer): unknown[] {
   return server.sets.flatMap((args) => (Array.isArray(args["destroy"]) ? [args["destroy"]] : []));
 }
@@ -94,7 +82,7 @@ async function openRow(page: Page, index: number): Promise<void> {
 }
 
 async function inbox(page: Page, preferences: Record<string, string> = {}) {
-  return openInbox(page, "right", INBOX_PATH, { mailboxes: MAILBOXES, preferences });
+  return openInbox(page, "right", INBOX_PATH, { mailboxes: WRITABLE_READ_INBOX, preferences });
 }
 
 test("e archives the cursor's whole thread: the row leaves, the toast and the status region say so, z puts it back", async ({
@@ -198,7 +186,7 @@ test.describe("on a touchscreen", () => {
 test("delete forever in Trash waits for its toast: z keeps the message, the window's end destroys it", async ({
   page,
 }) => {
-  const { server } = await openInbox(page, "right", TRASH_PATH, { mailboxes: MAILBOXES });
+  const { server } = await openInbox(page, "right", TRASH_PATH, { mailboxes: WRITABLE_READ_INBOX });
   const first = await rowAt(page, 1).textContent();
   await rowAt(page, 1).focus();
   await page.keyboard.press("#");

@@ -6,9 +6,10 @@ import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 
 import { accountRow, mockAccounts } from "./account-mocks";
+import type { MailServer } from "./mail-answers";
 import { FIXED_NOW, corpusFor } from "./mail-corpus";
 import type { CorpusEmail } from "./mail-corpus";
-import { MAILBOXES, mockMail } from "./mail-mocks";
+import { MAILBOXES, WRITABLE_MAILBOXES, mockMail } from "./mail-mocks";
 import type { MailOptions, MailboxBody, MockedMail } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
@@ -20,15 +21,16 @@ export const ROWS = [accountRow(FIXED_NOW)];
 // The collapsed cards in sight beside the open one.
 export const CARDS_IN_SIGHT = 3;
 
-function withEveryMessageRead(row: MailboxBody): MailboxBody {
-  return { ...row, unreadEmails: 0 };
+// The inbox with every message read; any other mailbox as it is.
+function withInboxRead(row: MailboxBody): MailboxBody {
+  return row.id === INBOX_ID ? { ...row, unreadEmails: 0 } : row;
 }
 
 // An inbox with every message read, so the first thread of four keeps
 // a card behind the pane's button and stands among the rows in view.
-export const READ_INBOX: MailboxBody[] = MAILBOXES.map((row) =>
-  row.id === INBOX_ID ? withEveryMessageRead(row) : row,
-);
+export const READ_INBOX: MailboxBody[] = MAILBOXES.map(withInboxRead);
+// The same mailboxes on a server that moves messages, so an action lands.
+export const WRITABLE_READ_INBOX: MailboxBody[] = WRITABLE_MAILBOXES.map(withInboxRead);
 const CORPUS = corpusFor(READ_INBOX);
 const INBOX_LIST = CORPUS.lists.get(INBOX_ID) ?? { ids: [], exemplars: [] };
 
@@ -119,6 +121,13 @@ export async function openInbox(
   await page.goto(path);
   await expect(rowAt(page, 1)).toBeVisible();
   return mail;
+}
+
+// Every email id each Email/set named in its update.
+export function updates(server: MailServer): string[][] {
+  return server.sets.map(({ update }) =>
+    typeof update === "object" && update !== null ? Object.keys(update) : [],
+  );
 }
 
 // A card is an item of the thread's own list; the strip of attachments
