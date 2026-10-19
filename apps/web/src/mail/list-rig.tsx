@@ -255,12 +255,12 @@ const WORN_ATTRIBUTES = ["data-density", "data-font-size", "data-line-height"];
 export function mockListBox(): void {
   beforeEach(() => {
     layout.wide = true;
-    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (
       this: HTMLElement,
     ) {
       return this.closest("[hidden]") === null ? VIEW_HEIGHT_PX : 0;
     });
-    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(VIEW_WIDTH_PX);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(VIEW_WIDTH_PX);
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,
       value: vi.fn<() => void>(),
