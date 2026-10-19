@@ -1,0 +1,14 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* Floats over the first rows where the marker stands; the pill alone takes a press. */
+.slot {
+  position: absolute;
+  inset-block-start: var(--hhx-space-2);
+  inset-inline: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}

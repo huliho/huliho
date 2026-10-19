@@ -309,6 +309,18 @@ it holds the focus, their keys beside the icons where the list is wide;
 a press there acts on that row and leaves the focus where it stood. The
 strip at the list's foot names `e` while the mailbox offers archive.
 
+`x` picks the cursor's row, a click on a row's check picks that row and
+Shift with a click picks the run from the last one. Once a row is
+picked every row shows its check, and a bar floats over the first rows
+with the count, the actions the picks can take and Close. The keys and
+the palette then act on the picks, while the open thread's toolbar
+still acts on the open thread; Escape closes the selection before the
+thread. On a touchscreen a long press picks a row, a tap picks more
+while a selection stands and the mailbox's name opens a menu whose
+Select brings the checks out with nothing picked; the bar keeps
+archive, delete and the read flip and puts spam behind More actions.
+The bar and the mailbox's menu load with the account menu's chunk.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component

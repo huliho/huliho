@@ -1,0 +1,83 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* The new-mail marker's shape on the accent tint, so a standing
+   selection reads as a mode laid over the list; a ring of the list's
+   own ground parts it from the rows under it. The pill never grows
+   past its slot: the room at each side holds the ring. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hhx-space-1);
+  max-inline-size: calc(100% - 2 * var(--hhx-space-2));
+  padding-block: var(--hhx-border-width);
+  padding-inline: var(--hhx-space-3) var(--hhx-border-width);
+  border-radius: var(--hhx-radius-overlay);
+  background: var(--hh-accent-tint);
+  box-shadow:
+    0 0 0 var(--hhx-halo-width) var(--hh-surface),
+    0 0 0 calc(var(--hhx-halo-width) + var(--hhx-border-width)) var(--hh-accent-tint);
+  color: var(--hh-accent-strong);
+  pointer-events: auto;
+}
+
+/* The figure keeps its width as it climbs, so the buttons never shift.
+   Where the pill runs out of room the word gives way and the figure,
+   which comes first, stays in view. */
+.count {
+  min-inline-size: 0;
+  margin-inline-end: var(--hhx-space-2);
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.figure {
+  font-family: var(--hhx-font-mono);
+  font-weight: 500;
+}
+
+.button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: var(--hhx-hit-target);
+  block-size: var(--hhx-hit-target);
+  padding: 0;
+  border: none;
+  border-radius: var(--hhx-radius-overlay);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Under touch the targets carry the room between the buttons, and the
+   first one's own room around its icon parts it from the count. */
+@media (any-pointer: coarse) {
+  .pill {
+    gap: 0;
+  }
+
+  .count {
+    margin-inline-end: var(--hhx-space-1);
+  }
+}
+
+.button:hover,
+.button[data-popup-open] {
+  background: var(--hh-surface);
+}
+
+.icon {
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
+}
+
+@media (forced-colors: active) {
+  .pill {
+    border: var(--hhx-border-width) solid currentColor;
+  }
+}

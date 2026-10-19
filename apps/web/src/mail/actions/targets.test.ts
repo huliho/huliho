@@ -2,11 +2,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { ListRow, ThreadDetail } from "@huliho/core";
+import type { ListRow, Mailbox, ThreadDetail } from "@huliho/core";
 import { expect, test } from "vitest";
 
-import { afterOf, aimOf } from "./targets";
-import { targetOfDetail } from "./thread-target";
+import { INBOX_ID, MAILBOXES } from "../fixtures";
+import { afterOf, aimOf, combinedOf, survivorOf, takenBy } from "./targets";
+import { targetOfDetail, targetOfRow } from "./thread-target";
+
+function inbox(): Mailbox {
+  const found = MAILBOXES.find((box) => box.id === INBOX_ID);
+  if (found === undefined) {
+    throw new Error("the fixtures hold no inbox");
+  }
+  return found;
+}
 
 function row(threadId: string, memberIds = [`${threadId}-1`]): ListRow {
   return {
@@ -97,4 +106,34 @@ test("at the end of the list the thread closes onto the row before, or onto noth
   expect(afterOf(ROWS, 2, "next")).toEqual({ close: true, index: 1 });
   expect(afterOf(new Map([[0, [row("t0")]]]), 0, "next")).toEqual({ close: true, index: null });
   expect(afterOf(ROWS, null, "next")).toEqual({ close: true, index: null });
+});
+
+test("rows that leave together are passed over for the one that takes the place", () => {
+  const five = new Map([[0, ["t0", "t1", "t2", "t3", "t4"].map((id) => row(id))]]);
+  expect(survivorOf(five, 1, new Set([1, 2]))).toMatchObject({ index: 3, after: true });
+  expect(survivorOf(five, 4, new Set([3, 4]))).toMatchObject({ index: 2, after: false });
+  expect(survivorOf(five, 0, new Set([0, 1, 2, 3, 4]))).toBeNull();
+  expect(afterOf(five, 1, "next", new Set([1, 2]))).toEqual({ open: five.get(0)?.[3], index: 3 });
+  expect(afterOf(five, 4, "next", new Set([2, 3, 4]))).toEqual({ close: true, index: 1 });
+});
+
+test("several threads read as unread while any is and starred while every one is", () => {
+  const unread = { ...row("t0"), unread: true };
+  const starred = { ...row("t1"), flagged: true };
+  const aims = [unread, starred].map((one, index) => ({ target: targetOfRow(one), index }));
+  expect(combinedOf(aims)).toEqual({ unread: true, flagged: false });
+  expect(combinedOf([])).toEqual({ unread: false, flagged: false });
+});
+
+test("a flip on several threads takes the ones not on its side; a move takes every one", () => {
+  const unread = { ...row("t0"), unread: true };
+  const starred = { ...row("t1"), flagged: true };
+  const aims = [unread, starred].map((one, index) => ({ target: targetOfRow(one), index }));
+  const read = takenBy("read", inbox(), aims);
+  expect(read.action).toBe("read");
+  expect(read.taken.map(({ target }) => target.threadId)).toEqual(["t0"]);
+  const star = takenBy("star", inbox(), aims);
+  expect(star.action).toBe("star");
+  expect(star.taken.map(({ target }) => target.threadId)).toEqual(["t0"]);
+  expect(takenBy("archive", inbox(), aims).taken).toHaveLength(2);
 });

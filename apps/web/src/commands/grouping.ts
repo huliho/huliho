@@ -40,6 +40,8 @@ const RANKS = new Map(
     "thread.spam",
     "thread.read",
     "thread.star",
+    "selection.toggle",
+    "selection.close",
     "undo",
     "list.reveal",
     "palette.open",

@@ -8,13 +8,9 @@ import type { RefObject } from "react";
 import type { Chord } from "../commands/keys";
 import { useCommand } from "../commands/use-command";
 import { m } from "../paraglide/messages.js";
-import { chunk } from "../shell/chunk";
 import { AccountCard, triggerClass } from "./account-card";
 import type { AccountSwitcherProps } from "./account-card";
-
-// The menu's code is a chunk of its own, outside the initial bundle;
-// the shell fetches it on mount, so the first open finds it in.
-export const prefetchAccountMenu = chunk(() => import("./account-menu"));
+import { prefetchMenus } from "./menus-chunk";
 
 // The combination that opens the menu from anywhere on the screen.
 const SWITCH_KEYS: readonly Chord[] = [{ key: "l", mod: true, shift: true }];
@@ -55,7 +51,7 @@ interface LoadedProps extends AccountSwitcherProps {
 }
 
 function LoadedAccountMenu(props: LoadedProps) {
-  const { AccountMenu } = use(prefetchAccountMenu());
+  const { AccountMenu } = use(prefetchMenus());
   return <AccountMenu {...props} />;
 }
 

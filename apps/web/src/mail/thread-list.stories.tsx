@@ -13,7 +13,7 @@ import { routed } from "./story-router";
 import { FixtureList } from "./story-list";
 import type { FixtureListProps } from "./story-list";
 import { ThreadListItem } from "./thread-list-item";
-import type { Selection } from "./thread-list-item";
+import type { Check } from "./thread-list-item";
 import styles from "./thread-list.module.css";
 
 const TODAY = startOfDay(FIXED_NOW);
@@ -78,13 +78,15 @@ export const LargerAndLoose: StoryObj = {
   render: () => listed({}),
 };
 
-// The seven drawn states of a row, one under the other; hover is the
+// The drawn states of a row, one under the other; hover is the
 // pointer's own.
 interface Drawn {
   name: string;
   row: ListRow;
-  selection: Selection;
-  stop: boolean;
+  open?: boolean;
+  check?: Check;
+  pressing?: boolean;
+  stop?: boolean;
 }
 
 const ROWS = INBOX_PAGE.rows;
@@ -97,13 +99,22 @@ function drawn(): Drawn[] {
     return [];
   }
   return [
-    { name: "default", row: PLAIN, selection: "none", stop: false },
-    { name: "unread", row: UNREAD, selection: "none", stop: false },
-    { name: "selected", row: PLAIN, selection: "selected", stop: false },
-    { name: "selected and unread", row: UNREAD, selection: "selected", stop: false },
-    { name: "focused", row: PLAIN, selection: "none", stop: true },
-    { name: "multi-selected", row: PLAIN, selection: "multi", stop: false },
-    { name: "thread, flagged, attachment", row: THREAD, selection: "none", stop: false },
+    { name: "default", row: PLAIN },
+    { name: "unread", row: UNREAD },
+    { name: "open", row: PLAIN, open: true },
+    { name: "open and unread", row: UNREAD, open: true },
+    { name: "focused", row: PLAIN, stop: true },
+    {
+      name: "a touch resting before its press lands",
+      row: UNREAD,
+      check: "offered",
+      pressing: true,
+    },
+    { name: "picked", row: PLAIN, check: "on" },
+    { name: "picked and unread", row: UNREAD, check: "on" },
+    { name: "picked and open", row: PLAIN, check: "on", open: true },
+    { name: "not picked while a selection stands", row: UNREAD, check: "off" },
+    { name: "thread, flagged, attachment", row: THREAD },
   ];
 }
 
@@ -127,12 +138,15 @@ export const RowStates: StoryObj = {
           today={TODAY}
           row={state.row}
           index={index}
-          stop={state.stop}
-          selection={state.selection}
+          stop={state.stop ?? false}
+          open={state.open ?? false}
+          check={state.check ?? "none"}
+          pressing={state.pressing ?? false}
           actions={null}
           start={index * ROW_PX}
           size={ROW_PX}
           onPlace={nothing}
+          onCheck={nothing}
         />
       ))}
     </div>

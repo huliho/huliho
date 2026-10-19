@@ -12,7 +12,8 @@ import {
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
-import { AccountSwitcher, prefetchAccountMenu } from "./account-switcher";
+import { AccountSwitcher } from "./account-switcher";
+import { prefetchMenus } from "./menus-chunk";
 import { fixtureCache } from "./fixture-cache";
 import { ACCOUNTS, FASTMAIL } from "./fixtures";
 
@@ -59,7 +60,7 @@ test(
     });
     expect(document.activeElement).toBe(standIn);
     await act(async () => {
-      await prefetchAccountMenu();
+      await prefetchMenus();
     });
     const landed = screen.getByRole("button", { name: /Fastmail/ });
     expect(landed).not.toBe(standIn);

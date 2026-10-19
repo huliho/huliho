@@ -252,7 +252,7 @@ test("Enter, o and a click open the cursor's row with the focus to its title; th
   renderList({ onOpen, openThreadId: open?.threadId ?? null });
   await screen.findByRole("grid");
   expect(row(2).getAttribute("aria-selected")).toBe("true");
-  expect(row(2).dataset["selection"]).toBe("selected");
+  expect(row(2).dataset["open"]).toBe("true");
   expect(row(0).getAttribute("aria-selected")).toBeNull();
   row(0).focus();
   press("Enter");

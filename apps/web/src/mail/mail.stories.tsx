@@ -21,7 +21,7 @@ import {
   THREAD,
   THREAD_ID,
 } from "./fixtures";
-import { prefetchAccountMenu } from "./account-switcher";
+import { prefetchMenus } from "./menus-chunk";
 import { fixtureCache } from "./fixture-cache";
 import { EmptyMailbox } from "./mailbox-pane";
 import { prefetchThreadPane } from "./reading-pane";
@@ -105,7 +105,7 @@ const meta: Meta = {
   title: "Mail/Shell",
   loaders: [
     async () => {
-      await Promise.all([prefetchThreadPane(), prefetchAccountMenu()]);
+      await Promise.all([prefetchThreadPane(), prefetchMenus()]);
       return {};
     },
   ],

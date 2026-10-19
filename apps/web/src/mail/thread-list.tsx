@@ -11,8 +11,9 @@ import { ErrorState } from "../design-system/error-state";
 import spoken from "../design-system/spoken.module.css";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
-import type { RowActionsHandle } from "./actions/row-actions";
+import { useSelection } from "./actions/selection";
 import { useActions } from "./actions/use-actions";
+import type { ListActions } from "./actions/use-actions";
 import { useListCommands } from "./list-commands";
 import { focusLost, keyHandler, useCursor } from "./list-cursor";
 import { ListFoot } from "./list-foot";
@@ -23,6 +24,7 @@ import { pagesFor, useListVirtualizer } from "./list-virtualizer";
 import type { VirtualList } from "./list-virtualizer";
 import { OfflineBanner } from "./offline-banner";
 import { Viewport } from "./thread-grid";
+import type { PickHandle } from "./thread-grid";
 import type { OpenFocus } from "./thread-history";
 import { EdgeRow } from "./thread-list-item";
 import { pageOf, rowAt, useThreadPages } from "./use-thread-pages";
@@ -194,7 +196,8 @@ interface ListControls {
   focusFirst: () => void;
   reveal: () => void;
   retry: () => void;
-  rowActions: RowActionsHandle;
+  actions: ListActions;
+  picks: PickHandle;
 }
 
 // The cursor, the virtualizer, the marker and the commands over the
@@ -239,7 +242,8 @@ function useListControls(props: ControlsProps): ListControls {
     open,
     reveal: actions.reveal,
   });
-  const rowActions = useActions({ ...props, rows: pages.rows, cursor });
+  const selection = useSelection(pages.rows);
+  const mailActions = useActions({ ...props, rows: pages.rows, cursor, selection });
   return {
     cursor,
     list,
@@ -250,7 +254,8 @@ function useListControls(props: ControlsProps): ListControls {
       goTo(0);
     },
     ...actions,
-    rowActions,
+    actions: mailActions,
+    picks: { ...selection, offered: mailActions.pickable },
   };
 }
 
@@ -359,7 +364,9 @@ export function ThreadList({ ref, ...props }: ThreadListProps) {
           pending={facts.pending}
           cursor={controls.cursor}
           openThreadId={openThreadId}
-          rowActions={controls.rowActions}
+          rowActions={controls.actions.rows}
+          picks={controls.picks}
+          bulk={controls.actions.bulk}
           onKeyDown={controls.onKeyDown}
           onOpen={controls.openAt}
           onReveal={controls.reveal}

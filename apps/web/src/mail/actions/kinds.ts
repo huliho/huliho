@@ -25,6 +25,9 @@ export const ACTION_COMMANDS: ReadonlyMap<ActionKind, { id: string; keys: readon
     ["star", { id: "thread.star", keys: [{ key: "s" }] }],
   ]);
 
+// The ones the bulk bar holds, in the same order; star stays with its key.
+export const BULK_KINDS: readonly ActionKind[] = ["archive", "delete", "spam", "read"];
+
 // One action a surface draws for a thread: the action it takes there,
 // its label and the keys of its command.
 export interface ShownAction {

@@ -22,6 +22,7 @@ import { Tooltip, TooltipGroup } from "../design-system/tooltip";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { PaneActions } from "./actions/pane-actions";
+import { closeSelection } from "./actions/selection-lend";
 import { targetOfDetail } from "./actions/thread-target";
 import { MessageCard } from "./message-card";
 import { messagesOf, planMessages, subjectOf } from "./thread-messages";
@@ -283,8 +284,9 @@ function useTitleFocus(
 }
 
 // One open thread: its toolbar over the cards. Escape closes it from
-// anywhere; the title takes the focus once the thread is in, unless an
-// action from a row opened it and the focus stays in the list.
+// anywhere, once a standing selection has closed; the title takes the
+// focus once the thread is in, unless an action from a row opened it and
+// the focus stays in the list.
 export function ThreadPane(props: ThreadPaneProps) {
   const { locale, cache, accountId, threadId, mailbox, position, keyHints, onClose } = props;
   const today = useToday();
@@ -296,7 +298,11 @@ export function ThreadPane(props: ThreadPaneProps) {
     label: m.thread_close({}, { locale }),
     group: "navigate",
     keys: CLOSE_KEYS,
-    run: onClose,
+    run: () => {
+      if (!closeSelection()) {
+        onClose();
+      }
+    },
   });
   return (
     <>

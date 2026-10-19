@@ -2,9 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { ActionTarget, AfterAction, ListRow, ThreadDetail } from "@huliho/core";
+import { actionFor } from "@huliho/core";
+import type {
+  ActionTarget,
+  AfterAction,
+  ListRow,
+  MailAction,
+  Mailbox,
+  ThreadDetail,
+} from "@huliho/core";
 
 import { indexOfThread, rowAt } from "../use-thread-pages";
+import type { ActionKind } from "./kinds";
 import { targetOfDetail, targetOfRow } from "./thread-target";
 
 // The thread an action takes and where its row stands in the list, null
@@ -49,20 +58,68 @@ export function aimOf({
   return row === undefined ? null : { target: targetOfRow(row), index: cursor };
 }
 
+// Several threads as one for the words of a flip: unread while any is,
+// starred while every one is.
+export function combinedOf(aims: readonly Aim[]): Pick<ActionTarget, "unread" | "flagged"> {
+  return {
+    unread: aims.some(({ target }) => target.unread),
+    flagged: aims.length > 0 && aims.every(({ target }) => target.flagged),
+  };
+}
+
+// The action a key takes on several threads and the threads it changes:
+// a move takes every one, a flip the ones not already on its side.
+export function takenBy(
+  kind: ActionKind,
+  mailbox: Mailbox,
+  aims: readonly Aim[],
+): { action: MailAction; taken: Aim[] } {
+  const action = actionFor(kind, mailbox, combinedOf(aims));
+  return {
+    action,
+    taken: aims.filter(({ target }) => actionFor(kind, mailbox, target) === action),
+  };
+}
+
+// The row that takes the place of the row at `index` once the rows at
+// `leaving` go: the first loaded one after it that stays, else the
+// last one before it that stays; null when none stays.
+export function survivorOf(
+  rows: ReadonlyMap<number, ListRow[]>,
+  index: number,
+  leaving: ReadonlySet<number>,
+): { row: ListRow | undefined; index: number; after: boolean } | null {
+  for (let at = index + 1; rowAt(rows, at) !== undefined; at += 1) {
+    if (!leaving.has(at)) {
+      return { row: rowAt(rows, at), index: at, after: true };
+    }
+  }
+  for (let at = index - 1; at >= 0; at -= 1) {
+    if (!leaving.has(at)) {
+      return { row: rowAt(rows, at), index: at, after: false };
+    }
+  }
+  return null;
+}
+
 // What follows an action that took the open thread out of the list:
 // under `next` the row that takes its place opens, at the end of the
 // list or under `list` the thread closes with the cursor on the row
-// that takes its place, else on the row before it.
+// that takes its place, else on the row before it. Rows that leave
+// with it, as a bulk action takes them, are passed over.
 export type After = { open: ListRow; index: number } | { close: true; index: number | null };
 
 export function afterOf(
   rows: ReadonlyMap<number, ListRow[]>,
   index: number | null,
   rule: AfterAction,
+  leaving: ReadonlySet<number> = new Set(index === null ? [] : [index]),
 ): After {
-  const next = index === null ? undefined : rowAt(rows, index + 1);
-  if (index !== null && next !== undefined) {
-    return rule === "next" ? { open: next, index: index + 1 } : { close: true, index: index + 1 };
+  const survivor = index === null ? null : survivorOf(rows, index, leaving);
+  if (survivor?.after === true && survivor.row !== undefined) {
+    return rule === "next"
+      ? { open: survivor.row, index: survivor.index }
+      : { close: true, index: survivor.index };
   }
-  return { close: true, index: index !== null && index > 0 ? index - 1 : null };
+  return { close: true, index: survivor?.index ?? null };
 }
