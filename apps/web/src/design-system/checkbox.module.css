@@ -1,0 +1,43 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* The target is the hit size; the margin gives back what it takes past
+   the box, so the box stands in the room of one icon. */
+.root {
+  position: relative;
+  z-index: 1;
+  display: inline-grid;
+  place-items: center;
+  inline-size: var(--hhx-hit-target);
+  block-size: var(--hhx-hit-target);
+  margin: calc((var(--hhx-icon-inline) - var(--hhx-hit-target)) / 2);
+  border-radius: var(--hhx-radius-field);
+  cursor: pointer;
+}
+
+.box {
+  display: grid;
+  place-items: center;
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  border: var(--hhx-border-width-selected) solid var(--hh-border-control);
+  border-radius: var(--hhx-radius-control);
+  background: var(--hh-surface);
+}
+
+.root[data-checked] .box {
+  border-color: var(--hh-accent);
+  background: var(--hh-accent);
+}
+
+.indicator {
+  display: grid;
+}
+
+.check {
+  inline-size: calc(var(--hhx-icon-inline) - var(--hhx-space-1));
+  block-size: calc(var(--hhx-icon-inline) - var(--hhx-space-1));
+  stroke-width: var(--hhx-icon-stroke);
+  color: var(--hh-bg);
+}

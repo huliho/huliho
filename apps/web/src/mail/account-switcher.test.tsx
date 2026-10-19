@@ -16,7 +16,8 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { dispatchKey } from "../commands/registry";
-import { AccountSwitcher, prefetchAccountMenu } from "./account-switcher";
+import { AccountSwitcher } from "./account-switcher";
+import { prefetchMenus } from "./menus-chunk";
 import { ACCOUNTS, EXPIRED, FASTMAIL, MAILBOXES, MAILBOXES_EMPTY_INBOX, STOPPED } from "./fixtures";
 import { fixtureCache } from "./fixture-cache";
 
@@ -111,7 +112,7 @@ test(
     // chunk lands is flushed; the first import transforms the menu's code.
     await act(async () => {
       fireEvent.click(trigger);
-      await prefetchAccountMenu();
+      await prefetchMenus();
     });
     expect(screen.getByRole("menu")).toBeDefined();
     expect(screen.getByRole("button", { name: /Fastmail/ }).getAttribute("aria-expanded")).toBe(

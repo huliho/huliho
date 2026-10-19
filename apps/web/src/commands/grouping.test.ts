@@ -16,12 +16,14 @@ function act(id: string, key: string): Command {
   return { id, label: id, group: "act", keys: [{ key }], run: nothing };
 }
 
-test("the Act group lists the thread actions in the keyboard map's order, ahead of undo and the marker", () => {
+test("the Act group lists the thread actions and the selection in the keyboard map's order, ahead of undo and the marker", () => {
   // The fixtures hold the marker's reveal; the rest registers out of order.
   const registered: Command[] = [
     ...COMMANDS,
     act("undo", "z"),
+    act("selection.close", "Escape"),
     act("thread.star", "s"),
+    act("selection.toggle", "x"),
     act("thread.read", "u"),
     act("thread.spam", "!"),
     act("thread.delete", "#"),
@@ -34,6 +36,8 @@ test("the Act group lists the thread actions in the keyboard map's order, ahead 
     "thread.spam",
     "thread.read",
     "thread.star",
+    "selection.toggle",
+    "selection.close",
     "undo",
     "list.reveal",
   ]);

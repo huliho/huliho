@@ -1,0 +1,31 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+/* The name stays what the eye reads; the chevron is the cue. */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hhx-space-1);
+  max-inline-size: 100%;
+  min-block-size: var(--hhx-hit-target);
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chevron {
+  flex: none;
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
+  color: var(--hh-text-muted);
+}

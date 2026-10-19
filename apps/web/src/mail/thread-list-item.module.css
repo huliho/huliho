@@ -15,17 +15,30 @@
   cursor: default;
 }
 
-/* A still row that is nobody's takes no hover. */
-.row:not([aria-hidden]):hover {
+/* A still row that is nobody's takes no hover; a touch resting on a row
+   takes the hover fill until its press lands. */
+.row:not([aria-hidden]):hover,
+.row[data-pressing] {
   background: var(--hh-hover);
+}
+
+/* A press that rests on a row picks it, so no text selection or callout
+   of the platform starts under it. */
+@media (any-pointer: coarse) {
+  .row {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
 
 .row[data-unread] {
   font-weight: 600;
 }
 
-/* Selected is the inset frame plus the tint; the ring sits over both. */
-.row[data-selection] {
+/* Open in the pane is the inset frame plus the tint; the ring sits over
+   both. A picked row carries its check alone. */
+.row[data-open] {
   background: var(--hh-accent-tint);
   box-shadow: inset 0 0 0 var(--hhx-border-width-selected) var(--hh-accent);
 }
@@ -35,7 +48,7 @@
 }
 
 @media (forced-colors: active) {
-  .row[data-selection] {
+  .row[data-open] {
     border: var(--hhx-border-width-selected) solid currentColor;
   }
 }
@@ -70,13 +83,11 @@
   background: var(--hh-accent);
 }
 
-/* The check of a row picked among several, in the dot's place. */
-.check {
+/* The check in the dot's place; its target reaches past the column. */
+.mark {
   grid-area: dot;
-  inline-size: var(--hhx-icon-inline);
-  block-size: var(--hhx-icon-inline);
-  stroke-width: var(--hhx-icon-stroke);
-  color: var(--hh-accent);
+  display: grid;
+  place-items: center;
 }
 
 .sender {

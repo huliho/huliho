@@ -3,9 +3,10 @@
 // Additional terms apply, see NOTICE.
 
 import type { ListRow } from "@huliho/core";
-import { Paperclip, SquareCheck, Star } from "lucide-react";
+import { Paperclip, Star } from "lucide-react";
 import type { CSSProperties } from "react";
 
+import { Checkbox } from "../design-system/checkbox";
 import { cx } from "../design-system/cx";
 import { Skeleton } from "../design-system/skeleton";
 import { m } from "../paraglide/messages.js";
@@ -16,9 +17,13 @@ import { MonoCount } from "./mono-count";
 import { formatRowTime } from "./row-time";
 import styles from "./thread-list-item.module.css";
 
-// How a row stands apart: the one open in the reading pane, or one of
-// several picked for a bulk action.
-export type Selection = "none" | "selected" | "multi";
+// The row's check in the dot's place. An empty box is offered under a
+// pointer or a press; off and on stand while a selection does.
+export type Check = "none" | "offered" | "off" | "on";
+
+// What the grid reads to tell a press on the check from a click that
+// opens the row.
+export const ROW_CHECK = "[data-row-check]";
 
 // The still rows come in three shapes, so a run of them reads as rows.
 const SKELETON_SHAPES = 3;
@@ -37,12 +42,18 @@ interface ItemProps extends Placement {
   index: number;
   // Whether this is the one row Tab lands on.
   stop: boolean;
-  selection: Selection;
+  // Whether the row's thread is the one open in the reading pane.
+  open: boolean;
+  check: Check;
+  // Whether a touch rests on the row before its long press lands.
+  pressing: boolean;
   // The thread's actions, which a loaded row shows under a pointer and
   // while it holds the focus; null on a row that carries none.
   actions: RowActionsHandle | null;
   // Told when the row takes focus on its own, by pointer or by Tab.
   onPlace: (index: number) => void;
+  // Told of a press on the check, with whether Shift was down.
+  onCheck: (shift: boolean) => void;
 }
 
 function placed({ start, size }: Placement): CSSProperties {
@@ -90,28 +101,47 @@ function Bars({ shape }: { shape: number }) {
   );
 }
 
-interface FactsProps {
+interface MarkProps {
   locale: Locale;
+  check: Check;
+  onCheck: (shift: boolean) => void;
+}
+
+// The unread dot, or the check where one stands. A press on the check
+// leaves the focus where it stood.
+function Mark({ locale, check, onCheck }: MarkProps) {
+  if (check === "none") {
+    return <span className={styles.dot} aria-hidden="true" />;
+  }
+  return (
+    <span className={styles.mark} data-row-check="">
+      <Checkbox
+        checked={check === "on"}
+        label={m.row_select({}, { locale })}
+        focusable={false}
+        onCheckedChange={(_checked, event) => {
+          onCheck(event instanceof MouseEvent && event.shiftKey);
+        }}
+      />
+    </span>
+  );
+}
+
+interface FactsProps extends MarkProps {
   today: number;
   row: ListRow;
   index: number;
-  selection: Selection;
   actions: RowActionsHandle | null;
 }
 
-// Sender and time on the first line; subject and preview on the second.
-// A row picked among several carries the check where the dot sits. The
-// sender and the text line are mail content and read in their own
-// direction; the line takes the subject's, the preview inside it its own.
-// The actions stand in for the time where the row shows them.
-function Facts({ locale, today, row, index, selection, actions }: FactsProps) {
+// The check stands where the dot sits and the actions stand in for the
+// time where the row shows them. The sender and the text line are mail
+// content in their own direction; the line takes the subject's, the
+// preview inside it its own.
+function Facts({ locale, today, row, index, check, onCheck, actions }: FactsProps) {
   return (
     <>
-      {selection === "multi" ? (
-        <SquareCheck className={styles.check} aria-hidden="true" />
-      ) : (
-        <span className={styles.dot} aria-hidden="true" />
-      )}
+      <Mark locale={locale} check={check} onCheck={onCheck} />
       <span dir="auto" className={styles.sender}>
         {senderOf(row, locale)}
       </span>
@@ -137,11 +167,21 @@ function Facts({ locale, today, row, index, selection, actions }: FactsProps) {
   );
 }
 
+// What the row says of itself as selected. While a selection stands the
+// picks are the selected rows and the open one is the current one;
+// otherwise the open row is the selected one.
+function selectedness(open: boolean, check: Check) {
+  if (check === "on" || check === "off") {
+    return { "aria-selected": check === "on", "aria-current": open || undefined };
+  }
+  return { "aria-selected": open || undefined };
+}
+
 // One thread of the list on two lines. A row whose page is on its way
 // shows the still shape inside the same element, so the focus stays put
 // while the page lands.
 export function ThreadListItem(props: ItemProps) {
-  const { locale, today, row, index, stop, selection, actions, start, size, onPlace } = props;
+  const { locale, today, row, index, stop, open, check, actions, start, size, onPlace } = props;
   const loaded = row !== undefined;
   return (
     <div
@@ -149,11 +189,12 @@ export function ThreadListItem(props: ItemProps) {
       aria-rowindex={index + 1}
       aria-label={loaded ? rowName(row, locale, today) : m.loading_label({}, { locale })}
       aria-busy={loaded ? undefined : true}
-      aria-selected={selection === "none" ? undefined : true}
+      {...selectedness(open, loaded ? check : "none")}
       tabIndex={stop ? 0 : -1}
       data-index={index}
       data-unread={(loaded && row.unread) || undefined}
-      data-selection={selection === "none" ? undefined : selection}
+      data-open={open || undefined}
+      data-pressing={props.pressing || undefined}
       className={styles.row}
       style={placed({ start, size })}
       onFocus={() => {
@@ -167,7 +208,8 @@ export function ThreadListItem(props: ItemProps) {
             today={today}
             row={row}
             index={index}
-            selection={selection}
+            check={check}
+            onCheck={props.onCheck}
             actions={actions}
           />
         ) : (

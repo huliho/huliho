@@ -19,7 +19,7 @@ const LAZY_CHUNKS = [
   ["open route chunk", "open-link"],
   ["command overlays chunk", "overlays"],
   ["thread pane chunk", "thread-pane"],
-  ["account menu chunk", "account-menu"],
+  ["menus chunk", "account-menu"],
   ["settings chunk", "pages"],
   ["add-account chunk", "add-account"],
   ["cache worker", "worker"],

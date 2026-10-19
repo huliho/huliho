@@ -34,7 +34,7 @@ const RESTING_POINT = { x: 1024, y: 450 };
 const TRANSPARENT = "rgba(0, 0, 0, 0)";
 // The drawn row states, in the story's order.
 const DEFAULT_ROW = 0;
-const MULTI_SELECTED_ROW = 5;
+const PICKED_ROW = 6;
 
 async function openInbox(
   page: Page,
@@ -301,7 +301,7 @@ test("the sender starts at one place whether the row carries the dot or the chec
   );
   const drawn = page.getByRole("grid", { name: "Row states" }).getByRole("row");
   const plain = drawn.nth(DEFAULT_ROW).getByText("Tomas Lindqvist");
-  const picked = drawn.nth(MULTI_SELECTED_ROW).getByText("Tomas Lindqvist");
+  const picked = drawn.nth(PICKED_ROW).getByText("Tomas Lindqvist");
   await expect(picked).toBeVisible();
   expect((await picked.boundingBox())?.x).toBe((await plain.boundingBox())?.x);
 });

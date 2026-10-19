@@ -2,39 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { ListRow, Mailbox } from "@huliho/core";
+import type { ListRow } from "@huliho/core";
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import { commandsSnapshot } from "../../commands/registry";
 import { fixtureCache } from "../fixture-cache";
-import { INBOX_ID, INBOX_PAGE, MAILBOXES } from "../fixtures";
+import { INBOX_ID, INBOX_PAGE } from "../fixtures";
 import { focused, inbox, mockListBox, renderList, row } from "../list-rig";
 import type { OpenFocus } from "../thread-history";
 import { ROW_ACTIONS } from "./row-actions";
-
-// A mailbox that takes and gives up messages, as on a server that moves them.
-function writable(box: Mailbox): Mailbox {
-  return { ...box, myRights: { ...box.myRights, mayAddItems: true, mayRemoveItems: true } };
-}
-
-const WRITABLE: Mailbox[] = MAILBOXES.map(writable);
-
-function boxOf(role: string): Mailbox {
-  const found = WRITABLE.find((box) => box.role === role);
-  if (found === undefined) {
-    throw new Error(`no ${role} in the fixtures`);
-  }
-  return found;
-}
-
-function rowAt(index: number): ListRow {
-  const found = INBOX_PAGE.rows.at(index);
-  if (found === undefined) {
-    throw new Error(`the fixture page holds no row ${String(index)}`);
-  }
-  return found;
-}
+import { WRITABLE, boxOf, rowAt } from "./writable-rig";
 
 // The list of `role` over the fixture page, once it registered its Act group.
 async function listed(role: string, options: Parameters<typeof renderList>[0] = {}) {

@@ -8,6 +8,7 @@ import { queryKeys } from "@huliho/state";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { lendSelection } from "./actions/selection-lend";
 import { fixtureCache } from "./fixture-cache";
 import { FASTMAIL, THREAD, THREAD_ID, threadDetail } from "./fixtures";
 import {
@@ -261,6 +262,27 @@ test("Escape and the Close button close the thread", async () => {
   expect(onClose).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole("button", { name: "Close conversation" }));
   expect(onClose).toHaveBeenCalledTimes(2);
+});
+
+test("Escape closes a standing selection before the thread; the Close button closes the thread", async () => {
+  let open = true;
+  const close = vi.fn<() => boolean>(() => {
+    const stood = open;
+    open = false;
+    return stood;
+  });
+  const lent = lendSelection({ start: vi.fn<() => void>(), close });
+  try {
+    const { onClose } = renderPane();
+    await screen.findByRole("heading", { level: 2 });
+    command("Escape");
+    expect(close).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
+    command("Escape");
+    expect(onClose).toHaveBeenCalledOnce();
+  } finally {
+    lent();
+  }
 });
 
 test("as a screen the title is the page's heading and the way back names the mailbox with its key beside it", async () => {
