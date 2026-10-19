@@ -84,12 +84,14 @@
   font-size: var(--hhx-type-1);
 }
 
+/* The word keeps its room while hidden, so a touch that pauses the toast
+   moves nothing under the finger before its tap lands. */
 .paused {
-  display: none;
+  visibility: hidden;
   font-family: var(--hhx-font-ui);
 }
 
 /* Expanded is Base UI's word for hovered or focused, when its timers pause. */
 .toast[data-expanded] .paused {
-  display: inline;
+  visibility: visible;
 }
