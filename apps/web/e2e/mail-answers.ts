@@ -43,6 +43,9 @@ export interface MailServer {
   // Whether a body request waits until released, and the ones waiting.
   holdBodies: boolean;
   heldBodies: (() => void)[];
+  // Whether a request that writes waits until released, and the ones waiting.
+  holdSets: boolean;
+  heldSets: (() => void)[];
   // How many body requests still answer the limit problem.
   limitBodies: number;
   // The account's quotas, null for an account without the capability.
@@ -65,6 +68,8 @@ export function serverFor(
     asked: [],
     holdBodies: false,
     heldBodies: [],
+    holdSets: false,
+    heldSets: [],
     limitBodies: 0,
     quotas,
   };
@@ -86,6 +91,19 @@ export function asksBody(calls: readonly Invocation[]): boolean {
 export function releaseBodies(server: MailServer): void {
   server.holdBodies = false;
   for (const go of server.heldBodies.splice(0)) {
+    go();
+  }
+}
+
+// Whether a request writes to the messages.
+export function asksSet(calls: readonly Invocation[]): boolean {
+  return calls.some(([name]) => name === "Email/set");
+}
+
+// Lets every held write through and holds no more.
+export function releaseSets(server: MailServer): void {
+  server.holdSets = false;
+  for (const go of server.heldSets.splice(0)) {
     go();
   }
 }

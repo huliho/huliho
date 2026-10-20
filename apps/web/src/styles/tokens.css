@@ -23,6 +23,9 @@
   --hh-warn: light-dark(#9a5e18, #d99a4e);
   --hh-success: light-dark(#2d7a4d, #6fbf8f);
 
+  /* The filled danger button under the pointer, a step further from the ground as accent-strong is. */
+  --hhx-danger-strong: light-dark(#8f3622, #eba48e);
+
   /* A toast renders in the other theme, so its colors swap sides. */
   --hhx-toast-surface: light-dark(#161d20, #ffffff);
   --hhx-toast-text: light-dark(#e4eaec, #232b2f);

@@ -26,10 +26,10 @@ import type { AccountSwitcherProps } from "./account-card";
 import { useInboxCounts } from "./inbox-counts";
 import { MonoCount } from "./mono-count";
 
-// The bulk bar and the mailbox menu ride this module's chunk with the
-// account menu, so the code the three share stays one chunk.
+// The bulk bar and the mailbox menus ride this module's chunk with the
+// account menu, so the code they share stays one chunk.
 export { BulkBar } from "./actions/bulk-bar";
-export { FolderMenu } from "./folder-menu";
+export { FolderMenu, TreeMenu } from "./folder-menu";
 
 interface AccountMenuProps extends AccountSwitcherProps {
   // The trigger stood in for this menu and was pressed meanwhile.

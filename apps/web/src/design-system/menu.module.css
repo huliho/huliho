@@ -19,6 +19,10 @@
   opacity: 0;
 }
 
+.wide {
+  inline-size: var(--hhx-mail-sidebar-width);
+}
+
 .item {
   display: flex;
   align-items: center;
@@ -33,6 +37,12 @@
 
 .item[data-highlighted] {
   background: var(--hh-hover);
+}
+
+/* An item that destroys carries weight as well as the danger color. */
+.item[data-danger] {
+  color: var(--hh-danger);
+  font-weight: 600;
 }
 
 /* The chosen item carries weight and a mark as well as color. */

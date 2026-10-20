@@ -5,7 +5,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { CommandHost, prefetchOverlays } from "./command-host";
+import { CommandHost, openMoveMode, prefetchOverlays } from "./command-host";
 import { COMMANDS } from "./fixtures";
 import { dispatchKey, registerCommand } from "./registry";
 
@@ -214,6 +214,40 @@ test(
       expect(screen.queryByRole("dialog")).toBeNull();
     });
     expect(jumped).toHaveBeenCalledOnce();
+  },
+);
+
+test(
+  "the move mode picks a mailbox, which moves once the palette has closed and given the focus back",
+  { timeout: CHUNK_TIMEOUT_MS },
+  async () => {
+    const origin = document.createElement("button");
+    document.body.append(origin);
+    origin.focus();
+    const picked = vi.fn<(id: string) => void>(() => {
+      expect(document.activeElement).toBe(origin);
+    });
+    await landed();
+    render(<CommandHost />);
+    act(() => {
+      openMoveMode({
+        targets: [{ id: "f1", name: "Facturen", path: [] }],
+        recent: null,
+        onPick: picked,
+      });
+    });
+    const input = await screen.findByRole("combobox", { name: "Move to…" });
+    expect(screen.getByRole("dialog", { name: "Move to…" })).toBeDefined();
+    fireEvent.keyDown(input, { key: "Enter" });
+    fadeOut();
+    // The test runner has no transition, so the close completes at once;
+    // the pick asserts the focus stood back on its origin when it ran.
+    await vi.waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(picked).toHaveBeenCalledExactlyOnceWith("f1");
+    expect(localStorage.getItem("huliho-recent-commands")).toBeNull();
+    origin.remove();
   },
 );
 

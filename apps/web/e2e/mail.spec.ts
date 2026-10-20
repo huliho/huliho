@@ -165,8 +165,11 @@ test("the arrow keys walk the tree and Tab leaves it as one stop", async ({ page
   await expect(tree(page).getByRole("treeitem", { name: "Offertes" })).toBeFocused();
   await page.keyboard.press("Home");
   await expect(tree(page).getByRole("treeitem", { name: "Inbox, 23 unread" })).toBeFocused();
-  // Tab reaches the list once its first page is in.
+  // Tab reaches the mailbox's menu in the header, then the list once its
+  // first page is in.
   await expect(page.getByRole("grid").locator('[aria-rowindex="1"]')).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(page.locator("main header").getByRole("button", { name: "Inbox" })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("grid").locator('[aria-rowindex="1"]')).toBeFocused();
   await page.keyboard.press("Tab");

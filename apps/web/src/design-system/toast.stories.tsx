@@ -12,8 +12,8 @@ import type { ToastData } from "./toast";
 // Zero disables the timer; the screenshot must not race it.
 const NO_TIMEOUT = 0;
 
-function noUndo(): void {
-  // Stories render states; nothing is undone.
+function nothing(): void {
+  // Stories render states; an action changes none of them.
 }
 
 interface Shown {
@@ -29,10 +29,11 @@ function StoryToasts({ shown }: { shown: readonly Shown[] }) {
   const { add } = Toast.useToastManager<ToastData>();
   useEffect(() => {
     for (const toast of shown) {
+      const action = toast.data.undo ?? toast.data.retry;
       add({
         ...toast,
         timeout: NO_TIMEOUT,
-        ...(toast.data.undo === undefined ? {} : { actionProps: { onClick: toast.data.undo } }),
+        ...(action === undefined ? {} : { actionProps: { onClick: action } }),
       });
     }
   }, [add, shown]);
@@ -56,14 +57,14 @@ const meta: Meta = {
 export default meta;
 
 export const Undo = story([
-  { id: "story-undo", description: "Phone session revoked.", data: { undo: noUndo } },
+  { id: "story-undo", description: "Phone session revoked.", data: { undo: nothing } },
 ]);
 
 // An archive and then a delete: the newer stands nearest the edge and
 // alone carries the key.
 export const Stacked = story([
-  { id: "story-archived", description: "Archived.", data: { undo: noUndo } },
-  { id: "story-deleted", description: "Deleted.", data: { undo: noUndo } },
+  { id: "story-archived", description: "Archived.", data: { undo: nothing } },
+  { id: "story-deleted", description: "Deleted.", data: { undo: nothing } },
 ]);
 
 // A change the server refused, without Undo.
@@ -72,5 +73,14 @@ export const Refused = story([
     id: "story-refused",
     description: "Couldn’t archive. Your mail is safe.",
     data: { tone: "danger" },
+  },
+]);
+
+// A folder job that failed part way, with Try again.
+export const Failed = story([
+  {
+    id: "story-failed",
+    description: "Couldn’t empty Trash. 400 of 1,204 were deleted.",
+    data: { tone: "danger", retry: nothing },
   },
 ]);

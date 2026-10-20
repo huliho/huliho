@@ -7,7 +7,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { TAB, applyCacheMessage } from "./client";
-import type { CacheListeners, RefusedMessage } from "./client";
+import type { CacheListeners, JobMessage, RefusedMessage } from "./client";
 import { LEASE_RENEW_MS } from "./coordinator";
 import type { Lease } from "./coordinator";
 import { CACHE_CHANNEL, readCacheMessage } from "./messages";
@@ -66,6 +66,7 @@ function listeners() {
   return {
     cleared: vi.fn<() => void>(),
     refused: vi.fn<(message: RefusedMessage) => void>(),
+    job: vi.fn<(message: JobMessage) => void>(),
   } satisfies CacheListeners;
 }
 
@@ -178,8 +179,31 @@ test("only a message of the worker's shape is read", () => {
   expect(readCacheMessage({ ...refused, verbs: ["burn"] })).toBeNull();
   expect(readCacheMessage({ ...refused, emailIds: [1] })).toBeNull();
   expect(readCacheMessage({ kind: "refused" })).toBeNull();
-  const progress = { job: { kind: "markRead", mailboxId: "m1" }, done: 0, total: null };
-  expect(readCacheMessage({ kind: "job", accountId: "a1", progress })).toBeNull();
+  const progress = {
+    job: { kind: "markRead", mailboxId: "m1" },
+    done: 0,
+    total: null,
+    last: null,
+    state: "running",
+  };
+  const job = { kind: "job", accountId: "a1", progress };
+  expect(readCacheMessage(job)).toEqual(job);
+  expect(readCacheMessage({ ...job, progress: { ...progress, total: 9, last: "e1" } })).toEqual({
+    ...job,
+    progress: { ...progress, total: 9, last: "e1" },
+  });
+  for (const broken of [
+    { ...progress, state: "lost" },
+    { ...progress, done: -1 },
+    { ...progress, total: 1.5 },
+    { ...progress, last: 3 },
+    { ...progress, job: { kind: "burn", mailboxId: "m1" } },
+    { ...progress, job: { kind: "empty" } },
+    "running",
+  ]) {
+    expect(readCacheMessage({ ...job, progress: broken })).toBeNull();
+  }
+  expect(readCacheMessage({ ...job, accountId: 1 })).toBeNull();
   expect(readCacheMessage({ kind: "reset", extra: true })).toEqual({ kind: "reset" });
   expect(readCacheMessage({ kind: "strict", extra: true })).toEqual({ kind: "strict" });
   expect(readCacheMessage({ kind: "other" })).toBeNull();

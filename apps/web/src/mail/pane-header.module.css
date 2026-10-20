@@ -2,7 +2,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Additional terms apply, see NOTICE. */
 
+/* Positioned, so a running job's hairline rides its foot edge. */
 .header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--hhx-space-2);

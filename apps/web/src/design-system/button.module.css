@@ -40,6 +40,15 @@
   color: var(--hh-danger);
 }
 
+.dangerFilled {
+  background: var(--hh-danger);
+  color: var(--hh-bg);
+}
+
+.dangerFilled:hover {
+  background: var(--hhx-danger-strong);
+}
+
 .plain {
   background: none;
   border-color: transparent;

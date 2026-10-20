@@ -20,13 +20,16 @@ combination on the platform's command modifier or `g` followed by a
 letter, which the registry waits one second for. The root layout
 installs the key listener and hosts the toast viewport, so a toast
 outlives the route that opened it. Single keys never fire while typing;
-a dialog or a menu keeps every key to itself. Behind every signed-in
-screen stand the command palette (Cmd/Ctrl+K) and the shortcut overlay
-(`?`). The palette lists every registered command by group with the
-ones last run first, narrows on a query and runs the highlighted one
-once it has closed and given the focus back; the overlay lists the
-same commands with their keys. Both come as one chunk fetched when the
-layout mounts.
+a dialog or a menu keeps every key to itself. From the moment a surface
+or the empty dialog is asked for until the focus lands inside it, no key
+runs a command or a button on the page, so a key typed right after `m`
+does nothing there; Escape still closes what was asked for. Behind every
+signed-in screen stand the command palette (Cmd/Ctrl+K) and the shortcut
+overlay (`?`). The palette lists every registered command by group with
+the ones last run first, narrows on a query and runs the highlighted one
+once it has closed and given the focus back; the overlay lists the same
+commands with their keys. Both come as one chunk fetched when the layout
+mounts.
 A revoke on the sessions page leaves the list at once and reaches the
 server only when its undo toast has run out. If the page closes first,
 the request goes out on page hide with `keepalive`.
@@ -140,7 +143,9 @@ what takes them back. A delete forever waits until its toast ends or
 the page goes away, then goes out. The tab that asked it holds a Web
 Lock while it waits, so the worker lets go of a destroy whose tab has
 closed. A folder job runs round by
-round with one per account. The worker also reads the account's quota.
+round with one per account, and every tab hears it start and hears
+where it stands after each round. The worker also reads the account's
+quota.
 
 A card that opens shows its message under a hairline: HTML in the
 frame the pipeline below builds, titled by who wrote and what about,
@@ -290,8 +295,8 @@ in.
 
 The keys act on the open thread, or on the row in focus when the
 focus is in the list: `e` archives, `#` deletes, `!` marks as spam, `u`
-flips read and `s` flips the star. In Trash and Junk `#` deletes
-forever and in Junk `!` marks as not spam. An action takes the
+flips read, `s` flips the star and `m` moves. In Trash and Junk `#`
+deletes forever and in Junk `!` marks as not spam. An action takes the
 thread's messages in the mailbox shown and stands only while the
 mailbox's role and the rights of the mailboxes involved allow it, so
 the palette and the overlay list what the mailbox offers. An archive,
@@ -301,8 +306,8 @@ stays on the next row. An action on the open thread opens the next
 one with the focus on its title, or closes it with the focus on the
 next row when the appearance setting says to go back to the list.
 The open thread's toolbar holds the same actions before Close, each
-with a tooltip naming its label and its key; archive, delete and spam
-show their words where the pane has the room. A press there acts on the
+with a tooltip naming its label and its key; archive, delete, spam and
+move show their words where the pane has the room. A press there acts on the
 open thread whatever the focus points at. A row shows archive, delete,
 the read flip and star in place of its time under a pointer and while
 it holds the focus, their keys beside the icons where the list is wide;
@@ -316,10 +321,30 @@ with the count, the actions the picks can take and Close. The keys and
 the palette then act on the picks, while the open thread's toolbar
 still acts on the open thread; Escape closes the selection before the
 thread. On a touchscreen a long press picks a row, a tap picks more
-while a selection stands and the mailbox's name opens a menu whose
-Select brings the checks out with nothing picked; the bar keeps
-archive, delete and the read flip and puts spam behind More actions.
-The bar and the mailbox's menu load with the account menu's chunk.
+while a selection stands and the mailbox's menu opens with Select,
+which brings the checks out with nothing picked; the bar keeps
+archive, delete and the read flip and puts spam and move behind More
+actions. The bar and the mailbox's menus load with the account menu's
+chunk.
+
+`m` opens the palette as a picker of the mailboxes a move can go to:
+the one last moved to from the account on this device under Recent,
+then every other in the tree's order, a nested one named by the
+mailboxes above it. The mailbox shown, Trash and Junk stay out, since
+delete and spam are those moves. Typing keeps the names that hold the
+text; Enter moves and the toast names the mailbox. The toolbar and the
+bar move through the same picker.
+
+The mailbox's name in the list's header opens its menu: Mark all as
+read while the mailbox holds unread mail, and in Trash and Junk the
+action that empties it below a rule. A right click, the context-menu
+key and a long press open the same menu on a tree item. Every item is
+in the palette too. Emptying asks a dialog with Cancel first. A job
+runs in the worker round by round and takes the header while it runs:
+its sentence, the count, a hairline and Cancel, which ends it after
+the round that runs. Its end lands in a toast and the header's status
+region; a failure offers Try again. Offline an item runs nothing and
+the header says so until the connection is back.
 
 On a touchscreen a finger drawn along a row moves it. Toward the line's
 end archive shows behind the row and toward its start delete: the icon

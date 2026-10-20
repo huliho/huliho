@@ -9,7 +9,9 @@ import type { ComponentProps } from "react";
 import { cx } from "./cx";
 import styles from "./button.module.css";
 
-type Variant = "primary" | "secondary" | "danger" | "plain";
+// The filled danger is a destroy's one loud button, in the confirm
+// dialog alone; the outlined danger stands everywhere else.
+type Variant = "primary" | "secondary" | "danger" | "dangerFilled" | "plain";
 
 interface ButtonProps extends Omit<ComponentProps<"button">, "disabled"> {
   variant?: Variant;
@@ -25,6 +27,8 @@ function variantClass(variant: Variant): string | undefined {
       return styles.primary;
     case "danger":
       return styles.danger;
+    case "dangerFilled":
+      return styles.dangerFilled;
     case "plain":
       return styles.plain;
     default:

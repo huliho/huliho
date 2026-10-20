@@ -141,7 +141,11 @@ test("the question mark opens the overlay, which lists what the palette lists", 
   for (const label of listed) {
     await expect(palette(page).getByRole("option", { name: label, exact: true })).toHaveCount(1);
   }
-  expect(await palette(page).getByRole("option").count()).toBe(listed.length);
+  // The inbox's job has no key, so the palette alone lists it.
+  await expect(
+    palette(page).getByRole("option", { name: "Mark all as read", exact: true }),
+  ).toHaveCount(1);
+  expect(await palette(page).getByRole("option").count()).toBe(listed.length + 1);
 });
 
 test("the palette narrows on a query and Enter runs the jump with the focus on the first row", async ({

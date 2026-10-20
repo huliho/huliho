@@ -6,6 +6,7 @@ import { Menu } from "@base-ui/react/menu";
 import { Check } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 
+import { cx } from "./cx";
 import styles from "./menu.module.css";
 
 // The popup sits this far below its trigger.
@@ -15,12 +16,45 @@ export const MenuRoot = Menu.Root;
 export const MenuTrigger = Menu.Trigger;
 export const MenuRadioGroup = Menu.RadioGroup;
 
-// The popup under its trigger, aligned with the trigger's start edge.
-export function MenuPopup({ children }: { children: ReactNode }) {
+// A point on the screen a menu opens at, as a context menu does.
+export interface MenuPoint {
+  x: number;
+  y: number;
+}
+
+interface MenuPopupProps {
+  children: ReactNode;
+  // Where a menu without a trigger opens; its trigger otherwise.
+  at?: MenuPoint | undefined;
+  // Where the focus goes once a menu without a trigger closes.
+  finalFocus?: HTMLElement | null | undefined;
+  // The menu takes the sidebar's width.
+  wide?: boolean;
+}
+
+function anchorAt({ x, y }: MenuPoint) {
+  return { getBoundingClientRect: () => DOMRect.fromRect({ x, y, width: 0, height: 0 }) };
+}
+
+// The popup under its trigger or at a point, aligned with the start edge.
+export function MenuPopup({ children, at, finalFocus, wide = false }: MenuPopupProps) {
   return (
     <Menu.Portal>
-      <Menu.Positioner side="bottom" align="start" sideOffset={MENU_OFFSET_PX}>
-        <Menu.Popup className={styles.popup}>{children}</Menu.Popup>
+      <Menu.Positioner
+        side="bottom"
+        align="start"
+        sideOffset={at === undefined ? MENU_OFFSET_PX : 0}
+        anchor={at === undefined ? undefined : anchorAt(at)}
+      >
+        <Menu.Popup
+          className={cx(styles.popup, wide ? styles.wide : undefined)}
+          finalFocus={finalFocus === undefined ? undefined : () => finalFocus}
+          onContextMenu={(event) => {
+            event.preventDefault();
+          }}
+        >
+          {children}
+        </Menu.Popup>
       </Menu.Positioner>
     </Menu.Portal>
   );
@@ -28,12 +62,14 @@ export function MenuPopup({ children }: { children: ReactNode }) {
 
 interface MenuItemProps {
   onClick: () => void;
+  // An item that destroys, in the danger color below a rule.
+  danger?: boolean;
   children: ReactNode;
 }
 
-export function MenuItem({ onClick, children }: MenuItemProps) {
+export function MenuItem({ onClick, danger = false, children }: MenuItemProps) {
   return (
-    <Menu.Item className={styles.item} onClick={onClick}>
+    <Menu.Item className={styles.item} data-danger={danger || undefined} onClick={onClick}>
       {children}
     </Menu.Item>
   );

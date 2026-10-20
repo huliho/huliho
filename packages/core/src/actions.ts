@@ -3,6 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import { SEEN } from "./cache/counts";
+import type { Job } from "./cache/jobs";
 import { pathOf, targetOf } from "./cache/patch";
 import type { Mutation } from "./cache/pending";
 import type { EmailPatch, PendingRow } from "./cache/store";
@@ -10,7 +11,8 @@ import type { Mailbox } from "./jmap/schemas";
 
 // What the user does to a thread. Delete forever stands where delete
 // would in Trash and Junk, not spam where spam would in Junk; the read
-// and star flips pick their side from the thread.
+// and star flips pick their side from the thread; a move goes where the
+// user picks.
 export type MailAction =
   | "archive"
   | "delete"
@@ -20,7 +22,8 @@ export type MailAction =
   | "read"
   | "unread"
   | "star"
-  | "unstar";
+  | "unstar"
+  | "move";
 
 // The actions a mailbox offers, each with the mailbox it moves to.
 export interface Offered {
@@ -35,6 +38,9 @@ export interface Offered {
   junkKeywords: boolean;
   seen: boolean;
   flag: boolean;
+  // The mailboxes a move may enter, as the account lists them; Trash and
+  // Junk are left to delete and spam.
+  move: string[];
 }
 
 // One thread as an action takes it: its emails in the mailbox shown in
@@ -55,7 +61,7 @@ const NOT_JUNK = "$notjunk";
 const SEEN_PATH = pathOf("keywords", SEEN);
 const FLAGGED_PATH = pathOf("keywords", FLAGGED);
 
-function bin(shown: Mailbox): boolean {
+function bin(shown: Pick<Mailbox, "role">): boolean {
   return shown.role === "trash" || shown.role === "junk";
 }
 
@@ -84,7 +90,23 @@ export function offeredActions(shown: Mailbox, mailboxes: readonly Mailbox[]): O
     junkKeywords: rights.maySetKeywords,
     seen: rights.maySetSeen,
     flag: rights.maySetKeywords,
+    move: leaves
+      ? mailboxes
+          .filter((row) => row.id !== shown.id && !bin(row) && row.myRights.mayAddItems)
+          .map((row) => row.id)
+      : [],
   };
+}
+
+// The folder jobs a mailbox offers: marking all read while it holds
+// unread mail and its rights let the mark be set, emptying in Trash and
+// Junk while they hold mail and let it go.
+export function offeredJobs(shown: Mailbox): Job["kind"][] {
+  const rights = shown.myRights;
+  return [
+    ...(rights.maySetSeen && shown.unreadEmails > 0 ? ["markRead" as const] : []),
+    ...(bin(shown) && rights.mayRemoveItems && shown.totalEmails > 0 ? ["empty" as const] : []),
+  ];
 }
 
 function eachMember(thread: ActionTarget, patch: EmailPatch): Mutation[] {
@@ -176,7 +198,7 @@ const BUILDERS: ReadonlyMap<MailAction, (thread: ActionTarget, place: Place) => 
   ]);
 
 // The changes an action makes to one thread; empty where the mailbox
-// does not offer it.
+// does not offer it. A move is `moveMutations`, which takes its target.
 export function actionMutations(
   action: MailAction,
   shown: Mailbox,
@@ -186,11 +208,22 @@ export function actionMutations(
   return BUILDERS.get(action)?.(thread, { shown, offered }) ?? [];
 }
 
+// A move of one thread to the mailbox the user picked; empty where a
+// move may not enter it.
+export function moveMutations(
+  shown: Mailbox,
+  offered: Offered,
+  thread: ActionTarget,
+  to: string,
+): Mutation[] {
+  return offered.move.includes(to) ? moving(thread, shown, to) : [];
+}
+
 // The action a key takes on a thread in a mailbox: delete forever and
 // not spam where the mailbox asks for them; the read and star flips by
 // the thread's state.
 export function actionFor(
-  kind: "archive" | "delete" | "spam" | "read" | "star",
+  kind: "archive" | "delete" | "spam" | "read" | "star" | "move",
   shown: Mailbox,
   thread: Pick<ActionTarget, "unread" | "flagged">,
 ): MailAction {
@@ -209,7 +242,7 @@ export function actionFor(
 }
 
 // What a logged change did, in the words a refusal names it by.
-export type ChangeVerb = MailAction | "move";
+export type ChangeVerb = MailAction;
 
 // The roles of the mailboxes a move entered and of those it left; null
 // for a change that enters none.

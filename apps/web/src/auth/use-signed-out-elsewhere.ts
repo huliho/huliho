@@ -10,16 +10,18 @@ import { useRef } from "react";
 import { clearCache } from "../cache/client";
 import { forgetRecent } from "../commands/recent";
 import { toastManager } from "../design-system/toast";
+import { forgetMoveTargets } from "../mail/actions/move-mode";
 import { forgetLastAccount } from "../mail/last-account";
 import { forgetLinkKey } from "../open/link-key";
 import { m } from "../paraglide/messages.js";
 import { getLocale } from "../paraglide/runtime.js";
 
 // A sign-out in another tab ends this one too: this tab's worker stops
-// and the database goes, this tab drops what it holds, the remembered
-// account, the commands last run and the key of this device's links,
-// says so and shows the sign-in screen. A tab without a session has
-// nothing to end, and a tab that is ending already ends once.
+// and the database goes, this tab drops what it holds (the remembered
+// account, the commands last run, the mailboxes last moved to and the
+// key of this device's links), says so and shows the sign-in screen. A
+// tab without a session has nothing to end, and a tab that is ending
+// already ends once.
 export function useSignedOutElsewhere(): () => void {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -32,6 +34,7 @@ export function useSignedOutElsewhere(): () => void {
       queryClient.clear();
       forgetLastAccount();
       forgetRecent();
+      forgetMoveTargets();
       forgetLinkKey();
       await navigate({ to: "/sign-in" });
     } finally {

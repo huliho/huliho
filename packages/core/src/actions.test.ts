@@ -4,7 +4,14 @@
 
 import { expect, test } from "vitest";
 
-import { actionFor, actionMutations, offeredActions, verbOf } from "./actions";
+import {
+  actionFor,
+  actionMutations,
+  moveMutations,
+  offeredActions,
+  offeredJobs,
+  verbOf,
+} from "./actions";
 import type { ActionTarget } from "./actions";
 import { mailbox } from "./cache/fake-jmap";
 import type { Mutation } from "./cache/pending";
@@ -176,6 +183,48 @@ test("read marks every email, unread the newest; star flags the newest and unsta
   expect(ids("star")).toEqual(["e2"]);
   expect(ids("unstar")).toEqual(["e1", "e2"]);
   expect(actionMutations("unread", INBOX, offered, { ...THREAD, memberIds: [] })).toEqual([]);
+});
+
+test("a move may enter any mailbox that takes mail but the one shown, Trash and Junk", () => {
+  const sealed = box("sealed", null, { mayAddItems: false });
+  expect(offeredActions(INBOX, [...TREE, sealed]).move).toEqual(["archive", "folder"]);
+  expect(offeredActions(FOLDER, TREE).move).toEqual(["inbox", "archive"]);
+  expect(offeredActions(TRASH, TREE).move).toEqual(["inbox", "archive", "folder"]);
+  const locked = box("inbox", "inbox", { mayRemoveItems: false });
+  expect(offeredActions(locked, [locked, ARCHIVE, FOLDER]).move).toEqual([]);
+});
+
+test("a move goes where the user picked, and only where a move may enter", () => {
+  const offered = offeredActions(INBOX, TREE);
+  expect(actionFor("move", INBOX, THREAD)).toBe("move");
+  expect(moveMutations(INBOX, offered, THREAD, "folder")).toEqual(
+    ["e1", "e2"].map((id) => ({
+      type: "Email",
+      id,
+      threadId: "t1",
+      patch: moved("inbox", "folder"),
+    })),
+  );
+  expect(moveMutations(INBOX, offered, THREAD, "trash")).toEqual([]);
+  expect(moveMutations(INBOX, offered, THREAD, "inbox")).toEqual([]);
+  expect(actionMutations("move", INBOX, offered, THREAD)).toEqual([]);
+});
+
+test("a mailbox offers to mark all read while it holds unread mail its rights let be marked", () => {
+  const unread = { ...INBOX, unreadEmails: 3, totalEmails: 9 };
+  expect(offeredJobs(unread)).toEqual(["markRead"]);
+  expect(offeredJobs({ ...unread, unreadEmails: 0 })).toEqual([]);
+  const sealed = box("inbox", "inbox", { maySetSeen: false });
+  expect(offeredJobs({ ...sealed, unreadEmails: 3 })).toEqual([]);
+});
+
+test("Trash and Junk offer to be emptied while they hold mail and let it go", () => {
+  expect(offeredJobs({ ...TRASH, totalEmails: 4, unreadEmails: 1 })).toEqual(["markRead", "empty"]);
+  expect(offeredJobs({ ...JUNK, totalEmails: 4 })).toEqual(["empty"]);
+  expect(offeredJobs({ ...TRASH, totalEmails: 0 })).toEqual([]);
+  expect(offeredJobs({ ...ARCHIVE, totalEmails: 4 })).toEqual([]);
+  const kept = box("trash", "trash", { mayRemoveItems: false });
+  expect(offeredJobs({ ...kept, totalEmails: 4 })).toEqual([]);
 });
 
 test("a refused change reads by what it did", () => {

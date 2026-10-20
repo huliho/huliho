@@ -23,6 +23,8 @@ const UNDO_KEYS: readonly Chord[] = [{ key: "z" }];
 
 export interface ToastData {
   undo?: () => void;
+  // Asks again for what failed; the toast's action calls it.
+  retry?: () => void;
   // A change the server refused, which the alert circle marks.
   tone?: "danger";
 }
@@ -91,6 +93,9 @@ function ToastItem({ toast, newest }: ToastItemProps) {
             <Toast.Action className={styles.undo}>{m.undo_action({}, { locale })}</Toast.Action>
             <UndoHint locale={locale} keyed={newest} />
           </>
+        )}
+        {toast.data?.retry !== undefined && (
+          <Toast.Action className={styles.undo}>{m.retry_action({}, { locale })}</Toast.Action>
         )}
       </Toast.Content>
     </Toast.Root>

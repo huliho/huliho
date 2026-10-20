@@ -15,11 +15,11 @@ import type { ActionKind } from "./kinds";
 import { runOnOpenThread } from "./open-thread";
 import styles from "./pane-actions.module.css";
 
-// The toolbar's actions in the keyboard map's order.
-const PANE_KINDS: readonly ActionKind[] = ["archive", "delete", "spam", "read", "star"];
+// The toolbar's actions: the moves, then the flips.
+const PANE_KINDS: readonly ActionKind[] = ["archive", "delete", "spam", "move", "read", "star"];
 // The moves show their label and key where the pane has the room; the
 // flips name a state that changes under them, so they stay icons.
-const LABELED: ReadonlySet<ActionKind> = new Set(["archive", "delete", "spam"]);
+const LABELED: ReadonlySet<ActionKind> = new Set(["archive", "delete", "spam", "move"]);
 
 interface PaneActionsProps {
   locale: Locale;

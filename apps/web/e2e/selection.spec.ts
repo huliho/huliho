@@ -85,6 +85,7 @@ test("x picks rows, the bar counts them and archives them in one move with one t
     "Delete",
     "Mark as spam",
     "Mark as unread",
+    "Move to…",
     "Close selection",
   ]);
   await settled(page);
@@ -134,6 +135,7 @@ test("in Trash the bar deletes forever and leaves archive out", async ({ page })
     "Delete forever",
     "Mark as spam",
     "Mark as unread",
+    "Move to…",
     "Close selection",
   ]);
   await bar(page).getByRole("button", { name: "Delete forever" }).hover();

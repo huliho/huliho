@@ -6,7 +6,7 @@ import type { Page, Route } from "@playwright/test";
 
 import { mockBlobs } from "./blob-mocks";
 import type { Blobs } from "./blob-mocks";
-import { answerCalls, asksBody, noteArrival, serverFor } from "./mail-answers";
+import { answerCalls, asksBody, asksSet, noteArrival, serverFor } from "./mail-answers";
 import type { Invocation, MailServer } from "./mail-answers";
 import { UPSTREAM, arrive, corpusFor } from "./mail-corpus";
 import type { Corpus, CorpusEmail } from "./mail-corpus";
@@ -24,6 +24,7 @@ const QUOTA_CAPABILITY = "urn:ietf:params:jmap:quota";
 interface SessionShape {
   vendor: boolean;
   quota: boolean;
+  maxObjectsInSet: number;
 }
 // The problem a request past the server's concurrency gets (RFC 8620 section 3.6.1).
 const LIMIT_PROBLEM = {
@@ -137,7 +138,7 @@ function calls(route: Route): Invocation[] {
 // The session object of an account on the proxy, as the worker reads
 // it; a bridge account carries the vendor capability as well, an
 // account with quotas the quota capability.
-function sessionBody(accountId: string, { vendor, quota }: SessionShape): object {
+function sessionBody(accountId: string, { vendor, quota, maxObjectsInSet }: SessionShape): object {
   const extra = {
     ...(vendor ? { [HULIHO_CAPABILITY]: {} } : {}),
     ...(quota ? { [QUOTA_CAPABILITY]: {} } : {}),
@@ -151,7 +152,7 @@ function sessionBody(accountId: string, { vendor, quota }: SessionShape): object
         maxConcurrentRequests: 4,
         maxCallsInRequest: 16,
         maxObjectsInGet: 500,
-        maxObjectsInSet: MAX_OBJECTS_IN_SET,
+        maxObjectsInSet,
         collationAlgorithms: ["i;unicode-casemap"],
       },
       [MAIL_CAPABILITY]: {},
@@ -191,6 +192,8 @@ export interface MailOptions {
   // The account's quotas (RFC 9425 section 4.1); without them the
   // account lists no quota capability.
   quotas?: Record<string, unknown>[];
+  // The most emails one write takes, so a folder job runs in rounds.
+  maxObjectsInSet?: number;
 }
 
 // The mocked mail behind a page: the server the routes answer from, a
@@ -204,10 +207,15 @@ export interface MockedMail {
 }
 
 // A body request, held while the server holds and answered with the
-// limit problem while the server limits; any other request is answered
-// at once.
+// limit problem while the server limits; a write held while the server
+// holds writes; any other request is answered at once.
 async function answered(server: MailServer, route: Route): Promise<void> {
   const asked = calls(route);
+  if (asksSet(asked) && server.holdSets) {
+    await new Promise<void>((resolve) => {
+      server.heldSets.push(resolve);
+    });
+  }
   if (asksBody(asked)) {
     if (server.limitBodies > 0) {
       server.limitBodies -= 1;
@@ -252,7 +260,11 @@ export async function mockMail(
   await context.addInitScript(() => {
     Reflect.deleteProperty(window, "SharedWorker");
   });
-  const shape = { vendor: options.vendor === true, quota: options.quotas !== undefined };
+  const shape = {
+    vendor: options.vendor === true,
+    quota: options.quotas !== undefined,
+    maxObjectsInSet: options.maxObjectsInSet ?? MAX_OBJECTS_IN_SET,
+  };
   await context.route(SESSION_ROUTE, (route) =>
     route.fulfill({ json: sessionBody(accountIdOf(route), shape) }),
   );

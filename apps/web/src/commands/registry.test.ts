@@ -8,6 +8,8 @@ import type { Mock } from "vitest";
 import type { Chord } from "./keys";
 import {
   CHORD_TIMEOUT_MS,
+  LAYER_WAIT_MS,
+  awaitLayer,
   commandsSnapshot,
   dispatchKey,
   installCommandListener,
@@ -126,6 +128,59 @@ test("a frame inside a dialog keeps every key but Escape; a frame outside any la
   dispatchKey(keydown("k", { ctrlKey: true, view: outside }));
   expect(single).toHaveBeenCalledOnce();
   expect(combined).toHaveBeenCalledOnce();
+});
+
+test("a layer asked for keeps every key from the page until the focus lands inside it", () => {
+  const single = register([{ key: "z" }]);
+  cleanups.push(installCommandListener());
+  document.body.innerHTML = '<button></button><div role="dialog"><input></div>';
+  const button = document.querySelector("button");
+  const onButton = vi.fn<() => void>();
+  button?.addEventListener("keydown", onButton);
+  awaitLayer();
+  const held = keydown("Enter");
+  button?.dispatchEvent(held);
+  button?.dispatchEvent(keydown("z"));
+  expect(held.defaultPrevented).toBe(true);
+  expect(onButton).not.toHaveBeenCalled();
+  expect(single).not.toHaveBeenCalled();
+  document.querySelector("input")?.focus();
+  button?.dispatchEvent(keydown("z"));
+  expect(single).toHaveBeenCalledOnce();
+});
+
+test("a layer asked for holds every key but Escape, which reaches the document with its default prevented and ends the wait", () => {
+  const single = register([{ key: "z" }]);
+  const thread = register([{ key: "Escape" }], "thread");
+  cleanups.push(installCommandListener());
+  document.body.innerHTML = "<button></button>";
+  const button = document.querySelector("button");
+  const onDocument = vi.fn<(event: KeyboardEvent) => void>();
+  document.addEventListener("keydown", onDocument);
+  cleanups.push(() => {
+    document.removeEventListener("keydown", onDocument);
+  });
+  awaitLayer();
+  button?.dispatchEvent(keydown("Enter"));
+  const escape = keydown("Escape");
+  button?.dispatchEvent(escape);
+  expect(onDocument).toHaveBeenCalledExactlyOnceWith(escape);
+  expect(escape.defaultPrevented).toBe(true);
+  expect(thread).not.toHaveBeenCalled();
+  button?.dispatchEvent(keydown("z"));
+  expect(single).toHaveBeenCalledOnce();
+});
+
+test("a layer that never takes the focus gives the keys back", () => {
+  vi.useFakeTimers();
+  const single = register([{ key: "z" }]);
+  cleanups.push(installCommandListener());
+  awaitLayer();
+  window.dispatchEvent(keydown("z"));
+  expect(single).not.toHaveBeenCalled();
+  vi.advanceTimersByTime(LAYER_WAIT_MS);
+  window.dispatchEvent(keydown("z"));
+  expect(single).toHaveBeenCalledOnce();
 });
 
 test("a handled event, Alt and the other platform's command key are left alone", () => {
