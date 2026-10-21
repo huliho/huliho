@@ -7,10 +7,13 @@ import { Suspense, use, useEffect, useRef, useState } from "react";
 import { Dialog } from "../design-system/dialog";
 import { useLocale } from "../i18n/locale";
 import { m } from "../paraglide/messages.js";
+import type { Locale } from "../paraglide/runtime.js";
 import { chunk } from "../shell/chunk";
 import { PaneBoundary, PaneErrorState } from "../shell/pane-boundary";
 import type { Chord } from "./keys";
+import type { MoveMode } from "./move-sections";
 import { noteRecent, recentCommands } from "./recent";
+import { awaitLayer } from "./registry";
 import type { Command } from "./registry";
 import { useCommand, useRegistered } from "./use-command";
 
@@ -21,15 +24,17 @@ export const prefetchOverlays = chunk(() => import("./overlays"));
 const PALETTE_KEYS: readonly Chord[] = [{ key: "k", mod: true }];
 const SHORTCUTS_KEYS: readonly Chord[] = [{ key: "?" }];
 
-type Surface = "palette" | "shortcuts";
+type Surface = "palette" | "shortcuts" | "move";
 
 interface SurfaceProps {
   surface: Surface;
   open: boolean;
   recent: readonly string[];
+  move: MoveMode | null;
   onOpenChange: (open: boolean) => void;
   onClosed: () => void;
   onRun: (command: Command) => void;
+  onPick: (id: string) => void;
 }
 
 // The one surface open at a time and what happens around it.
@@ -38,13 +43,23 @@ interface Surfaces {
   mounted: Surface | null;
   open: boolean;
   recent: readonly string[];
-  show: (surface: Surface) => void;
+  move: MoveMode | null;
+  show: (surface: Surface, move?: MoveMode) => void;
   onOpenChange: (open: boolean) => void;
   onClosed: () => void;
   onRun: (command: Command) => void;
+  onPick: (id: string) => void;
 }
 
-function LoadedSurface({ surface, open, recent, onOpenChange, onClosed, onRun }: SurfaceProps) {
+let showMove: ((mode: MoveMode) => void) | null = null;
+
+// Opens the palette in its move mode; nothing while no host stands.
+export function openMoveMode(mode: MoveMode): void {
+  showMove?.(mode);
+}
+
+function LoadedSurface(props: SurfaceProps) {
+  const { surface, open, recent, onOpenChange, onClosed, onRun } = props;
   const { CommandPalette, ShortcutOverlay } = use(prefetchOverlays());
   const locale = useLocale();
   const commands = useRegistered();
@@ -68,17 +83,24 @@ function LoadedSurface({ surface, open, recent, onOpenChange, onClosed, onRun }:
       commands={commands}
       recent={recent}
       onRun={onRun}
+      move={surface === "move" ? (props.move ?? undefined) : undefined}
+      onPick={props.onPick}
     />
   );
 }
 
+const TITLES: Record<Surface, (locale: Locale) => string> = {
+  palette: (locale) => m.command_palette({}, { locale }),
+  shortcuts: (locale) => m.shortcuts_title({}, { locale }),
+  move: (locale) => m.command_thread({ action: "move" }, { locale }),
+};
+
 // A refused chunk shows its error in a dialog named as the surface, so
 // Escape closes it and the focus stays in a layer.
 function Surface(props: SurfaceProps) {
-  const { surface, open, onOpenChange, onClosed } = props;
+  const { open, onOpenChange, onClosed } = props;
   const locale = useLocale();
-  const title =
-    surface === "shortcuts" ? m.shortcuts_title({}, { locale }) : m.command_palette({}, { locale });
+  const title = TITLES[props.surface](locale);
   return (
     <PaneBoundary
       frame={
@@ -103,7 +125,8 @@ function useSurfaces(): Surfaces {
   const [mounted, setMounted] = useState<Surface | null>(null);
   const [open, setOpen] = useState(false);
   const [recent, setRecent] = useState<readonly string[]>([]);
-  const pending = useRef<Command | null>(null);
+  const [move, setMove] = useState<MoveMode | null>(null);
+  const pending = useRef<(() => void) | null>(null);
   const origin = useRef<Element | null>(null);
   const close = (): void => {
     setOpen(false);
@@ -113,18 +136,21 @@ function useSurfaces(): Surfaces {
     }
   };
   const runPending = (): void => {
-    const command = pending.current;
+    const run = pending.current;
     pending.current = null;
-    command?.run();
+    run?.();
   };
   return {
     mounted,
     open,
     recent,
-    show: (surface) => {
+    move,
+    show: (surface, mode) => {
       runPending();
+      awaitLayer();
       origin.current = document.activeElement;
       setRecent(recentCommands());
+      setMove(mode ?? null);
       setMounted(surface);
       setOpen(true);
     },
@@ -137,11 +163,19 @@ function useSurfaces(): Surfaces {
     },
     onClosed: () => {
       setMounted(null);
+      setMove(null);
       runPending();
     },
     onRun: (command) => {
-      pending.current = command;
+      pending.current = command.run;
       noteRecent(command.id);
+      close();
+    },
+    onPick: (id) => {
+      const picked = move;
+      pending.current = () => {
+        picked?.onPick(id);
+      };
       close();
     },
   };
@@ -155,6 +189,19 @@ export function CommandHost() {
   useEffect(() => {
     void prefetchOverlays();
   }, []);
+  // Each render lends its own opener, so the move mode starts from the
+  // surfaces as they stand.
+  useEffect(() => {
+    const opener = (mode: MoveMode): void => {
+      surfaces.show("move", mode);
+    };
+    showMove = opener;
+    return () => {
+      if (showMove === opener) {
+        showMove = null;
+      }
+    };
+  });
   useCommand({
     id: "palette.open",
     label: m.command_palette({}, { locale }),
@@ -181,9 +228,11 @@ export function CommandHost() {
       surface={surfaces.mounted}
       open={surfaces.open}
       recent={surfaces.recent}
+      move={surfaces.move}
       onOpenChange={surfaces.onOpenChange}
       onClosed={surfaces.onClosed}
       onRun={surfaces.onRun}
+      onPick={surfaces.onPick}
     />
   );
 }

@@ -116,7 +116,7 @@ test("a mailbox that gives up no email registers the marks alone", async () => {
   expect(await registered()).toEqual(["Mark as read u", "Add star s"]);
 });
 
-test("the inbox registers archive, delete, spam and the two flips with their keys", async () => {
+test("the inbox registers archive, delete, spam, the two flips and move with their keys", async () => {
   renderList({ mailbox: shown("inbox"), mailboxes: WRITABLE });
   expect(await registered()).toEqual([
     "Archive e",
@@ -124,6 +124,7 @@ test("the inbox registers archive, delete, spam and the two flips with their key
     "Mark as spam !",
     `${first().unread ? "Mark as read" : "Mark as unread"} u`,
     `${first().flagged ? "Remove star" : "Add star"} s`,
+    "Move to… m",
   ]);
 });
 

@@ -216,13 +216,15 @@ function isMailQuery(queryKey: readonly unknown[]): boolean {
 }
 
 export type RefusedMessage = Extract<CacheMessage, { kind: "refused" }>;
+export type JobMessage = Extract<CacheMessage, { kind: "job" }>;
 
 // What a tab does about a message beyond its queries: end its session
-// once another tab cleared the database, and say that the server
-// refused a change.
+// once another tab cleared the database, say that the server refused a
+// change and follow a folder job.
 export interface CacheListeners {
   cleared(): void;
   refused(message: RefusedMessage): void;
+  job(message: JobMessage): void;
 }
 
 // A tree that moved brings the quota with it, which rides the same pass.
@@ -250,7 +252,8 @@ function rereadSetting(queryClient: QueryClient): void {
 }
 
 // What a message of the worker asks of this tab's queries; a database
-// another tab cleared and a refused change go to the caller as well.
+// another tab cleared, a refused change and a job's progress go to the
+// caller as well.
 export function applyCacheMessage(
   queryClient: QueryClient,
   message: CacheMessage,
@@ -276,7 +279,7 @@ export function applyCacheMessage(
       rereadSetting(queryClient);
       break;
     case "job":
-      // A job's progress waits for the view that shows it.
+      listeners.job(message);
       break;
     default:
       invalidateChanged(queryClient, message);

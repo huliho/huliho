@@ -46,6 +46,16 @@
   background: var(--hh-hover);
 }
 
+/* A long press opens the mailbox's menu, so a touch selects no text and
+   brings up no callout of the link. */
+@media (any-pointer: coarse) {
+  .row {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
 .row[aria-current="page"] {
   border-color: var(--hh-border);
   background: var(--hh-surface);

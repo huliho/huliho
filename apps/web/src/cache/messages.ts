@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { AppliedChanges, ChangeVerb, JobProgress, StopCause } from "@huliho/core";
+import type {
+  AppliedChanges,
+  ChangeVerb,
+  Job,
+  JobProgress,
+  JobState,
+  StopCause,
+} from "@huliho/core";
 
 // The channel every tab listens on for what the worker changed.
 export const CACHE_CHANNEL = "huliho-cache";
@@ -41,8 +48,63 @@ const VERBS: ReadonlySet<unknown> = new Set<ChangeVerb>([
   "move",
 ]);
 
+const JOB_STATES: ReadonlySet<unknown> = new Set<JobState>([
+  "running",
+  "done",
+  "canceled",
+  "failed",
+]);
+
 function isStringList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isCountOrNull(value: unknown): value is number | null {
+  return value === null || isCount(value);
+}
+
+function isIdOrNull(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isJobState(value: unknown): value is JobState {
+  return JOB_STATES.has(value);
+}
+
+function fieldsOf(value: unknown): Fields {
+  return new Map<string, unknown>(
+    typeof value === "object" && value !== null ? Object.entries(value) : [],
+  );
+}
+
+function jobOf(value: unknown): Job | null {
+  const fields = fieldsOf(value);
+  const kind = fields.get("kind");
+  const mailboxId = fields.get("mailboxId");
+  if ((kind !== "markRead" && kind !== "empty") || typeof mailboxId !== "string") {
+    return null;
+  }
+  return { kind, mailboxId };
+}
+
+function progressOf(value: unknown): JobProgress | null {
+  const fields = fieldsOf(value);
+  const asked = jobOf(fields.get("job"));
+  const done = fields.get("done");
+  const total = fields.get("total");
+  const last = fields.get("last");
+  const state = fields.get("state");
+  if (asked === null || !isCount(done) || !isCountOrNull(total)) {
+    return null;
+  }
+  if (!isIdOrNull(last) || !isJobState(state)) {
+    return null;
+  }
+  return { job: asked, done, total, last, state };
 }
 
 function isStopCause(value: unknown): value is StopCause | null {
@@ -91,13 +153,21 @@ function cleared(fields: Fields): CacheMessage | null {
   return typeof by === "string" ? { kind: "cleared", by } : null;
 }
 
-// The messages a tab reads; a job's progress waits for the view that
-// shows it.
+function jobMessage(fields: Fields): CacheMessage | null {
+  const accountId = fields.get("accountId");
+  const progress = progressOf(fields.get("progress"));
+  return typeof accountId === "string" && progress !== null
+    ? { kind: "job", accountId, progress }
+    : null;
+}
+
+// The messages a tab reads.
 const READERS: ReadonlyMap<unknown, (fields: Fields) => CacheMessage | null> = new Map([
   ["cleared", cleared],
   ["account", account],
   ["changed", changed],
   ["refused", refused],
+  ["job", jobMessage],
   ["reset", (): CacheMessage => ({ kind: "reset" })],
   ["strict", (): CacheMessage => ({ kind: "strict" })],
 ]);

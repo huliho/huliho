@@ -32,12 +32,17 @@ const CLAIMED_BY_TYPING = "input, textarea, select, [contenteditable]";
 export const CLAIMED_BY_LAYER =
   '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
 
+// A layer that never takes the focus gives the keys back after this,
+// well past a prefetched chunk and the frame its focus waits for.
+export const LAYER_WAIT_MS = 1000;
+
 interface Prefix {
   key: string;
   timer: ReturnType<typeof setTimeout>;
 }
 
 let prefix: Prefix | null = null;
+let awaited: ReturnType<typeof setTimeout> | null = null;
 
 function changed(): void {
   snapshot = [...commands];
@@ -153,10 +158,53 @@ export function dispatchKey(event: KeyboardEvent): void {
   }
 }
 
+function stopAwaiting(): void {
+  if (awaited !== null) {
+    clearTimeout(awaited);
+    awaited = null;
+  }
+}
+
+// A layer asked for keeps every key from that moment until the focus
+// lands inside one, so a key pressed before then reaches nothing on the
+// page, its default action included. Escape alone ends the wait and
+// travels on with its default prevented, so the layer's dismiss on the
+// document hears it.
+export function awaitLayer(): void {
+  stopAwaiting();
+  awaited = setTimeout(stopAwaiting, LAYER_WAIT_MS);
+}
+
+function holdForLayer(event: KeyboardEvent): void {
+  if (awaited === null) {
+    return;
+  }
+  if (claimedBy(event.target, CLAIMED_BY_LAYER)) {
+    stopAwaiting();
+    return;
+  }
+  event.preventDefault();
+  if (event.key === ESCAPE.key) {
+    stopAwaiting();
+  } else {
+    event.stopPropagation();
+  }
+}
+
+function layerFocused(event: FocusEvent): void {
+  if (claimedBy(event.target, CLAIMED_BY_LAYER)) {
+    stopAwaiting();
+  }
+}
+
 export function installCommandListener(target: Window = window): () => void {
+  target.addEventListener("keydown", holdForLayer, { capture: true });
+  target.addEventListener("focusin", layerFocused);
   target.addEventListener("keydown", dispatchKey);
   return () => {
     takePrefix();
+    target.removeEventListener("keydown", holdForLayer, { capture: true });
+    target.removeEventListener("focusin", layerFocused);
     target.removeEventListener("keydown", dispatchKey);
   };
 }

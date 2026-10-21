@@ -2,13 +2,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { actionMutations, offeredActions } from "@huliho/core";
-import type { AfterAction, ListRow, MailAction, MailCache, Mailbox, Offered } from "@huliho/core";
+import { actionMutations, moveMutations, offeredActions } from "@huliho/core";
+import type {
+  AfterAction,
+  ListRow,
+  MailAction,
+  MailCache,
+  Mailbox,
+  Mutation,
+  Offered,
+} from "@huliho/core";
 import { preferencesQueryOptions, threadQueryOptions } from "@huliho/state";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 
+import { openMoveMode } from "../../commands/command-host";
 import { CLAIMED_BY_LAYER } from "../../commands/registry";
 import type { Command } from "../../commands/registry";
 import { useCommand } from "../../commands/use-command";
@@ -21,6 +30,8 @@ import { announce } from "./announce";
 import type { BulkHandle } from "./bulk-handle";
 import { ACTION_COMMANDS, BULK_KINDS } from "./kinds";
 import type { ActionKind } from "./kinds";
+import { lendMove, moveLent, moveTargetsOf, rememberTarget, rememberedTarget } from "./move-mode";
+import type { MoveSource } from "./move-mode";
 import { lendOpenThreadRun } from "./open-thread";
 import type { RowActionsHandle } from "./row-actions";
 import { useSelectionCommands } from "./selection-commands";
@@ -37,6 +48,7 @@ const LEAVING: ReadonlySet<MailAction> = new Set([
   "deleteForever",
   "spam",
   "notSpam",
+  "move",
 ]);
 
 const OFFERS: ReadonlyMap<ActionKind, (offered: Offered) => boolean> = new Map([
@@ -45,6 +57,7 @@ const OFFERS: ReadonlyMap<ActionKind, (offered: Offered) => boolean> = new Map([
   ["spam", (offered) => offered.spam !== null],
   ["read", (offered) => offered.seen],
   ["star", (offered) => offered.flag],
+  ["move", (offered) => offered.move.length > 0],
 ]);
 
 function offers(offered: Offered, kind: ActionKind): boolean {
@@ -168,20 +181,39 @@ function settleLeaving(context: Context, taken: readonly Aim[], fromList: boolea
   }
 }
 
+// The changes an action makes to the threads it takes; a move goes to
+// `to`, and nowhere without one.
+function mutationsOf(
+  { input, offered }: Context,
+  action: MailAction,
+  taken: readonly Aim[],
+  to: string | null,
+): Mutation[] {
+  return taken.flatMap(({ target }) => {
+    if (action !== "move") {
+      return actionMutations(action, input.mailbox, offered, target);
+    }
+    return to === null ? [] : moveMutations(input.mailbox, offered, target, to);
+  });
+}
+
 // One action on the threads a surface names, else on what the focus
-// points at. A change the log took nothing of leaves everything as it
-// stands; one that took threads out of the mailbox shown says so in the
-// toast and the status region, then settles the list. Resolves whether
-// threads left the mailbox shown.
-async function runAction(context: Context, kind: ActionKind, given?: Aimed): Promise<boolean> {
+// points at; a move goes to `to`. A change the log took nothing of
+// leaves everything as it stands; one that took threads out of the
+// mailbox shown says so in the toast and the status region, then
+// settles the list. Resolves whether threads left the mailbox shown.
+async function runAction(
+  context: Context,
+  kind: ActionKind,
+  given?: Aimed,
+  to: string | null = null,
+): Promise<boolean> {
   const { input } = context;
   const { cache, accountId, mailbox, locale } = input;
   const inList = focusInList(input.scrollerRef.current, document.activeElement);
   const aimed = given ?? context.aimed(inList);
   const { action, taken } = takenBy(kind, mailbox, aimed.aims);
-  const mutations = taken.flatMap(({ target }) =>
-    actionMutations(action, mailbox, context.offered, target),
-  );
+  const mutations = mutationsOf(context, action, taken, to);
   if (mutations.length === 0) {
     return false;
   }
@@ -192,7 +224,8 @@ async function runAction(context: Context, kind: ActionKind, given?: Aimed): Pro
   if (undo.threads.length === 0) {
     return false;
   }
-  const text = doneSentence(action, undo.threads.length, locale);
+  const entered = input.mailboxes.find((row) => row.id === to)?.name;
+  const text = doneSentence(action, undo.threads.length, locale, entered);
   if (text !== null) {
     const emailIds = mutations.map(({ id }) => id);
     showActionToast({ cache, accountId, text, undo, emailIds });
@@ -205,11 +238,53 @@ async function runAction(context: Context, kind: ActionKind, given?: Aimed): Pro
   return leaving;
 }
 
-function launch(context: Context, kind: ActionKind, aimed?: Aimed): Promise<boolean> {
-  return runAction(context, kind, aimed).catch((error: unknown) => {
+function launch(
+  context: Context,
+  kind: ActionKind,
+  aimed?: Aimed,
+  to: string | null = null,
+): Promise<boolean> {
+  return runAction(context, kind, aimed, to).catch((error: unknown) => {
     console.error("mail: an action failed", error instanceof Error ? error.message : String(error));
     return false;
   });
+}
+
+// What a move from `source` takes once its mailbox is picked.
+function aimedBy(context: Context, source: MoveSource): Aimed | undefined {
+  if (source === "picks") {
+    return { aims: picksOf(context.input.selection), picked: true, fromList: true };
+  }
+  if (source === "open") {
+    const aim = context.open();
+    return { aims: aim === null ? [] : [aim], picked: false, fromList: false };
+  }
+  return undefined;
+}
+
+// The move picker for the threads `source` names, the last mailbox this
+// device moved to from the account under Recent. The pick is remembered
+// and moves through the list's latest render.
+function pickMove(context: Context, source: MoveSource): void {
+  const { accountId, mailboxes, locale } = context.input;
+  openMoveMode({
+    targets: moveTargetsOf(context.offered.move, mailboxes, locale),
+    recent: rememberedTarget(accountId),
+    onPick: (to) => {
+      rememberTarget(accountId, to);
+      moveLent(to, source);
+    },
+  });
+}
+
+// What a surface's press of one kind does: a move opens the picker,
+// every other action runs at once.
+function press(context: Context, kind: ActionKind, source: MoveSource, aimed?: Aimed): void {
+  if (kind === "move") {
+    pickMove(context, source);
+  } else {
+    void launch(context, kind, aimed);
+  }
 }
 
 // The command for one key while the mailbox offers its action and a
@@ -227,7 +302,7 @@ function commandOf(context: Context, shown: Aimed, kind: ActionKind): Command | 
     group: "act",
     keys: key.keys,
     run: () => {
-      void launch(context, kind);
+      press(context, kind, "focus");
     },
   };
 }
@@ -275,12 +350,20 @@ export function useActions(input: ActionsInput): ListActions {
     },
     open: () => (openThreadId === null ? null : single(false)),
   };
+  // A pick in the move picker lands after the palette closed, so it acts
+  // in the context of the latest render.
+  useEffect(() =>
+    lendMove((to, source) => {
+      void launch(context, "move", aimedBy(context, source), to);
+    }),
+  );
   const shown = context.aimed(inGrid);
   useCommand(commandOf(context, shown, "archive"));
   useCommand(commandOf(context, shown, "delete"));
   useCommand(commandOf(context, shown, "spam"));
   useCommand(commandOf(context, shown, "read"));
   useCommand(commandOf(context, shown, "star"));
+  useCommand(commandOf(context, shown, "move"));
   const pickable = BULK_KINDS.some((kind) => offers(context.offered, kind));
   useSelectionCommands({ ...input, pickable });
   // A press in the toolbar acts from the pane, so the next thread's title
@@ -290,7 +373,7 @@ export function useActions(input: ActionsInput): ListActions {
       const kind = kindOf(id);
       const aim = context.open();
       if (kind !== null && aim !== null) {
-        void launch(context, kind, { aims: [aim], picked: false, fromList: false });
+        press(context, kind, "open", { aims: [aim], picked: false, fromList: false });
       }
     }),
   );
@@ -317,7 +400,7 @@ function bulkOf(context: Context, shown: Aimed): BulkHandle | null {
     count: selection.count,
     thread: combinedOf(shown.picked ? shown.aims : []),
     run: (kind) => {
-      void launch(context, kind, { aims: picksOf(selection), picked: true, fromList: true });
+      press(context, kind, "picks", { aims: picksOf(selection), picked: true, fromList: true });
     },
     close: selection.clear,
   };

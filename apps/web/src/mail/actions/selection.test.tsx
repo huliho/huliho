@@ -167,6 +167,7 @@ test("the read flip reads mark as read while a pick is unread and marks only tho
     "Delete",
     "Mark as spam",
     "Mark as read",
+    "Move to…",
     "Close selection",
   ]);
   command("u");
@@ -220,7 +221,13 @@ test("in Junk the bar holds delete forever and not spam, and no archive", async 
   await listed("junk");
   command("x");
   await screen.findByRole("toolbar");
-  expect(barButtons()).toEqual(["Delete forever", "Not spam", "Mark as read", "Close selection"]);
+  expect(barButtons()).toEqual([
+    "Delete forever",
+    "Not spam",
+    "Mark as read",
+    "Move to…",
+    "Close selection",
+  ]);
 });
 
 test("under touch the bar keeps archive, delete and the read flip, with spam behind More actions", async () => {

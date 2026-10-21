@@ -36,13 +36,15 @@ export class Jobs {
   }
 
   // A job asked while one of the account runs is left alone; the tabs
-  // see the running one's progress.
+  // see the running one's progress. Every tab hears a job start before
+  // its first round.
   start(accountId: string, job: Job): void {
     if (this.running.has(accountId)) {
       return;
     }
     const run: Running = { canceled: false };
     this.running.set(accountId, run);
+    this.host.post({ kind: "job", accountId, progress: jobStarted(job) });
     void this.run(accountId, job, run);
   }
 

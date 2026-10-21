@@ -21,10 +21,18 @@
 }
 
 /* The way back's own end padding spaces the key beside it, which
-   shares its weight. */
+   shares its weight. A phone keeps the edges tight, so the mailbox's
+   name stands beside every action. */
 .toolbar[data-position="screen"] {
   gap: 0;
+  padding-inline: var(--hhx-space-1);
   font-weight: 600;
+}
+
+@media (min-width: 720px) {
+  .toolbar[data-position="screen"] {
+    padding-inline: var(--hhx-space-3);
+  }
 }
 
 /* A long mailbox name gives way, so the actions after it stay in view. */

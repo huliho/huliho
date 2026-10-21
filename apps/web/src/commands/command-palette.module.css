@@ -54,6 +54,28 @@
   color: var(--hh-text-muted);
 }
 
+/* The move mode's chip stays at the input's start while a query
+   replaces the placeholder, so the field never stops saying what it does. */
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hhx-space-1);
+  padding: var(--hhx-space-1) var(--hhx-space-2);
+  border-radius: var(--hhx-radius-control);
+  background: var(--hh-accent-tint);
+  color: var(--hh-accent-strong);
+  font-size: var(--hhx-type-1);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.chipIcon {
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
+}
+
 .input {
   flex: 1;
   min-inline-size: 0;
@@ -115,6 +137,17 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A nested folder names the folders above it, quieter than its own name. */
+.path {
+  color: var(--hh-text-muted);
+}
+
+/* What the query matched carries weight as well as the accent. */
+.hit {
+  color: var(--hh-accent-strong);
+  font-weight: 600;
 }
 
 .empty {

@@ -1,0 +1,73 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.progress {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-2);
+  min-inline-size: 0;
+}
+
+/* The count stays beside the sentence while it fits and drops under it
+   where the header is narrow. */
+.words {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--hhx-space-2);
+  min-inline-size: 0;
+  margin: 0;
+}
+
+.count {
+  font-family: var(--hhx-font-mono);
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+  white-space: nowrap;
+}
+
+/* Cancel stands where the bulk bar keeps Close, as tall as a target. */
+.cancel {
+  flex: none;
+  padding-block: 0;
+  padding-inline: var(--hhx-space-3);
+}
+
+/* The hairline grows per round along the header's foot edge, as the
+   first sync's does along the foot of the list. */
+.hairline {
+  position: absolute;
+  inset-block-end: calc(-1 * var(--hhx-border-width));
+  inset-inline-start: 0;
+  block-size: var(--hhx-hairline-width);
+  background: var(--hh-accent);
+  transition: inline-size var(--hhx-duration-flip) var(--hhx-ease);
+}
+
+.offline {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--hhx-space-2);
+  min-inline-size: 0;
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.icon {
+  flex: none;
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
+  color: var(--hh-text-muted);
+}
+
+/* Without motion the count alone carries the progress. */
+@media (prefers-reduced-motion: reduce) {
+  .hairline {
+    display: none;
+  }
+}

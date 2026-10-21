@@ -309,6 +309,7 @@ test("a toolbar button names its label and its key by hover and by focus; Escape
 test("the toolbar draws its words per mailbox and leaves them to the tooltips where the pane is narrow", async ({
   page,
 }) => {
+  await page.setViewportSize(VIEWPORTS[1]);
   await inbox(page);
   await openRow(page, 1);
   // The words drawn beside the icon make a labeled button wider than tall.

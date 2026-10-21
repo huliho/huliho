@@ -34,7 +34,14 @@ export type {
   StopCause,
   TlsMode,
 } from "./accounts";
-export { actionFor, actionMutations, offeredActions, verbOf } from "./actions";
+export {
+  actionFor,
+  actionMutations,
+  moveMutations,
+  offeredActions,
+  offeredJobs,
+  verbOf,
+} from "./actions";
 export type { ActionTarget, ChangeVerb, MailAction, Offered } from "./actions";
 export { fitsAddress, fitsHostName } from "./address";
 export type { Authentication, AuthenticationResults, AuthVerdict } from "./auth-results";

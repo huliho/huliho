@@ -12,7 +12,7 @@ import { actionLabel } from "./words";
 
 // What a key asks of a thread; the mailbox and the thread decide which
 // action that is.
-export type ActionKind = "archive" | "delete" | "spam" | "read" | "star";
+export type ActionKind = "archive" | "delete" | "spam" | "read" | "star" | "move";
 
 // Each command's id and keys, in the keyboard map's order; `#` and `!`
 // match the key the layout types, whatever it takes to type them.
@@ -23,10 +23,11 @@ export const ACTION_COMMANDS: ReadonlyMap<ActionKind, { id: string; keys: readon
     ["spam", { id: "thread.spam", keys: [{ key: "!" }] }],
     ["read", { id: "thread.read", keys: [{ key: "u" }] }],
     ["star", { id: "thread.star", keys: [{ key: "s" }] }],
+    ["move", { id: "thread.move", keys: [{ key: "m" }] }],
   ]);
 
 // The ones the bulk bar holds, in the same order; star stays with its key.
-export const BULK_KINDS: readonly ActionKind[] = ["archive", "delete", "spam", "read"];
+export const BULK_KINDS: readonly ActionKind[] = ["archive", "delete", "spam", "read", "move"];
 
 // One action a surface draws for a thread: the action it takes there,
 // its label and the keys of its command.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { AccountRow } from "@huliho/core";
+import type { AccountRow, MailCache } from "@huliho/core";
 import type { CSSProperties, ReactNode } from "react";
 
 import { ErrorState } from "../design-system/error-state";
@@ -20,6 +20,7 @@ interface ListPaneProps {
   position: PanePosition;
   // The id the seam names as the pane it sizes.
   id: string;
+  cache: MailCache;
   account: AccountRow;
   tree: TreeState;
   currentMailboxId: string | undefined;
@@ -45,10 +46,8 @@ function sized(position: PanePosition, size: number | null): CSSProperties | und
 // stays inside it.
 export function ListPane(props: ListPaneProps) {
   const { locale, tree, position, size } = props;
-  const mailbox =
-    tree.status === "success"
-      ? tree.mailboxes.find((row) => row.id === props.currentMailboxId)
-      : undefined;
+  const mailboxes = tree.status === "success" ? tree.mailboxes : [];
+  const mailbox = mailboxes.find((row) => row.id === props.currentMailboxId);
   return (
     <main
       id={props.id}
@@ -59,8 +58,10 @@ export function ListPane(props: ListPaneProps) {
     >
       <PaneHeader
         locale={locale}
+        cache={props.cache}
         account={props.account}
         mailbox={mailbox}
+        mailboxes={mailboxes}
         pending={tree.status === "pending"}
         onOpenSidebar={props.onOpenSidebar}
       />

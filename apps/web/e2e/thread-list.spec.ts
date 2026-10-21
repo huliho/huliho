@@ -125,6 +125,8 @@ test("the arrow keys, j and k walk the rows, Home and End jump and Tab leaves th
   await page.keyboard.press("Shift+Tab");
   await expect(rowAt(page, 1)).toBeFocused();
   await page.keyboard.press("Shift+Tab");
+  await expect(page.locator("main header").getByRole("button", { name: "Inbox" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
   await expect(page.getByRole("treeitem", { name: "Inbox, 23 unread" })).toBeFocused();
 });
 

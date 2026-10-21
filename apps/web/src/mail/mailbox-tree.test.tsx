@@ -8,11 +8,15 @@ import {
   createRootRoute,
   createRouter,
 } from "@tanstack/react-router";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import type { MailCache } from "@huliho/core";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { LONG_PRESS_MS } from "./actions/long-press";
+import { fixtureCache } from "./fixture-cache";
 import { MAILBOXES } from "./fixtures";
 import { MailboxTree } from "./mailbox-tree";
+import { prefetchMenus } from "./menus-chunk";
 
 interface Options {
   // The address the tree sits at, which names the open mailbox.
@@ -20,6 +24,7 @@ interface Options {
   currentId?: string | undefined;
   showLetters?: boolean;
   onNavigate?: () => void;
+  cache?: MailCache;
 }
 
 // The links need a router; a memory one at the tree's own address serves.
@@ -28,12 +33,17 @@ async function renderTree({
   currentId = "mb-inbox",
   showLetters = true,
   onNavigate,
+  cache = fixtureCache({}),
 }: Options = {}) {
+  await act(async () => {
+    await prefetchMenus();
+  });
   const router = createRouter({
     routeTree: createRootRoute({
       component: () => (
         <MailboxTree
           locale="en"
+          cache={cache}
           accountId="acc-1"
           mailboxes={MAILBOXES}
           currentId={currentId}
@@ -122,4 +132,60 @@ test("picking a row tells the caller, so a sheet can close", async () => {
   await renderTree({ onNavigate });
   fireEvent.click(item("Facturen, 3 unread"));
   expect(onNavigate).toHaveBeenCalledOnce();
+});
+
+test("a right click opens the mailbox's menu, whose item runs the job; an item that offers nothing keeps the browser's menu", async () => {
+  const cache = fixtureCache({});
+  await renderTree({ cache });
+  const opened = fireEvent.contextMenu(item("Facturen, 3 unread"), { clientX: 40, clientY: 90 });
+  expect(opened).toBe(false);
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Mark all as read" }));
+  await vi.waitFor(() => {
+    expect(cache.jobs).toEqual([{ kind: "markRead", mailboxId: "mb-facturen" }]);
+  });
+  expect(fireEvent.contextMenu(item("Sent"))).toBe(true);
+  expect(screen.queryByRole("menu")).toBeNull();
+});
+
+test("the context-menu key opens the menu below the item and Escape gives the item the focus back", async () => {
+  await renderTree();
+  const inbox = item("Inbox, 23 unread");
+  inbox.focus();
+  fireEvent.keyDown(inbox, { key: "ContextMenu" });
+  const menu = await screen.findByRole("menu");
+  expect(
+    within(menu)
+      .getAllByRole("menuitem")
+      .map((entry) => entry.textContent),
+  ).toEqual(["Mark all as read"]);
+  fireEvent.keyDown(menu, { key: "Escape" });
+  await vi.waitFor(() => {
+    expect(document.activeElement).toBe(inbox);
+  });
+  fireEvent.keyDown(inbox, { key: "F10", shiftKey: true });
+  expect(await screen.findByRole("menu")).toBeDefined();
+});
+
+test("a long press opens the menu and the click it leaves behind goes nowhere", async () => {
+  const onNavigate = vi.fn<() => void>();
+  await renderTree({ onNavigate });
+  vi.useFakeTimers();
+  try {
+    const junk = item("Junk, 1 unread");
+    fireEvent.pointerDown(junk, {
+      pointerType: "touch",
+      isPrimary: true,
+      clientX: 30,
+      clientY: 200,
+    });
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+    });
+    fireEvent.pointerUp(junk, { pointerType: "touch" });
+    fireEvent.click(junk);
+    expect(onNavigate).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+  expect(await screen.findByRole("menuitem", { name: "Mark all as read" })).toBeDefined();
 });

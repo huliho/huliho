@@ -13,6 +13,7 @@ import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import type { Layout } from "../shell/breakpoints";
 import { PaneBoundary } from "../shell/pane-boundary";
+import { ConfirmEmpty } from "./actions/confirm-empty";
 import { LIST_DEFAULT_ROWS, LIST_MIN_ROWS, PANE_MIN_HEIGHT_PX, useListHeight } from "./list-height";
 import { ListPane } from "./list-pane";
 import { LIST_WIDTH_DEFAULT_PX, PANE_MIN_WIDTH_PX, useListWidth } from "./list-width";
@@ -375,6 +376,7 @@ export function ShellFrame(props: ShellFrameProps) {
           {sidebar}
         </SideSheet>
       )}
+      <ConfirmEmpty locale={locale} />
     </div>
   );
 }

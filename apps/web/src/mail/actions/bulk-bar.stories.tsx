@@ -39,6 +39,7 @@ const DELETE_FOREVER = entry("delete", "deleteForever", "Delete forever");
 const SPAM = entry("spam", "spam", "Mark as spam");
 const READ = entry("read", "read", "Mark as read");
 const UNREAD = entry("read", "unread", "Mark as unread");
+const MOVE = entry("move", "move", "Move to…");
 
 function nothing(): void {
   // A drawn bar acts on nothing.
@@ -74,14 +75,14 @@ const meta: Meta = {
 export default meta;
 
 // The inbox at the desktop: every action the picks can take, then Close.
-export const Inbox = bar(2, [ARCHIVE, DELETE, SPAM, READ]);
+export const Inbox = bar(2, [ARCHIVE, DELETE, SPAM, READ, MOVE]);
 
 // Trash: delete forever in place of delete and no archive.
-export const Trash = bar(3, [DELETE_FOREVER, SPAM, UNREAD]);
+export const Trash = bar(3, [DELETE_FOREVER, SPAM, UNREAD, MOVE]);
 
-// Under touch: archive, delete and the read flip, with spam behind More actions.
+// Under touch: archive, delete and the read flip, with spam and move behind More actions.
 export const Touch: StoryObj = {
-  ...bar(2, [ARCHIVE, DELETE, READ], [SPAM]),
+  ...bar(2, [ARCHIVE, DELETE, READ], [SPAM, MOVE]),
   globals: { density: "touch" },
 };
 

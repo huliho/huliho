@@ -14,6 +14,7 @@ const SAID: ReadonlySet<MailAction> = new Set([
   "deleteForever",
   "spam",
   "notSpam",
+  "move",
 ]);
 
 // The action's name in the palette, the overlay and a label.
@@ -21,10 +22,15 @@ export function actionLabel(action: MailAction, locale: Locale): string {
   return m.command_thread({ action }, { locale });
 }
 
-// What the toast says once an action moved `count` threads; null for
-// the flips, which show no toast.
-export function doneSentence(action: MailAction, count: number, locale: Locale): string | null {
-  return SAID.has(action) ? m.action_done({ action, count }, { locale }) : null;
+// What the toast says once an action moved `count` threads, a move
+// naming the mailbox it went to; null for the flips, which show no toast.
+export function doneSentence(
+  action: MailAction,
+  count: number,
+  locale: Locale,
+  mailbox = "",
+): string | null {
+  return SAID.has(action) ? m.action_done({ action, count, mailbox }, { locale }) : null;
 }
 
 // What the toast says once the server refused a change and the rows

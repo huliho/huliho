@@ -68,11 +68,12 @@ function methods(server: FakeJmap): string[] {
 beforeEach(beginRig);
 afterEach(endRig);
 
-test("a job runs round by round and tells every tab; the account polls once it ends", async () => {
+test("a job runs round by round and tells every tab, from its start on; the account polls once it ends", async () => {
   const { server, posted, api } = await served();
   expect(await api.job(ACCOUNT, MARK_READ)).toEqual({ ok: true, value: undefined });
   await ran(0);
   expect(progress(posted)).toEqual([
+    [0, null, "running"],
     [2, UNREAD, "running"],
     [4, UNREAD, "running"],
     [UNREAD, UNREAD, "running"],
@@ -106,7 +107,10 @@ test("cancel ends the job after the round that runs", async () => {
   await api.job(ACCOUNT, MARK_READ);
   await api.cancelJob(ACCOUNT);
   await ran(0);
-  expect(progress(posted)).toEqual([[2, UNREAD, "canceled"]]);
+  expect(progress(posted)).toEqual([
+    [0, null, "running"],
+    [2, UNREAD, "canceled"],
+  ]);
 });
 
 test("a round the server refuses ends the job as failed with what came before kept, and the account still polls", async () => {
@@ -116,7 +120,10 @@ test("a round the server refuses ends the job as failed with what came before ke
   });
   await api.job(ACCOUNT, MARK_READ);
   await ran(0);
-  expect(progress(posted)).toEqual([[0, null, "failed"]]);
+  expect(progress(posted)).toEqual([
+    [0, null, "running"],
+    [0, null, "failed"],
+  ]);
   expect(methods(server).filter((name) => name === "Mailbox/changes")).toHaveLength(2);
   expect(methods(server).at(-3)).toBe("Mailbox/changes");
 });

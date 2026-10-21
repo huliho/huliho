@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { Mailbox } from "@huliho/core";
+import type { MailCache, Mailbox } from "@huliho/core";
 import { Link } from "@tanstack/react-router";
 import type { KeyboardEvent } from "react";
 
@@ -11,10 +11,12 @@ import type { Locale } from "../paraglide/runtime.js";
 import { MonoCount, countLabel } from "./mono-count";
 import { buildTree, countOf, flatten } from "./tree";
 import type { FlatRow } from "./tree";
+import { useTreeMenu } from "./tree-menu";
 import styles from "./mailbox-tree.module.css";
 
 interface MailboxTreeProps {
   locale: Locale;
+  cache: MailCache;
   accountId: string;
   mailboxes: readonly Mailbox[];
   currentId: string | undefined;
@@ -23,7 +25,7 @@ interface MailboxTreeProps {
   onNavigate?: (() => void) | undefined;
 }
 
-interface ItemProps extends Omit<MailboxTreeProps, "mailboxes"> {
+interface ItemProps extends Omit<MailboxTreeProps, "mailboxes" | "cache"> {
   row: FlatRow;
   // The one item Tab lands on: the open mailbox, else the first.
   stopId: string | undefined;
@@ -83,6 +85,7 @@ function TreeItem({ row, stopId, ...props }: ItemProps) {
         aria-setsize={row.size}
         aria-label={countLabel(mailbox, props.locale)}
         tabIndex={mailbox.id === stopId ? 0 : -1}
+        data-mailbox-id={mailbox.id}
         onClick={props.onNavigate}
       >
         <span className={styles.name}>{mailbox.name}</span>
@@ -106,34 +109,49 @@ function TreeItem({ row, stopId, ...props }: ItemProps) {
 
 // The mailboxes of one account as a navigation tree: the roles in their
 // fixed order, then the folders with their depth on each row; one tab
-// stop with the arrow keys inside.
-export function MailboxTree({ mailboxes, ...props }: MailboxTreeProps) {
-  const { locale } = props;
+// stop with the arrow keys inside. Each item opens the mailbox's menu by
+// a right click, the context-menu key and a long press.
+export function MailboxTree({ mailboxes, cache, ...props }: MailboxTreeProps) {
+  const { locale, accountId } = props;
+  const menu = useTreeMenu({ locale, cache, accountId, mailboxes });
   const model = buildTree(mailboxes, locale);
   const roles = flatten(model.roles);
   const folders = flatten(model.folders);
   const held = mailboxes.some((row) => row.id === props.currentId);
   const stopId = held ? props.currentId : (roles[0] ?? folders[0])?.mailbox.id;
   return (
-    <ul
-      role="tree"
-      aria-label={m.mail_mailboxes({}, { locale })}
-      className={styles.tree}
-      onKeyDown={moveFocus}
-    >
-      {roles.map((row) => (
-        <TreeItem key={row.mailbox.id} row={row} stopId={stopId} {...props} />
-      ))}
-      {folders.length > 0 && (
-        <li role="none">
-          <span className={styles.groupLabel} aria-hidden="true">
-            {m.tree_folders({}, { locale })}
-          </span>
-        </li>
-      )}
-      {folders.map((row) => (
-        <TreeItem key={row.mailbox.id} row={row} stopId={stopId} {...props} />
-      ))}
-    </ul>
+    <>
+      <ul
+        role="tree"
+        aria-label={m.mail_mailboxes({}, { locale })}
+        className={styles.tree}
+        onKeyDown={(event) => {
+          if (!menu.onKey(event)) {
+            moveFocus(event);
+          }
+        }}
+        onContextMenu={menu.onContextMenu}
+        onPointerDown={menu.onPointerDown}
+        onPointerUp={menu.onPointerEnd}
+        onPointerCancel={menu.onPointerEnd}
+        onPointerLeave={menu.onPointerEnd}
+        onClickCapture={menu.onClickCapture}
+      >
+        {roles.map((row) => (
+          <TreeItem key={row.mailbox.id} row={row} stopId={stopId} {...props} />
+        ))}
+        {folders.length > 0 && (
+          <li role="none">
+            <span className={styles.groupLabel} aria-hidden="true">
+              {m.tree_folders({}, { locale })}
+            </span>
+          </li>
+        )}
+        {folders.map((row) => (
+          <TreeItem key={row.mailbox.id} row={row} stopId={stopId} {...props} />
+        ))}
+      </ul>
+      {menu.menu}
+    </>
   );
 }

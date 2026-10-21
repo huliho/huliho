@@ -47,10 +47,10 @@
   display: none;
 }
 
-/* A toolbar this wide holds archive, delete and spam with their words
-   and keys in the longest locale beside the two flips and Close. A
-   container query takes no token, so the width stands here as a number. */
-@container (min-inline-size: 640px) {
+/* A toolbar this wide holds archive, delete, spam and move with their
+   words and keys in the longest locale beside the two flips and Close.
+   A container query takes no token, so the width stands here as a number. */
+@container (min-inline-size: 760px) {
   .button[data-labeled] {
     inline-size: auto;
     padding-inline: var(--hhx-space-2);

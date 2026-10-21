@@ -104,7 +104,7 @@ test("a tree that moved has the quota read again with it", async () => {
   await queryClient.query({ queryKey: queryKeys.quota("a1"), ...quiet });
   await queryClient.query({ queryKey: queryKeys.quota("a2"), ...quiet });
   const changed = { accountId: "a1", windows: [], threads: [] };
-  const listeners = { cleared: () => undefined, refused: () => undefined };
+  const listeners = { cleared: () => undefined, refused: () => undefined, job: () => undefined };
   windowSide.applyCacheMessage(
     queryClient,
     { kind: "changed", mailboxes: false, ...changed },

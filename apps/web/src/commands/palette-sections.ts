@@ -35,7 +35,7 @@ interface Ranked {
 
 // Letters compare by their base, so a typed "e" finds an "é"; punctuation
 // counts, so a typed "?" finds the key and not every space.
-function collatorFor(locale: Locale): Intl.Collator {
+export function collatorFor(locale: Locale): Intl.Collator {
   return new Intl.Collator(locale, { usage: "search", sensitivity: "base" });
 }
 
@@ -43,13 +43,18 @@ function startsWith(text: string, query: string, collator: Intl.Collator): boole
   return text.length >= query.length && collator.compare(text.slice(0, query.length), query) === 0;
 }
 
-function contains(text: string, query: string, collator: Intl.Collator): boolean {
+// Where the query first stands in the text; -1 where it does not.
+export function indexIn(text: string, query: string, collator: Intl.Collator): number {
   for (let start = 0; start <= text.length - query.length; start += 1) {
     if (collator.compare(text.slice(start, start + query.length), query) === 0) {
-      return true;
+      return start;
     }
   }
-  return false;
+  return -1;
+}
+
+function contains(text: string, query: string, collator: Intl.Collator): boolean {
+  return indexIn(text, query, collator) !== -1;
 }
 
 // The slices go by code units, so both sides compare in composed form.

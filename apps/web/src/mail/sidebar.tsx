@@ -54,6 +54,7 @@ export function Sidebar(props: SidebarProps) {
       {tree.status === "success" && (
         <MailboxTree
           locale={locale}
+          cache={cache}
           accountId={account.id}
           mailboxes={tree.mailboxes}
           currentId={props.currentMailboxId}

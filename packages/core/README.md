@@ -52,9 +52,12 @@ refuses is never logged. `runJob` marks a whole mailbox read or empties
 it, one `jobRound` at a time. `readQuota` answers the quota a bar shows,
 which the mailbox pass keeps current where the account has quota.
 `offeredActions` reads what a mailbox offers from its role and the
-rights of the mailboxes involved, never from the kind of account;
-`actionMutations` turns an action on a thread into the changes of its
-emails in that mailbox and `verbOf` names what a refused change did.
+rights of the mailboxes involved, never from the kind of account, the
+mailboxes a move may enter among it; `offeredJobs` reads which folder
+jobs a mailbox offers. `actionMutations` turns an action on a thread
+into the changes of its emails in that mailbox, `moveMutations` does
+so for a move to the mailbox picked and `verbOf` names what a refused
+change did.
 `MailCache` is what an adapter offers the query hooks: the tree, a
 page, a thread, the reveal, the
 body of one email with where its parts download from, one change to
