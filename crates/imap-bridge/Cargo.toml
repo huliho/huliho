@@ -38,7 +38,7 @@ insta = { version = "1.48.0", default-features = false, features = ["json"] }
 proptest = "1.11.0"
 tempfile = "3.27.0"
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
-webpki-roots = "1.0.9"
+webpki-roots = "1.0.10"
 
 [lints]
 workspace = true
