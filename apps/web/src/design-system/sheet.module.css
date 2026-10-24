@@ -139,6 +139,14 @@
   flex-wrap: wrap;
 }
 
+/* The sidebar's width, with room above for a hint that opens over its foot. */
+.sidebarFoot {
+  display: grid;
+  gap: var(--hhx-space-5);
+  inline-size: var(--hhx-mail-sidebar-width);
+  padding: calc(var(--hhx-space-6) * 2) var(--hhx-space-3) var(--hhx-space-4);
+}
+
 .shapeSample {
   display: grid;
   place-items: center;

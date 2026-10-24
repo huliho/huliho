@@ -61,7 +61,7 @@
   --hhx-focus-ring-width: 2px;
   --hhx-focus-ring-offset: 2px;
   --hhx-halo-width: 4px;
-  /* The progress line on the first-sync block's top edge. */
+  /* The progress line: the first-sync block, a folder job and the quota bar. */
   --hhx-hairline-width: 2px;
   /* One bar per level of quoted text in a plain message. */
   --hhx-quote-bar-width: 2px;
@@ -112,6 +112,8 @@
   /* The desktop mail panes before anyone drags the seam between list and reading pane. */
   --hhx-mail-sidebar-width: 240px;
   --hhx-mail-list-width: 360px;
+  /* The quota bar alone at the rail's foot. */
+  --hhx-quota-rail-width: 48px;
 }
 
 :root[data-theme="light"] {

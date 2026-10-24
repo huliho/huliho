@@ -1,0 +1,66 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hhx-space-1);
+  border-radius: var(--hhx-radius-control);
+}
+
+.foot {
+  padding: 0 var(--hhx-space-3) var(--hhx-space-1);
+}
+
+.rail {
+  inline-size: var(--hhx-quota-rail-width);
+  padding-block: var(--hhx-space-3);
+}
+
+.words {
+  display: flex;
+  align-items: baseline;
+  gap: var(--hhx-space-2);
+  font-size: var(--hhx-type-1);
+  line-height: var(--hhx-leading);
+}
+
+.warning {
+  font-weight: 600;
+  color: var(--hh-warn);
+}
+
+.figures {
+  margin-inline-start: auto;
+  font-family: var(--hhx-font-mono);
+  color: var(--hh-text-muted);
+}
+
+.track {
+  block-size: var(--hhx-hairline-width);
+  overflow: hidden;
+  border-radius: calc(var(--hhx-hairline-width) / 2);
+  background: var(--hh-border);
+}
+
+.fill {
+  background: var(--hh-accent);
+}
+
+.meter[data-warn] .fill {
+  background: var(--hh-warn);
+}
+
+/* Forced colors drop the backgrounds, so the track takes a line and the
+   fill keeps the text color. */
+@media (forced-colors: active) {
+  .track {
+    outline: var(--hhx-border-width) solid currentColor;
+  }
+
+  .fill {
+    forced-color-adjust: none;
+    background: currentColor;
+  }
+}

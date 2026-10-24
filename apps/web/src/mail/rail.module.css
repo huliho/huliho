@@ -41,3 +41,7 @@
   block-size: var(--hhx-icon-header);
   stroke-width: var(--hhx-icon-stroke);
 }
+
+.quota {
+  margin-block-start: auto;
+}
