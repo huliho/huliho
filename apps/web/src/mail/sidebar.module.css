@@ -11,6 +11,11 @@
   padding: var(--hhx-space-4) var(--hhx-space-3);
 }
 
+/* The quota stands at the foot, after the tree once the tree runs long. */
+.quota {
+  margin-block-start: auto;
+}
+
 .skeleton {
   display: flex;
   flex-direction: column;

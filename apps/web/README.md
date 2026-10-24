@@ -354,6 +354,14 @@ close up. Short of half the row slides back. A scroll, a second finger
 or a finger that leaves the row across its top or bottom edge ends the
 swipe with nothing done. No row swipes while a selection stands.
 
+Where the server reports a quota, the sidebar's foot shows it as a
+meter: how much of the limit is used, over a thin bar that takes the
+warning color with "Almost full" from the server's warn limit, else
+from 90%. A server that counts messages alone reads in messages. The rail
+shows the bar alone and the sheet the whole foot; a hint on hover and
+on focus names the figures. Without a quota the foot stays empty. The
+bar loads with the account menu's chunk.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component

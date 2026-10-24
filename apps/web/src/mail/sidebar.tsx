@@ -9,6 +9,7 @@ import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { AccountSwitcher } from "./account-switcher";
 import { MailboxTree } from "./mailbox-tree";
+import { QuotaFoot } from "./quota-foot";
 import type { TreeState } from "./tree";
 import styles from "./sidebar.module.css";
 
@@ -36,8 +37,9 @@ function TreeSkeleton({ locale }: { locale: Locale }) {
   );
 }
 
-// The account switcher over the mailbox tree: the whole sidebar at the
-// desktop width, the sheet's content at the other two.
+// The account switcher over the mailbox tree with the quota at the foot:
+// the whole sidebar at the desktop width, the sheet's content at the
+// other two.
 export function Sidebar(props: SidebarProps) {
   const { locale, cache, accounts, account, tree } = props;
   return (
@@ -62,6 +64,13 @@ export function Sidebar(props: SidebarProps) {
           onNavigate={props.onNavigate}
         />
       )}
+      <QuotaFoot
+        locale={locale}
+        cache={cache}
+        accountId={account.id}
+        variant="foot"
+        className={styles.quota}
+      />
     </nav>
   );
 }

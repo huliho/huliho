@@ -357,5 +357,10 @@
   "job_done": "{kind, select, trash {Prullenbak leeggemaakt.} junk {Spam leeggemaakt.} other {{mailbox} gemarkeerd als gelezen.}}",
   "job_stopped": "Gestopt na {done, number} van {total, number}.",
   "job_failed": "{kind, select, trash {{done, plural, =0 {Prullenbak leegmaken is niet gelukt. Er is niets verwijderd.} one {Prullenbak leegmaken is niet gelukt. {done, number} van {total, number} is verwijderd.} other {Prullenbak leegmaken is niet gelukt. {done, number} van {total, number} zijn verwijderd.}}} junk {{done, plural, =0 {Spam leegmaken is niet gelukt. Er is niets verwijderd.} one {Spam leegmaken is niet gelukt. {done, number} van {total, number} is verwijderd.} other {Spam leegmaken is niet gelukt. {done, number} van {total, number} zijn verwijderd.}}} other {{done, plural, =0 {{mailbox} markeren als gelezen is niet gelukt. Er is niets gemarkeerd.} one {{mailbox} markeren als gelezen is niet gelukt. {done, number} van {total, number} is gemarkeerd.} other {{mailbox} markeren als gelezen is niet gelukt. {done, number} van {total, number} zijn gemarkeerd.}}}}",
-  "job_offline": "Offline: dit werkt weer als de verbinding terug is."
+  "job_offline": "Offline: dit werkt weer als de verbinding terug is.",
+  "quota_words": "{used} van {limit}",
+  "quota_messages": "{limit, plural, one {{used, number} van {limit, number} bericht} other {{used, number} van {limit, number} berichten}}",
+  "quota_almost_full": "Bijna vol",
+  "quota_detail": "Mailopslag: {used} van {limit} gebruikt",
+  "quota_detail_messages": "{limit, plural, one {Mailopslag: {used, number} van {limit, number} bericht} other {Mailopslag: {used, number} van {limit, number} berichten}}"
 }
