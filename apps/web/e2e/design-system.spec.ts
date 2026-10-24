@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { APIRequestContext, Browser, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 import { STORYBOOK_URL } from "../playwright.config";
@@ -57,21 +57,39 @@ async function auditStory(page: Page, id: string, theme: string, name: string): 
   await expect.soft(page).toHaveScreenshot(`${id}-${theme}-${name}.png`, { fullPage: true });
 }
 
+// A tab's renderer grows with every story it draws, so each pass takes a
+// context of its own and starts on a fresh renderer.
+async function auditPass(
+  browser: Browser,
+  ids: readonly string[],
+  viewport: (typeof VIEWPORTS)[number],
+  theme: string,
+): Promise<void> {
+  const context = await browser.newContext({
+    viewport: { width: viewport.width, height: viewport.height },
+  });
+  try {
+    const page = await context.newPage();
+    for (const id of ids) {
+      await test.step(`${id} in ${theme} at ${viewport.name} width`, async () => {
+        await auditStory(page, id, theme, viewport.name);
+      });
+    }
+  } finally {
+    await context.close();
+  }
+}
+
 test("every token demo story is axe-clean and matches its screenshot", async ({
-  page,
+  browser,
   request,
 }) => {
   const ids = await storyIds(request);
   expect(ids.length).toBeGreaterThanOrEqual(MIN_STORY_COUNT);
   test.setTimeout(ids.length * THEMES.length * VIEWPORTS.length * PER_STORY_TIMEOUT_MS);
   for (const viewport of VIEWPORTS) {
-    await page.setViewportSize({ width: viewport.width, height: viewport.height });
     for (const theme of THEMES) {
-      for (const id of ids) {
-        await test.step(`${id} in ${theme} at ${viewport.name} width`, async () => {
-          await auditStory(page, id, theme, viewport.name);
-        });
-      }
+      await auditPass(browser, ids, viewport, theme);
     }
   }
 });

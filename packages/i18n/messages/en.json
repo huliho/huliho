@@ -357,5 +357,10 @@
   "job_done": "{kind, select, trash {Trash emptied.} junk {Junk emptied.} other {{mailbox} marked as read.}}",
   "job_stopped": "Stopped after {done, number} of {total, number}.",
   "job_failed": "{kind, select, trash {{done, plural, =0 {Couldn’t empty Trash. Nothing was deleted.} one {Couldn’t empty Trash. {done, number} of {total, number} was deleted.} other {Couldn’t empty Trash. {done, number} of {total, number} were deleted.}}} junk {{done, plural, =0 {Couldn’t empty Junk. Nothing was deleted.} one {Couldn’t empty Junk. {done, number} of {total, number} was deleted.} other {Couldn’t empty Junk. {done, number} of {total, number} were deleted.}}} other {{done, plural, =0 {Couldn’t mark {mailbox} as read. Nothing was marked.} one {Couldn’t mark {mailbox} as read. {done, number} of {total, number} was marked.} other {Couldn’t mark {mailbox} as read. {done, number} of {total, number} were marked.}}}}",
-  "job_offline": "Offline: this will work again when the connection is back."
+  "job_offline": "Offline: this will work again when the connection is back.",
+  "quota_words": "{used} of {limit}",
+  "quota_messages": "{limit, plural, one {{used, number} of {limit, number} message} other {{used, number} of {limit, number} messages}}",
+  "quota_almost_full": "Almost full",
+  "quota_detail": "Mail storage: {used} of {limit} used",
+  "quota_detail_messages": "{limit, plural, one {Mail storage: {used, number} of {limit, number} message} other {Mail storage: {used, number} of {limit, number} messages}}"
 }

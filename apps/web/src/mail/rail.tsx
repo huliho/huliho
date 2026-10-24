@@ -11,6 +11,7 @@ import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { AccountSwitcher } from "./account-switcher";
 import { MonoCount, countLabel } from "./mono-count";
+import { QuotaFoot } from "./quota-foot";
 import { buildTree, countOf } from "./tree";
 import type { TreeState } from "./tree";
 import styles from "./rail.module.css";
@@ -35,8 +36,8 @@ interface RailProps {
   onMore: () => void;
 }
 
-// The sidebar collapsed to a rail: the avatar, the roles as icons and a
-// button for the rest.
+// The sidebar collapsed to a rail: the avatar, the roles as icons, a
+// button for the rest and the quota's bar at the foot.
 export function Rail(props: RailProps) {
   const { locale, cache, accounts, account, tree, currentMailboxId, onMore } = props;
   const roles = tree.status === "success" ? buildTree(tree.mailboxes, locale).roles : [];
@@ -77,6 +78,13 @@ export function Rail(props: RailProps) {
       >
         <FolderTree className={styles.icon} aria-hidden="true" />
       </button>
+      <QuotaFoot
+        locale={locale}
+        cache={cache}
+        accountId={account.id}
+        variant="rail"
+        className={styles.quota}
+      />
     </nav>
   );
 }

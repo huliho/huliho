@@ -19,6 +19,9 @@ interface TooltipProps {
   label: string;
   // The keys of the control's command; none for a control without one.
   keys: readonly Chord[];
+  // Which side of the control the hint stands on: under it, or over a
+  // control at the viewport's foot.
+  side?: "top" | "bottom";
   // Which edge of the control the hint lines up with.
   align?: "start" | "end";
   // Whether the hint stands open from the start, as a drawn state does.
@@ -27,15 +30,16 @@ interface TooltipProps {
   children: ReactElement;
 }
 
-// The label and the keys of a control, under it on the other theme's
-// surface, on hover and on focus and never on touch. The control keeps
-// its own name, so a screen reader hears the label once.
-export function Tooltip({ label, keys, align = "start", defaultOpen, children }: TooltipProps) {
+// The label and the keys of a control on the other theme's surface, on
+// hover and on focus and never on touch. The control keeps its own name,
+// so a screen reader hears the label once.
+export function Tooltip(props: TooltipProps) {
+  const { label, keys, side = "bottom", align = "start", defaultOpen, children } = props;
   return (
     <BaseTooltip.Root defaultOpen={defaultOpen}>
       <BaseTooltip.Trigger render={children} />
       <BaseTooltip.Portal>
-        <BaseTooltip.Positioner side="bottom" align={align} sideOffset={TOOLTIP_OFFSET_PX}>
+        <BaseTooltip.Positioner side={side} align={align} sideOffset={TOOLTIP_OFFSET_PX}>
           <BaseTooltip.Popup className={styles.popup}>
             {label}
             <KeyCaps keys={keys} spoken={false} />
