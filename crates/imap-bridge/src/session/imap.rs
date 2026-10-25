@@ -28,9 +28,9 @@ use super::capability::{Tags, capabilities_of};
 use super::guard::Guarded;
 use super::{
     Capabilities, FetchItems, FetchedMessage, FlagFetch, Flagged, ListReturn, Listing, MoveAsk,
-    Moved, PartAsk, PreviewAsk, PreviewBytes, QuotaRoot, Selected, Session, SessionError,
-    StatusEntry, StatusItems, StoreAsk, Structure, Target, TlsMode, UidRange, Writable, io_error,
-    quota, read, write,
+    Moved, PartAsk, PreviewAsk, PreviewBytes, QuotaRoot, SearchAsk, Selected, Session,
+    SessionError, StatusEntry, StatusItems, StoreAsk, Structure, Target, TlsMode, UidRange,
+    Writable, io_error, quota, read, write,
 };
 
 pub(super) type Stream = Guarded<TlsStream<TcpStream>>;
@@ -207,6 +207,11 @@ impl Session for ImapSession {
     async fn uid_list(&mut self) -> Result<Vec<u32>, SessionError> {
         let room = self.room();
         read::uid_list(&mut self.selection()?, room).await
+    }
+
+    async fn uid_search(&mut self, ask: &SearchAsk<'_>) -> Result<Vec<u32>, SessionError> {
+        let room = self.room();
+        read::uid_search(&mut self.selection()?, ask, room).await
     }
 
     async fn uid_fetch(

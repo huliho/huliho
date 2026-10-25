@@ -7,6 +7,7 @@
 //! The recorder and the replayer stand on the same listener.
 
 mod behavior;
+pub mod command;
 pub mod connector;
 mod fetch;
 pub mod folder;

@@ -12,13 +12,14 @@ mod fetch;
 mod flags;
 mod list;
 mod preview;
+mod search;
 mod select;
 mod structure;
 
 use std::time::Duration;
 
 use async_imap::Connection;
-use async_imap::imap_proto::{MailboxDatum, Response, Status};
+use async_imap::imap_proto::{MailboxDatum, Response, ResponseCode, Status};
 use tokio::time::timeout;
 
 use super::imap::{Stream, Wire, command_error};
@@ -30,7 +31,8 @@ pub(super) use fetch::uid_fetch;
 pub(super) use flags::uid_flags;
 pub(super) use list::{list, lsub, status};
 pub(super) use preview::{sequence_set, uid_previews};
-pub(super) use select::{Access, Opened, open, uid_list};
+pub(super) use search::{uid_list, uid_search};
+pub(super) use select::{Access, Opened, open};
 pub use structure::MAX_TREE_BYTES;
 
 type Signed = async_imap::Session<Stream>;
@@ -51,6 +53,9 @@ pub const MAX_WIRE_NAME_BYTES: usize = 4096;
 /// The longest raw name worth unescaping: the fold at most halves a
 /// name, so a longer one stays above `MAX_WIRE_NAME_BYTES`.
 const MAX_RAW_NAME_BYTES: usize = 2 * MAX_WIRE_NAME_BYTES;
+
+/// The fixed words of an answer of more lines than its bounds allow.
+pub(super) const ANSWER_LINE_LIMIT: &str = "the answer passes the line limit";
 
 /// What the session grants one command: the time one read may take and
 /// the room for volunteered lines.
@@ -124,15 +129,32 @@ pub(super) struct Selection<'a> {
 }
 
 impl Selection<'_> {
-    /// As [`collect`], the count noted ahead of `visit`.
+    /// Runs `command` and hands every untagged answer and the tagged OK
+    /// to `visit`, as [`answer`] reads them, the count noted ahead of
+    /// `visit`.
     pub(super) async fn collect(
         &mut self,
         command: &str,
         bounds: Bounds,
+        visit: impl FnMut(&Response<'_>) -> Result<(), SessionError>,
+    ) -> Result<(), SessionError> {
+        let id = timeout(bounds.step, self.session.run_command(command))
+            .await
+            .map_err(|_elapsed| SessionError::Timeout)?
+            .map_err(command_error)?;
+        self.answer(&id.0, bounds, visit).await
+    }
+
+    /// The answer to the command tagged `tag`, as [`answer`] reads it,
+    /// the count noted ahead of `visit`.
+    pub(super) async fn answer(
+        &mut self,
+        tag: &str,
+        bounds: Bounds,
         mut visit: impl FnMut(&Response<'_>) -> Result<(), SessionError>,
     ) -> Result<(), SessionError> {
         let mut count = self.count.as_deref_mut();
-        collect(self.session, command, bounds, |response| {
+        answer(self.session, tag, bounds, |response| {
             if let Some(count) = count.as_deref_mut() {
                 count.note(response);
             }
@@ -165,27 +187,12 @@ pub(super) async fn noop(selection: &mut Selection<'_>, room: Room) -> Result<()
     selection.collect("NOOP", room.bounds(0), |_| Ok(())).await
 }
 
-/// Runs `command` and hands every untagged answer and the tagged OK to
-/// `visit`, as [`answer`] reads them.
-async fn collect(
-    session: &mut Signed,
-    command: &str,
-    bounds: Bounds,
-    visit: impl FnMut(&Response<'_>) -> Result<(), SessionError>,
-) -> Result<(), SessionError> {
-    let id = timeout(bounds.step, session.run_command(command))
-        .await
-        .map_err(|_elapsed| SessionError::Timeout)?
-        .map_err(command_error)?;
-    answer(session, &id.0, bounds, visit).await
-}
-
 /// Hands every untagged answer to `visit` until the one tagged `tag`. An
 /// OK goes to `visit` as well, since its code may carry what the command
-/// answers; it ends the read. A NO is `Refused`, a BAD a protocol
-/// failure in fixed words. An answer of more lines than the bounds allow
-/// fails the same way, so one command takes a bounded number of reads.
-/// Each response is dropped before the next one is parsed.
+/// answers; it ends the read. Any other tagged answer is its
+/// [`refusal`]. An answer of more lines than the bounds allow fails in
+/// fixed words, so one command takes a bounded number of reads. Each
+/// response is dropped before the next one is parsed.
 pub(super) async fn answer<T: Wire>(
     connection: &mut Connection<T>,
     tag: &str,
@@ -202,22 +209,38 @@ pub(super) async fn answer<T: Wire>(
         let parsed = response.parsed();
         match parsed {
             Response::Done {
-                tag: found, status, ..
+                tag: found,
+                status,
+                code,
+                ..
             } if found.0 == tag => {
                 return match status {
                     Status::Ok => visit(parsed),
-                    Status::No => Err(SessionError::Refused),
-                    Status::Bad => Err(SessionError::Protocol("the server answered BAD")),
-                    Status::PreAuth | Status::Bye => Err(SessionError::Closed),
+                    other => Err(refusal(other, code.as_ref())),
                 };
             }
             _ if lines == bounds.max_lines => {
-                return Err(SessionError::Protocol("the answer passes the line limit"));
+                return Err(SessionError::Protocol(ANSWER_LINE_LIMIT));
             }
             Response::Done { .. } => {}
             other => visit(other)?,
         }
         lines += 1;
+    }
+}
+
+/// What a tagged answer comes to: an OK is the protocol failure of a
+/// command the server ended before the whole of it was sent, a NO is
+/// `Refused`, one with the `BADCHARSET` code `BadCharset` (RFC 3501
+/// section 7.1), a BAD a protocol failure in fixed words; PREAUTH and
+/// BYE end the connection.
+pub(super) fn refusal(status: &Status, code: Option<&ResponseCode<'_>>) -> SessionError {
+    match status {
+        Status::Ok => SessionError::Protocol("the server ended the command before its literal"),
+        Status::No if matches!(code, Some(ResponseCode::BadCharset(_))) => SessionError::BadCharset,
+        Status::No => SessionError::Refused,
+        Status::Bad => SessionError::Protocol("the server answered BAD"),
+        Status::PreAuth | Status::Bye => SessionError::Closed,
     }
 }
 

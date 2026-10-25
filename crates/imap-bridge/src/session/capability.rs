@@ -54,6 +54,63 @@ impl Capabilities {
             uidplus: self.has("UIDPLUS"),
         }
     }
+
+    /// How the server takes the literals of a search and whether it
+    /// searches as Gmail does.
+    #[must_use]
+    pub fn searching(&self) -> Searching {
+        let literals = if self.has("LITERAL+") {
+            Literals::Plus
+        } else if self.has("LITERAL-") {
+            Literals::Minus
+        } else {
+            Literals::Synchronizing
+        };
+        Searching {
+            literals,
+            gmail: self.has(crate::gmail::CAPABILITY),
+        }
+    }
+}
+
+/// What a search needs to know of the server.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Searching {
+    /// Which literals the server reads without a continuation request.
+    pub literals: Literals,
+    /// X-GM-RAW and X-GM-LABELS are search keys there.
+    pub gmail: bool,
+}
+
+/// The literals a server reads without a continuation request (RFC
+/// 7888).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Literals {
+    /// Every literal waits for the server's continuation request (RFC
+    /// 3501 section 4.3).
+    #[default]
+    Synchronizing,
+    /// LITERAL-: one of 4096 bytes at most goes without waiting.
+    Minus,
+    /// LITERAL+: every literal goes without waiting.
+    Plus,
+}
+
+/// The longest literal that goes without waiting under LITERAL- (RFC
+/// 7888 section 5).
+const LITERAL_MINUS_BYTES: usize = 4096;
+
+impl Literals {
+    /// Whether a literal of `bytes` goes without waiting for the
+    /// server's continuation request (RFC 7888 sections 3 and 5).
+    #[must_use]
+    pub fn unsynchronized(self, bytes: usize) -> bool {
+        match self {
+            Self::Plus => true,
+            Self::Minus => bytes <= LITERAL_MINUS_BYTES,
+            Self::Synchronizing => false,
+        }
+    }
 }
 
 /// How a server moves mail: `UID MOVE` (RFC 6851) or, with UIDPLUS, a
@@ -173,6 +230,24 @@ mod tests {
         let uidplus = advertised(&["UIDPLUS"]).moving();
         assert!(uidplus.moves() && !uidplus.move_command);
         assert!(!advertised(&["IMAP4rev1"]).moving().moves());
+    }
+
+    #[test]
+    fn a_server_names_the_literals_it_reads_without_waiting_rfc7888_1() {
+        let literals = |names: &[&str]| advertised(names).searching().literals;
+        assert_eq!(literals(&["literal+", "LITERAL-"]), Literals::Plus);
+        assert_eq!(literals(&["LITERAL-"]), Literals::Minus);
+        assert_eq!(literals(&["IMAP4rev1"]), Literals::Synchronizing);
+        assert!(advertised(&["X-GM-EXT-1"]).searching().gmail);
+        assert!(!advertised(&["LITERAL+"]).searching().gmail);
+    }
+
+    #[test]
+    fn literal_minus_takes_4096_bytes_without_waiting_and_no_more_rfc7888_5() {
+        assert!(Literals::Plus.unsynchronized(1 << 20));
+        assert!(Literals::Minus.unsynchronized(LITERAL_MINUS_BYTES));
+        assert!(!Literals::Minus.unsynchronized(LITERAL_MINUS_BYTES + 1));
+        assert!(!Literals::Synchronizing.unsynchronized(1));
     }
 
     #[test]

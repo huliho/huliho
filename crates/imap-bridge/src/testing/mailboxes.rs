@@ -15,6 +15,7 @@ use super::behavior::Behavior;
 use super::fetch;
 use super::folder::Folder;
 use super::messages::Message;
+use crate::session::Literals;
 
 mod gmail;
 mod listing;
@@ -42,7 +43,11 @@ pub enum Extension {
     Uidplus,
     /// GETQUOTAROOT (RFC 9208).
     Quota,
-    /// The three Gmail FETCH items.
+    /// Every literal read without a continuation request (RFC 7888).
+    LiteralPlus,
+    /// One of 4096 bytes at most read so (RFC 7888).
+    LiteralMinus,
+    /// The three Gmail FETCH items and the two Gmail search keys.
     Gmail,
 }
 
@@ -56,6 +61,8 @@ impl Extension {
             Self::Move => "MOVE",
             Self::Uidplus => "UIDPLUS",
             Self::Quota => "QUOTA",
+            Self::LiteralPlus => "LITERAL+",
+            Self::LiteralMinus => "LITERAL-",
             Self::Gmail => "X-GM-EXT-1",
         }
     }
@@ -71,6 +78,7 @@ impl Extension {
             Self::Condstore,
             Self::Move,
             Self::Uidplus,
+            Self::LiteralPlus,
         ]
         .into_iter()
         .collect()
@@ -274,6 +282,17 @@ impl Mailboxes {
 
     pub(super) fn has(&self, extension: Extension) -> bool {
         self.extensions.contains(&extension)
+    }
+
+    /// The literals the server reads without a continuation request.
+    pub(super) fn literals(&self) -> Literals {
+        if self.has(Extension::LiteralPlus) {
+            Literals::Plus
+        } else if self.has(Extension::LiteralMinus) {
+            Literals::Minus
+        } else {
+            Literals::Synchronizing
+        }
     }
 
     /// The capability words the extensions add.

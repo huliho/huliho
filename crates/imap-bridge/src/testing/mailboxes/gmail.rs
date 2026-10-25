@@ -40,12 +40,13 @@ const GMAIL_QUOTA: &str = "* QUOTAROOT \"INBOX\" \"\"\r\n* QUOTA \"\" (STORAGE 2
 impl Mailboxes {
     /// A Gmail account as it lists itself: INBOX, the `[Gmail]` folders
     /// with their attributes, the given mail in All Mail and every
-    /// extension Gmail advertises. A label folder's counts follow the
-    /// labels of that mail.
+    /// extension Gmail advertises, LITERAL- in place of LITERAL+. A
+    /// label folder's counts follow the labels of that mail.
     #[must_use]
     pub fn gmail(mail: Vec<Message>) -> Self {
         let mut extensions = Extension::all();
-        extensions.extend([Extension::Gmail, Extension::Quota]);
+        extensions.remove(&Extension::LiteralPlus);
+        extensions.extend([Extension::Gmail, Extension::Quota, Extension::LiteralMinus]);
         let system = |name: &str, attribute: &'static str, label: &str| Folder {
             label: Some(label.to_owned()),
             ..Folder::special(name, attribute)

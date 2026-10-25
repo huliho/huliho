@@ -43,6 +43,10 @@ pub enum SessionError {
     /// A tagged NO outside the sign-in (RFC 3501 section 7.1.2).
     #[error("the server answered NO")]
     Refused,
+    /// A tagged NO with the `BADCHARSET` code: the server cannot search
+    /// in the charset asked (RFC 3501 section 7.1).
+    #[error("the server cannot search in that charset")]
+    BadCharset,
     /// The text is fixed at the call site, never the server's own words.
     #[error("the server does not speak the protocol as expected: {0}")]
     Protocol(&'static str),

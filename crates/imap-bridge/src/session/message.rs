@@ -5,6 +5,10 @@
 //! What the commands on a selected mailbox answer, in the bridge's own
 //! types, so a swap of the client library stays inside this module.
 
+use time::Date;
+
+use super::Searching;
+
 /// The messages one UID FETCH may answer; the header sync sizes its
 /// batch by it.
 pub const MAX_FETCH_MESSAGES: usize = 500;
@@ -117,6 +121,45 @@ pub struct Moved {
     pub uid_validity: u32,
     /// `(source, target)`, in the order the code names them.
     pub uids: Vec<(u32, u32)>,
+}
+
+/// The bytes one term of a search may hold.
+pub const SEARCH_TERM_BYTES: usize = 256;
+
+/// The terms one search may carry, its text and its sender together.
+pub const SEARCH_TERMS: usize = 8;
+
+/// One search of the selected mailbox (RFC 3501 section 6.4.4): every
+/// key must match. The text and the sender split into terms on
+/// whitespace, a run in double quotes one term.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct SearchAsk<'a> {
+    /// As typed; a TEXT key per term, its quotes dropped.
+    pub text: &'a str,
+    /// As typed; a FROM key per term, its quotes dropped.
+    pub from: &'a str,
+    /// UNSEEN.
+    pub unseen: bool,
+    /// FLAGGED.
+    pub flagged: bool,
+    /// SINCE: an internal date on this day or later, its time and zone
+    /// left out.
+    pub since: Option<Date>,
+    /// BEFORE: an internal date before this day.
+    pub before: Option<Date>,
+    /// The Gmail form, where the terms of the text and the sender as one
+    /// phrase go as one X-GM-RAW string; `None` elsewhere.
+    pub gmail: Option<GmailSearch<'a>>,
+    /// How the server takes literals and whether it has the Gmail keys.
+    pub server: Searching,
+}
+
+/// What a search on a Gmail account adds.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct GmailSearch<'a> {
+    /// The label a mailbox scope stands for, as Gmail spells it; an
+    /// X-GM-LABELS key.
+    pub label: Option<&'a str>,
 }
 
 /// One quota root a mailbox falls under (RFC 9208 section 4.2.2) with

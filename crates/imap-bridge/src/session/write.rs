@@ -40,7 +40,7 @@ pub const MAX_COMMAND_BYTES: usize = 8192;
 /// The fixed words of a write the bridge does not send.
 const NO_MESSAGE: &str = "a write names no message or too many";
 const NO_FLAG: &str = "a STORE names nothing or something that cannot be sent";
-const LINE_LIMIT: &str = "the command passes the line limit";
+pub(super) const LINE_LIMIT: &str = "the command passes the line limit";
 
 /// Which of the two commands takes messages to another mailbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,10 +76,10 @@ fn fitting(command: String) -> Result<String, SessionError> {
     Ok(command)
 }
 
-/// A label as it goes on the command line: a system label of the list
-/// as it is, any other label quoted. A label that opens with a
+/// A label as it goes on the command line of a STORE: a system label of
+/// the list as it is, any other label quoted. A label that opens with a
 /// backslash outside the list goes nowhere.
-fn wire_label(label: &str) -> Option<String> {
+pub(super) fn wire_label(label: &str) -> Option<String> {
     if STORABLE_SYSTEM_LABELS.contains(&label) {
         return Some(label.to_owned());
     }

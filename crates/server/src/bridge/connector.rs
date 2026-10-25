@@ -203,9 +203,10 @@ fn fault_of(error: &SessionError) -> Fault {
         | SessionError::Tls(_)
         | SessionError::StarttlsAbsent
         | SessionError::StarttlsRefused => Fault::Connection,
-        SessionError::AuthUnavailable | SessionError::Protocol(_) | SessionError::Refused => {
-            Fault::Undecided
-        }
+        SessionError::AuthUnavailable
+        | SessionError::Protocol(_)
+        | SessionError::Refused
+        | SessionError::BadCharset => Fault::Undecided,
     }
 }
 
@@ -239,6 +240,7 @@ mod tests {
             SessionError::AuthUnavailable,
             SessionError::Unavailable,
             SessionError::Refused,
+            SessionError::BadCharset,
             SessionError::Protocol("odd"),
             SessionError::Io(io::Error::from(io::ErrorKind::BrokenPipe)),
         ]
