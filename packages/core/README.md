@@ -20,16 +20,27 @@ It also holds the mail cache. `JmapClient` speaks to
 one account's endpoint on the proxy: the session object, then Request
 objects whose method calls it sends in one round trip. `MailStore` is
 the contract a store implements (mailboxes, email headers, threads with
-the state of every member, the pages of each list, message bodies, the
-changes the server has not acknowledged, the account's quotas and one
-state per object type), written in batches that land whole;
+the state of every member, the pages of each list, the searches it holds
+in memory alone, message bodies, the changes the server has not
+acknowledged, the account's quotas and one state per object type, plus
+the senders its headers name), written in batches that land whole;
 `MemoryMailStore` is the one that keeps everything in memory. On top of
 both, `syncMailboxes`
 brings the mailbox tree up to date, `queryWindow` serves a page of a
 list and fetches it when the store lacks it, `applyChanges` follows the
 change logs of every type, `revealNewMail` lands the new mail a poll
 held back for the user and `readThread` answers a thread with the
-headers the store holds. `readBody` answers the body of one email: the
+headers the store holds. `searchWindow` serves a page of a search: it
+runs once from the one condition `searchFilterOf` builds from its params
+and the account's mailboxes, every mailbox but Junk and Trash unless
+the params name one or all of them. Its pages stay as the server
+answered them, so no poll adds a row, while a thread leaves them once
+none of its members stands in the scope; each row acts from one
+mailbox, the scope's own or else the inbox or the first in the tree's
+order. Four searches stay per account. `parseQuery` reads the search
+field's text into those params with its operators such as `from:` and
+`in:`; `queryOf` writes them back; `readSenders` offers the senders of
+the held headers that match what the user typed. `readBody` answers the body of one email: the
 stored row, else one request whose answer is stored; the bodies fetched
 longest ago leave past 500 rows or 64 MiB. `mutateMany` takes changes
 to the keywords and mailboxes of emails into the rows at once and logs

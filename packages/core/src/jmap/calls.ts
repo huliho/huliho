@@ -15,16 +15,23 @@ export type ObjectType = "Mailbox" | "Email" | "Thread";
 // The types the cache reads and follows; a quota rides the mailbox pass.
 type ReadType = ObjectType | "Quota";
 
-// The conditions a list or a folder job asks emails by (RFC 8621
-// section 4.4.1).
-interface Filter {
-  inMailbox: string;
+// The conditions a list, a folder job or a search asks emails by, as
+// one FilterCondition (RFC 8621 section 4.4.1); the dates are UTCDates.
+export interface EmailFilter {
+  inMailbox?: string;
+  inMailboxOtherThan?: string[];
+  hasKeyword?: string;
   notKeyword?: string;
+  after?: string;
+  before?: string;
+  hasAttachment?: boolean;
+  text?: string;
+  from?: string;
 }
 
 // One window of a query (RFC 8620 section 5.5), newest first.
 interface Window {
-  filter: Filter;
+  filter: EmailFilter;
   start: Start;
   limit: number;
   calculateTotal: boolean;

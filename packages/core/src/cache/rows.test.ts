@@ -5,11 +5,34 @@
 import { expect, test } from "vitest";
 
 import { at, email, mailbox } from "./fake-jmap";
-import { firstSyncOf, listRows } from "./rows";
-import type { ThreadRow } from "./store";
+import { actingMailbox, firstSyncOf, listRows, membersInScope, resultRows } from "./rows";
+import type { Scope } from "./scope";
+import type { MemberState, ThreadRow } from "./store";
+import { treePlaces } from "./tree-order";
 import type { WindowPage } from "./window";
 
 const INBOX = "inbox";
+
+const TREE = treePlaces(
+  [
+    mailbox(INBOX, "inbox"),
+    mailbox("archive", "archive"),
+    mailbox("junk", "junk"),
+    mailbox("trash", "trash"),
+    { ...mailbox("work"), name: "Work" },
+    { ...mailbox("alpha"), name: "Alpha" },
+  ],
+  "en",
+);
+
+const DEFAULT: Scope = { kind: "except", mailboxIds: ["junk", "trash"] };
+
+function state(...mailboxIds: string[]): MemberState {
+  return {
+    keywords: {},
+    mailboxIds: Object.fromEntries(mailboxIds.map((id) => [id, true as const])),
+  };
+}
 
 function thread(id: string, members: ThreadRow["members"]): ThreadRow {
   return { id, emailIds: Object.keys(members), members };
@@ -39,6 +62,7 @@ test("a row reads its state from the members in the mailbox alone", () => {
     {
       id: "e3",
       threadId: "t1",
+      mailboxId: INBOX,
       sender: "Sanne",
       subject: "Message e3",
       preview: "Body of e3.",
@@ -111,4 +135,62 @@ test("a first sync stands while fewer emails are synced than the server holds", 
   const { syncedEmails, ...native } = row;
   expect(syncedEmails).toBe(4);
   expect(firstSyncOf(native)).toBeNull();
+});
+
+test("the members a scope covers stand in the thread's order under each kind of scope", () => {
+  const exemplar = email("e3", { threadId: "t1", receivedAt: at(3) });
+  const row = thread("t1", { e1: state("archive"), e2: state("trash"), e3: state(INBOX, "work") });
+  const ids = (scope: Scope): string[] => membersInScope(exemplar, row, scope).map(([id]) => id);
+  expect(ids({ kind: "one", mailboxId: INBOX })).toEqual(["e3"]);
+  expect(ids(DEFAULT)).toEqual(["e1", "e3"]);
+  expect(ids({ kind: "all" })).toEqual(["e1", "e2", "e3"]);
+  expect(ids({ kind: "one", mailboxId: "junk" })).toEqual([]);
+});
+
+test("a result acts from the scope's mailbox, else the inbox, else the first mailbox in the tree's order", () => {
+  const work: Scope = { kind: "one", mailboxId: "work" };
+  expect(actingMailbox(state("work", INBOX), [], work, TREE)).toBe("work");
+  expect(actingMailbox(state("work", INBOX), [], DEFAULT, TREE)).toBe(INBOX);
+  // The archive is a role, so the tree draws it above every folder.
+  expect(actingMailbox(state("work", "archive"), [], DEFAULT, TREE)).toBe("archive");
+  expect(actingMailbox(state("work", "alpha"), [], DEFAULT, TREE)).toBe("alpha");
+  // Trash stands outside the default scope; under all it counts.
+  expect(actingMailbox(state("trash", "work"), [], DEFAULT, TREE)).toBe("work");
+  expect(actingMailbox(state("trash"), [], { kind: "all" }, TREE)).toBe("trash");
+});
+
+test("an exemplar that left the scope gives way to the members still in it", () => {
+  const members = [state("work"), state("archive")];
+  expect(actingMailbox(state("trash"), members, DEFAULT, TREE)).toBe("archive");
+  expect(actingMailbox(state(), [], DEFAULT, TREE)).toBeNull();
+});
+
+test("a result reads and acts as its mailbox shows the thread, and a thread with no member in scope shows none", () => {
+  const exemplar = email("e3", { threadId: "t1", keywords: ["$seen"], receivedAt: at(3) });
+  const binned = email("e4", { threadId: "t2", mailboxIds: ["trash"], receivedAt: at(4) });
+  const rows = resultRows(
+    page({
+      ids: ["e4", "e3"],
+      emails: { e3: exemplar, e4: binned },
+      threads: {
+        t1: thread("t1", {
+          e1: { keywords: {}, mailboxIds: { archive: true } },
+          e2: { keywords: { $seen: true }, mailboxIds: { [INBOX]: true } },
+          e3: { keywords: { $seen: true }, mailboxIds: { [INBOX]: true } },
+        }),
+        t2: thread("t2", { e4: { keywords: {}, mailboxIds: { trash: true } } }),
+      },
+    }),
+    DEFAULT,
+    TREE,
+  );
+  expect(rows).toEqual([
+    expect.objectContaining({
+      id: "e3",
+      mailboxId: INBOX,
+      unread: false,
+      memberIds: ["e2", "e3"],
+      count: 2,
+    }),
+  ]);
 });

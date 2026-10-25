@@ -46,6 +46,27 @@ export interface QueryRow {
   fresh: FreshPage | null;
 }
 
+// One search as the cache holds it: the pages the server answered when
+// it ran, a snapshot no poll refreshes. A store holds it in memory alone.
+export interface SearchRow {
+  // The search key: the params as `searchKeyOf` writes them.
+  id: string;
+  queryState: string;
+  total: number | null;
+  pages: Page[];
+  // Its place in the order the account's searches ran in.
+  run: number;
+}
+
+// An address the account's held mail came from: the name it carried
+// last, how many headers name it and when the newest one arrived.
+export interface Sender {
+  email: string;
+  name: string | null;
+  count: number;
+  newest: string;
+}
+
 // The body of one email as the proxy answered it, its HTML values
 // sanitized there. The window builds what it renders from this row and
 // stores nothing of that.
@@ -103,7 +124,8 @@ export interface PendingRow {
   lease?: string;
 }
 
-export type StoreArea = "mailboxes" | "emails" | "threads" | "queries" | "bodies" | "pending";
+export type StoreArea =
+  "mailboxes" | "emails" | "threads" | "queries" | "searches" | "bodies" | "pending";
 
 // One atomic write: the areas that empty first, then what leaves, then
 // what lands, then the states.
@@ -113,6 +135,7 @@ export interface Batch {
   emails?: { put?: readonly EmailHeader[]; remove?: readonly string[] };
   threads?: { put?: readonly ThreadRow[]; remove?: readonly string[] };
   queries?: { put?: readonly QueryRow[]; remove?: readonly string[] };
+  searches?: { put?: readonly SearchRow[]; remove?: readonly string[] };
   bodies?: { put?: readonly EmailBody[]; remove?: readonly string[] };
   // A pending row leaves by its sequence number.
   pending?: { put?: readonly PendingRow[]; remove?: readonly number[] };
@@ -130,6 +153,10 @@ export interface MailStore {
   threads(accountId: string, ids: readonly string[]): Promise<Map<string, ThreadRow>>;
   query(accountId: string, mailboxId: string): Promise<QueryRow | null>;
   queries(accountId: string): Promise<QueryRow[]>;
+  search(accountId: string, key: string): Promise<SearchRow | null>;
+  searches(accountId: string): Promise<SearchRow[]>;
+  // Every address the account's headers name in `from`.
+  senders(accountId: string): Promise<Sender[]>;
   state(accountId: string, type: ObjectType): Promise<string | null>;
   body(accountId: string, emailId: string): Promise<EmailBody | null>;
   // Every body of every account, without its values.

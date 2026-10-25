@@ -5,6 +5,7 @@
 import type { ObjectType } from "../jmap/calls";
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
 import type { HeldQuota } from "./quota";
+import { sendersOf } from "./senders";
 import type {
   Batch,
   BodySize,
@@ -12,6 +13,8 @@ import type {
   MailStore,
   PendingRow,
   QueryRow,
+  SearchRow,
+  Sender,
   StoreArea,
   ThreadRow,
 } from "./store";
@@ -27,6 +30,7 @@ interface Rows {
   emails: Map<string, EmailHeader>;
   threads: Map<string, ThreadRow>;
   queries: Map<string, QueryRow>;
+  searches: Map<string, SearchRow>;
   bodies: Map<string, EmailBody>;
   pending: Map<number, PendingRow>;
   states: Map<ObjectType, string>;
@@ -39,6 +43,7 @@ function emptyRows(): Rows {
     emails: new Map(),
     threads: new Map(),
     queries: new Map(),
+    searches: new Map(),
     bodies: new Map(),
     pending: new Map(),
     states: new Map(),
@@ -67,6 +72,8 @@ function areaOf(rows: Rows, area: StoreArea): Map<string, unknown> | Map<number,
       return rows.threads;
     case "queries":
       return rows.queries;
+    case "searches":
+      return rows.searches;
     case "bodies":
       return rows.bodies;
     default:
@@ -144,6 +151,21 @@ export class MemoryMailStore implements MailStore {
     );
   }
 
+  search(accountId: string, key: string): Promise<SearchRow | null> {
+    const row = this.rows(accountId).searches.get(key);
+    return Promise.resolve(row === undefined ? null : structuredClone(row));
+  }
+
+  searches(accountId: string): Promise<SearchRow[]> {
+    return Promise.resolve(
+      [...this.rows(accountId).searches.values()].map((row) => structuredClone(row)),
+    );
+  }
+
+  senders(accountId: string): Promise<Sender[]> {
+    return Promise.resolve(sendersOf(this.rows(accountId).emails.values()));
+  }
+
   state(accountId: string, type: ObjectType): Promise<string | null> {
     return Promise.resolve(this.rows(accountId).states.get(type) ?? null);
   }
@@ -183,6 +205,7 @@ export class MemoryMailStore implements MailStore {
     apply(rows.emails, batch.emails);
     apply(rows.threads, batch.threads);
     apply(rows.queries, batch.queries);
+    apply(rows.searches, batch.searches);
     apply(rows.bodies, batch.bodies);
     applyPending(rows.pending, batch.pending);
     applyStates(rows.states, batch.states);

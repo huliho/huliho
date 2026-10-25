@@ -129,8 +129,9 @@ export class JmapClient {
   }
 
   // One Request object (RFC 8620 section 3.3) in one round trip; the
-  // responses in the server's order.
-  async request(calls: readonly MethodCall[]): Promise<Invocation[]> {
+  // responses in the server's order. A `signal` that aborts gives the
+  // request up.
+  async request(calls: readonly MethodCall[], signal?: AbortSignal): Promise<Invocation[]> {
     const session = await this.session();
     if (calls.length > session.maxCallsInRequest) {
       throw new JmapError("limit", { limit: "maxCallsInRequest" });
@@ -143,6 +144,7 @@ export class JmapClient {
       method: "POST",
       headers: { "content-type": "application/json", ...CSRF_HEADERS },
       body: JSON.stringify(body),
+      ...(signal === undefined ? {} : { signal }),
     });
     if (!response.ok) {
       throw await failureOf(response);
@@ -187,11 +189,15 @@ function sessionOf(object: SessionObject): JmapSession {
   };
 }
 
-// A request the network could not carry reads as unavailable.
+// A request the network could not carry reads as unavailable; one its
+// caller gave up rejects with the caller's own reason.
 async function reach(url: string, init?: RequestInit): Promise<Response> {
   try {
     return await fetch(url, init);
-  } catch {
+  } catch (error) {
+    if (init?.signal?.aborted === true) {
+      throw error;
+    }
     throw new JmapError("unavailable");
   }
 }

@@ -21,6 +21,7 @@ function row(threadId: string, memberIds = [`${threadId}-1`]): ListRow {
   return {
     id: memberIds[0] ?? threadId,
     threadId,
+    mailboxId: INBOX_ID,
     sender: null,
     subject: null,
     preview: "",
