@@ -20,7 +20,9 @@ use huliho_imap_bridge::session::{MAX_NESTING, Session};
 use huliho_imap_bridge::store::{ChangeKind, ObjectType};
 use huliho_imap_bridge::sync::{Cache, FolderSync, SYNC_BATCH, Step};
 use huliho_imap_bridge::testing::TestConnector;
-use live_rig::{Editor, USER, answer, bridge_session, cache, editor, link, mailbox_list, within};
+use live_rig::{
+    Editor, USER, answer, append, bridge_session, cache, editor, link, mailbox_list, within,
+};
 use serde_json::{Value, json};
 
 /// The header every appended message carries, so a later run finds what
@@ -129,9 +131,7 @@ async fn dovecot_syncs_its_inbox_in_batches_with_progress_in_synced_emails() {
             "From: Sanne <{USER}>\r\nTo: {USER}\r\nSubject: {subject}\r\n{}: {}\r\nMessage-ID: <live-{number}@huliho.test>\r\nMIME-Version: 1.0\r\n{body}",
             MARKER.0, MARKER.1
         );
-        within(editor.append("INBOX", None, None, message))
-            .await
-            .unwrap();
+        append(&mut editor, "INBOX", None, &message).await;
     }
     let cache = cache("live-sync");
     let link = link();
@@ -216,17 +216,12 @@ fn refresh_message(number: usize) -> String {
 /// Appends a refresh message with an INTERNALDATE a second past the one
 /// before it, since Dovecot would give messages appended within one
 /// second the same date and the window would then sort them by id. The
-/// client library sends the date as written, so the quotes RFC 3501
-/// section 6.3.11 asks for go here.
+/// date goes on the line as written, so the quotes RFC 3501 section
+/// 6.3.11 asks for go here.
 async fn deliver(editor: &mut Editor, number: usize) {
     let received = format!("\"20-Sep-2026 12:00:{number:02} +0000\"");
-    let appended = editor.append(
-        REFRESH_FOLDER,
-        None,
-        Some(&received),
-        refresh_message(number),
-    );
-    within(appended).await.unwrap();
+    let message = refresh_message(number);
+    append(editor, REFRESH_FOLDER, Some(&received), &message).await;
 }
 
 /// Removes the refresh folder an earlier run left, on a connection of

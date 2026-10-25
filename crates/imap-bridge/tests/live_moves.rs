@@ -20,7 +20,9 @@ use huliho_imap_bridge::runtime::Link;
 use huliho_imap_bridge::session::Session;
 use huliho_imap_bridge::sync::{Cache, FolderSync, Step};
 use huliho_imap_bridge::testing::TestConnector;
-use live_rig::{Editor, USER, answer, bridge_session, cache, editor, link, mailbox_list, within};
+use live_rig::{
+    Editor, USER, answer, append, bridge_session, cache, editor, link, mailbox_list, within,
+};
 use serde_json::{Value, json};
 
 /// The header every appended message carries, so a later run finds what
@@ -243,9 +245,7 @@ async fn start(editor: &mut Editor) -> Bridge {
     within(editor.create(FOLDER)).await.unwrap();
     for number in ARCHIVED..=UNREAD {
         let flags = (number != UNREAD).then_some("(\\Seen)");
-        within(editor.append("INBOX", flags, None, message(number)))
-            .await
-            .unwrap();
+        append(editor, "INBOX", flags, &message(number)).await;
     }
     let cache = cache("live-moves");
     first_sync(&cache, &["INBOX"]).await;
