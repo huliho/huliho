@@ -24,8 +24,8 @@ use huliho_imap_bridge::testing::TestConnector;
 use huliho_imap_bridge::utf7;
 use huliho_imap_bridge::verify::{Credential, VerifyError, verify};
 use live_rig::{
-    Editor, IMAPS_PORT, PASSWORD, USER, answer, bridge_session, cache, dovecot, editor, link,
-    mailbox_list, tls, within,
+    Editor, IMAPS_PORT, PASSWORD, USER, answer, append, bridge_session, cache, dovecot, editor,
+    link, mailbox_list, tls, within,
 };
 use serde_json::{Value, json};
 
@@ -216,9 +216,7 @@ async fn fresh(folders: (&str, &str), word: &str, numbers: &[u32]) -> Editor {
         let message = format!(
             "From: {USER}\r\nTo: {USER}\r\nSubject: {word} {number}\r\nMessage-ID: <{word}-{number}@huliho.test>\r\n\r\nBody {number}\r\n"
         );
-        within(editor.append(folders.0, None, None, message))
-            .await
-            .unwrap();
+        append(&mut editor, folders.0, None, &message).await;
     }
     editor
 }
@@ -293,10 +291,6 @@ async fn dovecot_moves_by_copy_and_uid_expunge_and_keeps_a_message_another_clien
 async fn seeded() -> Editor {
     let mut editor = editor().await;
     swept(&mut editor, SEARCH_FOLDERS, "search").await;
-    // No folder stays selected while the messages go in: the client
-    // library reads any line ahead of the continuation request as a
-    // failed append.
-    within(editor.close()).await.unwrap();
     let bodies = [
         (1, SEARCH_SENDER, format!("The {SEARCH_WORD} begins.")),
         (2, USER, format!("The {SEARCH_WORD} ends.")),
@@ -306,9 +300,7 @@ async fn seeded() -> Editor {
         let message = format!(
             "From: {from}\r\nTo: {USER}\r\nSubject: search {number}\r\nMessage-ID: <search-{number}@huliho.test>\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n{body}\r\n"
         );
-        within(editor.append(SEARCH_FOLDERS.0, None, None, message))
-            .await
-            .unwrap();
+        append(&mut editor, SEARCH_FOLDERS.0, None, &message).await;
     }
     editor
 }

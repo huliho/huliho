@@ -102,6 +102,22 @@ pub async fn editor() -> Editor {
         .unwrap()
 }
 
+/// Appends a message on the editor as a non-synchronizing literal (RFC
+/// 7888), with the flag list or the date between the name and the
+/// literal as written (RFC 3501 section 6.3.11). The client library's
+/// own APPEND fails on any line ahead of the continuation request, such
+/// as the untagged NO Dovecot may send there (RFC 3501 section 7).
+pub async fn append(editor: &mut Editor, mailbox: &str, written: Option<&str>, message: &str) {
+    let written = written
+        .map(|written| format!(" {written}"))
+        .unwrap_or_default();
+    let size = message.len();
+    let command = format!("APPEND \"{mailbox}\"{written} {{{size}+}}\r\n{message}");
+    within(editor.run_command_and_check_ok(&command))
+        .await
+        .unwrap();
+}
+
 /// A cache over a fresh store under the test sealer.
 pub fn cache(key: &str) -> Cache {
     Cache {
