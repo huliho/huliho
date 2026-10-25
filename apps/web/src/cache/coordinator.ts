@@ -45,7 +45,15 @@ export const LEASE_RENEW_MS = 30_000;
 // windows back and forth costs one request.
 const FOCUS_POLL_GAP_MS = 10_000;
 
-const EVERY_AREA = ["mailboxes", "emails", "threads", "queries", "bodies", "pending"] as const;
+const EVERY_AREA = [
+  "mailboxes",
+  "emails",
+  "threads",
+  "queries",
+  "searches",
+  "bodies",
+  "pending",
+] as const;
 
 export interface Dependencies {
   store: WorkerStore;
@@ -78,6 +86,9 @@ function held(store: MailStore, gate: Promise<unknown>): MailStore {
     threads: (accountId, ids) => store.threads(accountId, ids),
     query: (accountId, mailboxId) => store.query(accountId, mailboxId),
     queries: (accountId) => store.queries(accountId),
+    search: (accountId, key) => store.search(accountId, key),
+    searches: (accountId) => store.searches(accountId),
+    senders: (accountId) => store.senders(accountId),
     state: (accountId, type) => store.state(accountId, type),
     body: (accountId, emailId) => store.body(accountId, emailId),
     bodySizes: () => store.bodySizes(),

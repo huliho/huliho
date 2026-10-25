@@ -288,7 +288,7 @@ async function apply(
     await landMailboxes(client, parsed.mailbox, landing);
   }
   if (parsed.email === "refetch" || parsed.thread === "refetch") {
-    landing.batch.reset = ["emails", "threads", "queries"];
+    landing.batch.reset = ["emails", "threads", "queries", "searches"];
     landing.batch.states = { ...landing.batch.states, Email: null, Thread: null };
     landing.folded.lists = (await store.queries(accountId)).map((row) => row.id);
     landing.folded.reset = true;

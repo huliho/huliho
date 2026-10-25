@@ -6,7 +6,7 @@ import { expect, test } from "vitest";
 
 import { at, email, mailbox, quota } from "./fake-jmap";
 import { MemoryMailStore } from "./memory";
-import type { EmailBody, PendingRow, QueryRow } from "./store";
+import type { EmailBody, PendingRow, QueryRow, SearchRow } from "./store";
 
 const ROW: QueryRow = {
   id: "inbox",
@@ -156,4 +156,27 @@ test("the store names the accounts that hold a row and forgets every row at once
   expect(await store.accounts()).toEqual([]);
   expect(await store.body("acc-2", "e1")).toBeNull();
   expect(await store.state("acc-1", "Email")).toBeNull();
+});
+
+const SEARCH: SearchRow = {
+  id: '{"q":"invoice"}',
+  queryState: "3",
+  total: 1,
+  pages: [{ page: 0, ids: ["e1"] }],
+  run: 1,
+};
+
+test("a search belongs to one account, comes back as a copy and leaves by a batch or a reset", async () => {
+  const store = new MemoryMailStore();
+  await store.commit("acc-1", { searches: { put: [SEARCH] } });
+  expect(await store.search("acc-2", SEARCH.id)).toBeNull();
+  const read = await store.search("acc-1", SEARCH.id);
+  read?.pages.push({ page: 1, ids: ["e2"] });
+  expect(await store.searches("acc-1")).toEqual([SEARCH]);
+  expect(await store.accounts()).toEqual(["acc-1"]);
+  await store.commit("acc-1", { reset: ["searches"] });
+  expect(await store.searches("acc-1")).toEqual([]);
+  await store.commit("acc-1", { searches: { put: [SEARCH] } });
+  await store.commit("acc-1", { searches: { remove: [SEARCH.id] } });
+  expect(await store.search("acc-1", SEARCH.id)).toBeNull();
 });

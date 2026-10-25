@@ -51,7 +51,13 @@ export { flushPending } from "./cache/flush";
 export type { Flushed } from "./cache/flush";
 export { jobRound, jobStarted, runJob } from "./cache/jobs";
 export type { Job, JobControls, JobProgress, JobRound, JobState } from "./cache/jobs";
-export { CHANGES_ROUNDS_MAX, PREVIEW_BATCH, WINDOW_SIZE } from "./cache/limits";
+export {
+  CHANGES_ROUNDS_MAX,
+  PREVIEW_BATCH,
+  SEARCH_ROWS,
+  SENDER_SUGGESTIONS,
+  WINDOW_SIZE,
+} from "./cache/limits";
 export { syncMailboxes } from "./cache/mailboxes";
 export { MemoryMailStore } from "./cache/memory";
 export { dropHeld, mutateMany, releaseHeld, releaseLapsed } from "./cache/pending";
@@ -64,6 +70,22 @@ export { revealNewMail } from "./cache/refresh";
 export { mayPatch } from "./cache/rights";
 export { firstSyncOf, listPage } from "./cache/rows";
 export type { FirstSync, ListPage, ListRow } from "./cache/rows";
+export {
+  EVERY_MAILBOX,
+  readSearchParams,
+  scopeOf,
+  searchFilterOf,
+  searchKeyOf,
+  searchParamsOf,
+} from "./cache/search";
+export type { Scope } from "./cache/scope";
+export type { SearchParams } from "./cache/search";
+export { parseQuery, queryOf } from "./cache/search-text";
+export type { QueryContext } from "./cache/search-text";
+export { searchWindow } from "./cache/search-window";
+export type { SearchAsk } from "./cache/search-window";
+export { readSenders, sendersOf } from "./cache/senders";
+export { treeOrder } from "./cache/tree-order";
 export {
   emailBodySchema,
   pendingRowSchema,
@@ -81,6 +103,8 @@ export type {
   Page,
   PendingRow,
   QueryRow,
+  SearchRow,
+  Sender,
   StoreArea,
   ThreadRow,
 } from "./cache/store";
@@ -93,7 +117,7 @@ export { downloadUrl } from "./download";
 export type { BlobRequest, DownloadSource } from "./download";
 export { BODY_VALUE_BYTES, BODY_VALUE_BYTES_LARGE } from "./jmap/body";
 export type { EmailBodyPart, EmailBodyValue } from "./jmap/body";
-export type { ObjectType } from "./jmap/calls";
+export type { EmailFilter, ObjectType } from "./jmap/calls";
 export { JmapClient, JmapError, MethodFailure } from "./jmap/client";
 export type { JmapFailureCode, JmapSession } from "./jmap/client";
 export { HULIHO_CAPABILITY, emailHeaderSchema, mailboxSchema } from "./jmap/schemas";

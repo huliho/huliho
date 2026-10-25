@@ -20,3 +20,11 @@ export const BODY_CACHE_ROWS = 500;
 // The weight of body values a store keeps, 64 MiB; past it the same
 // bodies leave.
 export const BODY_CACHE_BYTES = 64 * 1024 * 1024;
+
+// The searches an account keeps in memory; a new one past it drops the
+// one that ran first, so going back to a recent search costs nothing.
+export const SEARCH_ROWS = 4;
+
+// The senders a suggestion list shows at most, as many as fit above the
+// keyboard on a phone.
+export const SENDER_SUGGESTIONS = 5;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import { treeOrder } from "@huliho/core";
 import type { Mailbox } from "@huliho/core";
 import { expect, test } from "vitest";
 
@@ -91,4 +92,21 @@ test("a flat tree numbers every row among its siblings and by depth", () => {
     ["Verbouwing", 1, 2, 2],
     ["Offertes", 2, 1, 1],
   ]);
+});
+
+test("the tree draws its rows in the order a search result picks its mailbox by", () => {
+  const nested = [
+    named("mb-inbox"),
+    named("mb-verbouwing"),
+    named("mb-offertes"),
+    folder("mb-bonnen", "Bonnen", "mb-gone"),
+    folder("mb-nieuws", "Nieuwsbrieven", "mb-inbox"),
+  ];
+  for (const mailboxes of [MAILBOXES, nested]) {
+    for (const locale of ["en", "nl"]) {
+      const model = buildTree(mailboxes, locale);
+      const drawn = flatten([...model.roles, ...model.folders]).map((row) => row.mailbox.id);
+      expect(drawn).toEqual(treeOrder(mailboxes, locale));
+    }
+  }
 });

@@ -9,6 +9,7 @@ import {
   mailboxSchema,
   pendingRowSchema,
   queryRowSchema,
+  sendersOf,
   threadRowSchema,
 } from "@huliho/core";
 import type {
@@ -22,6 +23,8 @@ import type {
   ObjectType,
   PendingRow,
   QueryRow,
+  SearchRow,
+  Sender,
   StoreArea,
   ThreadRow,
 } from "@huliho/core";
@@ -148,10 +151,35 @@ function sizeOf(key: IndexableType, [accountId, id]: [string, string]): BodySize
     : [];
 }
 
+// The areas that live on disk; a search is held in memory alone.
+type DiskArea = Exclude<StoreArea, "searches">;
+
+function onDisk(area: StoreArea): area is DiskArea {
+  return area !== "searches";
+}
+
+// What the senders fold from: the two fields of a header they read.
+type SenderFact = Pick<EmailHeader, "from" | "receivedAt">;
+
+function factOf(row: EmailHeader): SenderFact {
+  return {
+    from: row.from === null ? null : row.from.map((address) => ({ ...address })),
+    receivedAt: row.receivedAt,
+  };
+}
+
 // The store on IndexedDB through Dexie: one database per origin, every
-// row under its account id, every batch one transaction.
+// row under its account id, every batch one transaction. The searches
+// stay in memory beside it, so a search never reaches the disk.
 export class DexieMailStore implements MailStore {
   private readonly db: MailDatabase;
+  private readonly searchRows = new Map<string, Map<string, SearchRow>>();
+  // The sender facts of each account by email id, read from the table
+  // once and kept up by every batch since.
+  private readonly senderFacts = new Map<string, Map<string, SenderFact>>();
+  // How many batches changed the account's headers, so a read a batch
+  // overtook is not kept.
+  private readonly headerBatches = new Map<string, number>();
 
   constructor(db: MailDatabase) {
     this.db = db;
@@ -182,6 +210,21 @@ export class DexieMailStore implements MailStore {
     return [...parsed("queryCache", rows, queryRowSchema).values()];
   }
 
+  search(accountId: string, key: string): Promise<SearchRow | null> {
+    const row = this.searchRows.get(accountId)?.get(key);
+    return Promise.resolve(row === undefined ? null : structuredClone(row));
+  }
+
+  searches(accountId: string): Promise<SearchRow[]> {
+    const rows = [...(this.searchRows.get(accountId)?.values() ?? [])];
+    return Promise.resolve(rows.map((row) => structuredClone(row)));
+  }
+
+  async senders(accountId: string): Promise<Sender[]> {
+    const held = this.senderFacts.get(accountId) ?? (await this.readSenderFacts(accountId));
+    return sendersOf(held.values());
+  }
+
   async state(accountId: string, type: ObjectType): Promise<string | null> {
     const held = await this.db.meta.get([accountId, type]);
     return typeof held?.row === "string" ? held.row : null;
@@ -210,13 +253,14 @@ export class DexieMailStore implements MailStore {
     return held === undefined ? null : (checked("meta", held.row, heldQuotaSchema)[0] ?? null);
   }
 
-  commit(accountId: string, batch: Batch): Promise<void> {
+  async commit(accountId: string, batch: Batch): Promise<void> {
     const { db } = this;
-    return db.transaction("rw", db.tables, async () => {
+    const reset = batch.reset ?? [];
+    await db.transaction("rw", db.tables, async () => {
       await Promise.all(
-        (batch.reset ?? []).map((area) =>
-          this.table(area).where("accountId").equals(accountId).delete(),
-        ),
+        reset
+          .filter(onDisk)
+          .map((area) => this.table(area).where("accountId").equals(accountId).delete()),
       );
       await apply(db.mailboxes, accountId, batch.mailboxes);
       await apply(db.emailHeaders, accountId, batch.emails);
@@ -233,19 +277,76 @@ export class DexieMailStore implements MailStore {
       );
       await this.applyQuota(accountId, batch.quota);
     });
+    this.applySearches(accountId, batch);
+    if (batch.emails !== undefined || reset.includes("emails")) {
+      this.headerBatches.set(accountId, (this.headerBatches.get(accountId) ?? 0) + 1);
+      this.applySenderFacts(accountId, batch);
+    }
   }
 
-  // The account ids any table holds a row under.
+  // The account ids any table holds a row under, or a search.
   async accounts(): Promise<string[]> {
     const keys = await Promise.all(
       this.db.tables.map((table) => table.orderBy("accountId").uniqueKeys()),
     );
-    return [...new Set(keys.flat().filter((key) => typeof key === "string"))];
+    const searching = [...this.searchRows].filter(([, rows]) => rows.size > 0).map(([id]) => id);
+    return [...new Set([...keys.flat().filter((key) => typeof key === "string"), ...searching])];
   }
 
-  // Deletes the database; the next call opens an empty one.
+  // Deletes the database and forgets the searches; the next call opens
+  // an empty one.
   destroy(): Promise<void> {
+    this.searchRows.clear();
+    this.senderFacts.clear();
     return this.db.delete({ disableAutoOpen: false });
+  }
+
+  // The facts of every header in the table. A batch that lands during
+  // the read leaves them unkept, so the next call reads the table again.
+  private async readSenderFacts(accountId: string): Promise<Map<string, SenderFact>> {
+    const batches = this.headerBatches.get(accountId) ?? 0;
+    const rows = await this.db.emailHeaders.where("accountId").equals(accountId).toArray();
+    const facts = new Map(
+      [...parsed("emailHeaders", rows, emailHeaderSchema)].map(
+        ([id, row]): [string, SenderFact] => [id, factOf(row)],
+      ),
+    );
+    if ((this.headerBatches.get(accountId) ?? 0) === batches) {
+      this.senderFacts.set(accountId, facts);
+    }
+    return facts;
+  }
+
+  // Folds a batch into the held facts: removed ids leave and put rows
+  // take their place. A reset drops them, so the next read comes from
+  // the table.
+  private applySenderFacts(accountId: string, batch: Batch): void {
+    const held = this.senderFacts.get(accountId);
+    if (held === undefined) {
+      return;
+    }
+    if (batch.reset?.includes("emails") === true) {
+      this.senderFacts.delete(accountId);
+      return;
+    }
+    for (const id of batch.emails?.remove ?? []) {
+      held.delete(id);
+    }
+    for (const row of batch.emails?.put ?? []) {
+      held.set(row.id, factOf(row));
+    }
+  }
+
+  private applySearches(accountId: string, batch: Batch): void {
+    const reset = batch.reset?.includes("searches") === true;
+    const rows = new Map(reset ? [] : this.searchRows.get(accountId));
+    for (const key of batch.searches?.remove ?? []) {
+      rows.delete(key);
+    }
+    for (const row of batch.searches?.put ?? []) {
+      rows.set(row.id, structuredClone(row));
+    }
+    this.searchRows.set(accountId, rows);
   }
 
   private async applyBodies(accountId: string, change: Batch["bodies"]): Promise<void> {
@@ -280,7 +381,7 @@ export class DexieMailStore implements MailStore {
     }
   }
 
-  private table(area: StoreArea): Table {
+  private table(area: DiskArea): Table {
     switch (area) {
       case "mailboxes":
         return this.db.mailboxes;

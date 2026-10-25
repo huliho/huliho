@@ -204,3 +204,21 @@ test("a method that answered an error is read as such and a missing response is 
   expect(failure).toMatchObject({ type: "requestTooLarge", call: "a" });
   expect(() => answer(responses, "b", listSchema)).toThrow("no response to call b");
 });
+
+test("a request its caller gives up rejects with the caller's reason, never as an unreachable server", async () => {
+  const server = serve();
+  server.holdSearches = true;
+  const controller = new AbortController();
+  const search = {
+    name: "Email/query",
+    arguments: { accountId: UPSTREAM, filter: { text: "invoice" } },
+    id: "q",
+  };
+  const asked = new JmapClient(ACCOUNT).request([search], controller.signal);
+  await vi.waitFor(() => {
+    expect(server.waiting).toBe(1);
+  });
+  controller.abort();
+  await expect(asked).rejects.toMatchObject({ name: "AbortError" });
+  await expect(asked).rejects.not.toBeInstanceOf(JmapError);
+});

@@ -14,6 +14,8 @@ import type {
   ObjectType,
   PendingRow,
   QueryRow,
+  SearchRow,
+  Sender,
   ThreadRow,
 } from "@huliho/core";
 
@@ -80,6 +82,18 @@ export class ChosenStore implements WorkerStore {
 
   queries(accountId: string): Promise<QueryRow[]> {
     return this.store.then((store) => store.queries(accountId));
+  }
+
+  search(accountId: string, key: string): Promise<SearchRow | null> {
+    return this.store.then((store) => store.search(accountId, key));
+  }
+
+  searches(accountId: string): Promise<SearchRow[]> {
+    return this.store.then((store) => store.searches(accountId));
+  }
+
+  senders(accountId: string): Promise<Sender[]> {
+    return this.store.then((store) => store.senders(accountId));
   }
 
   state(accountId: string, type: ObjectType): Promise<string | null> {

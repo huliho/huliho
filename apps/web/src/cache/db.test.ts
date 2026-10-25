@@ -4,7 +4,7 @@
 
 // @vitest-environment node
 
-import type { EmailBody, PendingRow } from "@huliho/core";
+import type { EmailBody, PendingRow, SearchRow } from "@huliho/core";
 import { ACCOUNT, at, email, mailbox, quota } from "@huliho/core/testing";
 import { Dexie } from "dexie";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
@@ -246,4 +246,99 @@ test("a database of the first version keeps its rows and gains the two tables", 
   await reopened.commit(ACCOUNT, { bodies: { put: [body("e1", 1, 5)] } });
   expect(await reopened.body(ACCOUNT, "e1")).toEqual(body("e1", 1, 5));
   upgraded.close();
+});
+
+const SEARCH: SearchRow = {
+  id: '{"q":"invoice"}',
+  queryState: "3",
+  total: 1,
+  pages: [{ page: 0, ids: ["e1"] }],
+  run: 1,
+};
+
+test("a search stays in memory beside the database and never reaches the disk", async () => {
+  await store.commit(ACCOUNT, { searches: { put: [SEARCH] } });
+  expect(await store.search(ACCOUNT, SEARCH.id)).toEqual(SEARCH);
+  expect(await store.search(OTHER, SEARCH.id)).toBeNull();
+  const read = await store.searches(ACCOUNT);
+  read[0]?.pages.push({ page: 1, ids: ["e2"] });
+  expect(await store.searches(ACCOUNT)).toEqual([SEARCH]);
+  expect(await store.accounts()).toEqual([ACCOUNT]);
+  expect(await new DexieMailStore(database).searches(ACCOUNT)).toEqual([]);
+  const counts = await Promise.all(database.tables.map((table) => table.count()));
+  expect(counts.every((count) => count === 0)).toBe(true);
+});
+
+test("a search leaves by a batch, a reset that names it alone and destroy", async () => {
+  await store.commit(ACCOUNT, { searches: { put: [SEARCH] }, pending: { put: [CHANGE] } });
+  await store.commit(ACCOUNT, { reset: ["searches"] });
+  expect(await store.searches(ACCOUNT)).toEqual([]);
+  expect(await store.pending(ACCOUNT)).toEqual([CHANGE]);
+  await store.commit(ACCOUNT, { searches: { put: [SEARCH] } });
+  await store.commit(ACCOUNT, { searches: { remove: [SEARCH.id] } });
+  expect(await store.search(ACCOUNT, SEARCH.id)).toBeNull();
+  await store.commit(ACCOUNT, { searches: { put: [SEARCH] } });
+  await store.destroy();
+  expect(await store.searches(ACCOUNT)).toEqual([]);
+});
+
+test("the senders come from the headers on disk and follow every batch that changes them", async () => {
+  await store.commit(ACCOUNT, { emails: { put: [email("e1", { receivedAt: at(1) })] } });
+  expect(await store.senders(ACCOUNT)).toEqual([
+    { email: "sanne@example.test", name: "Sanne", count: 1, newest: at(1) },
+  ]);
+  const mo = {
+    ...email("e2", { receivedAt: at(2) }),
+    from: [{ name: "Mo", email: "mo@example.test" }],
+  };
+  const reading = store.senders(ACCOUNT);
+  await store.commit(ACCOUNT, { emails: { put: [mo] } });
+  await reading;
+  const emails = (await store.senders(ACCOUNT)).map((sender) => sender.email);
+  expect(emails.toSorted()).toEqual(["mo@example.test", "sanne@example.test"]);
+  await store.commit(ACCOUNT, { reset: ["emails"] });
+  expect(await store.senders(ACCOUNT)).toEqual([]);
+  expect(await store.senders(OTHER)).toEqual([]);
+});
+
+test("the headers are read once; a batch folds into the senders held and a reset reads them again", async () => {
+  const where = vi.spyOn(database.emailHeaders, "where");
+  const mo = {
+    ...email("e2", { receivedAt: at(2) }),
+    from: [{ name: "Mo", email: "mo@example.test" }],
+  };
+  const emails = async (): Promise<string[]> =>
+    (await store.senders(ACCOUNT)).map((sender) => sender.email).toSorted();
+  await store.commit(ACCOUNT, { emails: { put: [email("e1", { receivedAt: at(1) })] } });
+  expect(await emails()).toEqual(["sanne@example.test"]);
+  await store.commit(ACCOUNT, { emails: { put: [mo] } });
+  expect(await emails()).toEqual(["mo@example.test", "sanne@example.test"]);
+  await store.commit(ACCOUNT, { emails: { remove: ["e2"] } });
+  expect(await emails()).toEqual(["sanne@example.test"]);
+  expect(where).toHaveBeenCalledTimes(1);
+  // The reset's own delete goes through the table too; the count starts
+  // over at the read after it.
+  await store.commit(ACCOUNT, { reset: ["emails"], emails: { put: [mo] } });
+  where.mockClear();
+  expect(await emails()).toEqual(["mo@example.test"]);
+  expect(where).toHaveBeenCalledTimes(1);
+});
+
+test("a read of the headers that a batch overtakes is not kept; the next call reads them again", async () => {
+  const mo = {
+    ...email("e2", { receivedAt: at(2) }),
+    from: [{ name: "Mo", email: "mo@example.test" }],
+  };
+  const emails = async (): Promise<string[]> =>
+    (await store.senders(ACCOUNT)).map((sender) => sender.email).toSorted();
+  await store.commit(ACCOUNT, { emails: { put: [email("e1", { receivedAt: at(1) })] } });
+  const where = vi.spyOn(database.emailHeaders, "where");
+  // The read answers the rows from before the batch, after the batch has landed.
+  const rows = await database.emailHeaders.toArray();
+  vi.spyOn(database.Collection.prototype, "toArray").mockImplementationOnce(() =>
+    Dexie.Promise.resolve(store.commit(ACCOUNT, { emails: { put: [mo] } }).then(() => rows)),
+  );
+  expect(await emails()).toEqual(["sanne@example.test"]);
+  expect(await emails()).toEqual(["mo@example.test", "sanne@example.test"]);
+  expect(where).toHaveBeenCalledTimes(2);
 });

@@ -3,7 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import { answer, callsFor, outcome, reference } from "../jmap/calls";
-import type { ObjectType, Start } from "../jmap/calls";
+import type { EmailFilter, ObjectType, Start } from "../jmap/calls";
 import { MethodFailure } from "../jmap/client";
 import type { JmapClient } from "../jmap/client";
 import {
@@ -45,10 +45,13 @@ export interface WindowPage {
   threads: Record<string, ThreadRow>;
 }
 
+// One window's query: the emails it asks for, where it starts, whether
+// it asks the total and a signal that gives it up.
 interface Request {
-  mailboxId: string;
+  filter: EmailFilter;
   start: Start;
   calculateTotal: boolean;
+  signal?: AbortSignal;
 }
 
 interface Chunk {
@@ -58,7 +61,10 @@ interface Chunk {
   leading: boolean;
 }
 
-export function pageOf(row: QueryRow | null, page: number): string[] | undefined {
+// The rows a list or a search holds, by page.
+type Paged = Pick<QueryRow, "queryState" | "total" | "pages">;
+
+export function pageOf(row: Paged | null, page: number): string[] | undefined {
   return row?.pages.find((held) => held.page === page)?.ids;
 }
 
@@ -95,19 +101,22 @@ async function fetchChunk(
   const session = await client.session();
   const calls = callsFor(session.accountId);
   const window = {
-    filter: { inMailbox: request.mailboxId },
+    filter: request.filter,
     start: request.start,
     limit: chunk.wanted,
     calculateTotal: request.calculateTotal,
     collapseThreads: true,
   };
-  const responses = await client.request([
-    ...(chunk.leading ? [calls.get("Email", [], "e0"), calls.get("Thread", [], "t0")] : []),
-    calls.query(window, "q"),
-    calls.get("Email", reference("q", "Email/query", "/ids"), "h", HEADER_PROPERTIES),
-    calls.get("Thread", reference("h", "Email/get", "/list/*/threadId"), "t"),
-    calls.get("Email", reference("t", "Thread/get", "/list/*/emailIds"), "m", STATE_PROPERTIES),
-  ]);
+  const responses = await client.request(
+    [
+      ...(chunk.leading ? [calls.get("Email", [], "e0"), calls.get("Thread", [], "t0")] : []),
+      calls.query(window, "q"),
+      calls.get("Email", reference("q", "Email/query", "/ids"), "h", HEADER_PROPERTIES),
+      calls.get("Thread", reference("h", "Email/get", "/list/*/threadId"), "t"),
+      calls.get("Email", reference("t", "Thread/get", "/list/*/emailIds"), "m", STATE_PROPERTIES),
+    ],
+    request.signal,
+  );
   const { lowered, ...fetched } = await read(client, store, responses, chunk.leading);
   const more = fetched.ids.length < chunk.wanted && lowered && fetched.ids.length > 0;
   const last = fetched.ids.at(-1);
@@ -184,8 +193,7 @@ async function membersOf(
 }
 
 // The page as the store holds it, fetched when it does not or when the
-// list outgrew it: by anchor on the page before it, so the pages stay
-// one list, by position when no page precedes it or the anchor left.
+// list outgrew it.
 export async function queryWindow(
   client: JmapClient,
   store: MailStore,
@@ -196,7 +204,11 @@ export async function queryWindow(
   if (held !== null && pageOf(held, page) !== undefined && !outgrown(held, page)) {
     return assemble(store, client.accountId, held, page);
   }
-  const fetched = await fetchPage(client, store, { mailboxId, held, page });
+  const fetched = await fetchPage(client, store, {
+    filter: { inMailbox: mailboxId },
+    page,
+    anchor: page > 0 ? pageOf(held, page - 1)?.at(-1) : undefined,
+  });
   const row = withPage(held ?? emptyRow(mailboxId), page, fetched);
   await land(store, client.accountId, {
     emails: { put: fetched.emails },
@@ -216,7 +228,7 @@ function emptyRow(mailboxId: string): QueryRow {
 // The row with the page; the total is the first page's. A page fetched
 // anew takes the place of the one held, and the pages after it go with
 // it, since they were anchored on its old end.
-function withPage(row: QueryRow, page: number, fetched: Fetched): QueryRow {
+export function withPage<Row extends Paged>(row: Row, page: number, fetched: Fetched): Row {
   const kept =
     pageOf(row, page) === undefined ? row.pages : row.pages.filter((held) => held.page < page);
   return {
@@ -227,17 +239,28 @@ function withPage(row: QueryRow, page: number, fetched: Fetched): QueryRow {
   };
 }
 
-async function fetchPage(
+// One page to fetch: the emails asked, its number, the row the page
+// before ends on and a signal that gives the request up.
+export interface PageAsk {
+  filter: EmailFilter;
+  page: number;
+  anchor: string | undefined;
+  signal?: AbortSignal;
+}
+
+// A page by anchor on the row the page before ends on, so the pages stay
+// one list; by position when no row precedes it or the anchor left.
+export async function fetchPage(
   client: JmapClient,
   store: MailStore,
-  { mailboxId, held, page }: { mailboxId: string; held: QueryRow | null; page: number },
+  { filter, page, anchor, signal }: PageAsk,
 ): Promise<Fetched> {
   const byPosition: Request = {
-    mailboxId,
+    filter,
     start: { position: page * WINDOW_SIZE },
     calculateTotal: page === 0,
+    ...(signal === undefined ? {} : { signal }),
   };
-  const anchor = page > 0 ? pageOf(held, page - 1)?.at(-1) : undefined;
   if (anchor === undefined) {
     return fetchWindow(client, store, byPosition);
   }
@@ -279,7 +302,11 @@ export function fetchFirstPage(
   store: MailStore,
   mailboxId: string,
 ): Promise<Fetched> {
-  return fetchWindow(client, store, { mailboxId, start: { position: 0 }, calculateTotal: true });
+  return fetchWindow(client, store, {
+    filter: { inMailbox: mailboxId },
+    start: { position: 0 },
+    calculateTotal: true,
+  });
 }
 
 export type Filler = Pick<Fetched, "ids" | "emails" | "threads">;
@@ -306,7 +333,7 @@ export async function fetchAfter(client: JmapClient, store: MailStore, gap: Gap)
       client,
       store,
       {
-        mailboxId: gap.mailboxId,
+        filter: { inMailbox: gap.mailboxId },
         start: { anchor: gap.after, anchorOffset: 1 },
         calculateTotal: false,
       },

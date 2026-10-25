@@ -115,7 +115,8 @@ when a tab names that setting starts over in memory and every tab reads
 its mail again; from then on it stays in memory, whatever a tab with an
 older answer names. A worker that keeps mail off the disk says so to
 every tab and a tab whose session answer says otherwise reads that
-answer again. Each account reconciles under a
+answer again. A search the worker holds stays in memory beside the
+database and never reaches the disk. Each account reconciles under a
 Web Lock, so two workers on one database never interleave. The shell
 tells the worker which accounts the session holds and which mailbox
 the tab is looking at, renewed every thirty seconds while the tab
