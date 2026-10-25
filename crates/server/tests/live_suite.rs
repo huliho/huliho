@@ -6,8 +6,9 @@
 //! Cyrus over JMAP through the proxy and Dovecot through the bridge run
 //! the same steps on the same seeded corpus, a message opened, its
 //! attachments downloaded and its mark as read among them. Then the
-//! latency bound of
-//! an inbox window on the synced Dovecot mailbox and one Gmail account
+//! latency bound of an inbox window on the synced Dovecot mailbox, the
+//! search bound on Cyrus and on Dovecot, the searches of the Dovecot
+//! without an index ending inside the deadline and one Gmail account
 //! through the same routes when the environment names it.
 
 #![cfg(feature = "live-targets")]
@@ -24,8 +25,8 @@ use std::time::{Duration, Instant};
 
 use live_rig::corpus::THREAD_SIZE;
 use live_rig::{
-    Editor, Live, Mail, Target, Window, clear, corpus_size, editor, expunge, flag, listed,
-    number_of, reading, seed, within,
+    Editor, LIST_PROPERTIES, Live, MEASURED_WINDOWS, Mail, Synced, Target, Window, clear, editor,
+    expunge, flag, leave, listed, number_of, reading, searching, seed,
 };
 use serde_json::{Value, json};
 
@@ -51,27 +52,8 @@ const SCENARIO_PATIENCE: Duration = Duration::from_secs(60);
 /// the server on demand and stay out of the window measured.
 const QUERY_LATENCY_BOUND: Duration = Duration::from_millis(100);
 
-/// The list window the latency bound is measured on and how many
-/// windows are measured after the warm-up.
+/// The list window the latency bound is measured on.
 const LATENCY_WINDOW: usize = 50;
-const MEASURED_WINDOWS: usize = 5;
-
-/// The properties a list window asks for.
-const LIST_PROPERTIES: [&str; 8] = [
-    "id",
-    "threadId",
-    "mailboxIds",
-    "keywords",
-    "receivedAt",
-    "subject",
-    "from",
-    "hasAttachment",
-];
-
-/// How long the first sync of the latency corpus may take: a floor plus
-/// a share per message.
-const SYNC_FLOOR: Duration = Duration::from_secs(60);
-const SYNC_PER_MESSAGE: Duration = Duration::from_millis(10);
 
 /// How long a Gmail account's stores may take to sync.
 const GMAIL_PATIENCE: Duration = Duration::from_secs(300);
@@ -89,7 +71,8 @@ const COMPOSE_QUOTA_MESSAGES: u64 = 10_000;
 const GMAIL_ADDRESS: &str = "HULIHO_LIVE_GMAIL_ADDRESS";
 const GMAIL_APP_PASSWORD: &str = "HULIHO_LIVE_GMAIL_APP_PASSWORD";
 
-/// Two tests seed the compose Dovecot's inbox, so they take turns.
+/// The tests that seed one target's inbox take turns.
+static CYRUS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static DOVECOT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// The email id and thread id of every corpus message, by number.
@@ -121,14 +104,6 @@ async fn corpus_ids(live: &Live, mail: &Mail, inbox: &str) -> Corpus {
         }
     }
     found
-}
-
-/// The account left as it was found: the corpus gone, the editor out,
-/// the row removed.
-async fn leave(live: &Live, mail: &Mail, mut editor: Editor) {
-    clear(&mut editor).await;
-    within(editor.logout()).await.unwrap();
-    live.remove(mail).await;
 }
 
 /// The steps every target runs: the mailbox list with its roles, the
@@ -301,6 +276,7 @@ async fn expunging(live: &Live, mail: &Mail, corpus: &Corpus, editor: &mut Edito
 
 #[tokio::test]
 async fn cyrus_runs_the_scenario_suite_through_the_proxy() {
+    let _cyrus = CYRUS.lock().await;
     suite(Target::Cyrus).await;
 }
 
@@ -313,30 +289,22 @@ async fn dovecot_runs_the_scenario_suite_through_the_bridge() {
 #[tokio::test]
 async fn dovecot_answers_an_inbox_window_within_the_latency_bound() {
     let _dovecot = DOVECOT.lock().await;
-    let corpus = corpus_size();
-    let live = Live::start().await;
-    let mut editor = editor(Target::Dovecot).await;
-    clear(&mut editor).await;
-    seed(&mut editor, 1, corpus).await;
-    let mail = live.add(&Target::Dovecot.body(), true).await;
-    let patience = SYNC_FLOOR + SYNC_PER_MESSAGE * corpus;
-    let inbox = live.wait_synced(&mail, "inbox", patience).await;
-    assert!(inbox["totalEmails"].as_u64().unwrap() >= u64::from(corpus));
-    let inbox = inbox["id"].as_str().unwrap().to_owned();
+    let synced = Synced::start(Target::Dovecot).await;
+    let (live, mail) = (&synced.live, &synced.mail);
     // The first window warms the cache and asks the total, as a client
     // opening the list does; the measured ones page on without it.
     for round in 0..=MEASURED_WINDOWS {
         let window = Window {
-            mailbox: &inbox,
+            mailbox: &synced.inbox,
             position: round * LATENCY_WINDOW,
             limit: LATENCY_WINDOW,
             collapse: true,
             total: round == 0,
         };
         let started = Instant::now();
-        let ids = listed(&live.query(&mail, window).await, "ids");
+        let ids = listed(&live.query(mail, window).await, "ids");
         let queried = started.elapsed();
-        let emails = live.emails(&mail, &ids, &LIST_PROPERTIES).await;
+        let emails = live.emails(mail, &ids, &LIST_PROPERTIES).await;
         let took = started.elapsed();
         assert_eq!(emails.len(), ids.len());
         assert!(
@@ -344,7 +312,24 @@ async fn dovecot_answers_an_inbox_window_within_the_latency_bound() {
             "window {round} took {took:?}, the query {queried:?} of it"
         );
     }
-    leave(&live, &mail, editor).await;
+    synced.leave().await;
+}
+
+#[tokio::test]
+async fn cyrus_answers_every_search_within_the_search_bound() {
+    let _cyrus = CYRUS.lock().await;
+    searching::within_the_bound(Target::Cyrus).await;
+}
+
+#[tokio::test]
+async fn dovecot_answers_every_search_within_the_search_bound() {
+    let _dovecot = DOVECOT.lock().await;
+    searching::within_the_bound(Target::Dovecot).await;
+}
+
+#[tokio::test]
+async fn dovecot_without_an_index_ends_every_search_inside_the_deadline() {
+    searching::inside_the_deadline().await;
 }
 
 /// The Gmail test account, when the environment names it.

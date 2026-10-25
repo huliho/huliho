@@ -1,6 +1,7 @@
-# Local mail targets: Cyrus IMAP as the JMAP server and Dovecot for the
-# IMAP bridge. The certs service writes one throwaway CA plus a server
-# certificate for each and copies the CA to data/dev-certs/ca.pem.
+# Local mail targets: Cyrus IMAP as the JMAP server and two Dovecots for
+# the IMAP bridge, one with a search index and one without. The certs
+# service writes one throwaway CA plus a server certificate for Cyrus and
+# one for both Dovecots and copies the CA to data/dev-certs/ca.pem.
 #
 #   docker compose -f docker-compose.dev.yml up -d --build
 #
@@ -11,13 +12,22 @@
 #   docker compose -f docker-compose.dev.yml up -d --build --force-recreate
 #
 # Cyrus: JMAP over TLS on 8443, IMAPS on 9993, the user sanne@huliho.test
-# with the password "password" and a storage quota of 1 GiB. Dovecot: IMAP
-# with STARTTLS on 31143, IMAPS on 31993, submission on 31587, ManageSieve
-# on 34190 and LMTP on 31024, any user with the password "password" and a
-# quota of 1 GiB and 10000 messages. Its learn hook writes "spam" or "ham"
-# with the Message-ID of every message copied or moved into Junk or moved
-# out of it to /tmp/learned inside the container; a move from Junk to Trash
-# writes nothing.
+# with the password "password" and a storage quota of 1 GiB. Xapian
+# indexes its mail and a rolling squatter keeps the index current.
+#
+# Dovecot: IMAP with STARTTLS on 31143, IMAPS on 31993, submission on
+# 31587, ManageSieve on 34190 and LMTP on 31024, any user with the
+# password "password" and a quota of 1 GiB and 10000 messages. FTS
+# flatcurve indexes its mail as it arrives; a search first indexes what
+# it finds unindexed. Its learn hook writes "spam" or "ham" with the
+# Message-ID of every message copied or moved into Junk or moved out of it
+# to /tmp/learned inside the container; a move from Junk to Trash writes
+# nothing.
+#
+# dovecot-plain: the same image without a search index, a quota or the
+# learn hook, so a search reads every message. IMAP with STARTTLS on
+# 31243, IMAPS on 32093 and submission on 31687, each 100 above
+# Dovecot's, with a mail volume of its own.
 
 configs:
   certs-init:
@@ -52,6 +62,13 @@ configs:
       allowplaintext: 1
       conversations: 1
       httpmodules: jmap
+      # Xapian keeps the search index in one tier. The rolling squatter of
+      # cyrus.conf indexes every mailbox the sync log's squatter channel names.
+      search_engine: xapian
+      defaultsearchtier: t1
+      t1searchpartition-default: /var/lib/cyrus/search
+      sync_log: 1
+      sync_log_channels: squatter
       tls_server_cert: /certs/cyrus.pem
       tls_server_key: /certs/cyrus-key.pem
       tls_versions: tls1_2 tls1_3
@@ -67,6 +84,9 @@ configs:
         imaps cmd="imapd -s" listen="993" prefork=0
         https cmd="httpd -s" listen="443" prefork=0
       }
+      DAEMON {
+        squatter cmd="squatter -R"
+      }
       EVENTS {
         # Every 30 minutes and nightly at 04:01, the slots the packaged config uses.
         checkpoint cmd="ctl_cyrusdb -c" period=30
@@ -78,6 +98,7 @@ configs:
       set -eu
       printf '%s' password | saslpasswd2 -p -c -u huliho.test cyrus
       printf '%s' password | saslpasswd2 -p -c -u huliho.test sanne
+      install -d -o cyrus -g mail -m 0750 /var/lib/cyrus/search
       busybox syslogd -n -O - &
       /usr/sbin/cyrmaster -D &
       master=$!
@@ -118,6 +139,36 @@ configs:
           special_use = \Archive
         }
       }
+
+  dovecot-fts.conf:
+    content: |
+      # FTS flatcurve: mail is indexed as it arrives and a search first
+      # indexes what it finds unindexed, so every search answers from the
+      # index. The settings the image ships in its own fts.conf, held here
+      # so the index stays when the image changes.
+      mail_plugins {
+        fts = yes
+        fts_flatcurve = yes
+      }
+      fts_autoindex = yes
+      fts_autoindex_max_recent_msgs = 999
+      fts_search_add_missing = yes
+      language_filters = normalizer-icu snowball stopwords
+      language_tokenizers = generic email-address
+      language_tokenizer_generic_algorithm = simple
+      language en {
+        default = yes
+        filters = lowercase snowball english-possessive stopwords
+      }
+      fts flatcurve {
+        substring_search = yes
+        commit_limit = 100
+      }
+
+  dovecot-plain-fts.conf:
+    content: |
+      # No search index: this file takes the place of the image's fts.conf,
+      # so SEARCH reads the messages themselves.
 
   dovecot-quota.conf:
     content: |
@@ -254,6 +305,9 @@ services:
       - source: dovecot-mailboxes.conf
         target: /etc/dovecot/conf.d/mailboxes.conf
         mode: 0444
+      - source: dovecot-fts.conf
+        target: /etc/dovecot/conf.d/fts.conf
+        mode: 0444
       - source: dovecot-quota.conf
         target: /etc/dovecot/conf.d/quota.conf
         mode: 0444
@@ -284,6 +338,35 @@ services:
       certs:
         condition: service_completed_successfully
 
+  dovecot-plain:
+    image: dovecot/dovecot:2.4.5
+    environment:
+      USER_PASSWORD: "{PLAIN}password"
+    configs:
+      - source: dovecot-tls.conf
+        target: /etc/dovecot/conf.d/tls.conf
+        mode: 0444
+      - source: dovecot-submission.conf
+        target: /etc/dovecot/conf.d/submission.conf
+        mode: 0444
+      - source: dovecot-mailboxes.conf
+        target: /etc/dovecot/conf.d/mailboxes.conf
+        mode: 0444
+      - source: dovecot-plain-fts.conf
+        target: /etc/dovecot/conf.d/fts.conf
+        mode: 0444
+    volumes:
+      - dev-certs:/certs:ro
+      - dovecot-plain-mail:/srv/vmail
+    ports:
+      - "127.0.0.1:31243:31143"
+      - "127.0.0.1:32093:31993"
+      - "127.0.0.1:31687:31587"
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+
 volumes:
   dev-certs:
   dovecot-mail:
+  dovecot-plain-mail:
