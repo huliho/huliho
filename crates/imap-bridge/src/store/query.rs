@@ -148,28 +148,13 @@ impl Store {
                 query,
                 direction,
             };
-            let needs_total = window.calculate_total
-                || matches!(window.start, Start::Position(index) if index < 0);
-            let total = if needs_total {
+            let total = if window.needs_total() {
                 Some(scope.total()?)
             } else {
                 None
             };
-            let position = match window.start {
-                Start::Position(index) => match u64::try_from(index) {
-                    Ok(index) => index,
-                    Err(_) => total.unwrap_or(0).saturating_sub(index.unsigned_abs()),
-                },
-                Start::Anchor { id, offset } => {
-                    let Some(index) = scope.index_of(id)? else {
-                        return Ok(None);
-                    };
-                    if offset < 0 {
-                        index.saturating_sub(offset.unsigned_abs())
-                    } else {
-                        index.saturating_add(offset.unsigned_abs())
-                    }
-                }
+            let Some(position) = window.position(total, |id| scope.index_of(id))? else {
+                return Ok(None);
             };
             Ok(Some(Queried {
                 state: state_of(connection, key)?,
@@ -177,6 +162,36 @@ impl Store {
                 ids: scope.ids(position, window.limit)?,
                 total: total.filter(|_| window.calculate_total),
             }))
+        })
+    }
+}
+
+impl Window<'_> {
+    /// Whether the window needs the size of the result: it was asked, or
+    /// a negative position counts from the end.
+    pub(super) fn needs_total(&self) -> bool {
+        self.calculate_total || matches!(self.start, Start::Position(index) if index < 0)
+    }
+
+    /// The index of the first id in a result of `total` ids, an anchor
+    /// found through `index_of`; `None` when the result lacks the anchor.
+    pub(super) fn position(
+        &self,
+        total: Option<u64>,
+        index_of: impl FnOnce(&str) -> Result<Option<u64>, StoreError>,
+    ) -> Result<Option<u64>, StoreError> {
+        Ok(match self.start {
+            Start::Position(index) => Some(match u64::try_from(index) {
+                Ok(index) => index,
+                Err(_) => total.unwrap_or(0).saturating_sub(index.unsigned_abs()),
+            }),
+            Start::Anchor { id, offset } => index_of(id)?.map(|index| {
+                if offset < 0 {
+                    index.saturating_sub(offset.unsigned_abs())
+                } else {
+                    index.saturating_add(offset.unsigned_abs())
+                }
+            }),
         })
     }
 }

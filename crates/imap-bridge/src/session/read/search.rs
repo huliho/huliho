@@ -16,7 +16,7 @@ use std::fmt::{self, Write as _};
 
 use async_imap::imap_proto::{MailboxDatum, Response};
 use time::Date;
-use tokio::time::timeout;
+use tokio::time::{Instant, timeout};
 
 use super::{ANSWER_LINE_LIMIT, Bounds, Room, Selection, refusal};
 use crate::session::imap::command_error;
@@ -103,6 +103,13 @@ impl SearchAsk<'_> {
         }
         Ok(())
     }
+
+    /// The terms of the text and the sender together, each counted as
+    /// [`SearchAsk::check`] counts it.
+    #[must_use]
+    pub fn terms(&self) -> usize {
+        terms(self.text).len() + terms(self.from).len()
+    }
 }
 
 /// Counts the terms of the text and the sender and says whether a Gmail
@@ -120,6 +127,7 @@ impl fmt::Debug for SearchAsk<'_> {
             .field("before", &self.before)
             .field("gmail", &self.gmail.is_some())
             .field("label", &label)
+            .field("until", &self.until.is_some())
             .field("server", &self.server)
             .finish()
     }
@@ -130,7 +138,7 @@ pub(in crate::session) async fn uid_list(
     selection: &mut Selection<'_>,
     room: Room,
 ) -> Result<Vec<u32>, SessionError> {
-    walk(selection, &[], Literals::Synchronizing, room).await
+    walk(selection, &[], Literals::Synchronizing, (room, None)).await
 }
 
 /// The UIDs of the selected mailbox the ask matches, highest first, each
@@ -141,18 +149,19 @@ pub(in crate::session) async fn uid_search(
     room: Room,
 ) -> Result<Vec<u32>, SessionError> {
     let keys = keys(ask)?;
-    walk(selection, &keys, ask.server.literals, room).await
+    walk(selection, &keys, ask.server.literals, (room, ask.until)).await
 }
 
 /// One `UID SEARCH <low>:<high>` with the keys per window of sequence
 /// numbers from the top down. An expunge only moves a message down, so
 /// none is missed; one that moved into the next window shows up twice
-/// and is dropped.
+/// and is dropped. Each window gets the room as it stands when it goes
+/// out, so a deadline shrinks it window by window.
 async fn walk(
     selection: &mut Selection<'_>,
     keys: &[Piece],
     literals: Literals,
-    room: Room,
+    (room, until): (Room, Option<Instant>),
 ) -> Result<Vec<u32>, SessionError> {
     let mut top = start(selection.messages()?)?;
     let mut uids = Vec::new();
@@ -164,7 +173,8 @@ async fn walk(
             }
             Ok(())
         };
-        send(selection, &command, room.bounds(SEARCH_LINES), visit).await?;
+        let bounds = room.until(until)?.bounds(SEARCH_LINES);
+        send(selection, &command, bounds, visit).await?;
         top = low - 1;
     }
     uids.sort_unstable_by(|a, b| b.cmp(a));
@@ -285,6 +295,11 @@ fn raw(text: &[&str], from: &[&str]) -> String {
         let _ = write!(raw, "from:\"{}\"", sender.join(" "));
     }
     raw
+}
+
+/// Whether a SINCE or BEFORE key can name the day.
+pub(crate) fn writable_day(day: Date) -> bool {
+    imap_date(day).is_some()
 }
 
 /// A day as an IMAP date (RFC 3501 section 9, `date-text`); `None` for

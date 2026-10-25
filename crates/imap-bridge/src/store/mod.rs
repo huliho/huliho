@@ -20,6 +20,7 @@ mod progress;
 mod query;
 mod quota;
 mod refresh;
+mod search;
 mod threads;
 
 use std::collections::{HashMap, HashSet};
@@ -46,6 +47,7 @@ pub use progress::{Advance, Progress};
 pub use query::{Queried, Query, Start, Window};
 pub use quota::{QuotaRow, QuotaSnapshot, Resource};
 pub use refresh::{FlagChange, Synced};
+pub use search::{FolderHits, Search};
 pub use threads::ThreadSnapshot;
 
 /// The schema, one entry per migration; the host's migration list

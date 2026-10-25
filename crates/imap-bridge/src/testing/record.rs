@@ -21,8 +21,9 @@ use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::pki_types::ServerName;
 
+use super::command;
 use super::transcript::{self, Shared, Transcript};
-use super::{Fake, Lines, Listen, Phase, Protocol, read_line, record};
+use super::{Fake, Lines, Listen, Phase, Protocol, record};
 use crate::session::{STEP_TIMEOUT, Target, TlsMode};
 
 /// The live server a recording talks to: where it is and what trust it
@@ -98,7 +99,10 @@ impl Protocol for Script {
 }
 
 /// Both directions of one connection until either side leaves: every
-/// command noted and passed on, every answer noted and passed back.
+/// command noted and passed on, every answer noted and passed back. A
+/// command's literals are read by their size, so one holding a line
+/// break stays one command; each piece is noted before it goes on, so
+/// the continuation request a literal waits for lands under its command.
 async fn relay<S: AsyncRead + AsyncWrite + Unpin + Send>(
     script: &Script,
     phase: Phase,
@@ -112,14 +116,21 @@ async fn relay<S: AsyncRead + AsyncWrite + Unpin + Send>(
     let mut client_read = BufReader::new(client_read);
     let mut server_read = BufReader::new(server_read);
     let commands = async {
-        while let Some(line) = read_line(&mut client_read).await {
+        while let Some((text, mut marker)) = command::text_run(&mut client_read).await {
+            let mut line = text.clone();
+            script.transcript().client(session, text);
+            passed(&mut server_write, &line).await?;
+            while let Some((size, _)) = marker {
+                let literal = command::literal(&mut client_read, size).await?;
+                let (text, next) = command::text_run(&mut client_read).await?;
+                let more = format!("{literal}{text}");
+                let noted = format!("\r\n{more}");
+                script.transcript().client_more(session, &noted);
+                passed(&mut server_write, &more).await?;
+                line.push_str(&noted);
+                marker = next;
+            }
             record(lines, phase, &line);
-            script.transcript().client(session, line.clone());
-            server_write
-                .write_all(format!("{line}\r\n").as_bytes())
-                .await
-                .ok()?;
-            server_write.flush().await.ok()?;
         }
         Some(())
     };
@@ -136,6 +147,15 @@ async fn relay<S: AsyncRead + AsyncWrite + Unpin + Send>(
         _ = answers => {}
     }
     Some(())
+}
+
+/// One run of a command on to the live server with its line break.
+async fn passed<W: AsyncWrite + Unpin>(writer: &mut W, run: &str) -> Option<()> {
+    writer
+        .write_all(format!("{run}\r\n").as_bytes())
+        .await
+        .ok()?;
+    writer.flush().await.ok()
 }
 
 /// The live server over TLS, its addresses tried in order.

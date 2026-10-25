@@ -9,6 +9,7 @@
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use super::behavior::Behavior;
@@ -102,6 +103,8 @@ pub struct Mailboxes {
     /// What a GETQUOTAROOT answers, shared with the test that edits it
     /// between passes.
     quota: Arc<Mutex<QuotaAnswer>>,
+    /// The UID SEARCH commands every connection received.
+    searches: Arc<AtomicUsize>,
 }
 
 /// Why a command was refused: BAD for a form outside the advertised
@@ -130,7 +133,20 @@ impl Mailboxes {
             chatter: false,
             behavior: Behavior::default(),
             quota: Arc::new(Mutex::new(QuotaAnswer::default())),
+            searches: Arc::new(AtomicUsize::new(0)),
         }
+    }
+
+    /// The UID SEARCH commands the server received so far, on every
+    /// connection.
+    #[must_use]
+    pub fn searches(&self) -> usize {
+        self.searches.load(Ordering::SeqCst)
+    }
+
+    /// Counts one UID SEARCH as it arrives.
+    pub(super) fn searched(&self) {
+        self.searches.fetch_add(1, Ordering::SeqCst);
     }
 
     /// A Dovecot with the English defaults: their attributes, an

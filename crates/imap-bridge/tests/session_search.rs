@@ -31,6 +31,13 @@ const INBOX: &str = "INBOX";
 /// A step that a loopback exchange fits in and a test waits out.
 const SHORT_STEP: Duration = Duration::from_millis(500);
 
+/// How long a slow server sits on a SEARCH: past the short step.
+const SLOW_ANSWER: Duration = Duration::from_millis(800);
+
+/// A deadline that holds the slow answer, and one that does not.
+const ROOMY_DEADLINE: Duration = Duration::from_secs(5);
+const TIGHT_DEADLINE: Duration = Duration::from_millis(200);
+
 /// A message from `sender` whose subject and body hold these words.
 fn message(uid: u32, sender: &str, subject: &str, body: &str) -> Message {
     Message {
@@ -90,6 +97,7 @@ fn ask<'a>(text: &'a str, from: &'a str, server: Searching) -> SearchAsk<'a> {
         before: None,
         gmail: None,
         server,
+        until: None,
     }
 }
 
@@ -296,9 +304,9 @@ fn continued(continuation: Continuation) -> Mailboxes {
     mailboxes
 }
 
-#[tokio::test]
-async fn a_continuation_request_that_never_comes_ends_at_the_step_rfc3501_7_5() {
-    let fake = start(continued(Continuation::Withholds)).await;
+/// A session with the short step and the inbox examined, with what the
+/// server advertises for a search.
+async fn short_step(fake: &FakeImap) -> (ImapSession, Searching) {
     let target = fake.target(HOST, TlsMode::Implicit);
     let mut session = ImapSession::connect(fake.trusting(), &target, SHORT_STEP)
         .await
@@ -306,6 +314,39 @@ async fn a_continuation_request_that_never_comes_ends_at_the_step_rfc3501_7_5() 
     session.login(USER, PASSWORD).await.unwrap();
     let searching = session.capabilities().await.unwrap().searching();
     session.examine(INBOX).await.unwrap();
+    (session, searching)
+}
+
+#[tokio::test]
+async fn a_search_waits_for_its_answer_until_its_deadline_in_place_of_the_step() {
+    let mut mailboxes = inbox(Extension::all());
+    mailboxes.behavior = Behavior {
+        search_delay: Some(SLOW_ANSWER),
+        ..Behavior::default()
+    };
+    let fake = start(mailboxes).await;
+    let (mut stepped, searching) = short_step(&fake).await;
+    let waited = stepped.uid_search(&ask("plan", "", searching)).await;
+    assert!(matches!(waited, Err(SessionError::Timeout)), "{waited:?}");
+    let (mut roomy, _) = short_step(&fake).await;
+    let until = SearchAsk {
+        until: Some(tokio::time::Instant::now() + ROOMY_DEADLINE),
+        ..ask("plan", "", searching)
+    };
+    assert_eq!(roomy.uid_search(&until).await.unwrap(), [4, 3, 1]);
+    let (mut tight, _) = short_step(&fake).await;
+    let past = SearchAsk {
+        until: Some(tokio::time::Instant::now() + TIGHT_DEADLINE),
+        ..ask("plan", "", searching)
+    };
+    let cut = tight.uid_search(&past).await;
+    assert!(matches!(cut, Err(SessionError::Timeout)), "{cut:?}");
+}
+
+#[tokio::test]
+async fn a_continuation_request_that_never_comes_ends_at_the_step_rfc3501_7_5() {
+    let fake = start(continued(Continuation::Withholds)).await;
+    let (mut session, searching) = short_step(&fake).await;
     let waited = session.uid_search(&ask("plan", "", searching)).await;
     assert!(matches!(waited, Err(SessionError::Timeout)), "{waited:?}");
     assert_eq!(searches(&fake), ["UID SEARCH CHARSET UTF-8 1:4 TEXT {4}"]);

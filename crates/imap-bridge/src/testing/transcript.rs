@@ -76,6 +76,19 @@ impl Transcript {
         }
     }
 
+    /// Adds the rest of a command to the one noted last on that
+    /// connection: a literal and the text after it.
+    pub fn client_more(&mut self, session: usize, more: &str) {
+        let client = self
+            .sessions
+            .get_mut(session)
+            .and_then(|conversation| conversation.exchanges.last_mut())
+            .and_then(|exchange| exchange.client.as_mut());
+        if let Some(client) = client {
+            client.push_str(more);
+        }
+    }
+
     /// Notes a line the server sent on that connection, under the last
     /// command or as the greeting.
     pub fn server(&mut self, session: usize, line: Line) {

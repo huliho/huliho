@@ -35,6 +35,11 @@ pub const ATTACHED: u32 = 3;
 pub const ATTACHMENT_NAME: &str = "notes.txt";
 pub const ATTACHMENT: &str = "notes";
 
+/// The message whose body carries the word the suite searches for, and
+/// that word: one no other mail of the account holds, outside ASCII.
+pub const SEARCHED: u32 = ATTACHED;
+pub const SEARCH_WORD: &str = "zoëquarter";
+
 /// The one word the long body repeats.
 const LONG_WORD: &str = "word ";
 
@@ -57,11 +62,13 @@ pub struct Seed {
     pub body: String,
 }
 
-/// The messages by number: a reply to the first, one with an attachment,
-/// one long, one unseen.
+/// The messages by number: a reply to the first, one with an attachment
+/// and the searched word, one long, one unseen.
 pub fn seed(number: u32) -> Seed {
     let body = if number == LONG {
         LONG_WORD.repeat(LONG_BODY_BYTES / LONG_WORD.len())
+    } else if number == SEARCHED {
+        format!("Body of message {number} about {SEARCH_WORD}.")
     } else {
         format!("Body of message {number}.")
     };

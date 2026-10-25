@@ -39,8 +39,8 @@ pub use message::{
     StoreAsk, StoreItem, Structure, UidRange, Usage, Writable,
 };
 pub use quota::MAX_QUOTA_ROOTS;
-pub(crate) use read::sendable_field;
 pub use read::{MAX_TREE_BYTES, MAX_WIRE_NAME_BYTES};
+pub(crate) use read::{sendable_field, writable_day};
 pub use write::{MAX_COMMAND_BYTES, label_bytes};
 
 /// One connect attempt or one step of a command gets this long: the

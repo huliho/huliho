@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use async_imap::Connection;
 use async_imap::imap_proto::{MailboxDatum, Response, ResponseCode, Status};
-use tokio::time::timeout;
+use tokio::time::{Instant, timeout};
 
 use super::imap::{Stream, Wire, command_error};
 use super::{SessionError, io_error};
@@ -31,6 +31,7 @@ pub(super) use fetch::uid_fetch;
 pub(super) use flags::uid_flags;
 pub(super) use list::{list, lsub, status};
 pub(super) use preview::{sequence_set, uid_previews};
+pub(crate) use search::writable_day;
 pub(super) use search::{uid_list, uid_search};
 pub(super) use select::{Access, Opened, open};
 pub use structure::MAX_TREE_BYTES;
@@ -73,6 +74,19 @@ impl Room {
             SPARE_LINES
         };
         Self { step, spare }
+    }
+
+    /// The same room with every read waiting until `until` in place of
+    /// the step; `Timeout` once that moment has passed.
+    pub(super) fn until(self, until: Option<Instant>) -> Result<Self, SessionError> {
+        let Some(until) = until else {
+            return Ok(self);
+        };
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(SessionError::Timeout);
+        }
+        Ok(Self { step: left, ..self })
     }
 
     /// The bounds of an answer that carries `lines` of its own.

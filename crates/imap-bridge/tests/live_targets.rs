@@ -360,6 +360,7 @@ async fn dovecot_searches_a_word_and_a_sender_in_both_literal_forms_as_a_second_
                     literals,
                     ..searching
                 },
+                until: None,
             };
             let found = session.uid_search(&ask).await.unwrap();
             assert_eq!(found, wanted, "{literals:?} {text:?} {from:?}");

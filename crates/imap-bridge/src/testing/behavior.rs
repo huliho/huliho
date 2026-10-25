@@ -5,6 +5,8 @@
 //! The ways the scripted IMAP server misbehaves on a selected mailbox,
 //! each a switch a test sets.
 
+use std::time::Duration;
+
 use super::command::Continuation;
 
 /// How the server misbehaves on a selected mailbox.
@@ -66,6 +68,11 @@ pub struct Behavior {
     /// Every UID SEARCH answers one SEARCH line of at least this many
     /// bytes, its line break included.
     pub search_bytes: Option<usize>,
+    /// Every UID SEARCH that reads the messages, for a text, a sender or
+    /// a Gmail query, waits this long before its answer, as a server that
+    /// reads every message for a word does; the UID list of a sync
+    /// answers at once.
+    pub search_delay: Option<Duration>,
 }
 
 /// How the server takes a write command.

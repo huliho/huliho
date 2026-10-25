@@ -33,6 +33,7 @@ fn ask<'a>(text: &'a str, from: &'a str) -> SearchAsk<'a> {
             literals: Literals::Plus,
             gmail: true,
         },
+        until: None,
     }
 }
 
@@ -154,7 +155,7 @@ fn debug_output_counts_the_terms_and_prints_neither_a_term_nor_the_label() {
     assert_eq!(
         printed,
         "SearchAsk { text_terms: 2, from_terms: 1, unseen: true, flagged: false, since: None, \
-         before: None, gmail: true, label: true, \
+         before: None, gmail: true, label: true, until: false, \
          server: Searching { literals: Plus, gmail: true } }"
     );
 }
