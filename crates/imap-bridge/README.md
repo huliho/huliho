@@ -128,7 +128,7 @@ counts come from STATUS until All Mail is done and from the memberships
 afterwards; the refresh visits the stores alone and a vanished label
 mailbox drops its memberships. The session object says
 `maxMailboxesPerEmail` is null on such an account.
-`runtime::GMAIL_CONNECTIONS` names the two connections one Gmail
+`runtime::GMAIL_CONNECTIONS` names the three connections one Gmail
 account may hold at once, which the host's runtime enforces.
 
 The connection comes from the host through the `runtime::Connector`
@@ -141,7 +141,8 @@ fetch, a write and a window of a blob take the conversation; a
 request that reads the cache never waits on IMAP, and a server that is
 down costs nothing but the refresh for the stored properties: the cache
 answers as it stands, while a body ask and a write answer
-`serverUnavailable`.
+`serverUnavailable`. A search runs on a connection of its own, which
+the link keeps beside the conversation.
 
 `runtime::Bridge` runs the accounts the host registers: one store, one
 sealer and one connector for all of them and, per account, the
@@ -157,16 +158,16 @@ pause, and the slice whose fetch was cut short is fetched again. A
 folder whose failures pass `runtime::FOLDER_FAILURE_BOUND` waits for the
 next round. Two accounts sync at once process wide
 (`runtime::SYNC_PARALLELISM`); a Gmail account holds a second
-conversation for its sync. A conversation nobody used for five minutes
-(`runtime::SESSION_IDLE_CLOSE`) is logged out and opened again on the
-next request. The host hands every account a `runtime::Registration`:
-its key, whether it is a Gmail account and the state its session object
-shows, which the host derives from what the object is built from, so
-the state never moves with the cache; the bridge marks it while the
-server advertises QUOTA. `forget` stops an account's task,
-breaks off a blob still on its way and refuses every later write for
-its key, so the host deletes the rows (`store::remove_rows`) inside the
-transaction that removes the account.
+conversation for its sync. A conversation or a search connection
+nobody used for five minutes (`runtime::SESSION_IDLE_CLOSE`) is logged
+out and opened again on the next request. The host hands every account
+a `runtime::Registration`: its key, whether it is a Gmail account and
+the state its session object shows, which the host derives from what
+the object is built from, so the state never moves with the cache; the
+bridge marks it while the server advertises QUOTA. `forget` stops an
+account's task, breaks off a blob still on its way and refuses every
+later write for its key, so the host deletes the rows
+(`store::remove_rows`) inside the transaction that removes the account.
 
 Change detection is on demand until the server pushes. A `/changes`
 call refreshes the account at most once per thirty seconds
@@ -430,7 +431,28 @@ X-GM-RAW string and a label as X-GM-LABELS. `CHARSET UTF-8` goes out
 once per command, right after `UID SEARCH`, when the command carries a
 literal. A NO with the `BADCHARSET` code reads as
 `SessionError::BadCharset`. `Capabilities::searching` says which form
-the literals take and whether the Gmail keys apply.
+the literals take and whether the Gmail keys apply. With `until` set,
+each read of the answer waits until then in place of the session's
+step.
+
+An `Email/query` with a text or a sender has the server searched
+between two passes over its request, on a connection of the account's
+own, one search at a time. A folder account searches the folders of
+the scope in the tree's order with Junk and Trash last. A Gmail account
+searches All Mail, under the label of a label mailbox; Spam and Trash
+run where the scope keeps them. The searches of one round of a request
+share one deadline (`runtime::SEARCH_DEADLINE`, forty-five seconds),
+counted from the first of them, their wait behind another search
+included. Past it a call answers `serverUnavailable` without
+connecting; a search it cuts short drops its connection, as one given
+up on does. A folder the server refuses or shows under another
+UIDVALIDITY than its rows is passed over. The hits stay in memory per
+account under the search they answer, four at most for five minutes
+(`runtime::SEARCH_CACHE_ENTRIES`, `runtime::SEARCH_CACHE_TTL`), so the
+pages after the first cost no SEARCH. SINCE and BEFORE go a day wider
+each side, since a server compares the day of an internal date as
+written; the dates, the keywords, the attachment and the scope are exact
+in SQL over the hits. No query text and no sender is logged.
 
 The rows live in `bridge_` tables inside the host's database.
 `store::MIGRATIONS` carries their schema for the host's migration list
@@ -446,12 +468,17 @@ section 3.3) against those rows and answers `Mailbox/get`,
 `Quota/changes` and `Core/echo`.
 `Email/get` serves the
 metadata, the header properties and the preview from the rows, the
-body properties and the `header:` forms from the server. `Email/query` serves the filter
-`inMailbox` with `hasKeyword` and `notKeyword` beside it, the sort
-`receivedAt` either way, a window by position or
-by anchor, the total on request and one email per thread on request,
-two hundred ids at most (`jmap::QUERY_LIMIT`); any other filter or sort
-answers `unsupportedFilter` or `unsupportedSort`. Result references
+body properties and the `header:` forms from the server. `Email/query`
+serves one filter condition: `inMailbox`, `inMailboxOtherThan` or
+neither, which is the whole account, with `hasKeyword`, `notKeyword`,
+`after`, `before`, `hasAttachment`, `text` and `from`. The sort is
+`receivedAt` either way, the window by position or by anchor, with the
+total and one email per thread on request, two hundred ids at most
+(`jmap::QUERY_LIMIT`). A filter without a text and a sender answers from
+SQL alone. A term past the caps or holding a NUL answers
+`invalidArguments` before anything connects, a server that cannot search
+in UTF-8 `unsupportedFilter`; any other filter or sort answers
+`unsupportedFilter` or `unsupportedSort`. Result references
 resolve under a budget of one MiB per request, measured as the memory
 a copy of the resolved values takes; a reference past it answers
 `invalidResultReference`. `jmap::session_object` renders the session
@@ -510,8 +537,9 @@ UTF-8, messages that leave between two searches, the Gmail items
 volunteered unasked, a STORE or a move that is refused, answered BAD,
 dropped or never answered, a `COPYUID` of the test's own words, a
 continuation request withheld or refused, a search in one charset
-alone, a SEARCH line padded to a size plus an EXAMINE answer without
-EXISTS. Its `Mailboxes`
+alone, a SEARCH line padded to a size, a SEARCH answered late plus an
+EXAMINE answer without EXISTS. `Mailboxes::searches` counts the UID
+SEARCH commands every connection received. Its `Mailboxes`
 stand in for a second client between two passes: a message appended,
 one expunged by UID, the flags of one replaced, the counts and the
 mod-sequences following. Its Gmail mode
@@ -546,7 +574,9 @@ is checked in. `testing::replay` is the
 scripted server driven by such a transcript: every command gets what the
 live server answered, under the client's own tag, the connection closes
 where the live one closed and a command the transcript does not hold is
-a mismatch the test reads. Gmail's transcript is
+a mismatch the test reads. Both read a command's literals by their size,
+so one holding a line break stays one command and its markers survive
+the redaction. Gmail's transcript is
 `tests/transcripts/gmail.json`, replayed by the scenario suite in
 `tests/gmail_transcript.rs` in every test run; the same suite runs
 against the scripted server's Gmail mode through the recorder and back

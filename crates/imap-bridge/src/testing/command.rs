@@ -66,6 +66,61 @@ impl Command {
         }
         line
     }
+
+    /// The literals of the command that waited for a continuation
+    /// request.
+    #[must_use]
+    pub fn waited(&self) -> usize {
+        let waits = |part: &&Part| match part {
+            Part::Text(text) => marker(text).is_some_and(|(_, synchronizing)| synchronizing),
+            Part::Literal(_) => false,
+        };
+        self.parts.iter().filter(waits).count()
+    }
+
+    /// The command [`Command::line`] wrote, read back: a line break
+    /// follows only a run of text that ends with a size marker, and the
+    /// literal after it takes the bytes the marker names. `None` for a
+    /// line break elsewhere or a literal cut short.
+    #[must_use]
+    pub fn from_line(line: &str) -> Option<Self> {
+        let mut command = Self::default();
+        let mut rest = line;
+        loop {
+            let Some((text, after)) = rest.split_once("\r\n") else {
+                command.parts.push(Part::Text(rest.to_owned()));
+                return Some(command);
+            };
+            let (size, _) = marker(text)?;
+            let literal = after.get(..size)?;
+            command.parts.push(Part::Text(text.to_owned()));
+            command.parts.push(Part::Literal(literal.to_owned()));
+            rest = &after[size..];
+        }
+    }
+}
+
+/// One run of text of a command off the wire, its line break left out,
+/// with the size its marker names and whether that literal waits for the
+/// continuation request. `None` when the client left, sent bytes outside
+/// UTF-8 or a line past `MAX_LITERAL_BYTES`.
+pub async fn text_run<R: AsyncBufRead + Unpin>(
+    reader: &mut R,
+) -> Option<(String, Option<(usize, bool)>)> {
+    let text = String::from_utf8(bounded_line(reader).await?).ok()?;
+    let marker = marker(&text);
+    Some((text, marker))
+}
+
+/// The literal a marker announced, read by its size; `None` past
+/// `MAX_LITERAL_BYTES`, for bytes outside UTF-8 or when the client left.
+pub async fn literal<R: AsyncBufRead + Unpin>(reader: &mut R, size: usize) -> Option<String> {
+    if size > MAX_LITERAL_BYTES {
+        return None;
+    }
+    let mut literal = vec![0; size];
+    reader.read_exact(&mut literal).await.ok()?;
+    String::from_utf8(literal).ok()
 }
 
 /// How a command was settled before the server could take it.
@@ -125,8 +180,7 @@ where
 {
     let (mut command, mut settled) = (Command::default(), None);
     loop {
-        let text = String::from_utf8(bounded_line(reader).await?).ok()?;
-        let marker = marker(&text);
+        let (text, marker) = text_run(reader).await?;
         command.parts.push(Part::Text(text));
         let Some((size, synchronizing)) = marker.filter(|(size, _)| *size <= MAX_LITERAL_BYTES)
         else {
@@ -144,11 +198,9 @@ where
         } else if !reading.literals.unsynchronized(size) {
             settled = Some(Settled::Unread);
         }
-        let mut literal = vec![0; size];
-        reader.read_exact(&mut literal).await.ok()?;
         command
             .parts
-            .push(Part::Literal(String::from_utf8(literal).ok()?));
+            .push(Part::Literal(literal(reader, size).await?));
     }
 }
 

@@ -9,8 +9,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt};
 
-use super::command::{Reading, read as read_command};
-use super::messages::Conversation;
+use super::command::{Command, Reading, read as read_command};
+use super::messages::{Conversation, search};
 use super::{
     Fake, GOOGLE_ERROR, Greeting, Lines, Listen, Mailboxes, Opening, PASSWORD, Phase, Protocol,
     Starttls, TOKEN, USER, decoded, open, read_line, record,
@@ -75,6 +75,25 @@ impl Script {
             listen: Listen::Plain(starttls),
             ..Self::tls()
         }
+    }
+
+    /// The answer to a UID SEARCH, counted as it arrives. One that reads
+    /// the messages is sent after the delay the behavior names; the UID
+    /// list of a sync answers at once.
+    async fn search(
+        &self,
+        conversation: &mut Conversation,
+        command: &Command,
+        tag: &str,
+    ) -> String {
+        self.mailboxes.searched();
+        let reads = search::parse(command).is_some_and(|search| search.reads_messages());
+        if let Some(delay) = self.mailboxes.behavior.search_delay
+            && reads
+        {
+            tokio::time::sleep(delay).await;
+        }
+        conversation.search(&self.mailboxes, command, tag)
     }
 
     fn opening(&self) -> Opening {
@@ -201,7 +220,7 @@ impl Protocol for Script {
                 }
                 "GETQUOTAROOT" if phase.is_tls() => self.mailboxes.quota_root(tag),
                 "UID" if phase.is_tls() && command.starts_with("UID SEARCH ") => {
-                    conversation.search(&self.mailboxes, &received, tag)
+                    self.search(&mut conversation, &received, tag).await
                 }
                 "EXAMINE" | "SELECT" | "UID" | "NOOP" if phase.is_tls() => {
                     if conversation.stalls(command, self.mailboxes.behavior) {

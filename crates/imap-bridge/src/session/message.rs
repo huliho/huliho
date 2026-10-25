@@ -6,6 +6,7 @@
 //! types, so a swap of the client library stays inside this module.
 
 use time::Date;
+use tokio::time::Instant;
 
 use super::Searching;
 
@@ -152,6 +153,9 @@ pub struct SearchAsk<'a> {
     pub gmail: Option<GmailSearch<'a>>,
     /// How the server takes literals and whether it has the Gmail keys.
     pub server: Searching,
+    /// When the search must be over: each read of its answer waits until
+    /// then in place of the session's step. `None` keeps the step.
+    pub until: Option<Instant>,
 }
 
 /// What a search on a Gmail account adds.

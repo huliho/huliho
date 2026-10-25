@@ -7,7 +7,8 @@
 //! from the store. A `/changes` call refreshes the account first when a
 //! refresh is due; an `Email/get` that asks for previews the rows lack
 //! or for bodies fetches them and answers again, with every call after
-//! it; an `Email/set` stores its keywords on the server the same way.
+//! it; an `Email/set` stores its keywords on the server the same way and
+//! an `Email/query` with a text or a sender has the server searched.
 
 mod bodies;
 mod body;
@@ -37,6 +38,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
 
+use crate::runtime::search::{Failure, Hits, Plan};
 use crate::seal::Sealer;
 use crate::store::{AccountKey, EmailId, MailboxId, Store, StoreError};
 
@@ -192,6 +194,11 @@ pub(crate) struct Context<'a> {
     set_ask: RefCell<Option<set::SetAsk>>,
     /// What came of that, set for the call on a later pass.
     written: RefCell<Option<&'a set::Outcome>>,
+    /// What an `Email/query` wants searched on the server, noted on the
+    /// first pass.
+    search_ask: RefCell<Option<Plan>>,
+    /// What the search found, set for the call on a later pass.
+    searched: RefCell<Option<&'a Result<Hits, Failure>>>,
 }
 
 impl Context<'_> {
@@ -218,7 +225,8 @@ pub(crate) enum MethodError {
     AccountNotSupportedByMethod,
     RequestTooLarge,
     CannotCalculateChanges,
-    UnsupportedFilter,
+    /// The filter reads but the bridge cannot apply it, with why.
+    UnsupportedFilter(&'static str),
     UnsupportedSort,
     AnchorNotFound,
     /// `ifInState` named another state than the account stands at (RFC
@@ -240,7 +248,7 @@ impl MethodError {
             Self::AccountNotSupportedByMethod => "accountNotSupportedByMethod",
             Self::RequestTooLarge => "requestTooLarge",
             Self::CannotCalculateChanges => "cannotCalculateChanges",
-            Self::UnsupportedFilter => "unsupportedFilter",
+            Self::UnsupportedFilter(_) => "unsupportedFilter",
             Self::UnsupportedSort => "unsupportedSort",
             Self::AnchorNotFound => "anchorNotFound",
             Self::StateMismatch => "stateMismatch",
@@ -249,7 +257,10 @@ impl MethodError {
         };
         let mut object = Map::new();
         object.insert("type".to_owned(), Value::from(kind));
-        if let Self::InvalidArguments(why) | Self::InvalidResultReference(why) = self {
+        if let Self::InvalidArguments(why)
+        | Self::InvalidResultReference(why)
+        | Self::UnsupportedFilter(why) = self
+        {
             object.insert("description".to_owned(), Value::from(*why));
         }
         object
@@ -353,7 +364,7 @@ mod tests {
         assert_eq!(described["type"], "invalidArguments");
         assert_eq!(described["description"], "why");
         for (error, kind) in [
-            (MethodError::UnsupportedFilter, "unsupportedFilter"),
+            (MethodError::UnsupportedFilter("why"), "unsupportedFilter"),
             (MethodError::UnsupportedSort, "unsupportedSort"),
             (MethodError::AnchorNotFound, "anchorNotFound"),
             (MethodError::StateMismatch, "stateMismatch"),

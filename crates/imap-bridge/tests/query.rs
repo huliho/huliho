@@ -131,14 +131,17 @@ async fn email_query_refuses_what_it_does_not_serve_rfc8621_4_4() {
     let synced = Synced::start().await;
     let inbox = synced.id("INBOX");
     let cases = [
-        (json!({ "accountId": ACCOUNT }), "unsupportedFilter"),
         (
-            json!({ "accountId": ACCOUNT, "filter": null }),
+            json!({ "accountId": ACCOUNT, "filter": { "inMailbox": inbox, "subject": "x" } }),
             "unsupportedFilter",
         ),
         (
-            json!({ "accountId": ACCOUNT, "filter": { "inMailbox": inbox, "text": "x" } }),
-            "unsupportedFilter",
+            json!({ "accountId": ACCOUNT, "filter": { "after": "yesterday" } }),
+            "invalidArguments",
+        ),
+        (
+            json!({ "accountId": ACCOUNT, "filter": { "text": "a\u{0}b" } }),
+            "invalidArguments",
         ),
         (
             json!({ "accountId": ACCOUNT, "filter": { "inMailbox": inbox, "notKeyword": "a b" } }),

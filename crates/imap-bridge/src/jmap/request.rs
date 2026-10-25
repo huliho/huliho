@@ -5,12 +5,16 @@
 //! One Request object run against an account: every call in order off
 //! the runtime, a refresh ahead of a `/changes` call and a later pass
 //! over the calls from the first `Email/get` whose previews or bodies
-//! were fetched in between or the first `Email/set` whose keywords were
-//! stored there.
+//! were fetched in between, the first `Email/set` whose keywords were
+//! stored there or the first `Email/query` the server was searched for.
+
+#[cfg(test)]
+mod tests;
 
 use std::cell::RefCell;
 
 use serde_json::Value;
+use tokio::time::Instant;
 
 use super::bodies::{self, Bodies, BodyAsk};
 use super::previews::{self, PREVIEW_BATCH};
@@ -21,6 +25,7 @@ use super::{
     Request, RequestError, Response, Using, references, run, session, using, write,
 };
 use crate::mailboxes::SyncError;
+use crate::runtime::search::{Failure, Hits, Plan};
 use crate::runtime::{Connector, Link};
 use crate::store::{EmailId, MailboxId, StoreError};
 use crate::sync::Cache;
@@ -48,11 +53,11 @@ fn sync_failed(error: SyncError) -> Result<(), RequestError> {
 /// server advertises QUOTA. A `/changes` call has the account refreshed
 /// first when a refresh is due; an `Email/get` that asks for previews
 /// the rows lack or for bodies has them fetched and runs again, with
-/// every call after it, at most `MAX_PASSES` passes in all; an
-/// `Email/set` has its keywords stored and answers on the next pass the
-/// same way. None waits on a server that is down: the cache answers as
-/// it stands, a body it does not hold answers `serverUnavailable` and
-/// an update that could not be stored says so.
+/// every call after it, at most `MAX_PASSES` passes in all; a write and
+/// a search answer on the next pass the same way. None waits on a server
+/// that is down: the cache answers as it stands; a body it does not hold
+/// and a search past the deadline of its round answer
+/// `serverUnavailable`; an update that could not be stored says so.
 ///
 /// # Errors
 ///
@@ -121,6 +126,7 @@ enum Need {
     Previews(Vec<EmailId>),
     Bodies(BodyAsk),
     Write(SetAsk),
+    Search(Plan),
 }
 
 /// What the request brought one call between two passes.
@@ -129,6 +135,7 @@ enum Brought {
     Rows,
     Bodies(Bodies),
     Written(Outcome),
+    Searched(Result<Hits, Failure>),
 }
 
 /// The calls to run again, by index, with what was brought for each.
@@ -144,12 +151,14 @@ fn bring(reruns: &mut Reruns, index: usize, brought: Brought) {
 /// Brings what the needs name: the keywords of the `Email/set` calls
 /// that stand in a row from the first call with a need, in their order,
 /// the previews of every call at once, then the bodies per call within
-/// the windows the request may still spend. Which calls run again, with
-/// what each was brought. A call answers what the calls before it left
-/// and nothing of the calls behind it (RFC 8620 section 3.10): the next
-/// pass runs every call from that first one again, so a write behind a
-/// call that is no write of this round is left for the pass after it,
-/// where its call notes it again.
+/// the windows the request may still spend, then the searches in the
+/// order of their calls under one deadline, as the writes run under
+/// theirs. Which calls run again, with what each was
+/// brought. A call answers what the calls before it left and nothing of
+/// the calls behind it (RFC 8620 section 3.10): the next pass runs every
+/// call from that first one again, so a write behind a call that is no
+/// write of this round is left for the pass after it, where its call
+/// notes it again.
 async fn fetched<C: Connector>(
     cache: &Cache,
     link: &Link<C>,
@@ -158,6 +167,7 @@ async fn fetched<C: Connector>(
 ) -> Result<Reruns, RequestError> {
     let mut ids: Vec<EmailId> = Vec::new();
     let mut asks: Vec<(usize, BodyAsk)> = Vec::new();
+    let mut plans: Vec<(usize, Plan)> = Vec::new();
     let mut reruns: Reruns = Vec::new();
     // Where the next write of the row stands; the needs come in the
     // order of their calls.
@@ -183,6 +193,7 @@ async fn fetched<C: Connector>(
                 }
             }
             Need::Bodies(ask) => asks.push((index, ask)),
+            Need::Search(plan) => plans.push((index, plan)),
             Need::Write(ask) => match write::apply(cache, link, &ask, &mut until).await {
                 Ok(outcome) => bring(&mut reruns, index, Brought::Written(outcome)),
                 Err(error) => sync_failed(error)?,
@@ -205,6 +216,14 @@ async fn fetched<C: Connector>(
         };
         for ((index, _), fetched) in asks.into_iter().zip(bodies) {
             bring(&mut reruns, index, Brought::Bodies(fetched));
+        }
+    }
+    if !plans.is_empty() {
+        // The deadline the searches of this round share.
+        let until = Instant::now() + link.search.deadline();
+        for (index, plan) in plans {
+            let found = link.search.found(cache, &plan, until).await;
+            bring(&mut reruns, index, Brought::Searched(found));
         }
     }
     Ok(reruns)
@@ -261,6 +280,8 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
         bodies: RefCell::new(None),
         set_ask: RefCell::new(None),
         written: RefCell::new(None),
+        search_ask: RefCell::new(None),
+        searched: RefCell::new(None),
     };
     let (mut responses, first, brought) = match again {
         Some(again) => (again.responses, Some(again.first), again.brought),
@@ -281,10 +302,15 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
             Some(Brought::Written(outcome)) => Some(outcome),
             _ => None,
         };
+        *context.searched.borrow_mut() = match had {
+            Some(Brought::Searched(found)) => Some(found),
+            _ => None,
+        };
         let response = run(&context, call, &responses[..index]);
         let previews = std::mem::take(&mut *context.missing_previews.borrow_mut());
         let ask = context.body_ask.borrow_mut().take();
         let set = context.set_ask.borrow_mut().take();
+        let search = context.search_ask.borrow_mut().take();
         if had.is_none() {
             if !previews.is_empty() {
                 needs.push((index, Need::Previews(previews)));
@@ -294,6 +320,9 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
             }
             if let Some(ask) = set {
                 needs.push((index, Need::Write(ask)));
+            }
+            if let Some(plan) = search {
+                needs.push((index, Need::Search(plan)));
             }
         }
         if first.is_some() {
@@ -309,96 +338,5 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
         viewed,
         needs,
         brought,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use serde_json::json;
-
-    use super::super::CORE_CAPABILITY;
-    use super::*;
-    use crate::store::{AccountKey, Store};
-    use crate::testing::TestConnector;
-    use crate::testing::seal::TestSealer;
-
-    /// `Core/echo` calls: the first echoes 64 KiB of text, every later
-    /// one echoes the call before it twice through the path `""`.
-    fn doubling(calls: usize) -> Vec<Value> {
-        let mut out = vec![json!(["Core/echo", { "text": "x".repeat(64 * 1024) }, "c0"])];
-        for call in 1..calls {
-            let before = json!({
-                "resultOf": format!("c{}", call - 1),
-                "name": "Core/echo",
-                "path": ""
-            });
-            let twice = json!({ "#a": before, "#b": before });
-            out.push(json!(["Core/echo", twice, format!("c{call}")]));
-        }
-        out
-    }
-
-    fn cache() -> Cache {
-        Cache {
-            store: Arc::new(Store::in_memory().unwrap()),
-            sealer: Arc::new(TestSealer::default()),
-            key: AccountKey::new("a1"),
-            gmail: false,
-        }
-    }
-
-    async fn responses(cache: &Cache, calls: &[Value]) -> Vec<Invocation> {
-        let body = json!({ "using": [CORE_CAPABILITY], "methodCalls": calls });
-        let body = serde_json::to_vec(&body).unwrap();
-        let link = Link::new(TestConnector::Refusing);
-        let answer = handle(cache, &link, &body, "s1").await.unwrap();
-        let mut answer: Value = serde_json::from_slice(&answer).unwrap();
-        assert_eq!(answer["sessionState"], "s1");
-        serde_json::from_value(answer["methodResponses"].take()).unwrap()
-    }
-
-    #[tokio::test]
-    async fn references_past_the_budget_fail_their_call_alone_rfc8620_3_6_2() {
-        let cache = cache();
-        let mut calls = doubling(5);
-        calls.push(json!(["Core/echo", { "after": true }, "c5"]));
-        let responses = responses(&cache, &calls).await;
-        for Invocation(name, _, _) in &responses[..4] {
-            assert_eq!(name, "Core/echo");
-        }
-        let Invocation(name, error, id) = &responses[4];
-        assert_eq!((name.as_str(), id.as_str()), ("error", "c4"));
-        assert_eq!(error["type"], "invalidResultReference");
-        assert!(error["description"].is_string());
-        let Invocation(name, after, id) = &responses[5];
-        assert_eq!((name.as_str(), id.as_str()), ("Core/echo", "c5"));
-        assert_eq!(after["after"], true);
-    }
-
-    #[tokio::test]
-    async fn a_chain_of_references_inside_the_budget_resolves_rfc8620_3_7() {
-        let cache = cache();
-        let ids = |call: &str| json!({ "resultOf": call, "name": "Core/echo", "path": "/ids" });
-        let calls = [
-            json!(["Core/echo", { "ids": ["e1", "e2"] }, "c0"]),
-            json!(["Core/echo", { "#ids": ids("c0") }, "c1"]),
-            json!(["Core/echo", { "#ids": ids("c1") }, "c2"]),
-        ];
-        for Invocation(name, arguments, _) in responses(&cache, &calls).await {
-            assert_eq!(name, "Core/echo");
-            assert_eq!(arguments["ids"], json!(["e1", "e2"]));
-        }
-    }
-
-    #[tokio::test]
-    async fn every_request_starts_with_a_full_budget() {
-        let cache = cache();
-        for _ in 0..2 {
-            for Invocation(name, _, _) in responses(&cache, &doubling(4)).await {
-                assert_eq!(name, "Core/echo");
-            }
-        }
     }
 }

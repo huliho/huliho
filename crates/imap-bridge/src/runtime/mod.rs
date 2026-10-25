@@ -3,14 +3,16 @@
 // Additional terms apply, see NOTICE.
 
 //! The runtime of the bridge: where connections come from, the one
-//! conversation an account keeps between requests and the task that
-//! syncs its folders in the background. The host hands out connections;
-//! the bridge never sees a credential and never resolves a host. A
-//! request takes the conversation only for a refresh, a preview fetch,
-//! a body fetch or an `Email/set`, so one that reads the cache never
-//! waits on IMAP; a blob takes it one window at a time.
+//! conversation an account keeps between requests, the connection its
+//! searches run on and the task that syncs its folders in the
+//! background. The host hands out connections; the bridge never sees a
+//! credential and never resolves a host. A request takes the
+//! conversation only for a refresh, a preview fetch, a body fetch or an
+//! `Email/set`, so one that reads the cache never waits on IMAP; a blob
+//! takes it one window at a time.
 
 mod bridge;
+pub(crate) mod search;
 mod worker;
 
 use std::future::Future;
@@ -22,10 +24,11 @@ use tokio::sync::Notify;
 use tokio::time::timeout;
 
 pub use bridge::{Bridge, Registration};
+pub use search::{SEARCH_CACHE_ENTRIES, SEARCH_CACHE_TTL};
 
 use crate::gmail;
 use crate::mailboxes::SyncError;
-use crate::session::{Moving, Session, SessionError};
+use crate::session::{Moving, Searching, Session, SessionError};
 use crate::store::{AccountKey, MailboxId};
 use crate::sync::refresh::{Given, Refreshed, Refresher};
 use crate::sync::{Cache, NARROWING_BUDGET};
@@ -35,10 +38,10 @@ use crate::sync::{Cache, NARROWING_BUDGET};
 pub const REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 
 /// The connections one Gmail account may hold at once, far under
-/// Gmail's own cap of fifteen: the conversation the requests take and
-/// one of the header sync's own, so a large store never holds up the
-/// reading pane.
-pub const GMAIL_CONNECTIONS: usize = 2;
+/// Gmail's own cap of fifteen. The requests take one conversation; the
+/// header sync keeps one of its own, so a large store never holds up the
+/// reading pane; the searches run on the third.
+pub const GMAIL_CONNECTIONS: usize = 3;
 
 /// A kept session is logged out once nothing used it for this long.
 pub const SESSION_IDLE_CLOSE: Duration = Duration::from_mins(5);
@@ -48,6 +51,13 @@ pub const SESSION_IDLE_CLOSE: Duration = Duration::from_mins(5);
 /// blob or one batch of the header sync. It also bounds one UID FETCH
 /// answer, which has per-line timeouts alone.
 pub const CONVERSATION_DEADLINE: Duration = Duration::from_secs(60);
+
+/// What the searches of one round of a request may take together, from
+/// the moment the first is asked, their wait for an earlier search of
+/// the account included; past it a call answers `serverUnavailable`. It
+/// stays inside one turn on the conversation, and nothing between the
+/// bridge and the client bounds a search otherwise.
+pub const SEARCH_DEADLINE: Duration = Duration::from_secs(45);
 
 /// The accounts whose header sync runs at once, process wide.
 pub const SYNC_PARALLELISM: usize = 2;
@@ -71,6 +81,8 @@ pub struct Timing {
     pub interval: Duration,
     /// What one turn on the conversation may take.
     pub deadline: Duration,
+    /// What the searches of one round of a request may take.
+    pub search: Duration,
     /// How long a session stays open unused.
     pub idle_close: Duration,
     /// How long a task waits after a round that did not finish.
@@ -84,6 +96,7 @@ impl Default for Timing {
         Self {
             interval: REFRESH_INTERVAL,
             deadline: CONVERSATION_DEADLINE,
+            search: SEARCH_DEADLINE,
             idle_close: SESSION_IDLE_CLOSE,
             retry_interval: RETRY_INTERVAL,
             reconnect_pause: RECONNECT_PAUSE,
@@ -136,9 +149,13 @@ impl<C: Connector> Connector for Arc<C> {
 }
 
 /// What the requests of one account share: the conversation behind a
-/// lock and the mailbox the client looked at last.
+/// lock, the searches with their own connection and hits and the mailbox
+/// the client looked at last.
 pub struct Link<C: Connector> {
     pub(crate) wire: tokio::sync::Mutex<Wire<C>>,
+    /// On the heap, since a connection more would double the size of
+    /// every future that holds a link.
+    pub(crate) search: Box<search::Searches<C>>,
     viewed: Mutex<Option<MailboxId>>,
     /// Rings when a refresh finds a store folder whose first sync is not
     /// done, so the account's task picks it up.
@@ -154,6 +171,8 @@ pub struct Wire<C: Connector> {
     condstore: bool,
     /// The commands the server offers for moving mail, read with it.
     moving: Moving,
+    /// How the server takes the literals of a search, read with it.
+    searching: Searching,
     /// Whether the host's word that the account is a Gmail account holds
     /// on this server, read with it.
     gmail: bool,
@@ -163,7 +182,7 @@ pub struct Wire<C: Connector> {
     refresher: Refresher,
 }
 
-impl<C: Connector> Link<C> {
+impl<C: Connector + Clone> Link<C> {
     /// A link on the runtime's clocks.
     pub fn new(connector: C) -> Self {
         Self::with_timing(connector, Timing::default())
@@ -180,15 +199,19 @@ impl<C: Connector> Link<C> {
         )
     }
 
-    /// A link on the given clocks.
+    /// A link on the given clocks; the searches connect through a copy
+    /// of the connector.
     pub fn with_timing(connector: C, timing: Timing) -> Self {
         Self {
-            wire: tokio::sync::Mutex::new(Wire::new(connector, timing)),
+            wire: tokio::sync::Mutex::new(Wire::new(connector.clone(), timing)),
+            search: Box::new(search::Searches::new(connector, timing)),
             viewed: Mutex::new(None),
             wake: Notify::new(),
         }
     }
+}
 
+impl<C: Connector> Link<C> {
     /// Notes the mailbox a query just ranged over.
     pub(crate) fn view(&self, mailbox: MailboxId) {
         *self.viewed.lock().unwrap_or_else(PoisonError::into_inner) = Some(mailbox);
@@ -252,10 +275,11 @@ impl<C: Connector> Link<C> {
         Ok(())
     }
 
-    /// Logs the kept session out once nothing used it for `bound`; how
-    /// long to wait before the next look.
+    /// Logs the conversation and the search connection out once nothing
+    /// used either for `bound`; how long to wait before the next look.
     pub(crate) async fn close_idle(&self, bound: Duration) -> Duration {
-        self.wire.lock().await.close_idle(bound).await
+        let conversation = self.wire.lock().await.close_idle(bound).await;
+        conversation.min(self.search.close_idle(bound).await)
     }
 }
 
@@ -266,6 +290,7 @@ impl<C: Connector> Wire<C> {
             session: None,
             condstore: false,
             moving: Moving::default(),
+            searching: Searching::default(),
             gmail: false,
             timing,
             refreshed: None,
@@ -295,6 +320,7 @@ impl<C: Connector> Wire<C> {
             let capabilities = fresh.capabilities().await?;
             self.condstore = capabilities.has("CONDSTORE");
             self.moving = capabilities.moving();
+            self.searching = capabilities.searching();
             self.gmail = gmail::confirmed(cache.gmail, &capabilities);
             fresh
         };
@@ -325,6 +351,26 @@ impl<C: Connector> Wire<C> {
     /// unread lines; the next use connects again.
     pub(crate) fn drop_session(&mut self) {
         self.session = None;
+    }
+
+    /// The session as [`Wire::session`] answers it, taken out for a turn
+    /// that hands it back only once every answer was read; a turn that
+    /// ends early drops it with its future.
+    ///
+    /// # Errors
+    ///
+    /// As [`Wire::session`].
+    pub(crate) async fn take(&mut self, cache: &Cache) -> Result<C::Session, ConnectError> {
+        self.session(cache).await?;
+        self.session
+            .take()
+            .ok_or(ConnectError::Failed(SessionError::Closed))
+    }
+
+    /// Hands back a session [`Wire::take`] took out.
+    pub(crate) fn put(&mut self, session: C::Session) {
+        self.last_used = Some(Instant::now());
+        self.session = Some(session);
     }
 
     /// What one turn on this conversation may take.
@@ -376,10 +422,11 @@ mod tests {
         let timing = Timing::default();
         assert_eq!(timing.interval, Duration::from_secs(30));
         assert_eq!(timing.deadline, Duration::from_secs(60));
+        assert_eq!(timing.search, Duration::from_secs(45));
         assert_eq!(timing.idle_close, Duration::from_secs(300));
         assert_eq!(timing.retry_interval, Duration::from_secs(300));
         assert_eq!(timing.reconnect_pause, Duration::from_secs(2));
         assert_eq!(SYNC_PARALLELISM, 2);
-        assert_eq!(GMAIL_CONNECTIONS, 2);
+        assert_eq!(GMAIL_CONNECTIONS, 3);
     }
 }

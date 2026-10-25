@@ -15,6 +15,7 @@ use axum::extract::{FromRequest, Path, Request, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use huliho_imap_bridge::jmap::{RequestError, session_object};
+use huliho_imap_bridge::runtime::{CONVERSATION_DEADLINE, SEARCH_DEADLINE};
 use serde::Serialize;
 
 use super::reconnect::scoped;
@@ -35,6 +36,10 @@ const LIMIT_PROBLEM: &str = "urn:ietf:params:jmap:error:limit";
 
 /// The limit the per-account cap enforces, by its core capability name.
 const CONCURRENCY_LIMIT: &str = "maxConcurrentRequests";
+
+// A bridge call runs under no timeout of this route, so the bridge's
+// search deadline bounds a search; it ends inside one turn of the sync.
+const _: () = assert!(SEARCH_DEADLINE.as_nanos() < CONVERSATION_DEADLINE.as_nanos());
 
 /// A Request object as bytes: JSON by content type and within the
 /// route's body limit.

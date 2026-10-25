@@ -5,16 +5,18 @@
 //! The steps of the Gmail scenario suite: the mailbox list with its
 //! roles and the quota the same pass read, the first sync of the stores,
 //! an inbox window, thread grouping, the properties and previews of the
-//! seeded mail, a message
+//! seeded mail, the searches, a message
 //! opened with its body and its blobs and marked read, then what a
 //! second client changes: a delivery, a flag, a label, a move to Spam
 //! and a deletion; then the moves of the first client. Every assertion
 //! holds against the live account, the scripted server and a transcript
 //! of either.
 
+mod changing;
 mod moving;
 mod quota;
 mod reading;
+mod searching;
 
 use std::collections::HashMap;
 
@@ -25,7 +27,7 @@ use huliho_imap_bridge::testing::Mailboxes;
 use huliho_imap_bridge::testing::record::fixed::{FIXED_DOMAIN, fill};
 use serde_json::{Value, json};
 
-use super::corpus::{self, Change, DELIVERED, LABEL, LONG, SEEDED, seed};
+use super::corpus::{self, Change, LABEL, LONG, SEEDED, seed};
 use super::gmail::{self, Editor, SETTLE, Stores};
 use super::{ACCOUNT, Suite};
 
@@ -79,20 +81,32 @@ impl Scenario {
     /// Every step in order, the account cleared afterwards when it is
     /// the live one, then the suite's own end.
     pub async fn run(mut self) {
+        self.reads().await;
+        self.changes_seen().await;
+        self.moves().await;
+        if let Second::Account { editor, stores } = &mut self.second {
+            gmail::clear(editor, stores).await;
+            gmail::within(editor.logout()).await.unwrap();
+        }
+        self.suite.finish();
+    }
+
+    /// The steps over the account as the first sync leaves it.
+    async fn reads(&mut self) {
         self.list_and_roles().await;
         self.sync_the_stores().await;
         self.inbox_window().await;
         self.threads().await;
         self.properties().await;
         self.previews().await;
+        self.search().await;
         self.body().await;
         self.download().await;
         self.mark_read().await;
-        self.delivery().await;
-        self.flag().await;
-        self.label().await;
-        self.spam().await;
-        self.deletion().await;
+    }
+
+    /// The moves of the first client.
+    async fn moves(&mut self) {
         self.archive().await;
         self.move_to_label().await;
         self.not_spam().await;
@@ -100,11 +114,6 @@ impl Scenario {
         self.trash().await;
         self.delete_forever().await;
         self.mark_all_read().await;
-        if let Second::Account { editor, stores } = &mut self.second {
-            gmail::clear(editor, stores).await;
-            gmail::within(editor.logout()).await.unwrap();
-        }
-        self.suite.finish();
     }
 
     async fn edit(&mut self, change: Change) {
@@ -332,94 +341,5 @@ impl Scenario {
         let preview = long["preview"].as_str().unwrap();
         assert_eq!(preview.chars().count(), PREVIEW_CHARS);
         self.expect_text(preview, &seed(LONG).body[..PREVIEW_CHARS]);
-    }
-
-    async fn delivery(&mut self) {
-        let before = self.suite.state();
-        self.edit(Change::Deliver(DELIVERED)).await;
-        let changed = self
-            .changes_showing("Email", before, |answer| {
-                !Self::listed(answer, "created").is_empty()
-            })
-            .await;
-        let created = Self::listed(&changed, "created");
-        assert_eq!(created.len(), 1, "{changed}");
-        assert_eq!(Self::listed(&changed, "destroyed").len(), 0);
-        let arrived = self
-            .emails(&created, &["messageId", "mailboxIds"])
-            .await
-            .remove(0);
-        assert_eq!(Self::number_of(&arrived), Some(DELIVERED));
-        let inbox = self.suite.by_role("inbox").id.to_string();
-        assert!(Self::mailbox_ids(&arrived).contains(&inbox));
-        assert_eq!(
-            Self::listed(&self.changes("Thread", before).await, "created").len(),
-            1
-        );
-        self.ids.insert(DELIVERED, created[0].clone());
-    }
-
-    async fn flag(&mut self) {
-        let before = self.suite.state();
-        self.edit(Change::Flag(1, "\\Flagged")).await;
-        let id = self.ids[&1].clone();
-        let changed = self
-            .changes_showing("Email", before, |answer| {
-                Self::names(answer, "updated", &id)
-            })
-            .await;
-        assert!(Self::names(&changed, "updated", &id), "{changed}");
-        let flagged = self.email(1, &["keywords", "mailboxIds"]).await;
-        assert_eq!(flagged["keywords"]["$flagged"], true);
-        let starred = self.suite.by_role("flagged").id.to_string();
-        assert!(Self::mailbox_ids(&flagged).contains(&starred), "{flagged}");
-    }
-
-    async fn label(&mut self) {
-        let before = self.suite.state();
-        self.edit(Change::Label(2)).await;
-        let id = self.ids[&2].clone();
-        let changed = self
-            .changes_showing("Email", before, |answer| {
-                Self::names(answer, "updated", &id)
-            })
-            .await;
-        assert!(Self::names(&changed, "updated", &id), "{changed}");
-        let project = self.suite.by_name(LABEL).id.to_string();
-        let labeled = self.email(2, &["mailboxIds"]).await;
-        assert!(Self::mailbox_ids(&labeled).contains(&project), "{labeled}");
-        let mailboxes = self.changes("Mailbox", before).await;
-        assert!(
-            Self::listed(&mailboxes, "updated").contains(&project),
-            "{mailboxes}"
-        );
-    }
-
-    async fn spam(&mut self) {
-        let before = self.suite.state();
-        self.edit(Change::MoveToSpam(3)).await;
-        let id = self.ids[&3].clone();
-        let changed = self
-            .changes_showing("Email", before, |answer| {
-                Self::names(answer, "updated", &id)
-            })
-            .await;
-        assert!(Self::names(&changed, "updated", &id), "{changed}");
-        assert_eq!(Self::listed(&changed, "destroyed").len(), 0, "{changed}");
-        let junk = self.suite.by_role("junk").id.to_string();
-        let moved = self.email(3, &["mailboxIds"]).await;
-        assert_eq!(Self::mailbox_ids(&moved), [junk], "{moved}");
-    }
-
-    async fn deletion(&mut self) {
-        let before = self.suite.state();
-        self.edit(Change::DeleteForever(SEEDED)).await;
-        let id = self.ids[&SEEDED].clone();
-        let changed = self
-            .changes_showing("Email", before, |answer| {
-                Self::names(answer, "destroyed", &id)
-            })
-            .await;
-        assert!(Self::names(&changed, "destroyed", &id), "{changed}");
     }
 }

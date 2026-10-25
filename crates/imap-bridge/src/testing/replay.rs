@@ -6,15 +6,27 @@
 //! command gets what the live server answered, under the client's own
 //! tag, and the connection closes where the live one closed. A command
 //! the transcript does not hold at that point is a mismatch: answered
-//! BAD and noted for the test to read.
+//! BAD and noted for the test to read. A command's literals are read by
+//! their size, the replayer asking for each one that waits itself, so
+//! the continuation requests the live server sent for them are not
+//! played again.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 
+use super::command::{self, Continuation, Reading};
 use super::transcript::{Conversation, Line, Transcript, split_tag};
-use super::{Fake, Lines, Listen, Phase, Protocol, read_line, record};
+use super::{Fake, Lines, Listen, Phase, Protocol, record};
+use crate::session::Literals;
+
+/// How the replayer reads a command: every literal by its size, one
+/// that waits asked for.
+const READING: Reading = Reading {
+    literals: Literals::Plus,
+    continuation: Continuation::Asks,
+};
 
 /// The script of the replayer: the connections still to play and what
 /// did not go as recorded.
@@ -105,11 +117,12 @@ impl Protocol for Script {
         write_lines(&mut writer, &greeting.server).await?;
         let mut left = exchanges.len();
         for expected in exchanges {
-            let Some(line) = read_line(&mut reader).await else {
+            let seen = |line: &str| record(lines, phase, line);
+            let Some(read) = command::read(&mut reader, &mut writer, READING, seen).await else {
                 self.note(format!("the client left with exchanges unplayed: {left}"));
                 return None;
             };
-            record(lines, phase, &line);
+            let line = read.line();
             let (tag, command) = split_tag(&line);
             let Some(recorded) = expected.client.as_deref() else {
                 self.note("an exchange without a command".to_owned());
@@ -122,9 +135,16 @@ impl Protocol for Script {
                 write_lines(&mut writer, &[refusal]).await;
                 return None;
             }
+            // The replayer asked for each literal that waited itself.
+            let mut asked = read.waited();
             let answers: Vec<Line> = expected
                 .server
                 .iter()
+                .filter(|line| {
+                    let request = asked > 0 && line.opening().starts_with('+');
+                    asked -= usize::from(request);
+                    !request
+                })
                 .map(|line| line.retagged(recorded_tag, tag))
                 .collect();
             write_lines(&mut writer, &answers).await?;

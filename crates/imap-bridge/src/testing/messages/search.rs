@@ -49,6 +49,17 @@ pub struct Search {
     pub keys: Vec<Key>,
 }
 
+impl Search {
+    /// Whether the search reads the messages: a text, a sender or a Gmail
+    /// query is matched against them; a window, a flag or a date is not.
+    #[must_use]
+    pub fn reads_messages(&self) -> bool {
+        self.keys
+            .iter()
+            .any(|key| matches!(key, Key::Text(_) | Key::From(_) | Key::GmailRaw(_)))
+    }
+}
+
 /// One word of a command: an atom, or a string that came quoted or as a
 /// literal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -351,6 +362,16 @@ mod tests {
         ] {
             assert_eq!(parse(&command(&[text(unread)])), None, "{unread}");
         }
+    }
+
+    #[test]
+    fn a_search_reads_the_messages_for_a_text_a_sender_or_a_raw_string_alone() {
+        let reads = |line: &str| parse(&command(&[text(line)])).unwrap().reads_messages();
+        assert!(reads("A1 UID SEARCH 1:9 TEXT plan"));
+        assert!(reads("A1 UID SEARCH 1:9 FROM anna"));
+        assert!(reads("A1 UID SEARCH 1:9 X-GM-RAW plan"));
+        assert!(!reads("A1 UID SEARCH 1:9"));
+        assert!(!reads("A1 UID SEARCH 1:9 UNSEEN SINCE 1-Feb-2026"));
     }
 
     #[test]
