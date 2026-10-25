@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use tokio_rustls::rustls::ClientConfig;
 
-pub use capability::{Capabilities, Moving};
+pub use capability::{Capabilities, Literals, Moving, Searching};
 pub use error::SessionError;
 pub(crate) use error::io_error;
 pub use guard::{MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
@@ -32,10 +32,11 @@ pub use imap::ImapSession;
 pub use listing::{ListEntry, ListReturn, Listing, StatusEntry, StatusItems};
 pub use message::{
     BODY_WINDOW_BYTES, BodyPart, Disposition, FetchItems, FetchedMessage, FlagFetch, Flagged,
-    GmailItems, Leaf, MAX_FETCH_MESSAGES, MAX_FLAGGED, MAX_HEADER_BYTES, MAX_PART_FIELD_BYTES,
-    MAX_PART_FIELDS, MAX_PREVIEW_TEXT_BYTES, MAX_PREVIEWS, MAX_STORE_UIDS, MESSAGE_LIMIT, MoveAsk,
-    Moved, Multipart, PREVIEW_HEADER_BYTES, PartAsk, PartWindow, PreviewAsk, PreviewBytes,
-    QuotaRoot, Selected, StoreAsk, StoreItem, Structure, UidRange, Usage, Writable,
+    GmailItems, GmailSearch, Leaf, MAX_FETCH_MESSAGES, MAX_FLAGGED, MAX_HEADER_BYTES,
+    MAX_PART_FIELD_BYTES, MAX_PART_FIELDS, MAX_PREVIEW_TEXT_BYTES, MAX_PREVIEWS, MAX_STORE_UIDS,
+    MESSAGE_LIMIT, MoveAsk, Moved, Multipart, PREVIEW_HEADER_BYTES, PartAsk, PartWindow,
+    PreviewAsk, PreviewBytes, QuotaRoot, SEARCH_TERM_BYTES, SEARCH_TERMS, SearchAsk, Selected,
+    StoreAsk, StoreItem, Structure, UidRange, Usage, Writable,
 };
 pub use quota::MAX_QUOTA_ROOTS;
 pub(crate) use read::sendable_field;
@@ -211,6 +212,22 @@ pub trait Session: Sized + Send {
     /// As [`Session::list`]; `Protocol` as well when no mailbox is
     /// selected and past the UID limit of one folder.
     fn uid_list(&mut self) -> impl Future<Output = Result<Vec<u32>, SessionError>> + Send;
+
+    /// The UIDs of the selected mailbox that match every key of the ask,
+    /// highest first: `UID SEARCH` over the windows of
+    /// [`Session::uid_list`] (RFC 3501 section 6.4.4), every string of
+    /// the client a literal.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::uid_list`]; `BadCharset` when the server cannot
+    /// search in UTF-8. Before anything is sent, `Protocol` for an ask
+    /// [`SearchAsk::check`] refuses, a label that cannot go on the line, a
+    /// year outside four digits or a command past `MAX_COMMAND_BYTES`.
+    fn uid_search(
+        &mut self,
+        ask: &SearchAsk<'_>,
+    ) -> impl Future<Output = Result<Vec<u32>, SessionError>> + Send;
 
     /// `UID FETCH` of the header items for a range of the selected
     /// mailbox, with BODYSTRUCTURE and the Gmail items as `items` asks;

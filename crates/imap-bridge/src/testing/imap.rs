@@ -9,6 +9,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt};
 
+use super::command::{Reading, read as read_command};
 use super::messages::Conversation;
 use super::{
     Fake, GOOGLE_ERROR, Greeting, Lines, Listen, Mailboxes, Opening, PASSWORD, Phase, Protocol,
@@ -141,9 +142,14 @@ impl Protocol for Script {
     ) -> Option<S> {
         let (mut reader, mut writer) = open(self.opening(), phase, stream).await?;
         let mut conversation = Conversation::default();
+        let reading = Reading {
+            literals: self.mailboxes.literals(),
+            continuation: self.mailboxes.behavior.continuation,
+        };
         loop {
-            let line = read_line(&mut reader).await?;
-            record(lines, phase, &line);
+            let seen = |line: &str| record(lines, phase, line);
+            let received = read_command(&mut reader, &mut writer, reading, seen).await?;
+            let line = received.line();
             let (tag, command) = line.split_once(' ').unwrap_or((line.as_str(), ""));
             let verb = command
                 .split(' ')
@@ -194,6 +200,9 @@ impl Protocol for Script {
                     self.mailboxes.answer(&verb, command, tag)
                 }
                 "GETQUOTAROOT" if phase.is_tls() => self.mailboxes.quota_root(tag),
+                "UID" if phase.is_tls() && command.starts_with("UID SEARCH ") => {
+                    conversation.search(&self.mailboxes, &received, tag)
+                }
                 "EXAMINE" | "SELECT" | "UID" | "NOOP" if phase.is_tls() => {
                     if conversation.stalls(command, self.mailboxes.behavior) {
                         std::future::pending::<()>().await;

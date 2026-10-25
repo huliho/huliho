@@ -5,6 +5,8 @@
 //! The ways the scripted IMAP server misbehaves on a selected mailbox,
 //! each a switch a test sets.
 
+use super::command::Continuation;
+
 /// How the server misbehaves on a selected mailbox.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Behavior {
@@ -56,6 +58,14 @@ pub struct Behavior {
     /// the client does; a MOVE into the folder before that names the
     /// folder's own.
     pub renumbered_at: Option<usize>,
+    /// What a literal that waits for the continuation request gets.
+    pub continuation: Continuation,
+    /// The one charset a search runs in; a search in any other answers
+    /// NO with the `BADCHARSET` code (RFC 3501 section 6.4.4).
+    pub only_charset: Option<&'static str>,
+    /// Every UID SEARCH answers one SEARCH line of at least this many
+    /// bytes, its line break included.
+    pub search_bytes: Option<usize>,
 }
 
 /// How the server takes a write command.

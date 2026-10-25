@@ -3,16 +3,20 @@
 // Additional terms apply, see NOTICE.
 
 //! The checks against the compose Dovecot: the credentials, the mailbox
-//! pass, the JMAP methods reading what it wrote and the session's moves.
+//! pass, the JMAP methods reading what it wrote, the session's moves and
+//! its search.
 
 #![cfg(feature = "live-targets")]
 
 mod live_rig;
 
+use std::fmt::Write as _;
+
 use huliho_imap_bridge::mailboxes::sync;
 use huliho_imap_bridge::runtime::Link;
 use huliho_imap_bridge::session::{
-    MoveAsk, STEP_TIMEOUT, Session, SessionError, StatusItems, TlsMode,
+    Literals, MoveAsk, STEP_TIMEOUT, SearchAsk, Searching, Session, SessionError, StatusItems,
+    TlsMode,
 };
 use huliho_imap_bridge::smtp;
 use huliho_imap_bridge::sync::Cache;
@@ -37,6 +41,14 @@ const CREATED_NAME: &str = "Bijlagen é";
 /// mailbox the listing check would count.
 const MOVE_FOLDERS: (&str, &str) = ("Drafts", "Archive");
 const COPY_FOLDERS: (&str, &str) = ("Sent", "Trash");
+
+/// The folder the search check seeds; no other check works in it.
+const SEARCH_FOLDERS: (&str, &str) = ("Junk", "Junk");
+
+/// A word outside ASCII two seeded bodies carry and the sender two of
+/// the messages come from.
+const SEARCH_WORD: &str = "zoëquarter";
+const SEARCH_SENDER: &str = "anna.search@huliho.test";
 
 /// The checks that change the account take turns: a count the move
 /// checks change mid-pass is an update the listing check would read.
@@ -272,5 +284,98 @@ async fn dovecot_moves_by_copy_and_uid_expunge_and_keeps_a_message_another_clien
     assert_eq!(copied.uids, [(taken, arrived)]);
     session.logout().await.unwrap();
     swept(&mut editor, COPY_FOLDERS, "copy").await;
+    within(editor.logout()).await.unwrap();
+}
+
+/// The second connection with the three messages of the search check in
+/// its folder: the word from the sender, the word alone and the sender
+/// alone.
+async fn seeded() -> Editor {
+    let mut editor = editor().await;
+    swept(&mut editor, SEARCH_FOLDERS, "search").await;
+    // No folder stays selected while the messages go in: the client
+    // library reads any line ahead of the continuation request as a
+    // failed append.
+    within(editor.close()).await.unwrap();
+    let bodies = [
+        (1, SEARCH_SENDER, format!("The {SEARCH_WORD} begins.")),
+        (2, USER, format!("The {SEARCH_WORD} ends.")),
+        (3, SEARCH_SENDER, "Nothing to report.".to_owned()),
+    ];
+    for (number, from, body) in bodies {
+        let message = format!(
+            "From: {from}\r\nTo: {USER}\r\nSubject: search {number}\r\nMessage-ID: <search-{number}@huliho.test>\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n{body}\r\n"
+        );
+        within(editor.append(SEARCH_FOLDERS.0, None, None, message))
+            .await
+            .unwrap();
+    }
+    editor
+}
+
+/// What the second connection's own UID SEARCH answers for the text and
+/// the sender, highest first: the word as a literal, the sender quoted.
+async fn searched_by_hand(editor: &mut Editor, text: &str, from: &str) -> Vec<u32> {
+    let mut query = String::from("CHARSET UTF-8");
+    if !text.is_empty() {
+        let _ = write!(query, " TEXT {{{}+}}\r\n{text}", text.len());
+    }
+    if !from.is_empty() {
+        let _ = write!(query, " FROM \"{from}\"");
+    }
+    let mut uids: Vec<u32> = within(editor.uid_search(&query))
+        .await
+        .unwrap()
+        .into_iter()
+        .collect();
+    uids.sort_unstable_by(|a, b| b.cmp(a));
+    uids
+}
+
+#[tokio::test]
+async fn dovecot_searches_a_word_and_a_sender_in_both_literal_forms_as_a_second_client_does_rfc3501_6_4_4()
+ {
+    let _account = ACCOUNT.lock().await;
+    let mut editor = seeded().await;
+    within(editor.select(SEARCH_FOLDERS.0)).await.unwrap();
+    let mut seeded_uids = Vec::new();
+    for number in 1..=3 {
+        seeded_uids.push(uid_of(&mut editor, "search", number).await);
+    }
+    let mut session = bridge_session().await;
+    let searching = session.capabilities().await.unwrap().searching();
+    assert_eq!(searching.literals, Literals::Plus);
+    session.examine(SEARCH_FOLDERS.0).await.unwrap();
+    let sender = "anna.search";
+    let cases: [(&str, &str, &[usize]); 3] = [
+        (SEARCH_WORD, "", &[1, 2]),
+        ("", sender, &[1, 3]),
+        (SEARCH_WORD, sender, &[1]),
+    ];
+    for literals in [Literals::Plus, Literals::Synchronizing] {
+        for (text, from, numbers) in cases {
+            let mut wanted: Vec<u32> = numbers.iter().map(|n| seeded_uids[n - 1]).collect();
+            wanted.sort_unstable_by(|a, b| b.cmp(a));
+            let ask = SearchAsk {
+                text,
+                from,
+                unseen: false,
+                flagged: false,
+                since: None,
+                before: None,
+                gmail: None,
+                server: Searching {
+                    literals,
+                    ..searching
+                },
+            };
+            let found = session.uid_search(&ask).await.unwrap();
+            assert_eq!(found, wanted, "{literals:?} {text:?} {from:?}");
+            let own = searched_by_hand(&mut editor, text, from).await;
+            assert_eq!(own, wanted, "{text:?} {from:?}");
+        }
+    }
+    session.logout().await.unwrap();
+    swept(&mut editor, SEARCH_FOLDERS, "search").await;
     within(editor.logout()).await.unwrap();
 }

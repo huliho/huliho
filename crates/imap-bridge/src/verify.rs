@@ -71,7 +71,9 @@ impl From<SessionError> for VerifyError {
                 Self::Insecure(error)
             }
             SessionError::AuthUnavailable => Self::AuthUnavailable,
-            SessionError::Protocol(_) | SessionError::Refused => Self::Unsupported(error),
+            SessionError::Protocol(_) | SessionError::Refused | SessionError::BadCharset => {
+                Self::Unsupported(error)
+            }
         }
     }
 }
@@ -143,6 +145,11 @@ mod tests {
         assert!(matches!(
             refused,
             VerifyError::Unsupported(SessionError::Refused)
+        ));
+        let charset: VerifyError = SessionError::BadCharset.into();
+        assert!(matches!(
+            charset,
+            VerifyError::Unsupported(SessionError::BadCharset)
         ));
         let rejected: VerifyError = SessionError::CredentialRejected.into();
         assert!(matches!(rejected, VerifyError::CredentialRejected));

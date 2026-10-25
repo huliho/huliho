@@ -416,6 +416,22 @@ before anything is sent. `Email/set` sends the moves and the expunge;
 the mailbox pass sends the quota root where QUOTA is advertised, last
 in a refresh, so a quota the server cannot describe costs no folder.
 
+`uid_search` asks `UID SEARCH` with criteria over the same windows of
+sequence numbers as the UID list, newest first (RFC 3501 section
+6.4.4): a TEXT key per term of the text and a FROM key per term of the
+sender, a run in double quotes one term, then UNSEEN, FLAGGED, SINCE
+and BEFORE. Every string of the client goes on the line as a literal
+with its byte count, never bare or quoted. It goes without waiting where
+the server advertises LITERAL+ or, up to 4096 bytes, LITERAL- (RFC
+7888); otherwise it waits for the continuation request. A term past 256
+bytes, more than eight terms or a NUL is refused before anything is
+sent (`SearchAsk::check`). On Gmail the text and the sender go as one
+X-GM-RAW string and a label as X-GM-LABELS. `CHARSET UTF-8` goes out
+once per command, right after `UID SEARCH`, when the command carries a
+literal. A NO with the `BADCHARSET` code reads as
+`SessionError::BadCharset`. `Capabilities::searching` says which form
+the literals take and whether the Gmail keys apply.
+
 The rows live in `bridge_` tables inside the host's database.
 `store::MIGRATIONS` carries their schema for the host's migration list
 as two migrations, the tables and then the index on the message ids by
@@ -482,12 +498,20 @@ target and name them in `COPYUID`, UID EXPUNGE removes what its set
 marked `\Deleted`, GETQUOTAROOT answers the lines a test writes (an
 inbox under no root by default; a refusal on request) and a folder can
 open `[READ-ONLY]` or show another
-UIDVALIDITY on one SELECT. Misbehavior is a switch as well:
+UIDVALIDITY on one SELECT. UID SEARCH reads its window of sequence
+numbers with the keys CHARSET, TEXT, FROM, UNSEEN, FLAGGED, SINCE and
+BEFORE; a string comes as an atom, quoted or as a literal. The Gmail
+mode adds X-GM-RAW and X-GM-LABELS. LITERAL+ and LITERAL- are switches
+too: the Dovecot shape carries LITERAL+, the Gmail mode LITERAL-. A
+literal the script does not read without its continuation request is
+read whole and answered BAD. Misbehavior is a switch as well:
 volunteered lines, a connection that drops, a MODSEQ item, a NO in raw
 UTF-8, messages that leave between two searches, the Gmail items
 volunteered unasked, a STORE or a move that is refused, answered BAD,
-dropped or never answered, a `COPYUID` of the test's own words plus an
-EXAMINE answer without EXISTS. Its `Mailboxes`
+dropped or never answered, a `COPYUID` of the test's own words, a
+continuation request withheld or refused, a search in one charset
+alone, a SEARCH line padded to a size plus an EXAMINE answer without
+EXISTS. Its `Mailboxes`
 stand in for a second client between two passes: a message appended,
 one expunged by UID, the flags of one replaced, the counts and the
 mod-sequences following. Its Gmail mode

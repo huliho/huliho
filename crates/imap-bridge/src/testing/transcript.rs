@@ -189,26 +189,9 @@ pub fn split_tag(line: &str) -> (&str, &str) {
 /// the server left or a run of text or a literal passes
 /// `MAX_LITERAL_BYTES`.
 pub async fn read_line<R: AsyncBufRead + Unpin>(reader: &mut R) -> Option<Line> {
-    let bounded = u64::try_from(MAX_LITERAL_BYTES)
-        .unwrap_or(u64::MAX)
-        .saturating_add(1);
     let mut segments = Vec::new();
     loop {
-        let mut buffer = Vec::new();
-        let read = (&mut *reader)
-            .take(bounded)
-            .read_until(b'\n', &mut buffer)
-            .await
-            .ok()?;
-        if read == 0 || buffer.len() > MAX_LITERAL_BYTES {
-            return None;
-        }
-        while buffer
-            .last()
-            .is_some_and(|byte| matches!(byte, b'\r' | b'\n'))
-        {
-            buffer.pop();
-        }
+        let buffer = bounded_line(reader).await?;
         let Some((marker, size)) = literal_size(&buffer) else {
             if !buffer.is_empty() || segments.is_empty() {
                 segments.push(Segment::Text(lossy(&buffer)));
@@ -225,6 +208,30 @@ pub async fn read_line<R: AsyncBufRead + Unpin>(reader: &mut R) -> Option<Line> 
             literal: lossy(&literal),
         });
     }
+}
+
+/// One line without its line ending; `None` when the peer left or the
+/// line passes `MAX_LITERAL_BYTES`.
+pub(super) async fn bounded_line<R: AsyncBufRead + Unpin>(reader: &mut R) -> Option<Vec<u8>> {
+    let bounded = u64::try_from(MAX_LITERAL_BYTES)
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    let mut buffer = Vec::new();
+    let read = (&mut *reader)
+        .take(bounded)
+        .read_until(b'\n', &mut buffer)
+        .await
+        .ok()?;
+    if read == 0 || buffer.len() > MAX_LITERAL_BYTES {
+        return None;
+    }
+    while buffer
+        .last()
+        .is_some_and(|byte| matches!(byte, b'\r' | b'\n'))
+    {
+        buffer.pop();
+    }
+    Some(buffer)
 }
 
 /// Where a size marker closes the line and the size it names (RFC 3501

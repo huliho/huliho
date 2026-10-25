@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! The message model of the scripted IMAP server: EXAMINE, SELECT, UID
-//! SEARCH over a window of sequence numbers, NOOP, UID FETCH and UID
-//! STORE over the mail of a folder, with the ways a server misbehaves
-//! as switches. UID MOVE, UID COPY and UID EXPUNGE go to the mailbox
-//! model.
+//! The message model of the scripted IMAP server: EXAMINE, SELECT, NOOP,
+//! UID FETCH and UID STORE over the mail of a folder, with the ways a
+//! server misbehaves as switches. UID SEARCH answers from `search`; UID
+//! MOVE, UID COPY and UID EXPUNGE go to the mailbox model.
+
+pub mod search;
 
 use std::fmt::Write as _;
 
@@ -259,11 +260,6 @@ impl Conversation {
             }
         } else if command == "NOOP" {
             Some(String::new())
-        } else if let Some(window) = command.strip_prefix("UID SEARCH ") {
-            let Some(lines) = self.search(mailboxes, window) else {
-                return Some(format!("{tag} BAD no such sequence number\r\n"));
-            };
-            Some(lines)
         } else if let Some(rest) = command.strip_prefix("UID FETCH ") {
             if behavior.drops_after == Some(self.fetches) {
                 return None;
@@ -365,28 +361,6 @@ impl Conversation {
             "* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n{permanent}{exists}* 0 RECENT\r\n* OK [UIDVALIDITY {uid_validity}] UIDs valid\r\n* OK [UIDNEXT {}] Predicted next UID\r\n{modseq}",
             folder.uid_next
         ))
-    }
-
-    /// `<low>:<high>` in sequence numbers: the UIDs of that window, then
-    /// the expunges the behavior asks for. `None` for a number the
-    /// folder does not hold (RFC 3501 section 9).
-    fn search(&mut self, mailboxes: &Mailboxes, window: &str) -> Option<String> {
-        let folder = self.folder(mailboxes)?;
-        let (low, high) = window.split_once(':')?;
-        let (low, high): (usize, usize) = (low.parse().ok()?, high.parse().ok()?);
-        let found = folder.mail.get(low.checked_sub(1)?..high)?;
-        let uids: Vec<String> = found
-            .iter()
-            .map(|message| message.uid.to_string())
-            .collect();
-        let mut lines = format!("* SEARCH {}\r\n", uids.join(" "));
-        let leaving = mailboxes.behavior.expunges.min(folder.mail.len());
-        if !self.searched && leaving > 0 {
-            mailboxes.expunge(&folder.name, leaving);
-            lines.push_str(&"* 1 EXPUNGE\r\n".repeat(leaving));
-        }
-        self.searched = true;
-        Some(lines)
     }
 
     fn folder(&self, mailboxes: &Mailboxes) -> Option<Folder> {
