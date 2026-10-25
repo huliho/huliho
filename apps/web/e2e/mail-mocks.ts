@@ -10,6 +10,7 @@ import { answerCalls, asksBody, asksSet, noteArrival, serverFor } from "./mail-a
 import type { Invocation, MailServer } from "./mail-answers";
 import { UPSTREAM, arrive, corpusFor } from "./mail-corpus";
 import type { Corpus, CorpusEmail } from "./mail-corpus";
+import { asksSearch } from "./mail-search";
 import { mockPolicies } from "./policy-mocks";
 import type { PolicyStore } from "./policy-mocks";
 
@@ -207,13 +208,18 @@ export interface MockedMail {
 }
 
 // A body request, held while the server holds and answered with the
-// limit problem while the server limits; a write held while the server
-// holds writes; any other request is answered at once.
+// limit problem while the server limits; a write or a search held while
+// the server holds those; any other request is answered at once.
 async function answered(server: MailServer, route: Route): Promise<void> {
   const asked = calls(route);
   if (asksSet(asked) && server.holdSets) {
     await new Promise<void>((resolve) => {
       server.heldSets.push(resolve);
+    });
+  }
+  if (asksSearch(asked) && server.holdSearches) {
+    await new Promise<void>((resolve) => {
+      server.heldSearches.push(resolve);
     });
   }
   if (asksBody(asked)) {

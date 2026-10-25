@@ -12,6 +12,7 @@ import {
 import { z } from "../schema";
 import { FakeMethods } from "./fake-methods";
 import type { Change, Kind, Type } from "./fake-methods";
+import { asksSearch } from "./fake-search";
 import { ACCOUNT, MethodError, UPSTREAM } from "./fake-wire";
 import type { Args, Invocation } from "./fake-wire";
 import { passesProxy, recountMailboxes } from "./fake-writes";
@@ -40,6 +41,15 @@ function bodyOf(init: RequestInit): unknown {
   }
   const body: unknown = JSON.parse(init.body);
   return body;
+}
+
+// What fetch rejects with once its signal aborts: the signal's reason,
+// an AbortError unless the caller gave one.
+function abortReason(signal: AbortSignal): Error {
+  const reason: unknown = signal.reason;
+  return reason instanceof Error
+    ? reason
+    : new DOMException("The request was aborted", "AbortError");
 }
 
 const requestSchema = z.object({
@@ -154,9 +164,33 @@ export class FakeJmap {
   quota = false;
   quotaAccount = true;
   sessionState = "s1";
+  // Whether a request that searches waits for releaseSearches; an abort
+  // of its signal rejects it the way fetch does.
+  holdSearches = false;
+  // The method error a search's query answers in place of its results.
+  searchError: string | null = null;
+  private readonly held: (() => void)[] = [];
 
-  readonly fetch: typeof fetch = (input, init) =>
-    Promise.resolve(this.handle(urlOf(input), init ?? {}));
+  readonly fetch: typeof fetch = (input, init) => {
+    const recorded = this.record(urlOf(input), init ?? {});
+    if (this.holdSearches && asksSearch(recorded.body)) {
+      return this.hold(recorded, init?.signal ?? null);
+    }
+    return Promise.resolve(this.respond(recorded));
+  };
+
+  // How many requests that search wait to be answered.
+  get waiting(): number {
+    return this.held.length;
+  }
+
+  // Answers every waiting search and holds no more.
+  releaseSearches(): void {
+    this.holdSearches = false;
+    for (const go of this.held.splice(0)) {
+      go();
+    }
+  }
 
   // The POST bodies sent so far, as the calls they carried.
   posted(): Invocation[][] {
@@ -231,10 +265,38 @@ export class FakeJmap {
     this.changes.push({ sequence: this.sequence, type, id, kind });
   }
 
-  private handle(url: string, init: RequestInit): Response {
-    const body = bodyOf(init);
-    const headers = new Headers(init.headers);
-    this.requests.push({ method: init.method ?? "GET", url, headers, body });
+  private record(url: string, init: RequestInit): Recorded {
+    const recorded = {
+      method: init.method ?? "GET",
+      url,
+      headers: new Headers(init.headers),
+      body: bodyOf(init),
+    };
+    this.requests.push(recorded);
+    return recorded;
+  }
+
+  private hold(recorded: Recorded, signal: AbortSignal | null): Promise<Response> {
+    return new Promise((answer, refuse) => {
+      const go = (): void => {
+        answer(this.respond(recorded));
+      };
+      if (signal?.aborted === true) {
+        refuse(abortReason(signal));
+        return;
+      }
+      this.held.push(go);
+      signal?.addEventListener("abort", () => {
+        const index = this.held.indexOf(go);
+        if (index >= 0) {
+          this.held.splice(index, 1);
+          refuse(abortReason(signal));
+        }
+      });
+    });
+  }
+
+  private respond({ url, headers, body }: Recorded): Response {
     const canned = this.queue.shift();
     if (canned !== undefined) {
       return canned;

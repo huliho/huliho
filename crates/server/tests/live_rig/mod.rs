@@ -6,11 +6,15 @@
 //! an instance on the compose rules with the bridge on quick clocks, one
 //! account per target and the JMAP calls a step makes. The second
 //! connection that edits the mailbox is `second`; the steps of a
-//! message that is opened are `reading`.
+//! message that is opened are `reading`; an account that holds the
+//! latency corpus is `synced`; the searches of that corpus are
+//! `searching`.
 
 pub mod corpus;
 pub mod reading;
+pub mod searching;
 mod second;
+mod synced;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -32,6 +36,7 @@ use serde_json::{Value, json};
 use tokio::time::sleep;
 
 pub use second::{Editor, clear, editor, expunge, flag, seed, seed_rich, seen, within};
+pub use synced::{Synced, leave};
 
 use crate::answers::answer;
 use crate::common::{api_state, router_on, router_with};
@@ -45,14 +50,31 @@ const CYRUS_JMAP_PORT: u16 = 8443;
 const CYRUS_IMAPS_PORT: u16 = 9993;
 const DOVECOT_IMAPS_PORT: u16 = 31993;
 const DOVECOT_SUBMISSION_PORT: u16 = 31587;
+const PLAIN_IMAPS_PORT: u16 = 32093;
+const PLAIN_SUBMISSION_PORT: u16 = 31687;
 
-/// The one user of both targets.
+/// The one user of every target.
 const MAIL_ADDRESS: &str = "sanne@huliho.test";
 const MAIL_PASSWORD: &str = "password";
 
 /// The variable that sizes the latency corpus and its default.
 pub const CORPUS_VARIABLE: &str = "HULIHO_LIVE_CORPUS";
 const DEFAULT_CORPUS: u32 = 500;
+
+/// How many windows a latency bound is measured on after the warm-up.
+pub const MEASURED_WINDOWS: usize = 5;
+
+/// The properties a list window asks for.
+pub const LIST_PROPERTIES: [&str; 8] = [
+    "id",
+    "threadId",
+    "mailboxIds",
+    "keywords",
+    "receivedAt",
+    "subject",
+    "from",
+    "hasAttachment",
+];
 
 /// How long one look waits for the bridge to notice a change; its
 /// refresh is due after as long.
@@ -64,10 +86,13 @@ pub const LOOKS: usize = 30;
 /// How many looks after a failed round the bridge tries again.
 const RETRY_LOOKS: u32 = 5;
 
+/// The compose targets: Cyrus over JMAP, the Dovecot with a search index
+/// and the Dovecot without one, both through the bridge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Target {
     Cyrus,
     Dovecot,
+    DovecotPlain,
 }
 
 impl Target {
@@ -75,13 +100,23 @@ impl Target {
         match self {
             Self::Cyrus => CYRUS_IMAPS_PORT,
             Self::Dovecot => DOVECOT_IMAPS_PORT,
+            Self::DovecotPlain => PLAIN_IMAPS_PORT,
         }
     }
 
     /// Whether requests answer from the bridge's cache, which the sync
     /// fills over time.
     pub fn is_bridge(self) -> bool {
-        self == Self::Dovecot
+        self != Self::Cyrus
+    }
+
+    /// The submission port of a Dovecot.
+    fn submission_port(self) -> u16 {
+        if self == Self::DovecotPlain {
+            PLAIN_SUBMISSION_PORT
+        } else {
+            DOVECOT_SUBMISSION_PORT
+        }
     }
 
     /// The body `POST /api/accounts` takes for the fixture user's
@@ -92,11 +127,11 @@ impl Target {
                 "kind": "jmap",
                 "sessionUrl": format!("https://{HOST}:{CYRUS_JMAP_PORT}/jmap"),
             }),
-            Self::Dovecot => json!({
+            Self::Dovecot | Self::DovecotPlain => json!({
                 "kind": "imap",
                 "username": MAIL_ADDRESS,
-                "imap": { "host": HOST, "port": DOVECOT_IMAPS_PORT, "tls": "implicit" },
-                "smtp": { "host": HOST, "port": DOVECOT_SUBMISSION_PORT, "tls": "starttls" },
+                "imap": { "host": HOST, "port": self.imaps_port(), "tls": "implicit" },
+                "smtp": { "host": HOST, "port": self.submission_port(), "tls": "starttls" },
             }),
         };
         json!({
@@ -201,6 +236,15 @@ impl Live {
     /// The arguments of the first response to one call; a method error
     /// fails the test.
     pub async fn call(&self, mail: &Mail, method: &str, arguments: Value) -> Value {
+        let (name, answered) = self.answer(mail, method, arguments).await;
+        assert_eq!(name, method, "{answered}");
+        answered
+    }
+
+    /// The name and the arguments of the first response to one call: the
+    /// method's own name, or `error` with the error's type (RFC 8620
+    /// section 3.6.2).
+    pub async fn answer(&self, mail: &Mail, method: &str, arguments: Value) -> (String, Value) {
         let mut using = vec![CORE_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY];
         if mail.vendor {
             using.push(HULIHO_CAPABILITY);
@@ -209,8 +253,8 @@ impl Live {
         let (status, mut answer) = self.post(&format!("/api/jmap/{}", mail.id), &body).await;
         assert_eq!(status, StatusCode::OK, "{answer}");
         let mut response = answer["methodResponses"][0].take();
-        assert_eq!(response[0], method, "{response}");
-        response[1].take()
+        let name = response[0].as_str().unwrap_or_default().to_owned();
+        (name, response[1].take())
     }
 
     pub async fn mailboxes(&self, mail: &Mail) -> Vec<Value> {

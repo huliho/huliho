@@ -6,6 +6,7 @@ import type { EmailHeader } from "../jmap/schemas";
 import { z } from "../schema";
 import type { FakeJmap } from "./fake-jmap";
 import { quotaAccount, quotaGet } from "./fake-quota";
+import { isSearch, matcherOf } from "./fake-search";
 import { MethodError, UPSTREAM } from "./fake-wire";
 import type { Args } from "./fake-wire";
 import { bodyOf, emailSet } from "./fake-writes";
@@ -30,7 +31,7 @@ const comparatorSchema = z.object({ property: z.string(), isAscending: z.optiona
 
 const queryArgsSchema = z.object({
   accountId: z.string(),
-  filter: z.unknown(),
+  filter: z.optional(z.unknown()),
   sort: z.optional(z.array(comparatorSchema)),
   position: z.optional(z.int()),
   anchor: z.optional(z.string()),
@@ -39,8 +40,6 @@ const queryArgsSchema = z.object({
   calculateTotal: z.optional(z.boolean()),
   collapseThreads: z.optional(z.boolean()),
 });
-
-const filterSchema = z.strictObject({ inMailbox: z.string(), notKeyword: z.optional(z.string()) });
 
 const changesArgsSchema = z.object({ accountId: z.string(), sinceState: z.string() });
 
@@ -173,15 +172,14 @@ export class FakeMethods {
 
   private emailQuery(raw: Args): Args {
     const args = parse(queryArgsSchema, raw);
-    const filter = filterSchema.safeParse(args.filter);
-    if (!filter.success) {
-      throw new MethodError("unsupportedFilter");
+    const failure = this.server.searchError;
+    if (failure !== null && isSearch(args.filter)) {
+      throw new MethodError(failure);
     }
-    const { inMailbox, notKeyword } = filter.data;
+    const keeps = matcherOf(args.filter);
     const ascending = direction(args.sort ?? []);
     const rows = [...this.server.emails.values()]
-      .filter((row) => inMailbox in row.mailboxIds)
-      .filter((row) => notKeyword === undefined || !(notKeyword in row.keywords))
+      .filter(keeps)
       .toSorted((a, b) => order(a, b, ascending));
     const ids = args.collapseThreads === true ? collapse(rows) : rows.map((row) => row.id);
     const position = start(args, ids);

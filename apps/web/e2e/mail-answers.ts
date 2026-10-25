@@ -3,13 +3,14 @@
 // Additional terms apply, see NOTICE.
 
 // The JMAP methods the cache calls, answered from a corpus: the query
-// with its anchor, collapse and keyword filters, the gets by id or by
-// reference with the body of a message, the writes, the changes since a
-// state, the mailbox list and the quotas.
+// of a mailbox window or a search with its anchor and collapse, the gets
+// by id or by reference with the body of a message, the writes, the
+// changes since a state, the mailbox list and the quotas.
 
 import { bodyOf, bodyPropertiesOf } from "./mail-bodies";
 import { UPSTREAM, emailObject } from "./mail-corpus";
 import type { Corpus, CorpusEmail } from "./mail-corpus";
+import { isSearch, searchIds } from "./mail-search";
 import { emailSet } from "./mail-writes";
 
 type Args = Record<string, unknown>;
@@ -48,6 +49,11 @@ export interface MailServer {
   heldSets: (() => void)[];
   // How many body requests still answer the limit problem.
   limitBodies: number;
+  // Whether a request that searches waits until released, and the ones waiting.
+  holdSearches: boolean;
+  heldSearches: (() => void)[];
+  // The method error a search answers in place of its results.
+  searchError: string | null;
   // The account's quotas, null for an account without the capability.
   quotas: Record<string, unknown>[] | null;
 }
@@ -71,6 +77,9 @@ export function serverFor(
     holdSets: false,
     heldSets: [],
     limitBodies: 0,
+    holdSearches: false,
+    heldSearches: [],
+    searchError: null,
     quotas,
   };
 }
@@ -104,6 +113,14 @@ export function asksSet(calls: readonly Invocation[]): boolean {
 export function releaseSets(server: MailServer): void {
   server.holdSets = false;
   for (const go of server.heldSets.splice(0)) {
+    go();
+  }
+}
+
+// Lets every held search through and holds no more.
+export function releaseSearches(server: MailServer): void {
+  server.holdSearches = false;
+  for (const go of server.heldSearches.splice(0)) {
     go();
   }
 }
@@ -241,13 +258,12 @@ const HELD_KEYWORDS = new Map<string, (message: CorpusEmail) => boolean>([
   ["$flagged", (message) => message.flagged],
 ]);
 
-// The one filter shape the cache asks (RFC 8621 section 4.4.1): a
-// mailbox, with a keyword it must have or lack.
+// The filter of a mailbox window (RFC 8621 section 4.4.1): a mailbox
+// with a keyword it must have or lack; any other filter is a search.
 function filterOf(server: MailServer, filter: unknown): (id: string) => boolean {
   const fields = new Map(Object.entries(isRecord(filter) ? filter : {}));
   const mailboxId = fields.get("inMailbox");
-  const known = new Set(["inMailbox", "hasKeyword", "notKeyword"]);
-  if (typeof mailboxId !== "string" || [...fields.keys()].some((key) => !known.has(key))) {
+  if (typeof mailboxId !== "string") {
     throw new Error("unsupportedFilter");
   }
   const has = HELD_KEYWORDS.get(String(fields.get("hasKeyword")));
@@ -262,14 +278,26 @@ function filterOf(server: MailServer, filter: unknown): (id: string) => boolean 
   };
 }
 
-function emailQuery(server: MailServer, args: Args): Args {
-  const filter = args["filter"];
+// The ids of a mailbox window, from the mailbox's own list.
+function windowIds(server: MailServer, filter: unknown, collapse: boolean): string[] {
   const keep = filterOf(server, filter);
   const mailboxId = String(
     new Map(Object.entries(isRecord(filter) ? filter : {})).get("inMailbox"),
   );
   const list = server.corpus.lists.get(mailboxId) ?? { ids: [], exemplars: [] };
-  const ids = (args["collapseThreads"] === true ? list.exemplars : list.ids).filter(keep);
+  return (collapse ? list.exemplars : list.ids).filter(keep);
+}
+
+function emailQuery(server: MailServer, args: Args): Args {
+  const filter = args["filter"];
+  const collapse = args["collapseThreads"] === true;
+  const search = isSearch(filter);
+  if (search && server.searchError !== null) {
+    throw new Error(server.searchError);
+  }
+  const ids = search
+    ? searchIds(server.corpus, filter, collapse)
+    : windowIds(server, filter, collapse);
   const position = startOf(args, ids);
   const asked = typeof args["limit"] === "number" ? args["limit"] : server.queryLimit;
   const limit = Math.min(asked, server.queryLimit);
