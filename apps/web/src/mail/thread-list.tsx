@@ -106,7 +106,8 @@ function factsOf(pages: ListPages, mailbox: Mailbox): Facts {
   return { ...facts, isEmpty: isEmptyList(facts) };
 }
 
-function LoadingRows({ locale }: { locale: Locale }) {
+// The still rows, as a search's results stand in for them too.
+export function LoadingRows({ locale }: { locale: Locale }) {
   return (
     <div role="status" className={styles.loading} aria-label={m.loading_label({}, { locale })}>
       {Array.from({ length: LOADING_ROWS }, (_, index) => (

@@ -8,7 +8,7 @@ import type { EmailHeader } from "../jmap/schemas";
 import { ACCOUNT, at, email } from "./fake-jmap";
 import { SENDER_SUGGESTIONS } from "./limits";
 import { MemoryMailStore } from "./memory";
-import { readSenders, sendersOf } from "./senders";
+import { foldText, readSenders, sendersOf, startsAWord } from "./senders";
 
 function from(id: string, seconds: number, name: string | null, address: string): EmailHeader {
   return { ...email(id, { receivedAt: at(seconds) }), from: [{ name, email: address }] };
@@ -63,4 +63,12 @@ test("most mail first, then the newest, at most the suggestions' cap; an empty p
     "p4@example.test",
     "p3@example.test",
   ]);
+});
+
+test("a text matches from its start or a word's start, in any case and without marks", () => {
+  expect(foldText("Zoë ÉCOLE")).toBe("zoe ecole");
+  expect(startsAWord("Projet École", "ecol")).toBe(true);
+  expect(startsAWord("Blom-Installatie", "INST")).toBe(true);
+  expect(startsAWord("Offertes", "ffer")).toBe(false);
+  expect(startsAWord("Offertes", "")).toBe(true);
 });

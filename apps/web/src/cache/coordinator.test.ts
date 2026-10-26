@@ -242,7 +242,7 @@ test("a failure reaches the tab with its code and cause", async () => {
   const page = await tab.window(ACCOUNT, "inbox", 0);
   expect(page).toEqual({
     ok: false,
-    failure: { code: "stopped", stopCause: "credentials", limit: null },
+    failure: { code: "stopped", stopCause: "credentials", limit: null, method: null },
   });
 });
 
@@ -338,7 +338,7 @@ test("work in flight when the database is cleared writes nothing after it", asyn
   answer.resolve(undefined);
   expect(await page).toEqual({
     ok: false,
-    failure: { code: "unauthenticated", stopCause: null, limit: null },
+    failure: { code: "unauthenticated", stopCause: null, limit: null, method: null },
   });
   await drained();
   expect(posted).toEqual([{ kind: "cleared", by: "tab-1" }]);

@@ -13,7 +13,7 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import { act, cleanup, render } from "@testing-library/react";
-import { afterEach, beforeEach, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, vi } from "vitest";
 
 import { dispatchKey } from "../commands/registry";
 import { stubWidthQueries } from "../shell/width-queries-rig";
@@ -21,6 +21,13 @@ import { ACCOUNTS, PROBE_INTERVAL_MINUTES } from "./fixtures";
 import { InboxRedirect } from "./inbox-redirect";
 import { MailShell } from "./mail-shell";
 import { MailboxPane } from "./mailbox-pane";
+import { prefetchMenus } from "./menus-chunk";
+import {
+  parseSearch,
+  searchRoute as searchRouteParams,
+  stringifySearch,
+} from "./search/route-params";
+import { SearchRoute } from "./search/search-route";
 import {
   FOOT_HEIGHT_FALLBACK_PX,
   ROW_HEIGHT_FALLBACK_PX,
@@ -41,6 +48,8 @@ const SESSION: SessionInfo = {
 
 // The frame's height, for the pane below the list.
 export const FRAME_HEIGHT_PX = 900;
+// Long enough for the test runner to transform the menus chunk once.
+const CHUNK_TIMEOUT_MS = 15_000;
 // The list's box in the test.
 const VIEW_HEIGHT_PX = 520;
 
@@ -97,14 +106,22 @@ export function renderShell(path: string, options: ShellOptions = {}) {
     component: MailboxPane,
   });
   const threadRoute = createRoute({ getParentRoute: () => mailboxRoute, path: "/$threadId" });
+  const searchRoute = createRoute({
+    getParentRoute: () => mailRoute,
+    path: "/search",
+    component: SearchRoute,
+    validateSearch: searchRouteParams,
+  });
   const router = createRouter({
     routeTree: rootRoute.addChildren([
       signedInRoute.addChildren([
         homeRoute,
-        mailRoute.addChildren([indexRoute, mailboxRoute.addChildren([threadRoute])]),
+        mailRoute.addChildren([indexRoute, searchRoute, mailboxRoute.addChildren([threadRoute])]),
       ]),
     ]),
     history: createMemoryHistory({ initialEntries: [path] }),
+    parseSearch,
+    stringifySearch,
   });
   const queryClient = options.client ?? new QueryClient();
   queryClient.setQueryData(queryKeys.session, SESSION);
@@ -133,10 +150,15 @@ export function rows(count: number): number {
   return TOOLBAR_HEIGHT_FALLBACK_PX + FOOT_HEIGHT_FALLBACK_PX + count * ROW_HEIGHT_FALLBACK_PX;
 }
 
-// The boxes and the media queries of the shell for every test of the
-// file: the desktop layout, a frame of the given height and a seam
-// that takes nothing of the flow.
+// The menus chunk, the boxes and the media queries of the shell for
+// every test of the file: the desktop layout, a frame of the given
+// height and a seam that takes nothing of the flow. The shell asks for
+// the chunk as it mounts, so it loads once up front and never inside a
+// test's wait.
 export function mockShellBox(): void {
+  beforeAll(async () => {
+    await prefetchMenus();
+  }, CHUNK_TIMEOUT_MS);
   beforeEach(() => {
     localStorage.clear();
     layout.wide = true;

@@ -10,12 +10,21 @@ import type {
   Mutation,
   PatchMutation,
   QuotaReading,
+  Sender,
   ThreadDetail,
   Undo,
 } from "@huliho/core";
 
 import type { CacheResult } from "./outcome";
 import type { Watch } from "./watches";
+
+// A page of a search as a tab asks it. A signal does not cross to the
+// worker, so the ticket names the call a cancel gives up.
+export interface SearchTicket {
+  locale: string;
+  again: boolean;
+  ticket: string;
+}
 
 // What a tab tells the worker: the accounts the session holds, when
 // that list was fetched, the mailbox it watches and whether the instance
@@ -39,6 +48,14 @@ export interface CacheApi {
   mailboxes(accountId: string): Promise<CacheResult<Mailbox[]>>;
   // A page crosses as the rows the list draws, made on this side.
   window(accountId: string, mailboxId: string, page: number): Promise<CacheResult<ListPage>>;
+  search(
+    accountId: string,
+    key: string,
+    page: number,
+    call: SearchTicket,
+  ): Promise<CacheResult<ListPage>>;
+  cancelSearch(ticket: string): Promise<void>;
+  senders(accountId: string, prefix: string): Promise<CacheResult<Sender[]>>;
   thread(accountId: string, threadId: string): Promise<CacheResult<ThreadDetail | null>>;
   reveal(accountId: string, mailboxId: string): Promise<CacheResult<void>>;
   body(

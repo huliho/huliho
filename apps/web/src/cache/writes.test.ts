@@ -325,7 +325,7 @@ test("a body request the server cannot answer reaches the tab as unavailable", a
   server.queue.push(json(200, { ...down, sessionState: "s1" }));
   expect(await tab.body(ACCOUNT, "e1", { large: false })).toEqual({
     ok: false,
-    failure: { code: "unavailable", stopCause: null, limit: null },
+    failure: { code: "unavailable", stopCause: null, limit: null, method: null },
   });
 });
 

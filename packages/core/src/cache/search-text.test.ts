@@ -7,7 +7,7 @@ import { expect, test } from "vitest";
 
 import { mailbox } from "./fake-jmap";
 import type { SearchParams } from "./search";
-import { parseQuery, queryOf } from "./search-text";
+import { parseQuery, queryOf, senderTerms } from "./search-text";
 import type { QueryContext } from "./search-text";
 
 function named(id: string, name: string, sortOrder = 10) {
@@ -179,4 +179,9 @@ test("two senders both count, and the text writes the operators first", () => {
   expect(queryOf({ q: "invoice", from: 'sanne "de Vries"', unread: true }, EN)).toBe(
     'from:sanne from:"de Vries" is:unread invoice',
   );
+});
+
+test("a sender splits into the terms `from:` writes, a quoted run as one", () => {
+  expect(senderTerms('sanne "de Vries" z@x.nl')).toEqual(["sanne", '"de Vries"', "z@x.nl"]);
+  expect(senderTerms("")).toEqual([]);
 });

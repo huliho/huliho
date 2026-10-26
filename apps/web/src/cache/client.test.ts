@@ -9,7 +9,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { TAB, applyCacheMessage } from "./client";
 import type { CacheListeners, JobMessage, RefusedMessage } from "./client";
 import { LEASE_RENEW_MS } from "./coordinator";
-import type { Lease } from "./coordinator";
+import type { CacheApi, Lease } from "./coordinator";
 import { CACHE_CHANNEL, readCacheMessage } from "./messages";
 import type { CacheResult } from "./outcome";
 
@@ -24,6 +24,8 @@ const NOTHING = { queryFn: () => Promise.resolve(1), staleTime: Number.POSITIVE_
 const MAIL_OF_A1 = [
   "a1/body/e1",
   "a1/mailboxes",
+  "a1/search/k1/en/0",
+  "a1/senders/pi",
   "a1/source/e1",
   "a1/thread/t1",
   "a1/window/inbox/0",
@@ -41,7 +43,10 @@ async function client(): Promise<QueryClient> {
     queryKeys.thread("a1", "t1"),
     queryKeys.body("a1", "e1"),
     queryKeys.source("a1", "e1"),
+    queryKeys.search("a1", "k1", "en", 0),
+    queryKeys.sendersFor("a1", "pi"),
     queryKeys.mailboxes("a2"),
+    queryKeys.search("a2", "k1", "en", 0),
     queryKeys.accounts,
   ];
   await Promise.all(keys.map((queryKey) => queryClient.query({ queryKey, ...NOTHING })));
@@ -70,7 +75,7 @@ function listeners() {
   } satisfies CacheListeners;
 }
 
-test("a change invalidates the tree, every page of a moved list and the named threads", async () => {
+test("a change invalidates the tree, every page of a moved list, the named threads and the account's searches and senders", async () => {
   const queryClient = await client();
   const heard = listeners();
   applyCacheMessage(
@@ -80,11 +85,23 @@ test("a change invalidates the tree, every page of a moved list and the named th
   );
   expect(stale(queryClient).toSorted()).toEqual([
     "a1/mailboxes",
+    "a1/search/k1/en/0",
+    "a1/senders/pi",
     "a1/thread/t1",
     "a1/window/inbox/0",
     "a1/window/inbox/1",
   ]);
   expect(heard.cleared).not.toHaveBeenCalled();
+});
+
+test("a change that moved nothing leaves the searches and the senders as they stand", async () => {
+  const queryClient = await client();
+  applyCacheMessage(
+    queryClient,
+    { kind: "changed", accountId: "a1", mailboxes: false, windows: [], threads: [] },
+    listeners(),
+  );
+  expect(stale(queryClient)).toEqual([]);
 });
 
 test("a database another tab cleared takes every mail query, nothing else, then hands over", async () => {
@@ -134,7 +151,11 @@ test("a worker on another store has every mail query read again and nothing else
   const queryClient = await client();
   const heard = listeners();
   applyCacheMessage(queryClient, { kind: "reset" }, heard);
-  expect(stale(queryClient).toSorted()).toEqual([...MAIL_OF_A1, "a2/mailboxes"]);
+  expect(stale(queryClient).toSorted()).toEqual([
+    ...MAIL_OF_A1,
+    "a2/mailboxes",
+    "a2/search/k1/en/0",
+  ]);
   expect(kept(queryClient)).toContain("accounts");
   expect(heard.cleared).not.toHaveBeenCalled();
 });
@@ -220,6 +241,8 @@ function fakeRemote() {
     mailboxes: vi.fn<(accountId: string) => Promise<CacheResult<unknown[]>>>(),
     body: vi.fn<(...call: unknown[]) => Promise<CacheResult<unknown>>>(),
     mutate: vi.fn<(...call: unknown[]) => Promise<CacheResult<void>>>(),
+    search: vi.fn<CacheApi["search"]>(),
+    cancelSearch: vi.fn<CacheApi["cancelSearch"]>(() => Promise.resolve()),
   };
 }
 
@@ -305,7 +328,7 @@ test("a read hands the worker's value through and turns its failure back into th
   await expect(windowSide.mailCache.mailboxes("a1")).resolves.toEqual([]);
   remote.mailboxes.mockResolvedValueOnce({
     ok: false,
-    failure: { code: "stopped", stopCause: "credentials", limit: null },
+    failure: { code: "stopped", stopCause: "credentials", limit: null, method: null },
   });
   const failed = await windowSide.mailCache.mailboxes("a1").catch((error: unknown) => error);
   expect(failed).toBeInstanceOf(Error);
@@ -329,11 +352,49 @@ test("a body and a change cross to the worker with what the caller named", async
   expect(remote.mutate).toHaveBeenCalledExactlyOnceWith("a1", mutation);
   remote.mutate.mockResolvedValueOnce({
     ok: false,
-    failure: { code: "unavailable", stopCause: null, limit: null },
+    failure: { code: "unavailable", stopCause: null, limit: null, method: null },
   });
   await expect(windowSide.mailCache.mutate("a1", mutation)).rejects.toMatchObject({
     code: "unavailable",
   });
+});
+
+test("a method the server refused crosses as that method's error, its type intact", async () => {
+  const { remote, windowSide } = await page();
+  remote.search.mockResolvedValueOnce({
+    ok: false,
+    failure: {
+      code: "unavailable",
+      stopCause: null,
+      limit: null,
+      method: { type: "serverUnavailable", call: "q" },
+    },
+  });
+  const failed = await windowSide.mailCache
+    .search("a1", "k1", 0, { locale: "en" })
+    .catch((error: unknown) => error);
+  expect(failed).toMatchObject({ name: "MethodFailure", type: "serverUnavailable", call: "q" });
+});
+
+test("a search goes with a ticket, and its signal gives the call up there and here at once", async () => {
+  const { remote, windowSide } = await page();
+  remote.search.mockReturnValueOnce(new Promise(() => undefined));
+  const controller = new AbortController();
+  const asked = windowSide.mailCache.search("a1", "k1", 0, {
+    locale: "nl",
+    again: true,
+    signal: controller.signal,
+  });
+  const reason = new DOMException("given up", "AbortError");
+  controller.abort(reason);
+  await expect(asked).rejects.toBe(reason);
+  const [accountId, key, at, call] = remote.search.mock.calls[0] ?? [];
+  expect([accountId, key, at, call?.locale, call?.again]).toEqual(["a1", "k1", 0, "nl", true]);
+  expect(remote.cancelSearch).toHaveBeenCalledExactlyOnceWith(call?.ticket);
+  await expect(
+    windowSide.mailCache.search("a1", "k1", 0, { locale: "en", signal: controller.signal }),
+  ).rejects.toBe(reason);
+  expect(remote.search).toHaveBeenCalledOnce();
 });
 
 test("the listener hears the worker's messages on the channel and nothing else", async () => {

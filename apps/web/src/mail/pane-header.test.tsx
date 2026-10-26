@@ -120,8 +120,9 @@ test("the name stays plain where its menu would hold nothing", async () => {
   cleanup();
   stubWidthQueries({ wide: true });
   await header(boxOf("sent"));
-  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Sent");
-  expect(screen.queryByRole("button")).toBeNull();
+  const name = screen.getByRole("heading", { level: 1 });
+  expect(name.textContent).toBe("Sent");
+  expect(within(name).queryByRole("button")).toBeNull();
 });
 
 test("Junk holds Empty Junk under a rule, which asks the dialog with Cancel first", async () => {
@@ -302,8 +303,9 @@ test("the name's button leaving with the last unread hands the focus to the list
       {list}
     </>,
   );
-  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(NAME);
-  expect(screen.queryByRole("button")).toBeNull();
+  const name = screen.getByRole("heading", { level: 1 });
+  expect(name.textContent).toBe(NAME);
+  expect(within(name).queryByRole("button")).toBeNull();
   expect(document.activeElement).toBe(screen.getByLabelText("Threads"));
 });
 
@@ -319,6 +321,30 @@ test("a job no word of reaches for a while leaves the header", async () => {
     vi.advanceTimersByTime(JOB_LAPSE_MS);
   });
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(NAME);
+});
+
+test("the header's search button names its key and runs the search the shell registers", async () => {
+  stubWidthQueries({ wide: true });
+  const run = vi.fn<() => void>();
+  const unregister = registerCommand({
+    id: "search.open",
+    label: "Search mail",
+    group: "app",
+    keys: [{ key: "/" }],
+    run,
+  });
+  try {
+    await header();
+    const button = screen.getByRole("button", { name: "Search mail" });
+    expect(button.getAttribute("aria-keyshortcuts")).toBe("/");
+    run.mockImplementation(() => {
+      expect(document.activeElement).toBe(button);
+    });
+    fireEvent.click(button);
+    expect(run).toHaveBeenCalledOnce();
+  } finally {
+    unregister();
+  }
 });
 
 // The jobs as the palette lists them: each command's id and label.

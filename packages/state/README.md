@@ -13,9 +13,11 @@ cache message invalidates it. A mail query runs whatever the network
 does, since the cache answers from what it holds; one that failed asks
 again when the network comes back. Their keys start with the account id, so
 `[accountId, "mailboxes"]`, `[accountId, "window", mailboxId, page]`,
-`[accountId, "thread", threadId]`, `[accountId, "body", emailId]` and
-`[accountId, "quota"]` share a prefix per account and the words in
-second place mark a key as a mail key.
+`[accountId, "thread", threadId]`, `[accountId, "body", emailId]`,
+`[accountId, "quota"]`, `[accountId, "search", key, locale, page]` and
+`[accountId, "senders", prefix]` share a prefix per account and the
+words in second place mark a key as a mail key. A search stays as the
+server answered it until the user runs it again.
 
 `pnpm build` at the repo root compiles it; unit tests run with
 `pnpm test`.

@@ -73,6 +73,7 @@ function Shell(props: ShellProps): JSX.Element {
       tree={tree}
       currentMailboxId={currentMailboxId}
       currentThreadId={currentThreadId}
+      searching={false}
       onCloseThread={nothing}
     >
       {children}

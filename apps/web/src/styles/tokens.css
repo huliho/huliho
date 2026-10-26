@@ -89,6 +89,10 @@
   --hhx-toolbar-height: 44px;
   /* The key-hint strip at the foot of the list, counted in the list's height above the pane. */
   --hhx-foot-height: 36px;
+  /* The search field's text; under touch 16px, the least iOS Safari opens without zooming in. */
+  --hhx-type-field: var(--hhx-type-3);
+  /* An operator shortcut under the search field. */
+  --hhx-shortcut-height: 24px;
 
   --hhx-tracking-caps: 0.06em;
   /* The box of text that is read out and never drawn: the smallest one a screen reader keeps. */
@@ -160,6 +164,8 @@
   --hhx-pane-padding: 16px;
   --hhx-toolbar-height: 56px;
   --hhx-foot-height: 40px;
+  --hhx-type-field: 1rem;
+  --hhx-shortcut-height: 32px;
 }
 
 /* A touchscreen gets touch density at every width; a mouse-only device keeps its density. */
@@ -175,6 +181,8 @@
     --hhx-pane-padding: 16px;
     --hhx-toolbar-height: 56px;
     --hhx-foot-height: 40px;
+    --hhx-type-field: 1rem;
+    --hhx-shortcut-height: 32px;
   }
 }
 

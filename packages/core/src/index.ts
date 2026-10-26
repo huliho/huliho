@@ -45,7 +45,7 @@ export {
 export type { ActionTarget, ChangeVerb, MailAction, Offered } from "./actions";
 export { fitsAddress, fitsHostName } from "./address";
 export type { Authentication, AuthenticationResults, AuthVerdict } from "./auth-results";
-export type { BodyDetail, MailCache, ThreadDetail, Undo } from "./cache/api";
+export type { BodyDetail, MailCache, SearchCall, ThreadDetail, Undo } from "./cache/api";
 export { readBody } from "./cache/bodies";
 export { flushPending } from "./cache/flush";
 export type { Flushed } from "./cache/flush";
@@ -80,11 +80,11 @@ export {
 } from "./cache/search";
 export type { Scope } from "./cache/scope";
 export type { SearchParams } from "./cache/search";
-export { parseQuery, queryOf } from "./cache/search-text";
+export { parseQuery, queryOf, senderTerms } from "./cache/search-text";
 export type { QueryContext } from "./cache/search-text";
 export { searchWindow } from "./cache/search-window";
 export type { SearchAsk } from "./cache/search-window";
-export { readSenders, sendersOf } from "./cache/senders";
+export { foldText, pickSenders, readSenders, sendersOf, startsAWord } from "./cache/senders";
 export { treeOrder } from "./cache/tree-order";
 export {
   emailBodySchema,
@@ -118,7 +118,7 @@ export type { BlobRequest, DownloadSource } from "./download";
 export { BODY_VALUE_BYTES, BODY_VALUE_BYTES_LARGE } from "./jmap/body";
 export type { EmailBodyPart, EmailBodyValue } from "./jmap/body";
 export type { EmailFilter, ObjectType } from "./jmap/calls";
-export { JmapClient, JmapError, MethodFailure } from "./jmap/client";
+export { JmapClient, JmapError, MethodFailure, SERVER_UNAVAILABLE } from "./jmap/client";
 export type { JmapFailureCode, JmapSession } from "./jmap/client";
 export { HULIHO_CAPABILITY, emailHeaderSchema, mailboxSchema } from "./jmap/schemas";
 export type { EmailHeader, EmailState, Mailbox, Thread } from "./jmap/schemas";

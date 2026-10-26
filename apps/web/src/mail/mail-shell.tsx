@@ -10,7 +10,7 @@ import {
 } from "@huliho/state";
 import { useQuery } from "@tanstack/react-query";
 import type { UseQueryResult } from "@tanstack/react-query";
-import { Navigate, Outlet, useParams } from "@tanstack/react-router";
+import { Navigate, Outlet, useMatch, useParams, useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { mailCache } from "../cache/client";
@@ -22,6 +22,8 @@ import { useJumpCommands } from "./jump-commands";
 import { rememberLastAccount } from "./last-account";
 import { prefetchMenus } from "./menus-chunk";
 import { prefetchThreadPane } from "./reading-pane";
+import { useSearchCommand } from "./search/open-search";
+import { SEARCH_ROUTE_ID } from "./search/route-params";
 import { ShellFrame } from "./shell-frame";
 import type { TreeState } from "./tree";
 import { useCloseThread } from "./use-close-thread";
@@ -41,22 +43,38 @@ function treeState(query: UseQueryResult<Mailbox[]>): TreeState {
   return { status: "pending" };
 }
 
+// The mailbox the screen shows (a search shows the one it was opened
+// from) and whether the route is the search.
+function useShown(mailboxId: string | undefined): { shownId?: string; searching: boolean } {
+  const box = useSearch({ strict: false, select: (search) => search.box });
+  const searching = useMatch({ from: SEARCH_ROUTE_ID, shouldThrow: false }) !== undefined;
+  const shownId = mailboxId ?? box;
+  return shownId === undefined ? { searching } : { shownId, searching };
+}
+
 // The mail screen of one account: it leases the worker the accounts of
 // the session and the mailbox it shows, remembers the account for the
-// next visit, registers the jump to each mailbox and draws the frame
-// around the route's pane, with the thread the address names where the
-// reading pane preference puts it.
+// next visit, registers the jump to each mailbox and the search and
+// draws the frame around the route's pane, with the thread the address
+// names where the reading pane preference puts it.
 export function MailShell() {
   const locale = useLocale();
   const layout = useLayout();
   const { accountId } = useParams({ from: "/signed-in/mail/$accountId" });
   const { mailboxId, threadId } = useParams({ strict: false });
+  const { shownId, searching } = useShown(mailboxId);
   const closeThread = useCloseThread(accountId, mailboxId);
   const list = useQuery(accountsQueryOptions);
   const tree = useQuery(mailboxesQueryOptions(mailCache, accountId));
   const preferences = useQuery(preferencesQueryOptions);
-  useMailCache(mailboxId === undefined ? null : { accountId, mailboxId });
+  useMailCache(shownId === undefined ? null : { accountId, mailboxId: shownId });
   useJumpCommands(tree.data ?? null, { accountId, mailboxId, locale });
+  useSearchCommand(
+    accountId,
+    tree.data?.find((row) => row.id === shownId),
+    locale,
+    searching,
+  );
   useEffect(() => {
     rememberLastAccount(accountId);
   }, [accountId]);
@@ -81,8 +99,9 @@ export function MailShell() {
       accounts={accounts}
       account={account}
       tree={treeState(tree)}
-      currentMailboxId={mailboxId}
+      currentMailboxId={shownId}
       currentThreadId={threadId}
+      searching={searching}
       onCloseThread={closeThread}
     >
       <Outlet />

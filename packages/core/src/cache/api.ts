@@ -8,7 +8,7 @@ import type { Job } from "./jobs";
 import type { Mutation, PatchMutation } from "./pending";
 import type { QuotaReading } from "./quota";
 import type { ListPage } from "./rows";
-import type { EmailBody, ThreadRow } from "./store";
+import type { EmailBody, Sender, ThreadRow } from "./store";
 
 // A thread as the reading pane opens it: its row and the headers the
 // store holds for its emails.
@@ -31,13 +31,28 @@ export interface Undo {
   threads: string[];
 }
 
+// How a page of a search is asked: the locale the tree's names sort in,
+// whether the search runs anew and a signal that gives the request up.
+export interface SearchCall {
+  locale: string;
+  again?: boolean;
+  signal?: AbortSignal;
+}
+
 // The cache as a client reads it, whatever runs it: the mailbox tree, a
-// page of a list, a thread, the marker's action, the body of one email,
-// the changes to emails, the folder jobs and the quota. A failure throws
-// JmapError, so a caller reads the stop cause or the limit's name.
+// page of a list or of a search, the senders of the held mail, a thread,
+// the marker's action, the body of one email, the changes to emails, the
+// folder jobs and the quota. A failure throws JmapError, so a caller
+// reads the stop cause or the limit's name; a method the server refused
+// throws MethodFailure with its error type.
 export interface MailCache {
   mailboxes(accountId: string): Promise<Mailbox[]>;
   window(accountId: string, mailboxId: string, page: number): Promise<ListPage>;
+  // A page of the search the key names, as `searchKeyOf` writes it; a
+  // search given up rejects with the signal's reason.
+  search(accountId: string, key: string, page: number, call: SearchCall): Promise<ListPage>;
+  // The senders whose name or address starts with the prefix, most mail first.
+  senders(accountId: string, prefix: string): Promise<Sender[]>;
   thread(accountId: string, threadId: string): Promise<ThreadDetail | null>;
   reveal(accountId: string, mailboxId: string): Promise<void>;
   // `large` asks again at the large cap for a body the first ask cut

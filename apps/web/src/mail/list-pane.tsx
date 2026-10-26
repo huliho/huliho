@@ -10,6 +10,7 @@ import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { PaneBoundary } from "../shell/pane-boundary";
 import { PaneHeader } from "./pane-header";
+import { LoadingRows } from "./thread-list";
 import type { PanePosition } from "./thread-pane";
 import type { TreeState } from "./tree";
 import styles from "./list-pane.module.css";
@@ -29,6 +30,8 @@ interface ListPaneProps {
   size: number | null;
   // While a thread stands over the list as a screen, the list is out of reach.
   inert: boolean;
+  // The search brings its own header, the field in the name's slot.
+  searching: boolean;
   onOpenSidebar?: (() => void) | undefined;
   children: ReactNode;
 }
@@ -42,8 +45,9 @@ function sized(position: PanePosition, size: number | null): CSSProperties | und
 }
 
 // The list pane: the mailbox header over the route's body, or over the
-// error state when the tree did not load. A render failure in the body
-// stays inside it.
+// error state when the tree did not load. A search has no header, so the
+// list's still rows fill it while the tree is on its way. A render
+// failure in the body stays inside it.
 export function ListPane(props: ListPaneProps) {
   const { locale, tree, position, size } = props;
   const mailboxes = tree.status === "success" ? tree.mailboxes : [];
@@ -56,16 +60,19 @@ export function ListPane(props: ListPaneProps) {
       inert={props.inert || undefined}
       style={sized(position, size)}
     >
-      <PaneHeader
-        locale={locale}
-        cache={props.cache}
-        account={props.account}
-        mailbox={mailbox}
-        mailboxes={mailboxes}
-        pending={tree.status === "pending"}
-        onOpenSidebar={props.onOpenSidebar}
-      />
+      {!props.searching && (
+        <PaneHeader
+          locale={locale}
+          cache={props.cache}
+          account={props.account}
+          mailbox={mailbox}
+          mailboxes={mailboxes}
+          pending={tree.status === "pending"}
+          onOpenSidebar={props.onOpenSidebar}
+        />
+      )}
       <div className={styles.body}>
+        {tree.status === "pending" && props.searching && <LoadingRows locale={locale} />}
         {tree.status === "error" && (
           <ErrorState
             message={m.mail_error({}, { locale })}

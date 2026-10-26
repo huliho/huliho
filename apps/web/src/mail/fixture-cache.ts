@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import { pickSenders } from "@huliho/core";
 import type {
   BodyDetail,
   EmailHeader,
@@ -15,7 +16,7 @@ import type {
 } from "@huliho/core";
 
 import { previewDetail } from "./body-fixtures";
-import { MAILBOXES } from "./fixtures";
+import { MAILBOXES, SENDERS } from "./fixtures";
 
 // How a fixture cache answers a page: with rows, with a refusal or not at all.
 export type PageAnswer = ListPage | "never" | Error;
@@ -116,11 +117,12 @@ function recordedWrites(
   };
 }
 
-// A cache for stories and tests: pages by mailbox and number, threads
-// by id and bodies by email id, the key `<id>#large` for the ask at the
-// large cap; a message without a body of its own shows its preview as
-// text. The mailbox tree comes from the fixtures; every reveal and every
-// change is a no-op it records.
+// A cache for stories and tests: pages by mailbox and number, a search's
+// pages under `search:<key>/<number>`, threads by id and bodies by email
+// id, the key `<id>#large` for the ask at the large cap; a message
+// without a body of its own shows its preview as text. The mailbox tree
+// and the senders come from the fixtures; every reveal and every change
+// is a no-op it records.
 export function fixtureCache(
   pages: Record<string, PageAnswer>,
   threads: Record<string, ThreadAnswer> = {},
@@ -146,6 +148,13 @@ export function fixtureCache(
         ? Promise.resolve({ rows: [], total: 0, pending: 0 })
         : answered(answer);
     },
+    search: (_accountId, key, page) => {
+      const answer = pages[`search:${key}/${String(page)}`];
+      return answer === undefined
+        ? Promise.resolve({ rows: [], total: 0, pending: 0 })
+        : answered(answer);
+    },
+    senders: (_accountId, prefix) => Promise.resolve(pickSenders(SENDERS, prefix)),
     thread: (_accountId, threadId) => answered(held.get(threadId) ?? null),
     reveal: (_accountId, mailboxId) => {
       recorded.revealed.push(mailboxId);

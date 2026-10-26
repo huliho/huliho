@@ -22,6 +22,7 @@ import { useOnline } from "../shell/use-online";
 import { focusLost } from "./list-cursor";
 import { ListFoot } from "./list-foot";
 import { OfflineBanner } from "./offline-banner";
+import { takesReturn } from "./search/open-search";
 import {
   markedForList,
   markedFromMailbox,
@@ -198,6 +199,20 @@ function useJumpFocus({ accountId, mailboxId, list, empty }: JumpFocus): void {
   }, [target, path, accountId, mailboxId, list, empty, navigate]);
 }
 
+// A search opened from the list and closed again hands the focus back
+// into it once the list stands.
+function useSearchReturn(
+  ready: boolean,
+  list: RefObject<ListHandle | null>,
+  empty: RefObject<HTMLDivElement | null>,
+): void {
+  useLayoutEffect(() => {
+    if (ready && takesReturn("list")) {
+      focusList(list.current, empty.current);
+    }
+  }, [ready, list, empty]);
+}
+
 interface KnownEmptyProps {
   locale: Locale;
   online: boolean;
@@ -249,6 +264,7 @@ export function MailboxPane() {
     afterResume(listRef.current, emptyRef.current, held);
   });
   useJumpFocus({ accountId, mailboxId, list: listRef, empty: emptyRef });
+  useSearchReturn(tree.isSuccess, listRef, emptyRef);
   const open = useOpenThread(accountId, mailboxId, threadId);
   const close = useCloseThread(accountId, mailboxId);
   const mailbox = tree.data?.find((row) => row.id === mailboxId);
