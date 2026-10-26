@@ -120,6 +120,8 @@ test("the field, a token and the suggestions read in Dutch and mirror in the pse
   ).toBeVisible();
   await dutch.pressSequentially("off");
   await expect(page.getByRole("option", { name: "Zoeken naar “off”" })).toBeVisible();
+  // The count comes with the search's answer, which can land after the suggestions.
+  await expect(spoken(page)).toHaveText(/\d/u);
   await settled(page);
   await expect.soft(page).toHaveScreenshot("search-nl-light-desktop.png");
   // The pseudo-locale lives on the device alone and never reaches the server.
@@ -141,6 +143,7 @@ test("the field, a token and the suggestions read in Dutch and mirror in the pse
   expect(await mailbox.getByText("in:", { exact: true }).evaluate(directionOf)).toBe("ltr");
   expect(await shortcut.evaluate(directionOf)).toBe("ltr");
   expect(await page.getByRole("combobox").evaluate(directionOf)).toBe("ltr");
+  await expect(spoken(page)).toHaveText(/\d/u);
   await settled(page);
   await expect.soft(page).toHaveScreenshot(`search-${PSEUDO_LOCALE}-light-desktop.png`);
   // Escape clears the field with its token; the route's search then stands under it as a recent.
