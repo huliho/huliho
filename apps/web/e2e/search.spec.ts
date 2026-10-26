@@ -40,6 +40,16 @@ function directionOf(element: Element): string {
   return getComputedStyle(element).direction;
 }
 
+// The field scrolls to its input as it takes the focus, measured with
+// whatever font has loaded by then, so once the fonts are in it goes back
+// to its start.
+async function fieldFromItsStart(page: Page): Promise<void> {
+  await settled(page);
+  await page.getByRole("combobox").evaluate((input) => {
+    input.parentElement?.scrollTo({ left: 0 });
+  });
+}
+
 test("`/` from the list opens the search with the focus in the field and Escape hands it back", async ({
   page,
 }) => {
@@ -118,6 +128,7 @@ test("the field, a token and the suggestions read in Dutch and mirror in the pse
   await expect(
     page.getByRole("button", { name: "from: femke@kastanje.example verwijderen" }),
   ).toBeVisible();
+  await fieldFromItsStart(page);
   await dutch.pressSequentially("off");
   await expect(page.getByRole("option", { name: "Zoeken naar “off”" })).toBeVisible();
   // The count comes with the search's answer, which can land after the suggestions.
@@ -132,6 +143,7 @@ test("the field, a token and the suggestions read in Dutch and mirror in the pse
   const mirrored = page.getByRole("search");
   await expect(mirrored).toBeVisible();
   expect(await mirrored.evaluate(directionOf)).toBe("rtl");
+  await fieldFromItsStart(page);
   await page.getByRole("combobox").pressSequentially("off");
   const mailbox = page.getByRole("option", { name: "in: Offertes" });
   await expect(mailbox).toBeVisible();
