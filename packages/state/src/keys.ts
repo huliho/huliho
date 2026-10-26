@@ -22,6 +22,14 @@ export const queryKeys = {
   // The first part of one email's raw source, read for the inspector.
   source: (accountId: string, emailId: string) => [accountId, "source", emailId] as const,
   quota: (accountId: string) => [accountId, "quota"] as const,
+  // Every search of one account; one search adds its key, a page its
+  // locale and its number.
+  searches: (accountId: string) => [accountId, "search"] as const,
+  search: (accountId: string, key: string, locale: string, page: number) =>
+    [accountId, "search", key, locale, page] as const,
+  // The senders a suggestion list offers; a prefix narrows them.
+  senders: (accountId: string) => [accountId, "senders"] as const,
+  sendersFor: (accountId: string, prefix: string) => [accountId, "senders", prefix] as const,
 } as const;
 
 // The words a mail key carries in second place, so a cache message can
@@ -33,4 +41,6 @@ export const MAIL_KEY_WORDS: ReadonlySet<unknown> = new Set([
   "body",
   "source",
   "quota",
+  "search",
+  "senders",
 ]);

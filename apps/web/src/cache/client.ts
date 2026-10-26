@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { JmapError } from "@huliho/core";
-import type { MailCache, Mutation, Undo } from "@huliho/core";
+import { JmapError, MethodFailure } from "@huliho/core";
+import type { ListPage, MailCache, Mutation, SearchCall, Undo } from "@huliho/core";
 import { MAIL_KEY_WORDS, queryKeys, sessionQueryOptions } from "@huliho/state";
 import type { QueryClient } from "@tanstack/react-query";
 import { wrap } from "comlink";
@@ -53,13 +53,16 @@ function passed(ms: number): Promise<void> {
 }
 
 // A failure crosses the boundary as data; here it becomes the error the
-// query hooks read, its cause and limit intact.
+// query hooks read, its cause, limit and method error intact.
 async function unwrap<Value>(answer: Promise<CacheResult<Value>>): Promise<Value> {
   const result = await answer;
   if (result.ok) {
     return result.value;
   }
   const { failure } = result;
+  if (failure.method !== null) {
+    throw new MethodFailure(failure.method.type, failure.method.call);
+  }
   throw new JmapError(failure.code, {
     ...(failure.stopCause === null ? {} : { stopCause: failure.stopCause }),
     ...(failure.limit === null ? {} : { limit: failure.limit }),
@@ -132,11 +135,40 @@ async function endHold(settle: Promise<CacheResult<void>>): Promise<void> {
   }
 }
 
+// A signal cannot cross to the worker, so a search goes with a ticket: a
+// signal that aborts gives the call up there and rejects here at once.
+async function search(
+  accountId: string,
+  key: string,
+  page: number,
+  { locale, again = false, signal }: SearchCall,
+): Promise<ListPage> {
+  signal?.throwIfAborted();
+  const ticket = crypto.randomUUID();
+  const answer = unwrap(worker().search(accountId, key, page, { locale, again, ticket }));
+  if (signal === undefined) {
+    return answer;
+  }
+  const given = Promise.withResolvers<never>();
+  const abort = (): void => {
+    void worker().cancelSearch(ticket);
+    given.reject(signal.reason);
+  };
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    return await Promise.race([answer, given.promise]);
+  } finally {
+    signal.removeEventListener("abort", abort);
+  }
+}
+
 // The cache as the query hooks read it, served by the worker. Each held
 // answer of `mutateMany` ends with one `release` or one `drop`.
 export const mailCache: MailCache = {
   mailboxes: (accountId) => unwrap(worker().mailboxes(accountId)),
   window: (accountId, mailboxId, page) => unwrap(worker().window(accountId, mailboxId, page)),
+  search,
+  senders: (accountId, prefix) => unwrap(worker().senders(accountId, prefix)),
   thread: (accountId, threadId) => unwrap(worker().thread(accountId, threadId)),
   reveal: (accountId, mailboxId) => unwrap(worker().reveal(accountId, mailboxId)),
   body: (accountId, emailId, options) => unwrap(worker().body(accountId, emailId, options)),
@@ -228,12 +260,16 @@ export interface CacheListeners {
 }
 
 // A tree that moved brings the quota with it, which rides the same pass.
+// Any move reads the account's searches and senders again: a search from
+// its held pages over the rows as they stand now, so no row joins it.
 function invalidateChanged(
   queryClient: QueryClient,
   message: Extract<CacheMessage, { kind: "changed" }>,
 ): void {
   const { accountId } = message;
+  const moved = message.mailboxes || message.windows.length > 0 || message.threads.length > 0;
   const keys = [
+    ...(moved ? [queryKeys.searches(accountId), queryKeys.senders(accountId)] : []),
     ...(message.mailboxes ? [queryKeys.mailboxes(accountId), queryKeys.quota(accountId)] : []),
     ...message.windows.map((mailboxId) => queryKeys.windows(accountId, mailboxId)),
     ...message.threads.map((threadId) => queryKeys.thread(accountId, threadId)),

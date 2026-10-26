@@ -12,6 +12,7 @@ export {
   threadWindowQueryOptions,
 } from "./mail";
 export { preferencesQueryOptions } from "./preferences";
+export { searchWindowQueryOptions, sendersQueryOptions } from "./search";
 export { senderPoliciesQueryOptions } from "./sender-policies";
 export { sessionQueryOptions } from "./session";
 export { sessionsQueryOptions } from "./sessions";

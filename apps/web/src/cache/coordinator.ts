@@ -23,6 +23,7 @@ import { LEASE_LOCK } from "./locks";
 import type { Locks } from "./locks";
 import type { CacheMessage } from "./messages";
 import { attempt } from "./outcome";
+import { Searches } from "./searches";
 import type { CacheApi } from "./surface";
 import type { Choice, WorkerStore } from "./store-choice";
 import { Watches } from "./watches";
@@ -110,6 +111,7 @@ export class Coordinator {
   private readonly store: MailStore;
   private readonly writes: Writes;
   private readonly jobs: Jobs;
+  private readonly searches: Searches;
   private readonly bodies = new BodyQueue();
   private readonly persisted = Promise.withResolvers<undefined>();
   private readonly accounts = new Map<string, Account>();
@@ -140,12 +142,24 @@ export class Coordinator {
         this.schedule(accountId, 0);
       },
     });
+    this.searches = new Searches({ ...host, store: this.store });
   }
 
   // The surface of one tab; its watch lives and dies with it.
   api(): CacheApi {
     this.tabs += 1;
-    return { ...this.tabSurface(this.tabs), ...this.reads(), ...this.changes() };
+    const { searches } = this;
+    return {
+      ...this.tabSurface(this.tabs),
+      ...this.reads(),
+      ...this.changes(),
+      search: (accountId, key, page, call) => searches.search(accountId, key, page, call),
+      cancelSearch: (ticket) => {
+        searches.cancel(ticket);
+        return Promise.resolve();
+      },
+      senders: (accountId, prefix) => searches.senders(accountId, prefix),
+    };
   }
 
   // The network is back: every account polls now, its log going out first.

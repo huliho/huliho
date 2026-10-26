@@ -26,11 +26,14 @@ import type { AccountSwitcherProps } from "./account-card";
 import { useInboxCounts } from "./inbox-counts";
 import { MonoCount } from "./mono-count";
 
-// The bulk bar, the mailbox menus and the quota bar ride this module's
-// chunk with the account menu, so the code they share stays one chunk.
+// The bulk bar, the mailbox menus, the quota bar, the search and the hint
+// of the header's search button ride this module's chunk with the account
+// menu, so the code they share stays one chunk.
 export { BulkBar } from "./actions/bulk-bar";
 export { FolderMenu, TreeMenu } from "./folder-menu";
 export { HintedQuota } from "./quota-hint";
+export { SearchView } from "./search/search-view";
+export { Tooltip } from "../design-system/tooltip";
 
 interface AccountMenuProps extends AccountSwitcherProps {
   // The trigger stood in for this menu and was pressed meanwhile.

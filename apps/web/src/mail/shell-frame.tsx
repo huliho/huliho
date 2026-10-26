@@ -48,6 +48,8 @@ interface ShellFrameProps extends Shared {
   layout: Layout;
   readingPane: PanePreference;
   currentThreadId: string | undefined;
+  // While the route is the search, its pane brings the header's field.
+  searching: boolean;
   onCloseThread: () => void;
   // What the list pane shows under its header.
   children: ReactNode;
@@ -92,6 +94,7 @@ interface StageProps {
   seamRef: RefObject<HTMLDivElement | null>;
   thread: OpenThread | null;
   shared: Shared;
+  searching: boolean;
   onOpenSidebar: () => void;
   onCloseThread: () => void;
   children: ReactNode;
@@ -264,6 +267,7 @@ function Stage(props: StageProps) {
         position={position}
         size={position === "screen" ? null : list.value}
         inert={position === "screen" && thread !== null}
+        searching={props.searching}
         onOpenSidebar={layout === "phone" ? props.onOpenSidebar : undefined}
       >
         {children}
@@ -361,6 +365,7 @@ export function ShellFrame(props: ShellFrameProps) {
         seamRef={seam}
         thread={openThreadOf(tree, account.id, currentMailboxId, currentThreadId)}
         shared={shared}
+        searching={props.searching}
         onOpenSidebar={sheet.show}
         onCloseThread={onCloseThread}
       >

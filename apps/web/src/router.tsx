@@ -18,6 +18,8 @@ import { InboxRedirect } from "./mail/inbox-redirect";
 import { landingAccount } from "./mail/last-account";
 import { MailShell } from "./mail/mail-shell";
 import { MailboxPane } from "./mail/mailbox-pane";
+import { parseSearch, searchRoute, stringifySearch } from "./mail/search/route-params";
+import { SearchRoute } from "./mail/search/search-route";
 import { linkKey } from "./open/link-key";
 import { RootLayout } from "./shell/root-layout";
 import { RouteError, RoutePending } from "./shell/route-fallbacks";
@@ -145,6 +147,15 @@ const mailboxRoute = createRoute({
   component: MailboxPane,
 });
 
+// The account's search; its params stand for the field's operators and
+// text and `box` for the mailbox it was opened from.
+const mailSearchRoute = createRoute({
+  getParentRoute: () => mailRoute,
+  path: "/search",
+  component: SearchRoute,
+  validateSearch: searchRoute,
+});
+
 // The thread open in the mailbox; the shell draws it beside, below or
 // over the list, so the route itself renders nothing of its own.
 const threadRoute = createRoute({
@@ -240,7 +251,11 @@ const routeTree = rootRoute.addChildren([
   openRoute,
   signedInRoute.addChildren([
     homeRoute,
-    mailRoute.addChildren([mailIndexRoute, mailboxRoute.addChildren([threadRoute])]),
+    mailRoute.addChildren([
+      mailIndexRoute,
+      mailSearchRoute,
+      mailboxRoute.addChildren([threadRoute]),
+    ]),
     choosePasswordRoute,
     addAccountRoute,
     settingsRoute.addChildren([
@@ -254,11 +269,15 @@ const routeTree = rootRoute.addChildren([
   ]),
 ]);
 
+// Every search param stays the string the URL holds, so a route checks
+// its own and `q=123` searches for text.
 export const router = createRouter({
   routeTree,
   context: { queryClient },
   defaultPendingComponent: RoutePending,
   defaultErrorComponent: RouteError,
+  parseSearch,
+  stringifySearch,
 });
 
 declare module "@tanstack/react-router" {

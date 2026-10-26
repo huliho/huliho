@@ -12,8 +12,10 @@ import {
   mutateMany,
   queryWindow,
   readQuota,
+  readSenders,
   releaseHeld,
   revealNewMail,
+  searchWindow,
 } from "@huliho/core";
 import type { ListPage, ListRow, MailCache, Mailbox } from "@huliho/core";
 import { ACCOUNT, FakeJmap, at, email, mailbox as mailboxRow } from "@huliho/core/testing";
@@ -158,6 +160,8 @@ export function coreCache(server: FakeJmap): MailCache & { poll: () => Promise<v
     mailboxes: () => Promise.resolve(MAILBOXES),
     window: async (_accountId, mailboxId, page) =>
       listPage(await queryWindow(client, store, mailboxId, page), mailboxId),
+    search: (_accountId, key, page, call) => searchWindow(client, store, { key, page, ...call }),
+    senders: (accountId, prefix) => readSenders(store, accountId, prefix),
     thread: () => Promise.resolve(null),
     reveal: (accountId, mailboxId) => revealNewMail(store, accountId, mailboxId),
     body: () => Promise.resolve(null),

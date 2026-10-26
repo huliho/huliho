@@ -5,6 +5,7 @@
 import type { Mailbox } from "@huliho/core";
 
 import type { MoveTarget } from "../../commands/move-sections";
+import { forgetStored } from "../forget-stored";
 import { buildTree, flatten } from "../tree";
 
 // One key per account holds the mailbox last moved to on this device.
@@ -86,14 +87,5 @@ export function rememberTarget(accountId: string, mailboxId: string): void {
 
 // A session that ends in this browser takes every account's memory with it.
 export function forgetMoveTargets(): void {
-  try {
-    const keys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index));
-    for (const key of keys) {
-      if (key?.startsWith(TARGET_KEY_PREFIX) === true) {
-        localStorage.removeItem(key);
-      }
-    }
-  } catch {
-    // A storage that refuses to be read holds nothing to forget.
-  }
+  forgetStored(TARGET_KEY_PREFIX);
 }

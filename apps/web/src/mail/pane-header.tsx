@@ -3,6 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import type { AccountRow, JobProgress, MailCache, Mailbox } from "@huliho/core";
+import { Search } from "lucide-react";
 import {
   Suspense,
   use,
@@ -12,10 +13,12 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { FocusEvent, RefObject } from "react";
+import type { FocusEvent, ReactElement, RefObject } from "react";
 
 import { commandsSnapshot, subscribeCommands } from "../commands/registry";
 import { Avatar } from "../design-system/avatar";
+import { cx } from "../design-system/cx";
+import iconButton from "../design-system/icon-button.module.css";
 import { Skeleton } from "../design-system/skeleton";
 import spoken from "../design-system/spoken.module.css";
 import { m } from "../paraglide/messages.js";
@@ -31,6 +34,7 @@ import type { FolderMenuProps } from "./folder-menu";
 import { focusLost } from "./list-cursor";
 import { prefetchMenus } from "./menus-chunk";
 import { MonoCount, countWords } from "./mono-count";
+import { SEARCH_KEYS, SEARCH_MARK, takesReturn } from "./search/open-search";
 import { useStatusText } from "./status-text";
 import { countOf } from "./tree";
 import styles from "./pane-header.module.css";
@@ -96,6 +100,53 @@ function Title({ mailbox, items }: TitleProps) {
         mailbox.name
       )}
     </h1>
+  );
+}
+
+function HintedButton({ label, button }: { label: string; button: ReactElement }) {
+  const { Tooltip } = use(prefetchMenus());
+  return (
+    <Tooltip label={label} keys={SEARCH_KEYS} align="end">
+      {button}
+    </Tooltip>
+  );
+}
+
+// The search's button at the header's end, running the command `/` runs;
+// its hint rides the menus chunk. A search closed from it hands the focus
+// back here.
+function SearchButton({ locale }: { locale: Locale }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (takesReturn("button")) {
+      ref.current?.focus({ preventScroll: true });
+    }
+  }, []);
+  const label = m.command_search({}, { locale });
+  const button = (
+    <button
+      ref={ref}
+      type="button"
+      className={cx(iconButton.button, styles.search)}
+      aria-label={label}
+      aria-keyshortcuts="/"
+      {...SEARCH_MARK}
+      onClick={(event) => {
+        // Safari leaves a pressed button without the focus; the search
+        // hands the focus back to where it stood.
+        event.currentTarget.focus({ preventScroll: true });
+        commandsSnapshot()
+          .findLast((command) => command.id === "search.open")
+          ?.run();
+      }}
+    >
+      <Search className={iconButton.icon} aria-hidden="true" />
+    </button>
+  );
+  return (
+    <Suspense fallback={button}>
+      <HintedButton label={label} button={button} />
+    </Suspense>
   );
 }
 
@@ -271,6 +322,7 @@ export function PaneHeader(props: PaneHeaderProps) {
         items={items}
       />
       {mailbox === undefined && pending && <Skeleton className={styles.titleSkeleton} />}
+      <SearchButton locale={locale} />
       <FolderCommands items={items} />
       <span ref={regionRef} role="status" className={spoken.spoken} />
     </header>

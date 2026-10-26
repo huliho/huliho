@@ -38,3 +38,9 @@
   inline-size: var(--hhx-swatch-min);
   block-size: var(--hhx-type-3);
 }
+
+/* The search button stands at the header's end, whatever the slot holds. */
+.search {
+  flex: none;
+  margin-inline-start: auto;
+}

@@ -9,6 +9,7 @@ import type {
   ListPage,
   Mailbox,
   MemberState,
+  Sender,
   ThreadDetail,
   ThreadRow,
   WindowPage,
@@ -81,6 +82,29 @@ export const MAILBOXES_EMPTY_INBOX: Mailbox[] = build(
 );
 
 export const INBOX_ID = "mb-inbox";
+
+// The senders of the held mail, as the suggestions read them.
+export const SENDERS: Sender[] = [
+  {
+    email: "pieter@blom-installaties.example",
+    name: "Pieter Blom",
+    count: 14,
+    newest: "2026-05-14T06:15:00Z",
+  },
+  {
+    email: "info@blom-installatie.example",
+    name: "Blom Installatie",
+    count: 3,
+    newest: "2026-05-12T09:00:00Z",
+  },
+  {
+    email: "p.jansen@kastanje.example",
+    name: "Pieter Jansen",
+    count: 2,
+    newest: "2026-05-10T13:30:00Z",
+  },
+  { email: "sanne@fastmail.com", name: "Sanne Bakker", count: 9, newest: "2026-05-13T15:00:00Z" },
+];
 
 export const FASTMAIL: AccountRow = {
   id: "acc-1",

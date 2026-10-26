@@ -49,30 +49,38 @@ export function sendersOf(headers: Iterable<Pick<EmailHeader, "from" | "received
   return [...found.values()].map((tally) => tally.sender);
 }
 
-function folded(text: string): string {
+// The text in lower case without its marks, as a typed prefix is matched.
+export function foldText(text: string): string {
   return text.normalize("NFD").replace(MARKS, "").toLowerCase();
 }
 
-// Whether the name or the address, from its start or from the start of
-// any word in it, begins with the typed prefix in any case and without
-// its marks.
-function matches(sender: Sender, prefix: string): boolean {
-  return [sender.name ?? "", sender.email].map(folded).some((part) => {
-    const starts = [0, ...[...part.matchAll(WORD_START)].map((match) => match.index)];
-    return starts.some((start) => part.startsWith(prefix, start));
-  });
+// Whether the text, from its start or from the start of any word in it,
+// begins with the prefix in any case and without its marks.
+export function startsAWord(text: string, prefix: string): boolean {
+  const part = foldText(text);
+  const wanted = foldText(prefix);
+  const starts = [0, ...[...part.matchAll(WORD_START)].map((match) => match.index)];
+  return starts.some((start) => part.startsWith(wanted, start));
 }
 
-// The senders a suggestion list offers for what the user typed: the ones
-// that match, most mail first, then the newest; an empty prefix matches
-// every sender.
+function matches(sender: Sender, prefix: string): boolean {
+  return [sender.name ?? "", sender.email].some((part) => startsAWord(part, prefix));
+}
+
+// The senders of the account's held mail a suggestion list offers for
+// what the user typed.
 export async function readSenders(
   store: MailStore,
   accountId: string,
   prefix: string,
 ): Promise<Sender[]> {
-  const wanted = folded(prefix.trim());
-  const senders = await store.senders(accountId);
+  return pickSenders(await store.senders(accountId), prefix);
+}
+
+// The senders that match, most mail first, then the newest; an empty
+// prefix matches every sender.
+export function pickSenders(senders: readonly Sender[], prefix: string): Sender[] {
+  const wanted = prefix.trim();
   return senders
     .filter((sender) => matches(sender, wanted))
     .toSorted(

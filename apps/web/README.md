@@ -363,6 +363,25 @@ shows the bar alone and the sheet the whole foot; a hint on hover and
 on focus names the figures. Without a quota the foot stays empty. The
 bar loads with the account menu's chunk.
 
+`/`, the search button in the list's header or the palette opens the
+search in the list pane at `/mail/{accountId}/search`, with the focus in
+the field and `box` naming the mailbox it was opened from. Opened from
+Junk or Trash it keeps to that mailbox; else it spans every mailbox but
+those two. The field reads `from:`, `in:`, `after:`, `before:`,
+`is:unread`, `is:starred` and `has:attachment` as tokens. While it has
+the focus, four shortcuts stand under it. Typing offers the plain
+search, the senders of the held mail, the mailboxes and, under an empty
+field, the account's last eight searches; `privacy.strict` keeps those
+in memory alone and a sign-out forgets them. Enter runs the text and a
+picked suggestion runs at once; each run replaces the route's params,
+so Escape on an empty field or Back returns to the mailbox with the
+focus where it was. A search past 300 ms says it is searching, past
+four seconds that a server without an index takes a while, with Cancel,
+which gives the request up. The slot under the field counts the
+results with the widening the scope allows. The search loads with the
+account menu's chunk; the worker runs it under the account's lock and
+answers the senders from what it holds.
+
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside
 this directory starts the dev server and `pnpm storybook` the component

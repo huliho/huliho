@@ -175,11 +175,16 @@ function textOf(q: string, context: QueryContext): string {
     .join(" ");
 }
 
+// The terms a sender holds, a quoted run as one, as `from:` writes each.
+export function senderTerms(from: string): string[] {
+  return [...from.matchAll(TOKEN)].map(([term]) => term);
+}
+
 // The field's text for the params, which `parseQuery` reads back: the
 // operators in a fixed order, then the text with each piece an operator
 // would claim as a quoted run.
 export function queryOf(params: SearchParams, context: QueryContext): string {
-  const senders = [...(params.from ?? "").matchAll(TOKEN)].map(([term]) => `from:${term}`);
+  const senders = senderTerms(params.from ?? "").map((term) => `from:${term}`);
   return [
     ...senders,
     ...(params.in === undefined ? [] : [`in:${scopeWord(params.in, context)}`]),
