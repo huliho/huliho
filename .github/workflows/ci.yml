@@ -307,6 +307,12 @@ jobs:
     with:
       # A fork pull request holds a read-only token, which cannot upload.
       upload-sarif: ${{ github.event.pull_request.head.repo.fork != true }}
+      # The scanner reads a config beside each lockfile alone, so the fuzz
+      # lockfiles take the root list through --config.
+      scan-args: |-
+        --config=./osv-scanner.toml
+        -r
+        ./
 
   negative:
     name: gates fire on violations
