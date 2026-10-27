@@ -2,20 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { Mailbox } from "@huliho/core";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cx } from "../../design-system/cx";
 import type { Locale } from "../../paraglide/runtime.js";
 import { iconOf } from "./action-icon";
-import { useShownActions } from "./kinds";
+import { shownActions } from "./kinds";
 import type { ActionKind } from "./kinds";
 import type { SwipeView, SwipeWay } from "./swipe";
+import type { Aim } from "./taken";
 import styles from "./swipe-row.module.css";
-
-// Archive and delete read nothing of the thread's own state.
-const ANY_THREAD = { unread: false, flagged: false };
 
 // What a way does and shows behind the row: its action's icon and word.
 export interface SwipeAction {
@@ -32,19 +29,18 @@ export interface RowSwipe {
   onSettled: () => void;
 }
 
-// Archive from start to end and delete the other way, each while the
-// registry holds its command; no way while a selection stands.
-export function useSwipeActions(
-  mailbox: Mailbox,
+// Archive from start to end and delete the other way, each where the
+// mailbox the row acts from offers it; no way while a selection stands.
+export function swipeActionsOf(
+  aim: Aim | null,
   locale: Locale,
   picking: boolean,
 ): ReadonlyMap<SwipeWay, SwipeAction> {
-  const shown = useShownActions(["archive", "delete"], mailbox, ANY_THREAD, locale);
-  if (picking) {
+  if (picking || aim === null) {
     return new Map();
   }
   return new Map(
-    shown.map(({ kind, action, label }) => [
+    shownActions(["archive", "delete"], [aim], locale).map(({ kind, action, label }) => [
       kind === "archive" ? "toEnd" : "toStart",
       { kind, icon: iconOf(action), label },
     ]),

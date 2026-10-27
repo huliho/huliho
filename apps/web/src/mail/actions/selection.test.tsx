@@ -18,7 +18,7 @@ import { prefetchMenus } from "../menus-chunk";
 import type { OpenFocus } from "../thread-history";
 import { LONG_PRESS_MS } from "./long-press";
 import { closeSelection, startSelection } from "./selection-lend";
-import { WRITABLE, boxOf, rowAt } from "./writable-rig";
+import { WRITABLE, boxOf, rowAt, sharedInbox, withBox } from "./writable-rig";
 
 function WithToasts({ children }: { children: ReactNode }) {
   return (
@@ -357,12 +357,10 @@ test("Select opens the mode with nothing picked; the thread's Escape closes a st
 });
 
 test("a mailbox that offers no action registers no x and draws no check", async () => {
-  const shared = inbox();
+  const shared = sharedInbox();
   renderList({
-    mailbox: {
-      ...shared,
-      myRights: { ...shared.myRights, maySetSeen: false, maySetKeywords: false },
-    },
+    mailbox: shared,
+    mailboxes: withBox(shared),
     cache: fixtureCache({ [`${INBOX_ID}/0`]: INBOX_PAGE }),
   });
   await screen.findByRole("grid");

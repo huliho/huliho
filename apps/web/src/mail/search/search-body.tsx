@@ -9,14 +9,17 @@ import type { EmptyState } from "../../design-system/empty-state";
 import type { ErrorState } from "../../design-system/error-state";
 import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
+import type { ThreadList } from "../thread-list";
 import type { EmptyWords } from "./search-words";
 import styles from "./search-pane.module.css";
 
-// The design system's button and states, which the shell hands in.
+// The design system's button and states and the list the results stand
+// in, which the shell hands in.
 export interface SearchParts {
   Button: typeof Button;
   EmptyState: typeof EmptyState;
   ErrorState: typeof ErrorState;
+  ThreadList: typeof ThreadList;
 }
 
 // The count as the locale writes it and where it starts in the sentence.
@@ -91,7 +94,7 @@ export function Slot({ locale, parts, view, onCancel, onWiden }: SlotProps) {
 
 // What the body shows once a search ran, in place of the suggestions.
 export type BodyView =
-  | { kind: "nothing" | "loading" | "offline" }
+  | { kind: "nothing" | "loading" | "offline" | "results" }
   | { kind: "failed"; deadline: boolean }
   | { kind: "empty"; words: EmptyWords };
 
@@ -101,17 +104,22 @@ interface StateProps {
   view: BodyView;
   // The list's still rows, which stand in for the results while they load.
   loading: ReactNode;
+  // The results as the list draws them.
+  results: ReactNode;
   onRetry: () => void;
   onWiden: () => void;
 }
 
-// The body's sentence for a search that ran: the still rows while it
-// loads, the error with Try again, the empty word with the widening or
-// the offline sentence.
-export function SearchState({ locale, parts, view, loading, onRetry, onWiden }: StateProps) {
+// What the body shows for a search that ran: the still rows while it
+// loads, the results, the error with Try again, the empty word with the
+// widening or the offline sentence.
+export function SearchState(props: StateProps) {
+  const { locale, parts, view, onRetry, onWiden } = props;
   switch (view.kind) {
     case "loading":
-      return loading;
+      return props.loading;
+    case "results":
+      return props.results;
     case "offline":
       return <parts.EmptyState message={m.search_offline({}, { locale })} />;
     case "failed":

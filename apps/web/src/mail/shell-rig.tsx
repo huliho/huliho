@@ -12,6 +12,7 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
+import type { AnyRoute } from "@tanstack/react-router";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, vi } from "vitest";
 
@@ -24,6 +25,7 @@ import { MailboxPane } from "./mailbox-pane";
 import { prefetchMenus } from "./menus-chunk";
 import {
   parseSearch,
+  resultRoute as resultRouteParams,
   searchRoute as searchRouteParams,
   stringifySearch,
 } from "./search/route-params";
@@ -80,6 +82,22 @@ class StillObserver {
   }
 }
 
+// The search under the mail route, with the result it opens.
+function searchRoutesUnder(mailRoute: AnyRoute) {
+  const searchRoute = createRoute({
+    getParentRoute: () => mailRoute,
+    path: "/search",
+    component: SearchRoute,
+    validateSearch: searchRouteParams,
+  });
+  const resultRoute = createRoute({
+    getParentRoute: () => searchRoute,
+    path: "/$threadId",
+    validateSearch: resultRouteParams,
+  });
+  return searchRoute.addChildren([resultRoute]);
+}
+
 // The shell at the desktop width, with the accounts the guard would
 // have fetched and the reading pane where the preference puts it.
 export function renderShell(path: string, options: ShellOptions = {}) {
@@ -106,17 +124,15 @@ export function renderShell(path: string, options: ShellOptions = {}) {
     component: MailboxPane,
   });
   const threadRoute = createRoute({ getParentRoute: () => mailboxRoute, path: "/$threadId" });
-  const searchRoute = createRoute({
-    getParentRoute: () => mailRoute,
-    path: "/search",
-    component: SearchRoute,
-    validateSearch: searchRouteParams,
-  });
   const router = createRouter({
     routeTree: rootRoute.addChildren([
       signedInRoute.addChildren([
         homeRoute,
-        mailRoute.addChildren([indexRoute, searchRoute, mailboxRoute.addChildren([threadRoute])]),
+        mailRoute.addChildren([
+          indexRoute,
+          searchRoutesUnder(mailRoute),
+          mailboxRoute.addChildren([threadRoute]),
+        ]),
       ]),
     ]),
     history: createMemoryHistory({ initialEntries: [path] }),

@@ -18,7 +18,7 @@ import { InboxRedirect } from "./mail/inbox-redirect";
 import { landingAccount } from "./mail/last-account";
 import { MailShell } from "./mail/mail-shell";
 import { MailboxPane } from "./mail/mailbox-pane";
-import { parseSearch, searchRoute, stringifySearch } from "./mail/search/route-params";
+import { parseSearch, resultRoute, searchRoute, stringifySearch } from "./mail/search/route-params";
 import { SearchRoute } from "./mail/search/search-route";
 import { linkKey } from "./open/link-key";
 import { RootLayout } from "./shell/root-layout";
@@ -163,6 +163,14 @@ const threadRoute = createRoute({
   path: "/$threadId",
 });
 
+// A result open beside, below or over the results, drawn as a thread of
+// a mailbox is; `at` names the mailbox the result acts from.
+const resultThreadRoute = createRoute({
+  getParentRoute: () => mailSearchRoute,
+  path: "/$threadId",
+  validateSearch: resultRoute,
+});
+
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sign-in",
@@ -253,7 +261,7 @@ const routeTree = rootRoute.addChildren([
     homeRoute,
     mailRoute.addChildren([
       mailIndexRoute,
-      mailSearchRoute,
+      mailSearchRoute.addChildren([resultThreadRoute]),
       mailboxRoute.addChildren([threadRoute]),
     ]),
     choosePasswordRoute,

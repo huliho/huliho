@@ -4,6 +4,7 @@
 
 import { firstSyncOf } from "@huliho/core";
 import type { FirstSync, ListRow, MailCache, Mailbox } from "@huliho/core";
+import { threadWindowQueryOptions } from "@huliho/state";
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, Ref, RefObject } from "react";
 
@@ -29,7 +30,7 @@ import type { OpenFocus } from "./thread-history";
 import { EdgeRow } from "./thread-list-item";
 import { pageOf, rowAt, useThreadPages } from "./use-thread-pages";
 import { useRowHeight } from "./use-token-px";
-import type { ListPages } from "./use-thread-pages";
+import type { ListPages, PageQuery } from "./use-thread-pages";
 import styles from "./thread-list.module.css";
 
 // Still rows after the last synced one while the first sync runs.
@@ -44,6 +45,34 @@ export interface ListHandle {
   focus: () => void;
 }
 
+// What a list shows: one mailbox's threads, or a search's results whose
+// rows each act from a mailbox of their own.
+export interface ListSource {
+  page: (page: number) => PageQuery;
+  // The first sync's progress, null once it is done and for a search.
+  firstSync: FirstSync | null;
+  // Brings the new mail the marker counts into the list.
+  reveal: () => void;
+  // The mailbox the open thread acts from where no page holds its row.
+  openMailboxId: string | null;
+  // Whether a row names the mailbox it acts from: a search over more
+  // than one.
+  worded: boolean;
+}
+
+// The threads of one mailbox, each acting from it.
+export function mailboxSource(cache: MailCache, accountId: string, mailbox: Mailbox): ListSource {
+  return {
+    page: (page) => threadWindowQueryOptions(cache, accountId, mailbox.id, page),
+    firstSync: firstSyncOf(mailbox),
+    reveal: () => {
+      void cache.reveal(accountId, mailbox.id);
+    },
+    openMailboxId: mailbox.id,
+    worded: false,
+  };
+}
+
 interface ThreadListProps {
   locale: Locale;
   ref?: Ref<ListHandle> | undefined;
@@ -51,7 +80,7 @@ interface ThreadListProps {
   today: number;
   cache: MailCache;
   accountId: string;
-  mailbox: Mailbox;
+  source: ListSource;
   // The account's tree, whose roles and rights decide the actions.
   mailboxes: readonly Mailbox[];
   online: boolean;
@@ -95,12 +124,12 @@ function isEmptyList(facts: Omit<Facts, "isEmpty">): boolean {
   );
 }
 
-function factsOf(pages: ListPages, mailbox: Mailbox): Facts {
+function factsOf(pages: ListPages, firstSync: FirstSync | null): Facts {
   const page = pages.first?.data;
   const facts = {
     rowCount: page?.total ?? pages.rows.get(0)?.length ?? 0,
     pending: page?.pending ?? 0,
-    firstSync: firstSyncOf(mailbox),
+    firstSync,
     state: stateOf(pages.first),
   };
   return { ...facts, isEmpty: isEmptyList(facts) };
@@ -147,7 +176,7 @@ function ListState({ locale, facts, retry, empty }: StateProps) {
 // takes the marker away and Try again puts the grid where the button
 // stood. The focus each held goes to the cursor's row.
 function listActions(props: ControlsProps, cursor: ListCursor) {
-  const { cache, accountId, mailbox, pages, markerRef } = props;
+  const { source, pages, markerRef } = props;
   const landAgain = async (): Promise<void> => {
     if (await pages.retry()) {
       cursor.focus();
@@ -158,7 +187,7 @@ function listActions(props: ControlsProps, cursor: ListCursor) {
       if (markerRef.current?.contains(document.activeElement) === true) {
         cursor.focus();
       }
-      void cache.reveal(accountId, mailbox.id);
+      source.reveal();
     },
     retry: (): void => {
       void landAgain();
@@ -170,7 +199,9 @@ interface ControlsProps {
   locale: Locale;
   cache: MailCache;
   accountId: string;
-  mailbox: Mailbox;
+  source: ListSource;
+  // The mailbox the open thread acts from where no page holds its row.
+  openMailboxId: string | null;
   mailboxes: readonly Mailbox[];
   pages: ListPages;
   facts: Facts;
@@ -204,7 +235,7 @@ interface ListControls {
 // The cursor, the virtualizer, the marker and the commands over the
 // pages the list holds.
 function useListControls(props: ControlsProps): ListControls {
-  const { locale, cache, accountId, mailbox, pages, facts, rowHeight, openThreadId } = props;
+  const { locale, pages, facts, rowHeight, openThreadId } = props;
   const { scrollerRef, regionRef, markerRef, onSpan, onPin, onOpen } = props;
   const { rowCount, pending } = facts;
   const marker = useMarker(pending, regionRef, m.list_new_mail({ count: pending }, { locale }));
@@ -315,13 +346,21 @@ function useFocusKept(listRef: RefObject<HTMLDivElement | null>, gridStands: boo
   });
 }
 
-// The threads of one mailbox as a virtualized grid over the pages the
-// cache serves: one tab stop that the arrow keys, j and k move and
-// Enter, o or a click opens, the marker for new mail, the offline strip
-// and the foot, where the first sync shows its progress and the key
-// hints stand otherwise.
+// The name of the mailbox a row acts from, where the source shows one.
+function wordsOf(source: ListSource, mailboxes: readonly Mailbox[]) {
+  return (row: ListRow): string | null =>
+    source.worded
+      ? (mailboxes.find((mailbox) => mailbox.id === row.mailboxId)?.name ?? null)
+      : null;
+}
+
+// The threads of a mailbox or the results of a search as a virtualized
+// grid over the pages the cache serves: one tab stop that the arrow
+// keys, j and k move and Enter, o or a click opens, the marker for new
+// mail, the offline strip and the foot, where the first sync shows its
+// progress and the key hints stand otherwise.
 export function ThreadList({ ref, ...props }: ThreadListProps) {
-  const { locale, today, cache, accountId, mailbox, online, openThreadId, empty } = props;
+  const { locale, today, source, online, openThreadId, empty } = props;
   const listRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const regionRef = useRef<HTMLDivElement>(null);
@@ -330,10 +369,11 @@ export function ThreadList({ ref, ...props }: ThreadListProps) {
   // The page of the row the cursor last went to; it stays mounted with it.
   const [pinned, setPinned] = useState(0);
   const rowHeight = useRowHeight(listRef);
-  const pages = useThreadPages(cache, accountId, mailbox.id, pagesFor(span, pinned));
-  const facts = factsOf(pages, mailbox);
+  const pages = useThreadPages(source.page, pagesFor(span, pinned));
+  const facts = factsOf(pages, source.firstSync);
   const controls = useListControls({
     ...props,
+    openMailboxId: source.openMailboxId,
     pages,
     facts,
     rowHeight,
@@ -362,6 +402,7 @@ export function ThreadList({ ref, ...props }: ThreadListProps) {
           list={controls.list}
           rows={pages.rows}
           rowCount={facts.rowCount}
+          wordOf={wordsOf(source, props.mailboxes)}
           pending={facts.pending}
           cursor={controls.cursor}
           openThreadId={openThreadId}

@@ -74,6 +74,7 @@ function Shell(props: ShellProps): JSX.Element {
       currentMailboxId={currentMailboxId}
       currentThreadId={currentThreadId}
       searching={false}
+      actsFrom={undefined}
       onCloseThread={nothing}
     >
       {children}

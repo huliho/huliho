@@ -302,11 +302,27 @@ test("as a screen the title is the page's heading and the way back names the mai
   expect(screen.getByRole("button", { name: "Back to Inbox" }).nextElementSibling).toBeNull();
   cleanup();
   // A tree without the mailbox leaves the way back its bare word.
-  renderPane(THREAD, { position: "screen", open: { ...OPEN, mailbox: undefined } });
+  renderPane(THREAD, {
+    position: "screen",
+    open: { ...OPEN, place: null, back: { kind: "unnamed" } },
+  });
   await screen.findByRole("heading", { level: 1 });
   const bare = screen.getByRole("button", { name: "Back" });
   expect(bare.textContent).toBe("Back");
   expect(bare.nextElementSibling?.textContent).toBe("esc");
+});
+
+test("a result opened from a search reads its way back as Results", async () => {
+  const { onClose } = renderPane(THREAD, {
+    position: "screen",
+    open: { ...OPEN, back: { kind: "results" } },
+  });
+  await screen.findByRole("heading", { level: 1 });
+  const back = screen.getByRole("button", { name: "Back to results" });
+  expect(back.textContent).toBe("Results");
+  expect(back.nextElementSibling?.textContent).toBe("esc");
+  fireEvent.click(back);
+  expect(onClose).toHaveBeenCalledOnce();
 });
 
 test("the thread loads, fails with Try again and says when it is gone", async () => {

@@ -9,7 +9,7 @@ import type { Chord } from "../../commands/keys";
 import { useCommand } from "../../commands/use-command";
 import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
-import { markedFromMailbox } from "../thread-history";
+import { deeperInSearch } from "../thread-history";
 
 // `/` opens the search, matched by the key it types on any layout.
 export const SEARCH_KEYS: readonly Chord[] = [{ key: "/" }];
@@ -81,7 +81,7 @@ export function useSearchCommand(
       to: "/mail/$accountId/search",
       params: { accountId },
       search: paramsFrom(mailbox),
-      state: markedFromMailbox,
+      state: deeperInSearch,
     });
   };
   useCommand(

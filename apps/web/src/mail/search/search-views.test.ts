@@ -68,7 +68,7 @@ test("offline the body says the search needs a connection", () => {
   });
 });
 
-test("results put the count and the scope in the slot, with the widening", () => {
+test("results put the count and the scope with the widening in the slot and the rows in the body", () => {
   const data = { ...INBOX_PAGE, total: 1204 };
   expect(views(search({ page: { data, error: null } }))).toEqual({
     slot: {
@@ -77,7 +77,7 @@ test("results put the count and the scope in the slot, with the widening", () =>
       count: { text: "1,204", at: 0 },
       widen: "Include Junk and Trash",
     },
-    body: { kind: "nothing" },
+    body: { kind: "results" },
     sentence: "1,204 results for “offerte” in all mailboxes",
   });
   const everywhere = views(search({ page: { data, error: null } }), { ...RAN, in: "all" });

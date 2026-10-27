@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { actionFor } from "@huliho/core";
-import type { ActionTarget, MailAction, Mailbox } from "@huliho/core";
+import type { MailAction } from "@huliho/core";
 
 import type { Chord } from "../../commands/keys";
-import { useRegistered } from "../../commands/use-command";
 import type { Locale } from "../../paraglide/runtime.js";
+import { takenBy } from "./taken";
+import type { Aim } from "./taken";
 import { actionLabel } from "./words";
 
 // What a key asks of a thread; the mailbox and the thread decide which
@@ -29,7 +29,7 @@ export const ACTION_COMMANDS: ReadonlyMap<ActionKind, { id: string; keys: readon
 // The ones the bulk bar holds, in the same order; star stays with its key.
 export const BULK_KINDS: readonly ActionKind[] = ["archive", "delete", "spam", "read", "move"];
 
-// One action a surface draws for a thread: the action it takes there,
+// One action a surface draws for its threads: the action it takes there,
 // its label and the keys of its command.
 export interface ShownAction {
   kind: ActionKind;
@@ -39,23 +39,20 @@ export interface ShownAction {
   keys: readonly Chord[];
 }
 
-// The actions of `kinds` a surface draws for one thread, each while the
-// registry holds its command, so a button stands exactly while its key
-// works.
-export function useShownActions(
+// The actions of `kinds` a surface draws for its threads, each while a
+// press would change one of them from the mailbox it acts from.
+export function shownActions(
   kinds: readonly ActionKind[],
-  mailbox: Mailbox,
-  thread: Pick<ActionTarget, "unread" | "flagged">,
+  aims: readonly Aim[],
   locale: Locale,
 ): ShownAction[] {
-  const commands = useRegistered();
   return kinds.flatMap((kind) => {
-    const id = ACTION_COMMANDS.get(kind)?.id;
-    const command = commands.findLast((entry) => entry.id === id);
-    if (command === undefined) {
+    const command = ACTION_COMMANDS.get(kind);
+    const taken = takenBy(kind, aims);
+    if (command === undefined || taken === null || taken.taken.length === 0) {
       return [];
     }
-    const action = actionFor(kind, mailbox, thread);
+    const { action } = taken;
     return [
       { kind, id: command.id, action, label: actionLabel(action, locale), keys: command.keys },
     ];

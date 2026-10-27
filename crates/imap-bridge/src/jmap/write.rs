@@ -58,6 +58,12 @@ struct Folder {
 }
 
 impl Folder {
+    /// Whether the work moves mail or changes a Gmail label, which puts
+    /// the mail elsewhere in a search.
+    fn moves_mail(&self) -> bool {
+        !self.moves.is_empty() || !self.labels.is_empty()
+    }
+
     fn members(&self) -> impl Iterator<Item = &Member> {
         let keywords = self.keywords.iter().flat_map(|group| &group.members);
         let labels = self.labels.iter().flat_map(|group| &group.members);
@@ -164,7 +170,11 @@ pub(super) async fn apply<C: Connector>(
     if !work.folders.is_empty() {
         let until = *until.get_or_insert_with(|| Instant::now() + wire.deadline());
         let left = until.saturating_duration_since(Instant::now());
+        let moves = work.folders.values().any(Folder::moves_mail);
         send(&mut wire, cache, &mut work, left).await;
+        if moves {
+            link.search.forget();
+        }
     }
     let Work {
         tallies,

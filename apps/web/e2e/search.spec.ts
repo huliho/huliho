@@ -6,6 +6,7 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 import { accountRow, mockAccounts } from "./account-mocks";
+import type { MailServer } from "./mail-answers";
 import { FIXED_NOW } from "./mail-corpus";
 import { mockMail } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
@@ -17,6 +18,10 @@ import { settled } from "./thread-pane";
 const MOD = "ControlOrMeta";
 const PSEUDO_LOCALE = "en-XA";
 const PHONE = { width: 390, height: 844 };
+const OFFERTE = "/mail/acc-1/search?q=offerte&box=mb-inbox";
+// The waits after which a search says it is searching, then that it is slow.
+const SEARCHING_AFTER_MS = 300;
+const SEARCH_SLOW_MS = 4000;
 
 async function openInbox(page: Page): Promise<void> {
   await mockSignedIn(page);
@@ -33,6 +38,18 @@ function field(page: Page): Locator {
 
 function spoken(page: Page): Locator {
   return page.getByRole("search").getByRole("status");
+}
+
+// The search of "offerte" on a server set up by `script`, with the page's
+// clock held so the test moves it.
+async function searchOn(page: Page, script: (server: MailServer) => void): Promise<MailServer> {
+  await mockSignedIn(page);
+  const { server } = await mockMail(page);
+  script(server);
+  await mockAccounts(page, [accountRow(FIXED_NOW)]);
+  await page.clock.install({ time: FIXED_NOW });
+  await page.goto(OFFERTE);
+  return server;
 }
 
 // The direction an element is laid out in, as the browser resolved it.
@@ -81,12 +98,12 @@ test("typing offers the plain search and the senders; Enter runs and the slot co
 
 test("a press on the widening lands while the field still holds the focus", async ({ page }) => {
   await openInbox(page);
-  await page.goto("/mail/acc-1/search?q=offerte&box=mb-inbox");
+  await page.goto("/mail/acc-1/search?q=qqzzx&box=mb-inbox");
   await expect(field(page)).toBeFocused();
   await expect(page.getByRole("button", { name: "from: a sender" })).toBeVisible();
   await page.getByRole("button", { name: "Include Junk and Trash" }).click();
   await expect(page).toHaveURL(/in=all/u);
-  await expect(spoken(page)).toHaveText(/Junk and Trash included$/u);
+  await expect(page.getByText("Check the spelling.", { exact: true })).toBeVisible();
 });
 
 test("Down walks to a sender and Enter runs it in place of the text", async ({ page }) => {
@@ -177,4 +194,56 @@ test("on a phone the shortcut writes its operator and the field keeps the keyboa
   await expect(field(page)).toHaveValue("from:");
   await expect(field(page)).toBeFocused();
   await expect(page.getByRole("option", { name: /^from: / }).first()).toBeVisible();
+});
+
+test("a search the server holds says it is searching, then that it is slow with Cancel; Cancel ends it", async ({
+  page,
+}) => {
+  const server = await searchOn(page, (held) => {
+    held.holdSearches = true;
+  });
+  await expect.poll(() => server.heldSearches.length).toBeGreaterThan(0);
+  await expect(spoken(page)).toHaveText("");
+  await page.clock.runFor(SEARCHING_AFTER_MS);
+  await expect(spoken(page)).toHaveText("Searching…");
+  await page.clock.runFor(SEARCH_SLOW_MS - SEARCHING_AFTER_MS);
+  await expect(spoken(page)).toHaveText(
+    "Still searching. A server without a search index can take a while.",
+  );
+  expect((await axeOn(page).analyze()).violations).toEqual([]);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(spoken(page)).toHaveText("Search canceled.");
+  await expect(field(page)).toBeFocused();
+});
+
+test("a search the server ends at its deadline says how to narrow it and Try again runs it once more", async ({
+  page,
+}) => {
+  const server = await searchOn(page, (failing) => {
+    failing.searchError = "serverUnavailable";
+  });
+  const alert = page.getByRole("alert");
+  await expect(alert).toContainText(
+    "The search took too long. Narrow it to one mailbox or add a filter.",
+  );
+  await expect(spoken(page)).toHaveText("");
+  expect((await axeOn(page).analyze()).violations).toEqual([]);
+  server.searchError = null;
+  await alert.getByRole("button", { name: "Try again" }).click();
+  await expect(spoken(page)).toHaveText(/^[\d,]+ results? for “offerte” in all mailboxes$/u);
+});
+
+test("any other failure says the search failed", async ({ page }) => {
+  await searchOn(page, (failing) => {
+    failing.searchError = "serverFail";
+  });
+  await expect(page.getByRole("alert")).toContainText("Couldn’t search. Try again.");
+});
+
+test("offline the search says it needs a connection", async ({ page }) => {
+  await searchOn(page, () => undefined);
+  await expect(spoken(page)).toHaveText(/^[\d,]+ results? for “offerte” in all mailboxes$/u);
+  await page.context().setOffline(true);
+  await expect(spoken(page)).toHaveText("Search needs a connection.");
+  await page.context().setOffline(false);
 });

@@ -9,7 +9,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { expect, test, vi } from "vitest";
 
 import { mailCache } from "../../cache/client";
-import { INBOX_ID, MAILBOXES } from "../fixtures";
+import { INBOX_ID, INBOX_PAGE, MAILBOXES } from "../fixtures";
 import { command, mockShellBox, renderShell } from "../shell-rig";
 
 vi.mock("../../cache/client", async () => {
@@ -44,6 +44,27 @@ async function focusedRow(): Promise<HTMLElement> {
 
 async function field(): Promise<HTMLElement> {
   return screen.findByRole("combobox", { name: "Search mail" });
+}
+
+// The first result's thread, which the mocked search answers for any search.
+const RESULT = INBOX_PAGE.rows[0]?.threadId ?? "";
+
+// The search of `text` run from the field, its first result opened in the pane.
+async function openedResult(text: string): Promise<void> {
+  const input = await field();
+  fireEvent.change(input, { target: { value: text } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  const main = await screen.findByRole("main");
+  const grid = await within(main).findByRole("grid", { name: "Conversations" });
+  const first = await waitFor(() => {
+    const found = within(grid).getAllByRole("row").at(0);
+    expect(found).toBeDefined();
+    return found;
+  });
+  if (first !== undefined) {
+    fireEvent.click(first);
+  }
+  await screen.findByRole("heading", { level: 2 });
 }
 
 test("`/` from the list opens the search of the mailbox shown with the focus in the field", async () => {
@@ -147,6 +168,93 @@ test("a run replaces the entry the open pushed, so Back returns to the mailbox",
   await waitFor(() => {
     expect(router.state.location.pathname).toBe("/mail/acc-1/mb-inbox");
   });
+});
+
+test("a result opens at the search's address with the mailbox it acts from and closes back onto the results, then Escape leaves the search", async () => {
+  const router = renderShell("/mail/acc-1/mb-inbox");
+  await focusedRow();
+  command("/");
+  await openedResult("offerte");
+  expect(router.state.location.pathname).toBe(`/mail/acc-1/search/${RESULT}`);
+  expect(router.state.location.search).toEqual({ q: "offerte", box: "mb-inbox", at: INBOX_ID });
+  command("Escape");
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/search");
+  });
+  expect(router.state.location.search).toEqual({ q: "offerte", box: "mb-inbox" });
+  command("Escape");
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/mb-inbox");
+  });
+});
+
+test("closing the search from an open result goes back over both entries", async () => {
+  const router = renderShell("/mail/acc-1/mb-facturen");
+  await screen.findByRole("heading", { level: 1, name: "Facturen" });
+  await act(async () => {
+    await router.navigate({
+      to: "/mail/$accountId/$mailboxId",
+      params: { accountId: "acc-1", mailboxId: "mb-inbox" },
+    });
+  });
+  await focusedRow();
+  command("/");
+  await openedResult("offerte");
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/mb-inbox");
+  });
+  act(() => {
+    router.history.back();
+  });
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/mb-facturen");
+  });
+});
+
+test("with a result open, Escape in the emptied field closes the result and the search stands", async () => {
+  const router = renderShell("/mail/acc-1/mb-inbox");
+  await focusedRow();
+  command("/");
+  await openedResult("offerte");
+  const input = await field();
+  fireEvent.keyDown(input, { key: "Escape" });
+  expect(input).toHaveProperty("value", "");
+  fireEvent.keyDown(input, { key: "Escape" });
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/search");
+  });
+  expect(router.state.location.search).toEqual({ q: "offerte", box: "mb-inbox" });
+  expect(screen.getByRole("combobox", { name: "Search mail" })).toBeDefined();
+});
+
+test("a run while a result is open closes it, and closing the search still lands on the mailbox", async () => {
+  const router = renderShell("/mail/acc-1/mb-inbox");
+  await focusedRow();
+  command("/");
+  await openedResult("offerte");
+  const input = await field();
+  fireEvent.change(input, { target: { value: "factuur" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/search");
+  });
+  expect(router.state.location.search).toEqual({ q: "factuur", box: "mb-inbox" });
+  fireEvent.keyDown(input, { key: "Escape" });
+  fireEvent.keyDown(input, { key: "Escape" });
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/mb-inbox");
+  });
+});
+
+test("a result reached by its address closes onto the results, without the mailbox it acted from", async () => {
+  const router = renderShell(`/mail/acc-1/search/${RESULT}?q=offerte&box=mb-inbox&at=${INBOX_ID}`);
+  await screen.findByRole("heading", { level: 2 });
+  command("Escape");
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe("/mail/acc-1/search");
+  });
+  expect(router.state.location.search).toEqual({ q: "offerte", box: "mb-inbox" });
 });
 
 test("a search reached by its address closes onto the mailbox it names", async () => {

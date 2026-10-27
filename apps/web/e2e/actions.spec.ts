@@ -263,12 +263,17 @@ test("a row of a mailbox that offers no action keeps its time under the pointer"
   await keepsTime(page, 3);
 });
 
-test("a row keeps its time under the pointer while the open thread has no message left in the mailbox shown", async ({
+test("a row offers what its own mailbox offers under the pointer while the open thread has no message left in the mailbox shown", async ({
   page,
 }) => {
   await openInbox(page, "right", `${INBOX_PATH}/${trashThreadId()}`);
   await expect(pane(page).getByRole("heading", { level: 2 })).toBeVisible();
-  await keepsTime(page, 3);
+  const row = rowAt(page, 3);
+  await row.hover();
+  const strip = row.getByRole("button");
+  await expect(strip).toHaveCount(2);
+  await expect(strip.nth(0)).toHaveAccessibleName("Mark as unread");
+  await expect(strip.nth(1)).toHaveAccessibleName("Remove star");
 });
 
 test("a press in the toolbar takes the open thread, not the cursor's row, and the next one opens on its title", async ({

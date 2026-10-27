@@ -43,6 +43,13 @@ export function searchRoute(raw: Record<string, unknown>): SearchRoute {
   );
 }
 
+// A result open in the search keeps the search's params and adds `at`,
+// the mailbox the result acts from.
+export function resultRoute(raw: Record<string, unknown>): { at?: string } {
+  const at = new Map<string, unknown>(Object.entries(raw)).get("at");
+  return typeof at === "string" ? { at } : {};
+}
+
 // Every param stays the string the URL writes, so `q=123` is text.
 export function parseSearch(text: string): Record<string, string> {
   return Object.fromEntries(new URLSearchParams(text));

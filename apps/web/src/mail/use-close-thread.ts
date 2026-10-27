@@ -4,27 +4,32 @@
 
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 
-import { openedFromMailbox } from "./thread-history";
+import { openedFromMailbox, searchDepthOf } from "./thread-history";
 
 // Closing goes back over the entry the list pushed, so the history
 // reads as it did before the open; a thread reached by its address
-// leaves it in place instead.
+// gives way to its list instead: the mailbox, or the results of the
+// search it stands in, whose params stay.
 export function useCloseThread(accountId: string, mailboxId: string | undefined): () => void {
   const navigate = useNavigate();
   const router = useRouter();
-  const fromMailbox = useLocation({ select: (location) => openedFromMailbox(location.state) });
+  const pushed = useLocation({
+    select: (location) =>
+      mailboxId === undefined
+        ? searchDepthOf(location.state) > 0
+        : openedFromMailbox(location.state),
+  });
   return () => {
-    if (mailboxId === undefined) {
-      return;
-    }
-    if (fromMailbox) {
+    if (pushed) {
       router.history.back();
-      return;
+    } else if (mailboxId === undefined) {
+      void navigate({ to: "..", search: ({ at: _at, ...kept }) => kept, replace: true });
+    } else {
+      void navigate({
+        to: "/mail/$accountId/$mailboxId",
+        params: { accountId, mailboxId },
+        replace: true,
+      });
     }
-    void navigate({
-      to: "/mail/$accountId/$mailboxId",
-      params: { accountId, mailboxId },
-      replace: true,
-    });
   };
 }

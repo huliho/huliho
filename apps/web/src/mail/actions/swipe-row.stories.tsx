@@ -75,6 +75,7 @@ function moments(drawn: readonly Moment[], locale: Locale, rtl: boolean): StoryO
                 locale={locale}
                 today={TODAY}
                 row={row}
+                word={null}
                 index={index}
                 stop={false}
                 open={moment.open ?? false}

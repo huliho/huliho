@@ -41,6 +41,9 @@ interface ItemProps extends Placement {
   today: number;
   // The thread, or nothing while its page is on its way.
   row: ListRow | undefined;
+  // The name of the mailbox the row acts from, where a search spans more
+  // than one; null in a mailbox's own list.
+  word: string | null;
   index: number;
   // Whether this is the one row Tab lands on.
   stop: boolean;
@@ -93,6 +96,12 @@ function rowName(row: ListRow, locale: Locale, today: number): string {
   return row.unread ? m.list_row_unread(facts, { locale }) : m.list_row_read(facts, { locale });
 }
 
+// The row's name with the mailbox it acts from, where the row names one.
+function namedIn(row: ListRow, word: string | null, locale: Locale, today: number): string {
+  const name = rowName(row, locale, today);
+  return word === null ? name : m.list_row_in({ row: name, mailbox: word }, { locale });
+}
+
 function Bars({ shape }: { shape: number }) {
   return (
     <>
@@ -136,6 +145,7 @@ function Mark({ locale, check, onCheck }: MarkProps) {
 interface FactsProps extends MarkProps {
   today: number;
   row: ListRow;
+  word: string | null;
   index: number;
   actions: RowActionsHandle | null;
 }
@@ -143,8 +153,20 @@ interface FactsProps extends MarkProps {
 // The check stands where the dot sits and the actions stand in for the
 // time where the row shows them. The sender and the text line are mail
 // content in their own direction; the line takes the subject's, the
-// preview inside it its own.
-function Facts({ locale, today, row, index, check, onCheck, actions }: FactsProps) {
+// preview inside it its own. A row that names its mailbox puts the name
+// before the line, in the page's direction.
+function Facts({ locale, today, row, word, index, check, onCheck, actions }: FactsProps) {
+  const line = (
+    <>
+      <span className={styles.subject}>{subjectOf(row, locale)}</span>
+      {row.preview !== "" && (
+        <span className={styles.preview}>
+          {" · "}
+          <span dir="auto">{row.preview}</span>
+        </span>
+      )}
+    </>
+  );
   return (
     <>
       <Mark locale={locale} check={check} onCheck={onCheck} />
@@ -160,15 +182,19 @@ function Facts({ locale, today, row, index, check, onCheck, actions }: FactsProp
         <span className={styles.time}>{formatRowTime(row.receivedAt, today, locale)}</span>
       </span>
       {actions !== null && <RowActions locale={locale} handle={actions} row={row} index={index} />}
-      <span dir="auto" className={styles.text}>
-        <span className={styles.subject}>{subjectOf(row, locale)}</span>
-        {row.preview !== "" && (
-          <span className={styles.preview}>
-            {" · "}
-            <span dir="auto">{row.preview}</span>
+      {word === null ? (
+        <span dir="auto" className={styles.text}>
+          {line}
+        </span>
+      ) : (
+        <span className={cx(styles.text, styles.worded)}>
+          <span className={styles.word}>{word}</span>
+          <span className={styles.wordEnd}>{" · "}</span>
+          <span dir="auto" className={styles.line}>
+            {line}
           </span>
-        )}
-      </span>
+        </span>
+      )}
     </>
   );
 }
@@ -198,13 +224,14 @@ function marks({ row, open, pressing, swipe, closing }: ItemProps) {
 // shows the still shape inside the same element, so the focus stays put
 // while the page lands.
 export function ThreadListItem(props: ItemProps) {
-  const { locale, today, row, index, stop, open, check, actions, start, size, onPlace } = props;
+  const { locale, today, row, word, index, stop, open, check, actions, start, size, onPlace } =
+    props;
   const loaded = row !== undefined;
   return (
     <div
       role="row"
       aria-rowindex={index + 1}
-      aria-label={loaded ? rowName(row, locale, today) : m.loading_label({}, { locale })}
+      aria-label={loaded ? namedIn(row, word, locale, today) : m.loading_label({}, { locale })}
       aria-busy={loaded ? undefined : true}
       {...selectedness(open, loaded ? check : "none")}
       tabIndex={stop ? 0 : -1}
@@ -222,6 +249,7 @@ export function ThreadListItem(props: ItemProps) {
             locale={locale}
             today={today}
             row={row}
+            word={word}
             index={index}
             check={check}
             onCheck={props.onCheck}

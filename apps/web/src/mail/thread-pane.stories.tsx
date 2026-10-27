@@ -3,24 +3,37 @@
 // Additional terms apply, see NOTICE.
 
 import { JmapError } from "@huliho/core";
-import type { BodyDetail, Mailbox, MemberState, ThreadDetail } from "@huliho/core";
+import type { BodyDetail, MemberState, ThreadDetail } from "@huliho/core";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
-import type { Command } from "../commands/registry";
-import { useCommands } from "../commands/use-command";
-import { ACTION_COMMANDS } from "./actions/kinds";
-import type { ActionKind } from "./actions/kinds";
+import { placesOf } from "./actions/taken";
+import { WRITABLE } from "./actions/writable-rig";
 import { NEWSLETTER_HTML, PASSED, REPLY_TEXT, htmlDetail, textDetail } from "./body-fixtures";
 import { fixtureCache } from "./fixture-cache";
 import type { ThreadAnswer } from "./fixture-cache";
-import { FASTMAIL, INBOX_ID, MAILBOXES, THREAD, THREAD_ID, threadDetail } from "./fixtures";
+import { FASTMAIL, INBOX_ID, THREAD, THREAD_ID, threadDetail } from "./fixtures";
 import { ReadingPane, ThreadScreen, prefetchThreadPane } from "./reading-pane";
 import type { OpenThread } from "./reading-pane";
 import { routed, seedMail } from "./story-router";
 
-const INBOX = MAILBOXES.find((mailbox) => mailbox.id === INBOX_ID);
-const OPEN: OpenThread = { accountId: FASTMAIL.id, threadId: THREAD_ID, mailbox: INBOX };
+// The thread opened from a mailbox; `acting` gives it the offer of the
+// writable tree without the move, which these stories leave to the keys,
+// and without it the toolbar holds Close alone.
+function openFrom(mailboxId: string, acting = false): OpenThread {
+  const place = placesOf(WRITABLE)(mailboxId);
+  const offered = place === null ? null : { ...place.offered, move: [] };
+  return {
+    accountId: FASTMAIL.id,
+    threadId: THREAD_ID,
+    place: place === null || offered === null || !acting ? null : { ...place, offered },
+    back: place === null ? { kind: "unnamed" } : { kind: "mailbox", name: place.mailbox.name },
+    path: `/mail/${FASTMAIL.id}/${mailboxId}/${THREAD_ID}`,
+  };
+}
+
+const OPEN = openFrom(INBOX_ID);
+const OPEN_ACTING = openFrom(INBOX_ID, true);
 // An older message left unread, which the pane opens in sight.
 const UNREAD_AT = 4;
 const NEWEST_ID = "e-3";
@@ -37,36 +50,13 @@ function nothing(): void {
   // A drawn pane closes nothing and acts on nothing.
 }
 
-// The Act group a list of the mailbox registers, which the toolbar draws.
-function actsOf(kinds: readonly ActionKind[]): Command[] {
-  return kinds.flatMap((kind) => {
-    const command = ACTION_COMMANDS.get(kind);
-    return command === undefined ? [] : [{ ...command, label: kind, group: "act", run: nothing }];
-  });
-}
-
-const INBOX_ACTS = actsOf(["archive", "delete", "spam", "read", "star"]);
-const TRASH_ACTS = actsOf(["delete", "spam", "read", "star"]);
-
-function Acting({ acts, children }: { acts: readonly Command[]; children: JSX.Element }) {
-  useCommands(acts);
-  return children;
-}
-
 // Trash in the fixture tree, where the toolbar stands without archive.
-function trash(): Mailbox {
-  const found = MAILBOXES.find((mailbox) => mailbox.role === "trash");
-  if (found === undefined) {
-    throw new Error("the fixtures hold no Trash");
-  }
-  return found;
-}
+const TRASH_ID = "mb-trash";
 
 // The fixture thread with every message moved to Trash.
 function inTrash(detail: ThreadDetail): ThreadDetail {
-  const box = trash();
   const members = Object.entries(detail.thread.members).map(
-    ([id, member]): [string, MemberState] => [id, { ...member, mailboxIds: { [box.id]: true } }],
+    ([id, member]): [string, MemberState] => [id, { ...member, mailboxIds: { [TRASH_ID]: true } }],
   );
   return { ...detail, thread: { ...detail.thread, members: Object.fromEntries(members) } };
 }
@@ -76,21 +66,19 @@ function Box({ children }: { children: JSX.Element }): JSX.Element {
   return <div style={{ position: "relative", display: "flex", blockSize: "80vh" }}>{children}</div>;
 }
 
-function paned(answer: ThreadAnswer, open = OPEN, acts: readonly Command[] = []): JSX.Element {
+function paned(answer: ThreadAnswer, open = OPEN): JSX.Element {
   return routed(
     () => (
-      <Acting acts={acts}>
-        <Box>
-          <ReadingPane
-            locale="en"
-            cache={fixtureCache({}, { [THREAD_ID]: answer })}
-            thread={open}
-            position="right"
-            keyHints
-            onClose={nothing}
-          />
-        </Box>
-      </Acting>
+      <Box>
+        <ReadingPane
+          locale="en"
+          cache={fixtureCache({}, { [THREAD_ID]: answer })}
+          thread={open}
+          position="right"
+          keyHints
+          onClose={nothing}
+        />
+      </Box>
     ),
     undefined,
     seedMail(BODIES),
@@ -153,12 +141,12 @@ export const Gone: StoryObj = {
 // The toolbar in the inbox: archive, delete and spam with their words
 // where the pane has the room, the two flips as icons.
 export const Toolbar: StoryObj = {
-  render: () => paned(threadDetail([UNREAD_AT]), OPEN, INBOX_ACTS),
+  render: () => paned(threadDetail([UNREAD_AT]), OPEN_ACTING),
 };
 
 // In Trash delete forever stands where delete would and archive is absent.
 export const ToolbarInTrash: StoryObj = {
-  render: () => paned(inTrash(THREAD), { ...OPEN, mailbox: trash() }, TRASH_ACTS),
+  render: () => paned(inTrash(THREAD), openFrom(TRASH_ID, true)),
 };
 
 // As a screen the actions follow the way back and its key.
@@ -166,17 +154,15 @@ export const ScreenToolbar: StoryObj = {
   render: () =>
     routed(
       () => (
-        <Acting acts={INBOX_ACTS}>
-          <Box>
-            <ThreadScreen
-              locale="en"
-              cache={fixtureCache({}, { [THREAD_ID]: THREAD })}
-              thread={OPEN}
-              keyHints
-              onClose={nothing}
-            />
-          </Box>
-        </Acting>
+        <Box>
+          <ThreadScreen
+            locale="en"
+            cache={fixtureCache({}, { [THREAD_ID]: THREAD })}
+            thread={OPEN_ACTING}
+            keyHints
+            onClose={nothing}
+          />
+        </Box>
       ),
       undefined,
       seedMail(BODIES),

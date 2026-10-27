@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { ListRow, Mailbox } from "@huliho/core";
+import type { ListRow } from "@huliho/core";
 
 import { KeyCaps } from "../../commands/key-caps";
 import type { Locale } from "../../paraglide/runtime.js";
 import { iconOf } from "./action-icon";
-import { useShownActions } from "./kinds";
+import { shownActions } from "./kinds";
 import type { ActionKind } from "./kinds";
+import type { PlaceOf } from "./taken";
+import { aimAt } from "./targets";
 import styles from "./row-actions.module.css";
 
 // What the grid reads to tell a press on an action from a click that
@@ -19,11 +21,11 @@ export const ROW_ACTIONS = "[data-row-actions]";
 // stay with the keys, the toolbar and the palette.
 const ROW_KINDS: readonly ActionKind[] = ["archive", "delete", "read", "star"];
 
-// What the list lends a row: the mailbox the words follow and the call
-// that runs an action on the row's thread, which resolves whether the
-// thread left the mailbox shown.
+// What the list lends a row: the places its mailbox's words and offer
+// come from and the call that runs an action on the row's thread, which
+// resolves whether the thread left the mailbox it acts from.
 export interface RowActionsHandle {
-  mailbox: Mailbox;
+  placeOf: PlaceOf;
   run: (kind: ActionKind, row: ListRow, index: number) => Promise<boolean>;
 }
 
@@ -34,11 +36,13 @@ interface RowActionsProps {
   index: number;
 }
 
-// The thread's actions at the end of the row's first line, kept out of
-// the tab order since the keys and the palette are the keyboard route.
-// A press leaves the focus where it stands.
+// The thread's actions at the end of the row's first line, the ones the
+// mailbox it acts from offers, kept out of the tab order since the keys
+// and the palette are the keyboard route. A press leaves the focus where
+// it stands.
 export function RowActions({ locale, handle, row, index }: RowActionsProps) {
-  const shown = useShownActions(ROW_KINDS, handle.mailbox, row, locale);
+  const aim = aimAt(row, index, handle.placeOf);
+  const shown = aim === null ? [] : shownActions(ROW_KINDS, [aim], locale);
   if (shown.length === 0) {
     return null;
   }
