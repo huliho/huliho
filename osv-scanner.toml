@@ -11,3 +11,7 @@ reason = "extract-zip sits under lighthouse's browser fetcher, runs as developme
 [[IgnoredVulns]]
 id = "GHSA-mrhx-c7xc-m3w5"
 reason = "zod 3 sits under chromium-bidi in the lighthouse 12 of Lighthouse CI, which connects to Chrome over CDP and so never runs the WebDriver BiDi code that validates with it; the 3 line has no fixed release"
+
+[[IgnoredVulns]]
+id = "GHSA-qwgh-2vcv-g2f7"
+reason = "block-buffer 0.10 sits under sha2 0.10 in oauth2 5.0.0, its newest release, which hashes only through the one-shot Sha256::digest, so no caught panic can leave a buffer that is used again; the 0.10 line has no fixed release"
