@@ -12,7 +12,6 @@ import { useCoarsePointer } from "../../shell/pointer";
 import { prefetchMenus } from "../menus-chunk";
 import { iconOf } from "./action-icon";
 import type { BulkBarProps, BulkEntry, BulkHandle } from "./bulk-handle";
-import { BULK_KINDS, useShownActions } from "./kinds";
 import type { ActionKind } from "./kinds";
 import styles from "./bulk-slot.module.css";
 
@@ -30,17 +29,15 @@ function LoadedBulkBar(props: BulkBarProps) {
   return <BulkBar {...props} />;
 }
 
-// What the bar draws: the actions the picks can take as the registry
-// holds them, so a button stands exactly while its key works; then Close.
+// What the bar draws: the actions the picks can take, then Close.
 function useBarProps({ locale, handle }: BulkSlotProps): BulkBarProps {
-  const shown = useShownActions(BULK_KINDS, handle.mailbox, handle.thread, locale);
   const close = useRegistered().findLast((command) => command.id === "selection.close");
   const touch = useCoarsePointer();
   // With nothing picked a press would take nothing, so Close stands alone.
   const entries =
     handle.count === 0
       ? []
-      : shown.map((entry): BulkEntry => ({
+      : handle.shown.map((entry): BulkEntry => ({
           kind: entry.kind,
           label: entry.label,
           keys: entry.keys,

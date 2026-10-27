@@ -115,16 +115,13 @@ test("a held page answers from the store without a request, and `again` runs the
   expect(queries(server)).toHaveLength(1);
   expect(again.rows[0]?.id).toBe("e8");
   expect(again.total).toBe(4);
-  // On a later page the flag changes nothing: the page is fetched by
-  // anchor onto the held search, whose first page and total stay.
+  // On a later page the flag changes nothing, and a first page short of a
+  // full one says the server holds no more, so nothing is asked.
   const later = await searchWindow(client, store, { ...ask({ q: "invoice" }, 1), again: true });
-  expect(queries(server).at(-1)).toMatchObject({ anchor: "e2", anchorOffset: 1 });
-  expect(later.total).toBe(4);
+  expect(queries(server)).toHaveLength(1);
+  expect(later).toEqual({ rows: [], total: 4, pending: 0 });
   const held = await store.search(ACCOUNT, searchKeyOf({ q: "invoice" }));
-  expect(held?.pages.map((page) => [page.page, page.ids.length])).toEqual([
-    [0, 4],
-    [1, 0],
-  ]);
+  expect(held?.pages.map((page) => [page.page, page.ids.length])).toEqual([[0, 4]]);
 });
 
 test("`all` keeps Junk and Trash in, and one mailbox narrows the search to it", async () => {
@@ -229,18 +226,21 @@ test("a poll never adds a row to the results, while an email the server destroye
 
 // The mailings in the inbox past one page of results, b0 the oldest.
 const BULK = WINDOW_SIZE + 2;
+const HALF_SECOND_MS = 500;
 
-function mailing(id: string, seconds: number): EmailHeader {
-  return { ...email(id, { receivedAt: at(seconds) }), subject: "Bulk" };
+function mailing(id: string, receivedAt: string, threadId?: string): EmailHeader {
+  const facts = threadId === undefined ? { receivedAt } : { receivedAt, threadId };
+  return { ...email(id, facts), subject: "Bulk" };
 }
 
-function bulk(server: FakeJmap): void {
-  for (let index = 0; index < BULK; index += 1) {
-    server.addEmail(mailing(`b${String(index)}`, BULK + index));
+// `count` mailings a second apart, b0 the oldest.
+function bulk(server: FakeJmap, count = BULK): void {
+  for (let index = 0; index < count; index += 1) {
+    server.addEmail(mailing(`b${String(index)}`, at(count + index)));
   }
 }
 
-test("a page past the first is asked by anchor on the last row the page before shows (RFC 8620 section 5.5)", async () => {
+test("a row that leaves a full page lets the rows after it close up, the server's next page asked by anchor on the last row shown (RFC 8620 section 5.5)", async () => {
   const { server, client, store } = serve();
   bulk(server);
   const search = ask({ q: "bulk", in: "inbox" });
@@ -248,10 +248,45 @@ test("a page past the first is asked by anchor on the last row the page before s
   const last = first.rows.at(-1)?.id ?? "";
   const before = first.rows.at(-2)?.id ?? "";
   await mutateMany(store, ACCOUNT, [move(last, "inbox", "archive")]);
-  const second = await searchWindow(client, store, { ...search, page: 1 });
+  const again = await searchWindow(client, store, search);
   expect(queries(server).at(-1)).toMatchObject({ anchor: before, anchorOffset: 1 });
-  expect(second.rows.map((row) => row.id)).toEqual(["b1", "b0"]);
+  expect(again.rows).toHaveLength(WINDOW_SIZE);
+  expect(again.rows.at(-2)?.id).toBe(before);
+  expect(again.rows.at(-1)?.id).toBe("b1");
+  expect(again.total).toBe(BULK - 1);
+  const second = await searchWindow(client, store, { ...search, page: 1 });
+  expect(second.rows.map((row) => row.id)).toEqual(["b0"]);
   expect(second.total).toBe(BULK - 1);
+});
+
+test("a later page asked first brings the pages before it, each by anchor on the one before", async () => {
+  const { server, client, store } = serve();
+  bulk(server);
+  const second = await searchWindow(client, store, ask({ q: "bulk", in: "inbox" }, 1));
+  expect(queries(server).map((args) => [args["position"], args["anchor"]])).toEqual([
+    [0, undefined],
+    [undefined, "b2"],
+  ]);
+  expect(second.rows.map((row) => row.id)).toEqual(["b1", "b0"]);
+  expect(second.total).toBe(BULK);
+});
+
+test("a page that brings only rows the search holds is kept and ends the gathering with the total it leaves", async () => {
+  const { server, client, store } = serve();
+  bulk(server);
+  const search = ask({ q: "bulk", in: "inbox" });
+  await searchWindow(client, store, search);
+  server.destroyEmail("b1");
+  server.destroyEmail("b0");
+  await mutateMany(store, ACCOUNT, [
+    move("b4", "inbox", "archive"),
+    move("b3", "inbox", "archive"),
+    move("b2", "inbox", "archive"),
+  ]);
+  const page = await searchWindow(client, store, search);
+  expect(queries(server)).toHaveLength(2);
+  expect(page.rows).toHaveLength(WINDOW_SIZE - 3);
+  expect(page.total).toBe(WINDOW_SIZE - 3);
 });
 
 test("a row the server shifts onto the next page shows once, on the page that held it first", async () => {
@@ -261,11 +296,30 @@ test("a row the server shifts onto the next page shows once, on the page that he
   const first = await searchWindow(client, store, search);
   // The anchor leaves the server and two newer mailings push the rest down.
   server.destroyEmail(first.rows.at(-1)?.id ?? "");
-  server.addEmail(mailing("n1", 3 * BULK));
-  server.addEmail(mailing("n2", 3 * BULK + 1));
+  server.addEmail(mailing("n1", at(3 * BULK)));
+  server.addEmail(mailing("n2", at(3 * BULK + 1)));
   const second = await searchWindow(client, store, { ...search, page: 1 });
   expect(second.rows.map((row) => row.id)).toEqual(["b1", "b0"]);
   expect(second.total).toBe(BULK);
+});
+
+test("a thread the server answers again under another member counts once in the total while more pages remain", async () => {
+  const { server, client, store } = serve();
+  const count = 3 * WINDOW_SIZE + 2;
+  bulk(server, count);
+  // The thread tx: x1 the newest mailing of all, x2 half a second past
+  // one the second page holds.
+  server.addEmail(mailing("x1", at(3 * count), "tx"));
+  server.addEmail(mailing("x2", at(count + WINDOW_SIZE + WINDOW_SIZE / 2, HALF_SECOND_MS), "tx"));
+  const search = ask({ q: "bulk", in: "inbox" });
+  const first = await searchWindow(client, store, search);
+  expect(first.rows[0]?.id).toBe("x1");
+  // Another client takes x1 away, so the server answers the thread under x2 from now on.
+  server.destroyEmail("x1");
+  const second = await searchWindow(client, store, { ...search, page: 1 });
+  expect(second.rows).toHaveLength(WINDOW_SIZE);
+  expect(second.rows.map((row) => row.id)).not.toContain("x2");
+  expect(second.total).toBe(count + 1);
 });
 
 test("past SEARCH_ROWS searches the one that ran first leaves, and asking it again searches anew", async () => {

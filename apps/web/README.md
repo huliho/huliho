@@ -369,18 +369,29 @@ the field and `box` naming the mailbox it was opened from. Opened from
 Junk or Trash it keeps to that mailbox; else it spans every mailbox but
 those two. The field reads `from:`, `in:`, `after:`, `before:`,
 `is:unread`, `is:starred` and `has:attachment` as tokens. While it has
-the focus, four shortcuts stand under it. Typing offers the plain
-search, the senders of the held mail, the mailboxes and, under an empty
-field, the account's last eight searches; `privacy.strict` keeps those
-in memory alone and a sign-out forgets them. Enter runs the text and a
-picked suggestion runs at once; each run replaces the route's params,
-so Escape on an empty field or Back returns to the mailbox with the
-focus where it was. A search past 300 ms says it is searching, past
-four seconds that a server without an index takes a while, with Cancel,
-which gives the request up. The slot under the field counts the
-results with the widening the scope allows. The search loads with the
-account menu's chunk; the worker runs it under the account's lock and
-answers the senders from what it holds.
+the focus and no results stand under it, four shortcuts stand under it.
+Typing offers the plain search, the senders of the held mail, the
+mailboxes and, under an empty field, the account's last eight searches;
+`privacy.strict` keeps those in memory alone and a sign-out forgets
+them. Enter runs the text and a picked suggestion runs at once; each run
+replaces the route's params, so Escape on an empty field or Back returns
+to the mailbox with the focus where it was. A search past 300 ms says it
+is searching, past four seconds that a server without an index takes a
+while, with Cancel, which gives the request up. The slot under the field
+counts the results with the widening the scope allows.
+
+The results are the list's own rows. Where a search spans mailboxes,
+each row names the mailbox it acts from and acts as a row of that
+mailbox does, from its buttons, its swipe, the keys and the toolbar.
+An archive under the default scope keeps the row with its mailbox
+renewed; under one mailbox it takes the row out. A selection across
+mailboxes acts on the picks whose mailbox offers the same action as its
+first pick outside Junk and Trash. A result opens at
+`/mail/{accountId}/search/{threadId}`, with `at` naming the mailbox it
+acts from; Escape closes it back onto the results. The results are a
+snapshot the poll never refreshes; Enter runs the search again. The
+search loads with the account menu's chunk; the worker runs it under
+the account's lock and answers the senders from what it holds.
 
 From the repo root: `pnpm build` builds it, `pnpm test` runs the unit
 tests and `pnpm test:e2e` runs the Playwright suite. `pnpm dev` inside

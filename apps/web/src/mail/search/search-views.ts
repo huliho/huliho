@@ -49,7 +49,7 @@ function bodyOf({ search, ran, online, mailboxes, locale }: ViewInput): BodyView
   if (data !== undefined) {
     return data.rows.length === 0
       ? { kind: "empty", words: emptyWords(ran, scopeWords(ran, mailboxes), locale) }
-      : { kind: "nothing" };
+      : { kind: "results" };
   }
   return error === null ? { kind: "loading" } : { kind: "failed", deadline: tookTooLong(error) };
 }

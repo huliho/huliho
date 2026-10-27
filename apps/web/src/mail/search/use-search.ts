@@ -75,10 +75,11 @@ function routeOf(params: SearchParams, box: string | undefined): SearchRoute {
 }
 
 // The search in the route, its first page and the run: a run asks the
-// server anew and replaces the route's params; offline it replaces the
-// params alone. The route's search joins the recents while the tab is
-// online, however it got there; a run notes it again, so a repeat moves
-// up. Cancel gives the request up and keeps the field.
+// server anew and replaces the route's params, the later pages of the
+// search read again once the new first page is in; offline it replaces
+// the params alone. The route's search joins the recents while the tab
+// is online, however it got there; a run notes it again, so a repeat
+// moves up. Cancel gives the request up and keeps the field.
 export function useRanSearch(context: RunContext, ran: SearchParams): RanSearch {
   const { cache, accountId, locale, online, strict } = context;
   const queryClient = useQueryClient();
@@ -107,7 +108,16 @@ export function useRanSearch(context: RunContext, ran: SearchParams): RanSearch 
         again: true,
       });
       // The page's own query shows the outcome; this promise has no reader.
-      queryClient.query({ ...fresh, staleTime: 0 }).catch(() => undefined);
+      // The run filled the first page, so the pages after it read again.
+      queryClient
+        .query({ ...fresh, staleTime: 0 })
+        .then(() =>
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.searchPages(accountId, next),
+            predicate: (query) => query.queryKey.at(-1) !== 0,
+          }),
+        )
+        .catch(() => undefined);
     }
     context.onRoute(routeOf(params, context.route.box));
   };

@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { MailCache, Mailbox } from "@huliho/core";
+import type { MailCache } from "@huliho/core";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { Suspense, use, useEffect } from "react";
 
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { chunk } from "../shell/chunk";
+import type { Place } from "./actions/taken";
 import { unmarkedForList, wantsListFocus } from "./thread-history";
-import type { PanePosition, ThreadPaneProps } from "./thread-pane";
+import type { PanePosition, ThreadPaneProps, WayBack } from "./thread-pane";
 import { ThreadSkeleton } from "./thread-skeleton";
 import styles from "./reading-pane.module.css";
 
@@ -24,11 +25,14 @@ function LoadedThreadPane(props: ThreadPaneProps) {
   return <ThreadPane {...props} />;
 }
 
-// The thread the address names, with the mailbox it was opened from.
+// The thread the address names: the mailbox it acts from, where the way
+// back leads and the address's path.
 export interface OpenThread {
   accountId: string;
   threadId: string;
-  mailbox: Mailbox | undefined;
+  place: Place | null;
+  back: WayBack;
+  path: string;
 }
 
 // Whether an action from a row opened the thread with the focus left in
@@ -36,24 +40,17 @@ export interface OpenThread {
 // since the address moves on before the route's params do. The entry
 // then loses its mark, so a later visit to it focuses the title as any
 // open does.
-function useListKeepsFocus({ accountId, threadId, mailbox }: OpenThread): boolean {
+function useListKeepsFocus({ path }: OpenThread): boolean {
   const navigate = useNavigate();
-  const mailboxId = mailbox?.id;
   const marked = useLocation({
     select: (location) => (wantsListFocus(location.state) ? location.pathname : null),
   });
-  const kept = mailboxId !== undefined && marked === `/mail/${accountId}/${mailboxId}/${threadId}`;
+  const kept = marked === path;
   useEffect(() => {
-    if (!kept) {
-      return;
+    if (kept) {
+      void navigate({ to: ".", search: (held) => held, replace: true, state: unmarkedForList });
     }
-    void navigate({
-      to: "/mail/$accountId/$mailboxId/$threadId",
-      params: { accountId, mailboxId, threadId },
-      replace: true,
-      state: unmarkedForList,
-    });
-  }, [kept, accountId, mailboxId, threadId, navigate]);
+  }, [kept, navigate]);
   return kept;
 }
 
@@ -74,7 +71,8 @@ function Opened({ thread, ...props }: OpenedProps) {
       {...props}
       accountId={thread.accountId}
       threadId={thread.threadId}
-      mailbox={thread.mailbox}
+      place={thread.place}
+      back={thread.back}
       listKeepsFocus={listKeepsFocus}
     />
   );

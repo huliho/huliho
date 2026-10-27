@@ -2,19 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { ActionTarget, Mailbox } from "@huliho/core";
 import type { LucideIcon } from "lucide-react";
 
 import type { Chord } from "../../commands/keys";
-import type { ActionKind } from "./kinds";
+import type { ActionKind, ShownAction } from "./kinds";
 
 // What the list hands the bulk bar while a selection stands.
 export interface BulkHandle {
-  // The mailbox the words follow.
-  mailbox: Mailbox;
   count: number;
-  // The picks as one thread, whose state the read flip's words follow.
-  thread: Pick<ActionTarget, "unread" | "flagged">;
+  // The actions the picks can take, each from the mailbox it acts from.
+  shown: readonly ShownAction[];
   run: (kind: ActionKind) => void;
   close: () => void;
 }

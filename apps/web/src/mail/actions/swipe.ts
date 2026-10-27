@@ -40,8 +40,9 @@ export interface SwipeInput {
   drawn: readonly { index: number }[];
   rowCount: number;
   rowOf: (target: EventTarget) => number | null;
-  // The ways that carry an action; a way without one keeps the row in place.
-  ways: ReadonlySet<SwipeWay>;
+  // The ways that carry an action on a row; a way without one keeps the
+  // row in place.
+  waysOf: (row: ListRow, index: number) => ReadonlySet<SwipeWay>;
   rtl: boolean;
   // Told when a touch turns into a swipe, so a pending long press ends.
   onEngage: () => void;
@@ -79,6 +80,7 @@ interface Track {
   pointerId: number;
   index: number;
   row: ListRow;
+  ways: ReadonlySet<SwipeWay>;
   x: number;
   y: number;
   // Read as a scroll: the rest of the gesture is the list's.
@@ -142,7 +144,7 @@ function follow(track: Track, input: SwipeInput, event: PointerEvent<HTMLElement
     input.onEngage();
   }
   track.way = wayOf(dx, input.rtl);
-  const reach = input.ways.has(track.way) ? Math.min(Math.abs(dx), track.box.width) : 0;
+  const reach = track.ways.has(track.way) ? Math.min(Math.abs(dx), track.box.width) : 0;
   track.offset = Math.sign(dx) * reach;
   track.armed = reach >= track.box.width * SWIPE_COMMIT_RATIO;
   return true;
@@ -184,16 +186,18 @@ function back(gesture: Gesture): void {
 function startOf(input: SwipeInput, event: PointerEvent<HTMLElement>): Track | null {
   const index = input.rowOf(event.target);
   const row = index === null ? undefined : rowAt(input.rows, index);
-  if (event.pointerType !== "touch" || !event.isPrimary || input.ways.size === 0) {
+  if (event.pointerType !== "touch" || !event.isPrimary || index === null || row === undefined) {
     return null;
   }
-  if (index === null || row === undefined) {
+  const ways = input.waysOf(row, index);
+  if (ways.size === 0) {
     return null;
   }
   return {
     pointerId: event.pointerId,
     index,
     row,
+    ways,
     x: event.clientX,
     y: event.clientY,
     scroll: false,

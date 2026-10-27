@@ -175,6 +175,13 @@
   overflow: auto;
 }
 
+/* The results scroll inside the list's own grid. */
+.body[data-results] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .hint {
   margin: 0;
   padding: var(--hhx-space-3) var(--hhx-pane-padding) var(--hhx-space-1);

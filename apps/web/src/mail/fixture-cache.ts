@@ -8,6 +8,7 @@ import type {
   EmailHeader,
   Job,
   ListPage,
+  ListRow,
   MailCache,
   Mutation,
   PatchMutation,
@@ -30,6 +31,11 @@ function answered<Value>(answer: Value | "never" | Error): Promise<Value> {
     return new Promise(() => undefined);
   }
   return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer);
+}
+
+// A fixture row as a mailbox's list hands it out, acting from that mailbox.
+function listedIn(row: ListRow, mailboxId: string): ListRow {
+  return { ...row, mailboxId };
 }
 
 // The header of an email among the threads held, if any.
@@ -142,11 +148,12 @@ export function fixtureCache(
     ...recorded,
     ...recordedWrites(recorded),
     mailboxes: () => Promise.resolve(MAILBOXES),
-    window: (_accountId, mailboxId, page) => {
+    // A mailbox's rows act from it, as the worker hands them out.
+    window: async (_accountId, mailboxId, page) => {
       const answer = pages[`${mailboxId}/${String(page)}`];
-      return answer === undefined
-        ? Promise.resolve({ rows: [], total: 0, pending: 0 })
-        : answered(answer);
+      const found =
+        answer === undefined ? { rows: [], total: 0, pending: 0 } : await answered(answer);
+      return { ...found, rows: found.rows.map((row) => listedIn(row, mailboxId)) };
     },
     search: (_accountId, key, page) => {
       const answer = pages[`search:${key}/${String(page)}`];

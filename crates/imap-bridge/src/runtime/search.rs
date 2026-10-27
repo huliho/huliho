@@ -4,9 +4,10 @@
 
 //! The searches of one account: a connection of their own, one search at
 //! a time, the folders of a plan in turn under one deadline and the hits
-//! of the last few kept in memory, so the pages after the first cost no
-//! SEARCH. A search that ends early, at the deadline or because its
-//! request went away, drops the connection with it.
+//! of the last few kept in memory until the bridge moves mail, so the
+//! pages after the first cost no SEARCH. A search that ends early, at the
+//! deadline or because its request went away, drops the connection with
+//! it.
 
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -97,11 +98,19 @@ struct Entry {
     read_at: Instant,
 }
 
+/// The searches kept and how often they were forgotten, so a search
+/// that ran across a forget keeps nothing.
+#[derive(Default)]
+struct Kept {
+    entries: Vec<Entry>,
+    forgets: u64,
+}
+
 /// The connection the searches of one account run on, one at a time,
 /// and the hits of the last ones.
 pub(crate) struct Searches<C: Connector> {
     wire: tokio::sync::Mutex<Wire<C>>,
-    kept: Mutex<Vec<Entry>>,
+    kept: Mutex<Kept>,
     deadline: Duration,
 }
 
@@ -109,9 +118,17 @@ impl<C: Connector> Searches<C> {
     pub(super) fn new(connector: C, timing: Timing) -> Self {
         Self {
             wire: tokio::sync::Mutex::new(Wire::new(connector, timing)),
-            kept: Mutex::new(Vec::new()),
+            kept: Mutex::new(Kept::default()),
             deadline: timing.search,
         }
+    }
+
+    /// Drops every search kept. A move gives the mail it moved other
+    /// UIDs, which the kept hits do not name.
+    pub(crate) fn forget(&self) {
+        let mut kept = self.kept();
+        kept.entries.clear();
+        kept.forgets += 1;
     }
 
     /// The hits of the plan: those of an equal plan read inside the TTL,
@@ -147,6 +164,7 @@ impl<C: Connector> Searches<C> {
             return Err(Failure::Unavailable);
         };
         let searching = wire.searching;
+        let forgets = self.kept().forgets;
         let outcome = timeout_at(
             until,
             searched(&mut session, cache, plan, (searching, until)),
@@ -167,7 +185,7 @@ impl<C: Connector> Searches<C> {
         };
         wire.put(session);
         let hits = Arc::new(found);
-        self.keep(plan, &hits);
+        self.keep(plan, &hits, forgets);
         Ok(hits)
     }
 
@@ -193,27 +211,32 @@ impl<C: Connector> Searches<C> {
     /// The same at `now`; the entries past the TTL leave on the way.
     fn kept_at(&self, plan: &Plan, now: Instant) -> Option<Hits> {
         let mut kept = self.kept();
-        kept.retain(|entry| now.saturating_duration_since(entry.read_at) < SEARCH_CACHE_TTL);
-        let entry = kept.iter().find(|entry| entry.plan == *plan)?;
+        kept.entries
+            .retain(|entry| now.saturating_duration_since(entry.read_at) < SEARCH_CACHE_TTL);
+        let entry = kept.entries.iter().find(|entry| entry.plan == *plan)?;
         Some(Arc::clone(&entry.hits))
     }
 
     /// Keeps the hits of a fresh search in place of an equal plan's,
-    /// the oldest entry leaving past `SEARCH_CACHE_ENTRIES`.
-    fn keep(&self, plan: &Plan, hits: &Hits) {
+    /// the oldest entry leaving past `SEARCH_CACHE_ENTRIES`; nothing when
+    /// a forget came since the search began, as `forgets` counted then.
+    fn keep(&self, plan: &Plan, hits: &Hits, forgets: u64) {
         let mut kept = self.kept();
-        kept.retain(|entry| entry.plan != *plan);
-        if kept.len() >= SEARCH_CACHE_ENTRIES {
-            kept.remove(0);
+        if kept.forgets != forgets {
+            return;
         }
-        kept.push(Entry {
+        kept.entries.retain(|entry| entry.plan != *plan);
+        if kept.entries.len() >= SEARCH_CACHE_ENTRIES {
+            kept.entries.remove(0);
+        }
+        kept.entries.push(Entry {
             plan: plan.clone(),
             hits: Arc::clone(hits),
             read_at: Instant::now(),
         });
     }
 
-    fn kept(&self) -> MutexGuard<'_, Vec<Entry>> {
+    fn kept(&self) -> MutexGuard<'_, Kept> {
         self.kept.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -316,15 +339,19 @@ mod tests {
         );
     }
 
+    fn hits() -> Hits {
+        Arc::new(vec![FolderHits {
+            folder: MailboxId::from("m1".to_owned()),
+            uids: vec![3, 1],
+        }])
+    }
+
     #[test]
     fn the_hits_answer_an_equal_plan_inside_the_ttl_and_leave_past_it() {
         let searches = Searches::new(TestConnector::Refusing, Timing::default());
-        let hits: Hits = Arc::new(vec![FolderHits {
-            folder: MailboxId::from("m1".to_owned()),
-            uids: vec![3, 1],
-        }]);
+        let hits = hits();
         let read = Instant::now();
-        searches.keep(&plan("plan"), &hits);
+        searches.keep(&plan("plan"), &hits, 0);
         let inside = read + SEARCH_CACHE_TTL - Duration::from_secs(1);
         assert_eq!(
             searches.kept_at(&plan("plan"), inside),
@@ -338,6 +365,24 @@ mod tests {
             None,
             "gone for good"
         );
+    }
+
+    #[test]
+    fn a_forget_drops_the_hits_and_a_search_begun_before_it_keeps_none() {
+        let searches = Searches::new(TestConnector::Refusing, Timing::default());
+        let hits = hits();
+        searches.keep(&plan("plan"), &hits, 0);
+        assert_eq!(searches.kept_for(&plan("plan")), Some(Arc::clone(&hits)));
+        searches.forget();
+        assert_eq!(searches.kept_for(&plan("plan")), None);
+        searches.keep(&plan("plan"), &hits, 0);
+        assert_eq!(
+            searches.kept_for(&plan("plan")),
+            None,
+            "read before the forget"
+        );
+        searches.keep(&plan("plan"), &hits, 1);
+        assert_eq!(searches.kept_for(&plan("plan")), Some(hits));
     }
 
     #[test]

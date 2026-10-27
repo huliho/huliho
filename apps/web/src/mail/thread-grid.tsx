@@ -18,8 +18,9 @@ import { ROW_ACTIONS } from "./actions/row-actions";
 import type { RowActionsHandle } from "./actions/row-actions";
 import { useSwipe } from "./actions/swipe";
 import type { Swipe } from "./actions/swipe";
-import { useSwipeActions } from "./actions/swipe-row";
+import { swipeActionsOf } from "./actions/swipe-row";
 import type { RowSwipe } from "./actions/swipe-row";
+import { aimAt } from "./actions/targets";
 import type { ListCursor } from "./list-cursor";
 import type { ListMarker } from "./list-marker";
 import type { VirtualList } from "./list-virtualizer";
@@ -49,6 +50,8 @@ interface GridProps {
   list: VirtualList;
   rows: ReadonlyMap<number, ListRow[]>;
   rowCount: number;
+  // The name of the mailbox a row acts from, where the list shows one.
+  wordOf: (row: ListRow) => string | null;
   cursor: ListCursor;
   openThreadId: string | null;
   rowActions: RowActionsHandle;
@@ -100,29 +103,31 @@ function checkOf(picks: PickHandle, row: ListRow | undefined, pointed: boolean):
 }
 
 // A touch that travels sideways on a row swipes it: archive toward the
-// line's end, delete toward its start, each where its key works.
+// line's end, delete toward its start, each where the mailbox the row
+// acts from offers it.
 function useRowSwipe(props: GridProps, onEngage: () => void) {
   const { rowActions, picks, locale } = props;
-  const actions = useSwipeActions(rowActions.mailbox, locale, picks.open);
+  const actionsOf = (row: ListRow, index: number) =>
+    swipeActionsOf(aimAt(row, index, rowActions.placeOf), locale, picks.open);
   const swipe = useSwipe({
     rows: props.rows,
     drawn: props.list.items,
     rowCount: props.rowCount,
     rowOf,
-    ways: new Set(actions.keys()),
+    waysOf: (row, index) => new Set(actionsOf(row, index).keys()),
     rtl: directionOf(locale) === "rtl",
     onEngage,
     onCommit: (way, row, index) => {
-      const kind = actions.get(way)?.kind;
+      const kind = actionsOf(row, index).get(way)?.kind;
       return kind === undefined ? Promise.resolve(false) : rowActions.run(kind, row, index);
     },
   });
   // The swipe of the row that shows its thread; none on any other row.
-  const swipeOf = (row: ListRow | undefined): RowSwipe | null => {
+  const swipeOf = (row: ListRow | undefined, index: number): RowSwipe | null => {
     const { view } = swipe;
-    return view === null || row?.threadId !== view.threadId
+    return view === null || row === undefined || row.threadId !== view.threadId
       ? null
-      : { view, action: actions.get(view.way), onSettled: swipe.onSettled };
+      : { view, action: actionsOf(row, index).get(view.way), onSettled: swipe.onSettled };
   };
   return { swipe, swipeOf };
 }
@@ -233,13 +238,14 @@ function drawn(props: GridProps, pointer: GridPointer, item: VirtualList["items"
       locale={props.locale}
       today={props.today}
       row={row}
+      word={row === undefined ? null : props.wordOf(row)}
       index={item.index}
       stop={item.index === cursor.active}
       open={row !== undefined && row.threadId === props.openThreadId}
       check={checkOf(picks, row, pointed)}
       pressing={item.index === pointer.pressing}
       actions={acts ? props.rowActions : null}
-      swipe={pointer.swipeOf(row)}
+      swipe={pointer.swipeOf(row, item.index)}
       closing={pointer.closing !== null && item.index >= pointer.closing}
       start={item.start}
       size={item.size}

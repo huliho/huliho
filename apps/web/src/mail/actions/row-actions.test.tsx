@@ -12,7 +12,7 @@ import { INBOX_ID, INBOX_PAGE } from "../fixtures";
 import { focused, inbox, mockListBox, renderList, row } from "../list-rig";
 import type { OpenFocus } from "../thread-history";
 import { ROW_ACTIONS } from "./row-actions";
-import { WRITABLE, boxOf, rowAt } from "./writable-rig";
+import { WRITABLE, boxOf, rowAt, sharedInbox, withBox } from "./writable-rig";
 
 // The list of `role` over the fixture page, once it registered its Act group.
 async function listed(role: string, options: Parameters<typeof renderList>[0] = {}) {
@@ -137,13 +137,8 @@ function stripOf(index: number): Element | null {
 
 test("a mailbox that offers no action draws no strip on the hovered or the focused row", async () => {
   // A shared mailbox a reader may neither mark nor move in.
-  const shared = inbox();
-  renderList({
-    mailbox: {
-      ...shared,
-      myRights: { ...shared.myRights, maySetSeen: false, maySetKeywords: false },
-    },
-  });
+  const shared = sharedInbox();
+  renderList({ mailbox: shared, mailboxes: withBox(shared) });
   await screen.findByRole("grid");
   expect(commandsSnapshot().some((command) => command.id.startsWith("thread."))).toBe(false);
   act(() => {

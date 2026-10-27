@@ -13,15 +13,25 @@ import { installCommandListener } from "../../commands/registry";
 import { Button } from "../../design-system/button";
 import { EmptyState } from "../../design-system/empty-state";
 import { ErrorState } from "../../design-system/error-state";
+import { stubWidthQueries } from "../../shell/width-queries-rig";
 import { fixtureCache } from "../fixture-cache";
 import { FASTMAIL, FIXED_NOW, INBOX_PAGE, MAILBOXES } from "../fixtures";
+import { ThreadList } from "../thread-list";
 import { noteSearch, recentSearches } from "./recent-searches";
 import { forgetRecentSearches } from "./recent-store";
 import type { SearchRoute } from "./route-params";
 import { SearchPane } from "./search-pane";
+import type { OpenResult } from "./search-pane";
 import { SEARCHING_AFTER_MS, SEARCH_SLOW_MS } from "./use-search";
 
-const PARTS = { Button, EmptyState, ErrorState };
+const PARTS = { Button, EmptyState, ErrorState, ThreadList };
+// No result is open and none opens.
+const NO_RESULT: OpenResult = {
+  threadId: null,
+  actsFrom: null,
+  onOpen: () => undefined,
+  onClose: () => undefined,
+};
 const RESULTS: ListPage = { ...INBOX_PAGE, total: 3 };
 const EMPTY: ListPage = { rows: [], total: 0, pending: 0 };
 const PIETER = "pieter@blom-installaties.example";
@@ -56,6 +66,7 @@ interface Options {
   route?: SearchRoute;
   online?: boolean;
   strict?: boolean;
+  result?: OpenResult;
   onClose?: () => void;
 }
 
@@ -77,6 +88,7 @@ function Harness({ cache, options }: { cache: MailCache; options: Options }) {
       today={FIXED_NOW.getTime()}
       parts={PARTS}
       loading={<p>still rows</p>}
+      result={options.result ?? NO_RESULT}
       onRoute={(next) => {
         latest = next;
         setRoute(next);
@@ -123,6 +135,8 @@ let uninstall: () => void = () => undefined;
 
 beforeEach(() => {
   uninstall = installCommandListener();
+  // The results stand in the list, whose foot reads the width queries.
+  stubWidthQueries({ wide: true });
 });
 
 afterEach(() => {
@@ -131,6 +145,7 @@ afterEach(() => {
   forgetRecentSearches();
   localStorage.clear();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 test("the field takes the focus as the search opens, with the hint and the shortcuts", () => {
@@ -262,8 +277,21 @@ test("a search in flight says searching, then slow with Cancel, which aborts it"
   expect(document.activeElement).toBe(field());
 });
 
-test("a press under the field keeps the shortcuts in place until its click lands", async () => {
+test("the shortcuts leave while results stand and come back as the field is edited", async () => {
   renderPane(searching({ [searchKeyOf({ q: "offerte" })]: RESULTS }), {
+    route: { q: "offerte", box: "mb-inbox" },
+  });
+  await waitFor(() => {
+    expect(region().textContent).toBe("3 results for “offerte” in all mailboxes");
+  });
+  expect(document.activeElement).toBe(field());
+  expect(shortcut()).toBeNull();
+  type("offertes");
+  expect(shortcut()).not.toBeNull();
+});
+
+test("a press under the field keeps the shortcuts in place until its click lands", async () => {
+  renderPane(searching({ [searchKeyOf({ q: "offerte" })]: EMPTY }), {
     route: { q: "offerte", box: "mb-inbox" },
   });
   const widen = await screen.findByRole("button", { name: "Include Junk and Trash" });
@@ -366,6 +394,14 @@ test("Enter on the search the route holds moves it to the front of the recents",
   await waitFor(() => {
     expect(asked.filter(({ call }) => call.again === true)).toHaveLength(1);
   });
+  // The first page stands as the run filled it; the search holds no
+  // other page to read again.
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  });
+  expect(asked.map(({ call }) => call.again === true)).toEqual([false, true]);
 });
 
 test("the recents stand under the empty field and a pick runs one", async () => {

@@ -4,7 +4,7 @@
 
 import { Autocomplete } from "@base-ui/react/autocomplete";
 import { readSearchParams } from "@huliho/core";
-import type { MailCache, Mailbox, SearchParams } from "@huliho/core";
+import type { ListRow, MailCache, Mailbox, SearchParams } from "@huliho/core";
 import { useId, useLayoutEffect, useRef } from "react";
 import type { ReactNode, RefObject } from "react";
 
@@ -13,12 +13,14 @@ import { useCommand } from "../../commands/use-command";
 import { focusHeir } from "../../design-system/button";
 import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
+import type { OpenFocus } from "../thread-history";
 import { SEARCH_KEYS } from "./open-search";
 import type { SearchRoute } from "./route-params";
 import { SearchState, Slot } from "./search-body";
 import type { SearchParts } from "./search-body";
 import { SearchHeader, Shortcuts } from "./search-field";
 import { SearchList } from "./search-list";
+import { resultsSource } from "./search-results";
 import type { Suggestion } from "./search-suggestions";
 import { searchViews } from "./search-views";
 import type { SearchViews } from "./search-views";
@@ -29,6 +31,15 @@ import { useRanSearch } from "./use-search";
 import type { RanSearch } from "./use-search";
 import styles from "./search-pane.module.css";
 
+// The result open beside, below or over the results, the mailbox it acts
+// from and how a result opens and the open one closes.
+export interface OpenResult {
+  threadId: string | null;
+  actsFrom: string | null;
+  onOpen: (row: ListRow, focus: OpenFocus) => void;
+  onClose: () => void;
+}
+
 export interface SearchPaneProps {
   locale: Locale;
   cache: MailCache;
@@ -37,12 +48,14 @@ export interface SearchPaneProps {
   mailboxes: readonly Mailbox[];
   strict: boolean;
   online: boolean;
-  // The start of today, which the date presets count back from.
+  // The start of today, which the date presets count back from and the
+  // results' times read against.
   today: number;
-  // The design system's button and states and the list's still rows,
+  // The design system's button and states, the list and its still rows,
   // which the shell hands in.
   parts: SearchParts;
   loading: ReactNode;
+  result: OpenResult;
   onRoute: (route: SearchRoute) => void;
   onClose: () => void;
 }
@@ -52,11 +65,12 @@ function valueOf(item: Suggestion): string {
 }
 
 // The field takes the focus as the search opens; `/` puts it back there
-// and Escape outside the field closes the search.
+// and Escape outside the field closes the search, once an open result
+// has closed.
 function useFieldFocus(
   locale: Locale,
   input: RefObject<HTMLInputElement | null>,
-  onClose: () => void,
+  onClose: (() => void) | null,
 ): () => void {
   const focus = (): void => {
     input.current?.focus();
@@ -69,13 +83,17 @@ function useFieldFocus(
     keys: SEARCH_KEYS,
     run: focus,
   });
-  useCommand({
-    id: "search.close",
-    label: m.command_search_close({}, { locale }),
-    group: "navigate",
-    keys: [ESCAPE],
-    run: onClose,
-  });
+  useCommand(
+    onClose === null
+      ? null
+      : {
+          id: "search.close",
+          label: m.command_search_close({}, { locale }),
+          group: "navigate",
+          keys: [ESCAPE],
+          run: onClose,
+        },
+  );
   return focus;
 }
 
@@ -96,11 +114,18 @@ interface TopProps extends PartsProps {
   onClose: () => void;
 }
 
-// The header with the field and, while the field has the focus, the
-// shortcuts under it.
+// Whether the results stand in the body in place of the suggestions.
+function resultsStand({ field, views }: Pick<PartsProps, "field" | "views">): boolean {
+  return !field.listShown && views.body.kind === "results";
+}
+
+// The header with the field and, while the field has the focus and no
+// results stand under it, the shortcuts, so a press on a result moves
+// nothing.
 function Top(props: TopProps) {
   const { locale, field, actions, views, hintId, inputRef, shortcutsRef, hintShown, onClose } =
     props;
+  const shortcuts = field.focused && !resultsStand(props);
   return (
     <div onFocus={actions.onFocus} onBlur={actions.onBlur}>
       <SearchHeader
@@ -116,7 +141,7 @@ function Top(props: TopProps) {
         onClose={onClose}
       />
       <div ref={shortcutsRef}>
-        {field.focused && <Shortcuts locale={locale} onInsert={actions.onInsert} />}
+        {shortcuts && <Shortcuts locale={locale} onInsert={actions.onInsert} />}
       </div>
     </div>
   );
@@ -125,17 +150,42 @@ function Top(props: TopProps) {
 interface BodyProps extends PartsProps {
   search: RanSearch;
   ran: SearchParams;
-  parts: SearchParts;
-  loading: ReactNode;
+  pane: SearchPaneProps;
   onWiden: () => void;
+}
+
+// The results of the search the route holds, a fresh list for each
+// search so its cursor, its scroll and its selection start over.
+function Results({ pane, search, ran }: Pick<BodyProps, "pane" | "search" | "ran">) {
+  const { parts, result } = pane;
+  if (search.key === null) {
+    return null;
+  }
+  return (
+    <parts.ThreadList
+      key={search.key}
+      locale={pane.locale}
+      today={pane.today}
+      cache={pane.cache}
+      accountId={pane.accountId}
+      source={resultsSource(pane, search.key, ran)}
+      mailboxes={pane.mailboxes}
+      online={pane.online}
+      openThreadId={result.threadId}
+      empty={null}
+      onOpen={result.onOpen}
+      onClose={result.onClose}
+    />
+  );
 }
 
 // The body: the suggestions while the field calls them up, else what the
 // search came to.
 function Body(props: BodyProps) {
-  const { locale, field, actions, views, hintId, search, ran, parts, loading, onWiden } = props;
+  const { locale, field, actions, views, hintId, search, ran, pane, onWiden } = props;
+  const results = resultsStand(props);
   return (
-    <div className={styles.body} {...focusHeir}>
+    <div className={styles.body} data-results={results || undefined} {...focusHeir}>
       {field.listShown ? (
         <SearchList
           groups={field.groups}
@@ -148,9 +198,10 @@ function Body(props: BodyProps) {
       ) : (
         <SearchState
           locale={locale}
-          parts={parts}
+          parts={pane.parts}
           view={views.body}
-          loading={loading}
+          loading={pane.loading}
+          results={<Results pane={pane} search={search} ran={ran} />}
           onRetry={() => {
             field.run(ran);
           }}
@@ -165,14 +216,21 @@ function Body(props: BodyProps) {
 // the shortcuts while it has the focus, the slot where the search speaks
 // and the body under them.
 export function SearchPane(props: SearchPaneProps) {
-  const { locale, mailboxes, online } = props;
+  const { locale, mailboxes, online, result } = props;
   const input = useRef<HTMLInputElement>(null);
   const shortcuts = useRef<HTMLDivElement>(null);
   const ran = readSearchParams(props.route);
   const search = useRanSearch(props, ran);
   const field = useField(props, ran, search);
-  const actions = useFieldActions(field, props, { input, shortcuts }, props.onClose);
-  const focus = useFieldFocus(locale, input, props.onClose);
+  // Escape closes one layer: an open result first, then the search.
+  const open = result.threadId !== null;
+  const actions = useFieldActions(
+    field,
+    props,
+    { input, shortcuts },
+    open ? result.onClose : props.onClose,
+  );
+  const focus = useFieldFocus(locale, input, open ? null : props.onClose);
   const views = searchViews({ search, ran, online, mailboxes, locale });
   const onWiden = (): void => {
     field.run(widened(ran, scopeWords(ran, mailboxes)));
@@ -212,14 +270,7 @@ export function SearchPane(props: SearchPaneProps) {
           }}
           onWiden={onWiden}
         />
-        <Body
-          {...shared}
-          search={search}
-          ran={ran}
-          parts={props.parts}
-          loading={props.loading}
-          onWiden={onWiden}
-        />
+        <Body {...shared} search={search} ran={ran} pane={props} onWiden={onWiden} />
       </Autocomplete.Root>
     </div>
   );

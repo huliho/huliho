@@ -3,10 +3,14 @@
 // Additional terms apply, see NOTICE.
 
 import { WINDOW_SIZE } from "@huliho/core";
-import type { ListPage, ListRow, MailCache } from "@huliho/core";
-import { threadWindowQueryOptions } from "@huliho/state";
+import type { ListPage, ListRow } from "@huliho/core";
+import type { searchWindowQueryOptions, threadWindowQueryOptions } from "@huliho/state";
 import { useQueries } from "@tanstack/react-query";
 import type { UseQueryResult } from "@tanstack/react-query";
+
+// The query of one page, of a mailbox's list or of a search's results.
+export type PageQuery =
+  ReturnType<typeof threadWindowQueryOptions> | ReturnType<typeof searchWindowQueryOptions>;
 
 // The pages a list holds: the first one carries the total and the
 // marker's count; every page that has landed contributes its rows.
@@ -51,17 +55,15 @@ export function indexOfThread(
   return indexWhere(rows, (row) => row.threadId === threadId);
 }
 
-// The pages in view plus the first: one query each, on the cache the
-// caller runs. The worker makes a page's rows, so a landing costs the
-// list only this map.
+// The pages in view plus the first: one query each, as the caller asks
+// them. The worker makes a page's rows, so a landing costs the list only
+// this map.
 export function useThreadPages(
-  cache: MailCache,
-  accountId: string,
-  mailboxId: string,
+  pageQuery: (page: number) => PageQuery,
   wanted: readonly number[],
 ): ListPages {
   return useQueries({
-    queries: wanted.map((page) => threadWindowQueryOptions(cache, accountId, mailboxId, page)),
+    queries: wanted.map((page) => pageQuery(page)),
     combine: (results) => ({
       first: results[0],
       rows: new Map(

@@ -25,6 +25,7 @@ export const queryKeys = {
   // Every search of one account; one search adds its key, a page its
   // locale and its number.
   searches: (accountId: string) => [accountId, "search"] as const,
+  searchPages: (accountId: string, key: string) => [accountId, "search", key] as const,
   search: (accountId: string, key: string, locale: string, page: number) =>
     [accountId, "search", key, locale, page] as const,
   // The senders a suggestion list offers; a prefix narrows them.

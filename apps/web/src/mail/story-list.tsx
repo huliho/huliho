@@ -19,7 +19,7 @@ import { fixtureCache } from "./fixture-cache";
 import type { PageAnswer } from "./fixture-cache";
 import { EmptyMailbox } from "./mailbox-pane";
 import { startOfDay } from "./row-time";
-import { ThreadList } from "./thread-list";
+import { ThreadList, mailboxSource } from "./thread-list";
 
 const TODAY = startOfDay(FIXED_NOW);
 const INBOX = MAILBOXES.find((mailbox) => mailbox.id === INBOX_ID) ?? MAILBOXES[0];
@@ -41,13 +41,14 @@ export function FixtureList(props: FixtureListProps): JSX.Element {
   if (mailbox === undefined) {
     return <p>no inbox in the fixtures</p>;
   }
+  const cache = fixtureCache({ [`${mailbox.id}/0`]: page }, { [THREAD_ID]: THREAD });
   return (
     <ThreadList
       locale="en"
       today={TODAY}
-      cache={fixtureCache({ [`${mailbox.id}/0`]: page }, { [THREAD_ID]: THREAD })}
+      cache={cache}
       accountId={FASTMAIL.id}
-      mailbox={mailbox}
+      source={mailboxSource(cache, FASTMAIL.id, mailbox)}
       mailboxes={MAILBOXES}
       online={online}
       openThreadId={openThreadId}

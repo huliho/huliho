@@ -87,6 +87,8 @@ interface Drawn {
   check?: Check;
   pressing?: boolean;
   stop?: boolean;
+  // The mailbox a result acts from, as a search over several names it.
+  word?: string;
 }
 
 const ROWS = INBOX_PAGE.rows;
@@ -118,25 +120,40 @@ function drawn(): Drawn[] {
   ];
 }
 
+// The rows of a search over several mailboxes, each naming the mailbox
+// it acts from; a long name gives up its end before the subject does.
+function results(): Drawn[] {
+  if (PLAIN === undefined || UNREAD === undefined || THREAD === undefined) {
+    return [];
+  }
+  return [
+    { name: "in the inbox, unread", row: UNREAD, word: "Inbox" },
+    { name: "archived", row: PLAIN, word: "Archive" },
+    { name: "open in the pane", row: THREAD, word: "Facturen", open: true },
+    { name: "a long folder name", row: PLAIN, word: "Verbouwing badkamer en keuken 2026" },
+  ];
+}
+
 function nothing(): void {
   // A drawn row takes no focus of its own.
 }
 
-export const RowStates: StoryObj = {
-  render: () => (
+function Rows({ label, rows }: { label: string; rows: readonly Drawn[] }): JSX.Element {
+  return (
     <div
       role="grid"
-      aria-label="Row states"
-      aria-rowcount={drawn().length}
+      aria-label={label}
+      aria-rowcount={rows.length}
       className={styles.sizer}
-      style={{ blockSize: `${String(drawn().length * ROW_PX)}px` }}
+      style={{ blockSize: `${String(rows.length * ROW_PX)}px` }}
     >
-      {drawn().map((state, index) => (
+      {rows.map((state, index) => (
         <ThreadListItem
           key={state.name}
           locale="en"
           today={TODAY}
           row={state.row}
+          word={state.word ?? null}
           index={index}
           stop={state.stop ?? false}
           open={state.open ?? false}
@@ -152,5 +169,13 @@ export const RowStates: StoryObj = {
         />
       ))}
     </div>
-  ),
+  );
+}
+
+export const RowStates: StoryObj = {
+  render: () => <Rows label="Row states" rows={drawn()} />,
+};
+
+export const ResultRows: StoryObj = {
+  render: () => <Rows label="Results" rows={results()} />,
 };

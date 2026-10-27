@@ -177,6 +177,38 @@
   font-weight: 400;
 }
 
+/* A result names the mailbox it acts from before its subject; a long name
+   gives up its end before the subject does. */
+.worded {
+  display: flex;
+}
+
+.word,
+.wordEnd {
+  color: var(--hh-text-muted);
+  font-weight: 400;
+}
+
+.word {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  max-inline-size: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wordEnd {
+  flex: none;
+  white-space: pre;
+}
+
+.line {
+  flex: 1 1 0;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* The still rows: two bars in three widths, so a run of them reads as
    rows. The sender's column takes its width from its content, so that
    bar is sized outright; the text line spans the row. */

@@ -16,6 +16,20 @@ export function openedFromMailbox(state: object): boolean {
   return "fromMailbox" in state && state.fromMailbox === true;
 }
 
+// How many entries a search pushed since the place it was opened from:
+// its own and an open result's. A run replaces the entry it stands on
+// and keeps the count, so closing the search goes back over them all and
+// a result whose entry counts one was pushed from the results.
+export function searchDepthOf(state: object): number {
+  return "searchDepth" in state && typeof state.searchDepth === "number" ? state.searchDepth : 0;
+}
+
+export function deeperInSearch<State extends object>(
+  state: State,
+): State & { searchDepth: number } {
+  return { ...state, searchDepth: searchDepthOf(state) + 1 };
+}
+
 // Where the focus goes once a thread opens: onto its title or left in
 // the list for a thread an action opened from one of its rows.
 export type OpenFocus = "title" | "list";

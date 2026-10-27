@@ -14,6 +14,7 @@ import type { Locale } from "../paraglide/runtime.js";
 import type { Layout } from "../shell/breakpoints";
 import { PaneBoundary } from "../shell/pane-boundary";
 import { ConfirmEmpty } from "./actions/confirm-empty";
+import { placesOf } from "./actions/taken";
 import { LIST_DEFAULT_ROWS, LIST_MIN_ROWS, PANE_MIN_HEIGHT_PX, useListHeight } from "./list-height";
 import { ListPane } from "./list-pane";
 import { LIST_WIDTH_DEFAULT_PX, PANE_MIN_WIDTH_PX, useListWidth } from "./list-width";
@@ -21,7 +22,7 @@ import { Rail } from "./rail";
 import { ReadingPane, ThreadScreen } from "./reading-pane";
 import type { OpenThread } from "./reading-pane";
 import { Sidebar } from "./sidebar";
-import type { PanePosition } from "./thread-pane";
+import type { PanePosition, WayBack } from "./thread-pane";
 import type { TreeState } from "./tree";
 import {
   FOOT_HEIGHT_FALLBACK_PX,
@@ -50,6 +51,8 @@ interface ShellFrameProps extends Shared {
   currentThreadId: string | undefined;
   // While the route is the search, its pane brings the header's field.
   searching: boolean;
+  // The mailbox a result open in the search acts from.
+  actsFrom: string | undefined;
   onCloseThread: () => void;
   // What the list pane shows under its header.
   children: ReactNode;
@@ -114,19 +117,29 @@ function positionOf(layout: Layout, readingPane: PanePreference): PanePosition {
   return layout === "phone" || readingPane === "off" ? "screen" : readingPane;
 }
 
-// The thread the address names, with the mailbox it was opened from.
+// The thread the address names. In a mailbox it acts from the mailbox
+// and the way back leads there; in the search it acts from the mailbox
+// its result acts from and the way back leads to the results.
 function openThreadOf(
   tree: TreeState,
   accountId: string,
-  mailboxId: string | undefined,
-  threadId: string | undefined,
+  props: ShellFrameProps,
 ): OpenThread | null {
+  const { currentThreadId: threadId, searching } = props;
+  const actingId = searching ? props.actsFrom : props.currentMailboxId;
   if (threadId === undefined) {
     return null;
   }
-  const mailbox =
-    tree.status === "success" ? tree.mailboxes.find((row) => row.id === mailboxId) : undefined;
-  return { accountId, threadId, mailbox };
+  const mailboxes = tree.status === "success" ? tree.mailboxes : [];
+  const place = actingId === undefined ? null : placesOf(mailboxes)(actingId);
+  const name = place?.mailbox.name;
+  const back: WayBack = searching
+    ? { kind: "results" }
+    : name === undefined
+      ? { kind: "unnamed" }
+      : { kind: "mailbox", name };
+  const path = `/mail/${accountId}/${searching ? "search" : (actingId ?? "")}/${threadId}`;
+  return { accountId, threadId, place, back, path };
 }
 
 // What an element takes of the flow along the block axis: its box with
@@ -330,7 +343,7 @@ function useSheet(): Sheet {
 // keeps a render failure to itself.
 export function ShellFrame(props: ShellFrameProps) {
   const { locale, layout, readingPane, cache, accounts, account, tree, children } = props;
-  const { currentMailboxId, currentThreadId, onCloseThread } = props;
+  const { currentMailboxId, onCloseThread } = props;
   const frame = useRef<HTMLDivElement>(null);
   const side = useRef<HTMLDivElement>(null);
   const seam = useRef<HTMLDivElement>(null);
@@ -363,7 +376,7 @@ export function ShellFrame(props: ShellFrameProps) {
         position={position}
         list={list}
         seamRef={seam}
-        thread={openThreadOf(tree, account.id, currentMailboxId, currentThreadId)}
+        thread={openThreadOf(tree, account.id, props)}
         shared={shared}
         searching={props.searching}
         onOpenSidebar={sheet.show}

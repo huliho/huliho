@@ -63,6 +63,8 @@ export function MailShell() {
   const { accountId } = useParams({ from: "/signed-in/mail/$accountId" });
   const { mailboxId, threadId } = useParams({ strict: false });
   const { shownId, searching } = useShown(mailboxId);
+  // The mailbox a result open in the search acts from.
+  const actsFrom = useSearch({ strict: false, select: (search) => search.at });
   const closeThread = useCloseThread(accountId, mailboxId);
   const list = useQuery(accountsQueryOptions);
   const tree = useQuery(mailboxesQueryOptions(mailCache, accountId));
@@ -102,6 +104,7 @@ export function MailShell() {
       currentMailboxId={shownId}
       currentThreadId={threadId}
       searching={searching}
+      actsFrom={actsFrom}
       onCloseThread={closeThread}
     >
       <Outlet />

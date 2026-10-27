@@ -34,7 +34,8 @@ import { FASTMAIL, FIXED_NOW, INBOX_ID, INBOX_PAGE, MAILBOXES, pageOf } from "./
 import type { Draft } from "./fixtures";
 import { startOfDay } from "./row-time";
 import type { OpenFocus } from "./thread-history";
-import { ThreadList } from "./thread-list";
+import { ThreadList, mailboxSource } from "./thread-list";
+import type { ListSource } from "./thread-list";
 
 // The rig the thread list tests render in: a scroll box of ten rows of
 // the comfortable height, a cache of the caller's choice and the keys.
@@ -48,6 +49,8 @@ const SECOND_MS = 1000;
 interface Filled {
   locale: Locale;
   mailbox: Mailbox;
+  // What the list shows: the mailbox's threads unless a test lists a search.
+  source: ((cache: MailCache) => ListSource) | null;
   mailboxes: readonly Mailbox[];
   cache: MailCache;
   online: boolean;
@@ -61,6 +64,7 @@ export interface Options {
   // English unless a test reads another locale.
   locale?: Locale;
   mailbox?: Mailbox | undefined;
+  source?: (cache: MailCache) => ListSource;
   // The account's tree, the fixtures' by default.
   mailboxes?: readonly Mailbox[];
   cache?: MailCache;
@@ -81,6 +85,7 @@ export function inbox(): Mailbox {
 }
 
 function tree({ locale, mailbox, mailboxes, cache, online, client, openThreadId, ...on }: Filled) {
+  const source = on.source?.(cache) ?? mailboxSource(cache, FASTMAIL.id, mailbox);
   return (
     <QueryClientProvider client={client}>
       <ThreadList
@@ -88,7 +93,7 @@ function tree({ locale, mailbox, mailboxes, cache, online, client, openThreadId,
         today={TODAY}
         cache={cache}
         accountId={FASTMAIL.id}
-        mailbox={mailbox}
+        source={source}
         mailboxes={mailboxes}
         online={online}
         openThreadId={openThreadId}
@@ -108,19 +113,25 @@ function closesNothing(): void {
   // The rig's default: a thread closed goes nowhere.
 }
 
+// What a row opened and a thread closed do, the rig's defaults where a
+// test gave none.
+function movesOf(options: Options): Pick<Filled, "onOpen" | "onClose"> {
+  return { onOpen: options.onOpen ?? opensNothing, onClose: options.onClose ?? closesNothing };
+}
+
 // The options with the rig's defaults where a test gave none.
 function filledOf(options: Options): Filled {
   const mailbox = options.mailbox ?? inbox();
   return {
     locale: options.locale ?? "en",
     mailbox,
+    source: options.source ?? null,
     mailboxes: options.mailboxes ?? MAILBOXES,
     cache: options.cache ?? fixtureCache({ [`${mailbox.id}/0`]: INBOX_PAGE }),
     online: options.online ?? true,
     client: options.client ?? new QueryClient(),
     openThreadId: options.openThreadId ?? null,
-    onOpen: options.onOpen ?? opensNothing,
-    onClose: options.onClose ?? closesNothing,
+    ...movesOf(options),
   };
 }
 

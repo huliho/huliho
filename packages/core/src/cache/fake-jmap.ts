@@ -118,9 +118,10 @@ export function email(id: string, facts: EmailFacts): EmailHeader {
   };
 }
 
-// A UTCDate `seconds` into the fixture's day.
-export function at(seconds: number): string {
-  return new Date(Date.UTC(2026, 0, 1, 0, 0, seconds)).toISOString().replace(".000", "");
+// A UTCDate `seconds` and `milliseconds` into the fixture's day.
+export function at(seconds: number, milliseconds = 0): string {
+  const date = new Date(Date.UTC(2026, 0, 1, 0, 0, seconds, milliseconds));
+  return date.toISOString().replace(".000", "");
 }
 
 export function json(status: number, body: unknown, type = JSON_TYPE): Response {

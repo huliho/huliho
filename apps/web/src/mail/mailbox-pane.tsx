@@ -30,7 +30,7 @@ import {
   wantsListFocus,
 } from "./thread-history";
 import type { OpenFocus } from "./thread-history";
-import { ThreadList } from "./thread-list";
+import { ThreadList, mailboxSource } from "./thread-list";
 import type { ListHandle } from "./thread-list";
 import { ThreadListBanner } from "./thread-list-banner";
 import { useCloseThread } from "./use-close-thread";
@@ -298,7 +298,7 @@ export function MailboxPane() {
         today={today}
         cache={mailCache}
         accountId={accountId}
-        mailbox={mailbox}
+        source={mailboxSource(mailCache, accountId, mailbox)}
         mailboxes={tree.data}
         online={online}
         openThreadId={threadId ?? null}

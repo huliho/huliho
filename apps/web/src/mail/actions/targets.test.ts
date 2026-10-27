@@ -6,22 +6,26 @@ import type { ListRow, Mailbox, ThreadDetail } from "@huliho/core";
 import { expect, test } from "vitest";
 
 import { INBOX_ID, MAILBOXES } from "../fixtures";
-import { afterOf, aimOf, combinedOf, survivorOf, takenBy } from "./targets";
-import { targetOfDetail, targetOfRow } from "./thread-target";
+import { combinedOf, placesOf, takenBy } from "./taken";
+import type { Aim } from "./taken";
+import { afterOf, aimAt, aimOf, survivorOf } from "./targets";
+import { targetOfDetail } from "./thread-target";
 
-function inbox(): Mailbox {
-  const found = MAILBOXES.find((box) => box.id === INBOX_ID);
-  if (found === undefined) {
-    throw new Error("the fixtures hold no inbox");
-  }
-  return found;
-}
+const WRITABLE: Mailbox[] = MAILBOXES.map((box) => ({
+  ...box,
+  myRights: { ...box.myRights, mayAddItems: true, mayRemoveItems: true },
+}));
+const PLACES = placesOf(WRITABLE);
+const ARCHIVE = "mb-archive";
+const TRASH = "mb-trash";
+const JUNK = "mb-junk";
+const SENT = "mb-sent";
 
-function row(threadId: string, memberIds = [`${threadId}-1`]): ListRow {
+function row(threadId: string, memberIds = [`${threadId}-1`], mailboxId = INBOX_ID): ListRow {
   return {
     id: memberIds[0] ?? threadId,
     threadId,
-    mailboxId: INBOX_ID,
+    mailboxId,
     sender: null,
     subject: null,
     preview: "",
@@ -34,6 +38,15 @@ function row(threadId: string, memberIds = [`${threadId}-1`]): ListRow {
   };
 }
 
+// The aim of a row, which every test's row has a place for.
+function aim(one: ListRow, index = 0): Aim {
+  const found = aimAt(one, index, PLACES);
+  if (found === null) {
+    throw new Error(`no place for ${one.mailboxId}`);
+  }
+  return found;
+}
+
 // The first page with t0, t1 and t2.
 const ROWS = new Map([[0, [row("t0"), row("t1"), row("t2")]]]);
 
@@ -44,9 +57,9 @@ const DETAIL: ThreadDetail = {
     id: "t9",
     emailIds: ["e1", "e2", "e3"],
     members: {
-      e1: { keywords: { $seen: true }, mailboxIds: { inbox: true } },
-      e2: { keywords: { $seen: true, $flagged: true }, mailboxIds: { sent: true } },
-      e3: { keywords: {}, mailboxIds: { inbox: true } },
+      e1: { keywords: { $seen: true }, mailboxIds: { [INBOX_ID]: true } },
+      e2: { keywords: { $seen: true, $flagged: true }, mailboxIds: { [SENT]: true } },
+      e3: { keywords: {}, mailboxIds: { [INBOX_ID]: true } },
     },
   },
   emails: {},
@@ -58,23 +71,30 @@ const WHERE = {
   openThreadId: null,
   inList: false,
   detail: null,
-  mailboxId: "inbox",
+  openMailboxId: INBOX_ID,
+  placeOf: PLACES,
 };
 
-test("the open thread takes its members in the mailbox shown, in the thread's order", () => {
-  expect(targetOfDetail(DETAIL, "inbox")).toEqual({
+test("the open thread takes its members in the mailbox it acts from, in the thread's order", () => {
+  expect(targetOfDetail(DETAIL, INBOX_ID)).toEqual({
     threadId: "t9",
     memberIds: ["e1", "e3"],
     unread: true,
     flagged: false,
   });
-  expect(targetOfDetail(DETAIL, "sent")).toEqual({
+  expect(targetOfDetail(DETAIL, SENT)).toEqual({
     threadId: "t9",
     memberIds: ["e2"],
     unread: false,
     flagged: true,
   });
-  expect(targetOfDetail(DETAIL, "archive")).toBeNull();
+  expect(targetOfDetail(DETAIL, ARCHIVE)).toBeNull();
+});
+
+test("a mailbox's place holds what it offers; one the tree lacks has none", () => {
+  expect(PLACES(INBOX_ID)?.offered.archive).toBe(ARCHIVE);
+  expect(PLACES(ARCHIVE)?.offered.archive).toBeNull();
+  expect(PLACES("gone")).toBeNull();
 });
 
 test("the open thread is the aim unless the focus stands in the list", () => {
@@ -89,11 +109,22 @@ test("the open thread is the aim unless the focus stands in the list", () => {
   expect(aimOf(WHERE)).toMatchObject({ target: { threadId: "t2" }, index: 2 });
 });
 
-test("an open thread no page holds aims through its detail, without a place in the list", () => {
+test("a row acts from the mailbox it names, not the one the list shows", () => {
+  const rows = new Map([[0, [row("t0", ["a"], ARCHIVE)]]]);
+  expect(aimOf({ ...WHERE, rows, cursor: 0 })?.place.mailbox.id).toBe(ARCHIVE);
+  const lost = new Map([[0, [row("t0", ["a"], "gone")]]]);
+  expect(aimOf({ ...WHERE, rows: lost, cursor: 0 })).toBeNull();
+});
+
+test("an open thread no page holds aims through its detail from the mailbox it acts from", () => {
   expect(aimOf({ ...WHERE, openThreadId: "t9", detail: DETAIL })).toMatchObject({
     target: { threadId: "t9", memberIds: ["e1", "e3"] },
     index: null,
+    place: { mailbox: { id: INBOX_ID } },
   });
+  const sent = aimOf({ ...WHERE, openThreadId: "t9", detail: DETAIL, openMailboxId: SENT });
+  expect(sent?.target.memberIds).toEqual(["e2"]);
+  expect(aimOf({ ...WHERE, openThreadId: "t9", detail: DETAIL, openMailboxId: null })).toBeNull();
   expect(aimOf({ ...WHERE, openThreadId: "t9" })).toBeNull();
   expect(aimOf({ ...WHERE, cursor: 7 })).toBeNull();
 });
@@ -121,20 +152,49 @@ test("rows that leave together are passed over for the one that takes the place"
 test("several threads read as unread while any is and starred while every one is", () => {
   const unread = { ...row("t0"), unread: true };
   const starred = { ...row("t1"), flagged: true };
-  const aims = [unread, starred].map((one, index) => ({ target: targetOfRow(one), index }));
-  expect(combinedOf(aims)).toEqual({ unread: true, flagged: false });
+  expect(combinedOf([aim(unread), aim(starred, 1)])).toEqual({ unread: true, flagged: false });
   expect(combinedOf([])).toEqual({ unread: false, flagged: false });
 });
 
 test("a flip on several threads takes the ones not on its side; a move takes every one", () => {
   const unread = { ...row("t0"), unread: true };
   const starred = { ...row("t1"), flagged: true };
-  const aims = [unread, starred].map((one, index) => ({ target: targetOfRow(one), index }));
-  const read = takenBy("read", inbox(), aims);
-  expect(read.action).toBe("read");
-  expect(read.taken.map(({ target }) => target.threadId)).toEqual(["t0"]);
-  const star = takenBy("star", inbox(), aims);
-  expect(star.action).toBe("star");
-  expect(star.taken.map(({ target }) => target.threadId)).toEqual(["t0"]);
-  expect(takenBy("archive", inbox(), aims).taken).toHaveLength(2);
+  const aims = [aim(unread), aim(starred, 1)];
+  const read = takenBy("read", aims);
+  expect(read?.action).toBe("read");
+  expect(read?.taken.map(({ target }) => target.threadId)).toEqual(["t0"]);
+  const star = takenBy("star", aims);
+  expect(star?.action).toBe("star");
+  expect(star?.taken.map(({ target }) => target.threadId)).toEqual(["t0"]);
+  expect(takenBy("archive", aims)?.taken).toHaveLength(2);
+  expect(takenBy("archive", [])).toBeNull();
+});
+
+test("threads from several mailboxes each act from their own: archive leaves the archived ones alone", () => {
+  const aims = [aim(row("t0")), aim(row("t1", ["b"], ARCHIVE), 1)];
+  const archive = takenBy("archive", aims);
+  expect(archive?.action).toBe("archive");
+  expect(archive?.taken.map(({ target }) => target.threadId)).toEqual(["t0"]);
+});
+
+test("delete and spam follow the threads outside Junk and Trash, and take the bins' own forms only when every thread stands there", () => {
+  const inbox = aim(row("t0"));
+  const trashed = aim(row("t1", ["b"], TRASH), 1);
+  const junked = aim(row("t2", ["c"], JUNK), 2);
+  const mixed = takenBy("delete", [trashed, inbox, junked]);
+  expect(mixed?.action).toBe("delete");
+  expect(mixed?.taken.map(({ target }) => target.threadId)).toEqual(["t0"]);
+  const bins = takenBy("delete", [trashed, junked]);
+  expect(bins?.action).toBe("deleteForever");
+  expect(bins?.taken).toHaveLength(2);
+  expect(takenBy("spam", [junked, inbox])?.taken.map(({ target }) => target.threadId)).toEqual([
+    "t0",
+  ]);
+  expect(takenBy("spam", [junked])?.action).toBe("notSpam");
+});
+
+test("a thread whose mailbox offers no action of the kind is never taken", () => {
+  const readOnly = placesOf(MAILBOXES);
+  const kept = aimAt(row("t0"), 0, readOnly);
+  expect(kept === null ? null : takenBy("archive", [kept])?.taken).toEqual([]);
 });

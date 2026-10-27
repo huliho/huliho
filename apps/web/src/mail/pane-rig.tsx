@@ -17,6 +17,7 @@ import type { JSX } from "react";
 
 import { dispatchKey } from "../commands/registry";
 import { stubWidthQueries } from "../shell/width-queries-rig";
+import { placesOf } from "./actions/taken";
 import { StillObserver } from "./card-rig";
 import { fixtureCache } from "./fixture-cache";
 import type { ThreadAnswer } from "./fixture-cache";
@@ -30,8 +31,21 @@ import type { PanePosition } from "./thread-pane";
 // fixture cache, in a router of its own, since a card's hooks reach
 // for the session's end.
 
-const INBOX = MAILBOXES.find((mailbox) => mailbox.id === INBOX_ID);
-export const OPEN: OpenThread = { accountId: FASTMAIL.id, threadId: THREAD_ID, mailbox: INBOX };
+// The thread opened from `mailboxId`, acting from it with the tree's offer.
+export function openIn(mailboxId: string, mailboxes = MAILBOXES): OpenThread {
+  const place = placesOf(mailboxes)(mailboxId);
+  return {
+    accountId: FASTMAIL.id,
+    threadId: THREAD_ID,
+    place,
+    back: place === null ? { kind: "unnamed" } : { kind: "mailbox", name: place.mailbox.name },
+    path: `/mail/${FASTMAIL.id}/${mailboxId}/${THREAD_ID}`,
+  };
+}
+
+// The thread opened from the inbox with no offer to act from, so the
+// toolbar holds Close alone.
+export const OPEN: OpenThread = { ...openIn(INBOX_ID), place: null };
 export const SUBJECT = "Offerte badkamerrenovatie, herziene versie";
 export const COUNT = 14;
 // The two collapsed cards in sight and the newest, open.

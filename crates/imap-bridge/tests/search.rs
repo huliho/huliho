@@ -6,9 +6,10 @@
 //! folders of each scope in order with Junk and Trash last, a folder
 //! gone or renumbered since its sync passed over, the dates exact in
 //! SQL against a SEARCH a day wider each side, one email per thread
-//! over hits from two folders, pages that cost no SEARCH, a filter
-//! without a text or a sender from SQL alone, the literals in the form
-//! the server takes and what the server refuses.
+//! over hits from two folders, pages that cost no SEARCH, mail the bridge
+//! moved found by the next search, a filter without a text or a sender
+//! from SQL alone, the literals in the form the server takes and what the
+//! server refuses.
 
 mod search_faults;
 mod search_gmail;
@@ -147,6 +148,24 @@ async fn pages_by_position_and_by_anchor_cost_no_search_rfc8620_5_5() {
     assert_eq!(gone["type"], "anchorNotFound");
     assert_eq!(commands(&rig, from, "UID SEARCH "), Vec::<String>::new());
     assert_eq!(commands(&rig, from, "LOGIN "), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn mail_the_bridge_moves_is_found_again_by_the_next_equal_search_rfc6851_3_3() {
+    let rig = synced(dovecot(), false, quick()).await;
+    let filter = json!({ "inMailboxOtherThan": bins(&rig), "text": "plan" });
+    let first = query(&rig, filter.clone(), json!({})).await;
+    assert_eq!(uids(&rig, &first).await, [11, 3, 1]);
+    let moved = first["ids"][2].as_str().unwrap().to_owned();
+    let (inbox, archive) = (id_of(&rig, "INBOX"), id_of(&rig, "Archive"));
+    let patch =
+        json!({ format!("mailboxIds/{inbox}"): null, format!("mailboxIds/{archive}"): true });
+    let set = json!({ "accountId": sync_rig::ACCOUNT, "update": { moved.clone(): patch } });
+    let answer = rig.call(&json!(["Email/set", set, "s"])).await;
+    assert!(answer["updated"].get(&moved).is_some(), "{answer}");
+    let from = mark(&rig);
+    assert_eq!(found(&rig, filter).await, [11, 3, 1]);
+    assert_eq!(examined(&rig, from), ["INBOX", "Drafts", "Sent", "Archive"]);
 }
 
 #[tokio::test]

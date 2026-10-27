@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { ActionTarget, Mailbox } from "@huliho/core";
+import type { ActionTarget } from "@huliho/core";
 
 import { KeyCaps } from "../../commands/key-caps";
 import { cx } from "../../design-system/cx";
@@ -10,9 +10,10 @@ import iconButton from "../../design-system/icon-button.module.css";
 import { Tooltip } from "../../design-system/tooltip";
 import type { Locale } from "../../paraglide/runtime.js";
 import { iconOf } from "./action-icon";
-import { useShownActions } from "./kinds";
+import { shownActions } from "./kinds";
 import type { ActionKind } from "./kinds";
 import { runOnOpenThread } from "./open-thread";
+import type { Place } from "./taken";
 import styles from "./pane-actions.module.css";
 
 // The toolbar's actions: the moves, then the flips.
@@ -23,9 +24,9 @@ const LABELED: ReadonlySet<ActionKind> = new Set(["archive", "delete", "spam", "
 
 interface PaneActionsProps {
   locale: Locale;
-  // The mailbox the thread was opened from, whose words the actions take.
-  mailbox: Mailbox;
-  thread: Pick<ActionTarget, "unread" | "flagged">;
+  // The mailbox the thread acts from, whose offer and words the actions take.
+  place: Place;
+  thread: ActionTarget;
   // Whether a rule parts the actions from the way back before them.
   parted?: boolean;
 }
@@ -33,8 +34,8 @@ interface PaneActionsProps {
 // The open thread's actions at the head of the reading pane, each with a
 // tooltip that names its label and its keys. A press acts on the open
 // thread whatever the focus points at.
-export function PaneActions({ locale, mailbox, thread, parted = false }: PaneActionsProps) {
-  const shown = useShownActions(PANE_KINDS, mailbox, thread, locale);
+export function PaneActions({ locale, place, thread, parted = false }: PaneActionsProps) {
+  const shown = shownActions(PANE_KINDS, [{ target: thread, index: null, place }], locale);
   if (shown.length === 0) {
     return null;
   }

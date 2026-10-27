@@ -2,25 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { actionFor } from "@huliho/core";
-import type {
-  ActionTarget,
-  AfterAction,
-  ListRow,
-  MailAction,
-  Mailbox,
-  ThreadDetail,
-} from "@huliho/core";
+import type { AfterAction, ListRow, ThreadDetail } from "@huliho/core";
 
 import { indexOfThread, rowAt } from "../use-thread-pages";
-import type { ActionKind } from "./kinds";
+import type { Aim, PlaceOf } from "./taken";
 import { targetOfDetail, targetOfRow } from "./thread-target";
 
-// The thread an action takes and where its row stands in the list, null
-// for a thread opened from elsewhere whose row no page holds.
-export interface Aim {
-  target: ActionTarget;
-  index: number | null;
+// A row as an action takes it, from the mailbox the row acts from.
+export function aimAt(row: ListRow, index: number, placeOf: PlaceOf): Aim | null {
+  const place = placeOf(row.mailboxId);
+  return place === null ? null : { target: targetOfRow(row), index, place };
 }
 
 interface Where {
@@ -31,54 +22,34 @@ interface Where {
   inList: boolean;
   // The open thread as the pane read it, where it did.
   detail: ThreadDetail | null;
-  mailboxId: string;
+  // The mailbox the open thread acts from where no page holds its row.
+  openMailboxId: string | null;
+  placeOf: PlaceOf;
+}
+
+// The open thread whose row no page holds, through its detail.
+function detailAim({ detail, openMailboxId, placeOf }: Where): Aim | null {
+  const place = openMailboxId === null ? null : placeOf(openMailboxId);
+  const target =
+    detail === null || place === null ? null : targetOfDetail(detail, place.mailbox.id);
+  return target === null || place === null ? null : { target, index: null, place };
 }
 
 // The thread an action takes: the open one unless the focus stands in
 // the list, where the cursor's row is; the cursor's row while nothing is
 // open.
-export function aimOf({
-  rows,
-  cursor,
-  openThreadId,
-  inList,
-  detail,
-  mailboxId,
-}: Where): Aim | null {
+export function aimOf(where: Where): Aim | null {
+  const { rows, cursor, openThreadId, inList, placeOf } = where;
   if (openThreadId !== null && !inList) {
     const index = indexOfThread(rows, openThreadId);
     const row = index === null ? undefined : rowAt(rows, index);
-    if (row !== undefined) {
-      return { target: targetOfRow(row), index };
+    if (row !== undefined && index !== null) {
+      return aimAt(row, index, placeOf);
     }
-    const target = detail === null ? null : targetOfDetail(detail, mailboxId);
-    return target === null ? null : { target, index: null };
+    return detailAim(where);
   }
   const row = rowAt(rows, cursor);
-  return row === undefined ? null : { target: targetOfRow(row), index: cursor };
-}
-
-// Several threads as one for the words of a flip: unread while any is,
-// starred while every one is.
-export function combinedOf(aims: readonly Aim[]): Pick<ActionTarget, "unread" | "flagged"> {
-  return {
-    unread: aims.some(({ target }) => target.unread),
-    flagged: aims.length > 0 && aims.every(({ target }) => target.flagged),
-  };
-}
-
-// The action a key takes on several threads and the threads it changes:
-// a move takes every one, a flip the ones not already on its side.
-export function takenBy(
-  kind: ActionKind,
-  mailbox: Mailbox,
-  aims: readonly Aim[],
-): { action: MailAction; taken: Aim[] } {
-  const action = actionFor(kind, mailbox, combinedOf(aims));
-  return {
-    action,
-    taken: aims.filter(({ target }) => actionFor(kind, mailbox, target) === action),
-  };
+  return row === undefined ? null : aimAt(row, cursor, placeOf);
 }
 
 // The row that takes the place of the row at `index` once the rows at

@@ -30,14 +30,18 @@ brings the mailbox tree up to date, `queryWindow` serves a page of a
 list and fetches it when the store lacks it, `applyChanges` follows the
 change logs of every type, `revealNewMail` lands the new mail a poll
 held back for the user and `readThread` answers a thread with the
-headers the store holds. `searchWindow` serves a page of a search: it
-runs once from the one condition `searchFilterOf` builds from its params
-and the account's mailboxes, every mailbox but Junk and Trash unless
-the params name one or all of them. Its pages stay as the server
-answered them, so no poll adds a row, while a thread leaves them once
-none of its members stands in the scope; each row acts from one
-mailbox, the scope's own or else the inbox or the first in the tree's
-order. Four searches stay per account. `parseQuery` reads the search
+headers the store holds. `searchWindow` serves a page of a search from
+the one condition `searchFilterOf` builds from its params and the
+account's mailboxes, every mailbox but Junk and Trash unless the params
+name one or all of them. The held pages read end to end over the
+store's rows, one row per thread: no poll adds a row, a thread leaves
+once none of its members stands in the scope and the rows after it
+close up. A page they leave short, or a later page asked first, takes
+the server's next pages by anchor on the last row shown; the total
+drops by the threads that show no row and is exact once the server has
+no more. Each row acts from one mailbox, the scope's own or else the
+inbox or the first in the tree's order. Four searches stay per
+account. `parseQuery` reads the search
 field's text into those params with its operators such as `from:` and
 `in:`; `queryOf` writes them back; `readSenders` offers the senders of
 the held headers that match what the user typed. `readBody` answers the body of one email: the

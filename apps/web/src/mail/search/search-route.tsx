@@ -10,11 +10,11 @@ import { EmptyState } from "../../design-system/empty-state";
 import { ErrorState } from "../../design-system/error-state";
 import { useLocale } from "../../i18n/locale";
 import { prefetchMenus } from "../menus-chunk";
-import { LoadingRows } from "../thread-list";
+import { LoadingRows, ThreadList } from "../thread-list";
 
 // What the search draws that the page's start holds already, handed in
 // so the chunk reaches none of the start's modules.
-const PARTS = { Button, EmptyState, ErrorState };
+const PARTS = { Button, EmptyState, ErrorState, ThreadList };
 
 function LoadedSearch({ loading }: { loading: ReactNode }) {
   const { SearchView } = use(prefetchMenus());

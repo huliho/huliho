@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import type { MailCache, Mailbox, ThreadDetail } from "@huliho/core";
+import type { MailCache, ThreadDetail } from "@huliho/core";
 import { threadQueryOptions } from "@huliho/state";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, X } from "lucide-react";
@@ -23,6 +23,7 @@ import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { PaneActions } from "./actions/pane-actions";
 import { closeSelection } from "./actions/selection-lend";
+import type { Place } from "./actions/taken";
 import { targetOfDetail } from "./actions/thread-target";
 import { MessageCard } from "./message-card";
 import { messagesOf, planMessages, subjectOf } from "./thread-messages";
@@ -39,13 +40,19 @@ export type PanePosition = "right" | "bottom" | "screen";
 // The key that closes the thread, shown beside the way back.
 const CLOSE_KEYS: readonly Chord[] = [ESCAPE];
 
+// Where the way back on a screen of its own leads: the mailbox the thread
+// was opened from by its name, the results it was opened from or a place
+// without a name.
+export type WayBack = { kind: "mailbox"; name: string } | { kind: "results" } | { kind: "unnamed" };
+
 export interface ThreadPaneProps {
   locale: Locale;
   cache: MailCache;
   accountId: string;
   threadId: string;
-  // The mailbox the thread was opened from, which the way back names.
-  mailbox: Mailbox | undefined;
+  // The mailbox the thread acts from; null where the tree holds none.
+  place: Place | null;
+  back: WayBack;
   position: PanePosition;
   // Whether the way back shows its key; a phone has none.
   keyHints: boolean;
@@ -58,26 +65,43 @@ export interface ThreadPaneProps {
 interface ToolbarProps {
   locale: Locale;
   position: PanePosition;
-  mailbox: Mailbox | undefined;
+  place: Place | null;
+  back: WayBack;
   // The thread as the pane holds it, whose state the flips follow.
   detail: ThreadDetail | null;
   keyHints: boolean;
   onClose: () => void;
 }
 
-// The thread's actions while it has a member in the mailbox shown.
-function actionsOf(locale: Locale, mailbox: Mailbox | undefined, detail: ThreadDetail | null) {
+// The thread's actions while it has a member in the mailbox it acts from.
+function actionsOf(locale: Locale, place: Place | null, detail: ThreadDetail | null) {
   const thread =
-    mailbox === undefined || detail === null ? null : targetOfDetail(detail, mailbox.id);
-  return mailbox === undefined || thread === null ? null : { mailbox, thread, locale };
+    place === null || detail === null ? null : targetOfDetail(detail, place.mailbox.id);
+  return place === null || thread === null ? null : { place, thread, locale };
+}
+
+// What the way back shows and how a screen reader names it.
+function backWords(back: WayBack, locale: Locale): { name: string; label: string } {
+  switch (back.kind) {
+    case "mailbox":
+      return { name: back.name, label: m.thread_back({ mailbox: back.name }, { locale }) };
+    case "results":
+      return {
+        name: m.thread_results({}, { locale }),
+        label: m.thread_back_results({}, { locale }),
+      };
+    default: {
+      const unnamed = m.thread_back_unnamed({}, { locale });
+      return { name: unnamed, label: unnamed };
+    }
+  }
 }
 
 // The thread's actions head the pane, with Close at its end beside or
-// below the list; on a screen of its own the way back to the mailbox
-// comes first, the actions after it. Each button names its keys in a
-// tooltip.
-function Toolbar({ locale, position, mailbox, detail, keyHints, onClose }: ToolbarProps) {
-  const actions = actionsOf(locale, mailbox, detail);
+// below the list; on a screen of its own the way back comes first, the
+// actions after it. Each button names its keys in a tooltip.
+function Toolbar({ locale, position, place, back, detail, keyHints, onClose }: ToolbarProps) {
+  const actions = actionsOf(locale, place, detail);
   if (position !== "screen") {
     const label = m.thread_close({}, { locale });
     return (
@@ -98,11 +122,7 @@ function Toolbar({ locale, position, mailbox, detail, keyHints, onClose }: Toolb
       </TooltipGroup>
     );
   }
-  const name = mailbox?.name ?? m.thread_back_unnamed({}, { locale });
-  const label =
-    mailbox === undefined
-      ? m.thread_back_unnamed({}, { locale })
-      : m.thread_back({ mailbox: mailbox.name }, { locale });
+  const { name, label } = backWords(back, locale);
   return (
     <TooltipGroup>
       <div className={styles.toolbar} data-position="screen">
@@ -288,7 +308,7 @@ function useTitleFocus(
 // focus once the thread is in, unless an action from a row opened it and
 // the focus stays in the list.
 export function ThreadPane(props: ThreadPaneProps) {
-  const { locale, cache, accountId, threadId, mailbox, position, keyHints, onClose } = props;
+  const { locale, cache, accountId, threadId, position, keyHints, onClose } = props;
   const today = useToday();
   const query = useQuery(threadQueryOptions(cache, accountId, threadId));
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -309,7 +329,8 @@ export function ThreadPane(props: ThreadPaneProps) {
       <Toolbar
         locale={locale}
         position={position}
-        mailbox={mailbox}
+        place={props.place}
+        back={props.back}
         detail={query.data ?? null}
         keyHints={keyHints}
         onClose={onClose}
