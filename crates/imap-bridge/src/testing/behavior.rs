@@ -20,8 +20,8 @@ pub struct Behavior {
     /// A MODSEQ item on every FETCH line (RFC 7162 section 3.1.4), this
     /// value in place of the message's own.
     pub fetch_modseq: Option<u64>,
-    /// EXAMINE of a missing folder answers NO with the name in raw
-    /// UTF-8, as Dovecot does.
+    /// EXAMINE of a missing folder and a folder command on one answer NO
+    /// with the name in raw UTF-8, as Dovecot does.
     pub utf8_no: bool,
     /// A connection closes instead of answering once it has answered
     /// this many UID FETCH commands.
@@ -73,6 +73,23 @@ pub struct Behavior {
     /// reads every message for a word does; the UID list of a sync
     /// answers at once.
     pub search_delay: Option<Duration>,
+    /// Every folder command answers NO with this response code, written
+    /// as the wire carries it.
+    pub folder_refusal: Option<&'static str>,
+    /// What a DELETE of a selectable folder with folders under it comes
+    /// to.
+    pub parent_delete: ParentDelete,
+}
+
+/// How the server takes a DELETE of a folder with folders under it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ParentDelete {
+    /// NO with `HASCHILDREN` (RFC 9051 section 6.3.5).
+    #[default]
+    Refuses,
+    /// Its mail goes and its name stays as `\Noselect` (RFC 3501 section
+    /// 6.3.4).
+    KeepsName,
 }
 
 /// How the server takes a write command.

@@ -39,6 +39,9 @@ pub struct Folder {
     /// A SELECT opens the folder `[READ-ONLY]`, as a shared folder
     /// without write rights opens; every write there answers NO.
     pub read_only: bool,
+    /// The letters MYRIGHTS names for the folder while ACL is on;
+    /// `None` names an owner's.
+    pub rights: Option<&'static str>,
     /// The mail EXAMINE, UID SEARCH and UID FETCH answer from; the
     /// counts above are what STATUS says and may differ on purpose.
     pub mail: Vec<Message>,
@@ -62,6 +65,7 @@ impl Folder {
             highest_modseq: 1,
             permanent: Some(PERMANENT_FLAGS),
             read_only: false,
+            rights: None,
             mail: Vec::new(),
         }
     }

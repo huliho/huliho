@@ -6,17 +6,22 @@
 //! stand, every option checked against the extensions the script
 //! advertises.
 
+use super::folders::rights_line;
 use super::{Extension, Mailboxes, Refusal, quote, unquote};
 use crate::testing::folder::Folder;
 
 impl Mailboxes {
     /// The answer to LIST, LSUB or STATUS: the untagged lines, then the
-    /// tagged one. Any other verb is BAD.
+    /// tagged one. A folder command goes to the folder model; any other
+    /// verb is BAD.
     pub(in crate::testing) fn answer(&self, verb: &str, command: &str, tag: &str) -> String {
         let reply = match verb {
             "LIST" => self.list(command),
             "LSUB" => Ok(self.lsub()),
             "STATUS" => self.status(command),
+            "CREATE" | "RENAME" | "DELETE" | "SUBSCRIBE" | "UNSUBSCRIBE" | "MYRIGHTS" => {
+                return self.folder_command(verb, command, tag);
+            }
             _ => Err(Refusal::Bad),
         };
         match reply {
@@ -27,7 +32,8 @@ impl Mailboxes {
     }
 
     /// `LIST "" "*"` with an optional RETURN list, every option checked
-    /// against the extensions (RFC 5258, RFC 6154 section 2, RFC 5819).
+    /// against the extensions (RFC 5258, RFC 6154 section 2, RFC 5819,
+    /// RFC 8440).
     fn list(&self, command: &str) -> Result<String, Refusal> {
         let options = match command.split_once(" RETURN (") {
             Some((_, rest)) if self.has(Extension::ListExtended) => rest.trim_end_matches(')'),
@@ -41,6 +47,10 @@ impl Mailboxes {
         if status_items.is_some() && !self.has(Extension::ListStatus) {
             return Err(Refusal::Bad);
         }
+        let my_rights = options.contains("MYRIGHTS");
+        if my_rights && !self.has(Extension::ListMyrights) {
+            return Err(Refusal::Bad);
+        }
         let subscribed = options.contains("SUBSCRIBED");
         let mut lines = String::new();
         for (index, folder) in self.folders().iter().enumerate() {
@@ -51,6 +61,10 @@ impl Mailboxes {
                 && !folder.refuses_status
             {
                 lines.push_str(&self.status_line(folder, items)?);
+            }
+            // RFC 8440 section 3: after the LIST line, for a mailbox that exists.
+            if my_rights && folder.is_selectable() {
+                lines.push_str(&rights_line(folder));
             }
             if self.chatter && index == 0 {
                 lines.push_str("* OK [ALERT] scripted\r\n");

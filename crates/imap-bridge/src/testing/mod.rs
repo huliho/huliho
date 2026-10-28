@@ -40,7 +40,7 @@ use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
 use crate::session::{Target, TlsMode};
 use crate::verify::Credential;
 
-pub use behavior::{Behavior, Storing};
+pub use behavior::{Behavior, ParentDelete, Storing};
 pub use connector::{Counting, TestConnector};
 pub use folder::Folder;
 pub use imap::FakeImap;

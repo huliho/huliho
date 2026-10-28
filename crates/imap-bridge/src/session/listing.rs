@@ -5,6 +5,8 @@
 //! What a LIST, an LSUB and a STATUS ask for and answer, in the
 //! bridge's own types.
 
+use super::Rights;
+
 /// The RETURN options of one LIST (RFC 5258 section 3), each behind the
 /// capability that defines it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -16,6 +18,9 @@ pub struct ListReturn {
     pub special_use: bool,
     /// `STATUS (...)` after every selectable name (RFC 5819).
     pub status: Option<StatusItems>,
+    /// `MYRIGHTS`, the user's rights after every name the server can
+    /// look them up for (RFC 8440).
+    pub my_rights: bool,
 }
 
 /// The items one STATUS asks for: MESSAGES, UNSEEN, UIDNEXT and
@@ -47,10 +52,19 @@ pub struct StatusEntry {
     pub highest_modseq: Option<u64>,
 }
 
-/// What one LIST answered: the names and the STATUS lines that rode
-/// along.
+/// One MYRIGHTS line: the user's rights on the mailbox of that wire
+/// name.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RightsEntry {
+    pub mailbox: String,
+    pub rights: Rights,
+}
+
+/// What one LIST answered: the names and the STATUS and MYRIGHTS lines
+/// that rode along.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Listing {
     pub entries: Vec<ListEntry>,
     pub statuses: Vec<StatusEntry>,
+    pub rights: Vec<RightsEntry>,
 }

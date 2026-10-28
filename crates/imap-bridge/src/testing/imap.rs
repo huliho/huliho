@@ -215,7 +215,10 @@ impl Protocol for Script {
                         .ok();
                     return None;
                 }
-                "LIST" | "LSUB" | "STATUS" if phase.is_tls() => {
+                "LIST" | "LSUB" | "STATUS" | "CREATE" | "RENAME" | "DELETE" | "SUBSCRIBE"
+                | "UNSUBSCRIBE" | "MYRIGHTS"
+                    if phase.is_tls() =>
+                {
                     self.mailboxes.answer(&verb, command, tag)
                 }
                 "GETQUOTAROOT" if phase.is_tls() => self.mailboxes.quota_root(tag),

@@ -71,6 +71,25 @@ impl Capabilities {
             gmail: self.has(crate::gmail::CAPABILITY),
         }
     }
+
+    /// Where the server names the user's rights on a mailbox.
+    #[must_use]
+    pub fn acl(&self) -> Acl {
+        Acl {
+            my_rights: self.has("ACL"),
+            list_rights: self.has("LIST-MYRIGHTS"),
+        }
+    }
+}
+
+/// What a server says of the user's rights.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Acl {
+    /// ACL: MYRIGHTS names them for one mailbox (RFC 4314 section 3.5).
+    pub my_rights: bool,
+    /// LIST-MYRIGHTS: a LIST with the MYRIGHTS return option names them
+    /// for every mailbox (RFC 8440).
+    pub list_rights: bool,
 }
 
 /// What a search needs to know of the server.
@@ -240,6 +259,15 @@ mod tests {
         assert_eq!(literals(&["IMAP4rev1"]), Literals::Synchronizing);
         assert!(advertised(&["X-GM-EXT-1"]).searching().gmail);
         assert!(!advertised(&["LITERAL+"]).searching().gmail);
+    }
+
+    #[test]
+    fn a_server_names_the_rights_with_acl_and_for_a_listing_with_list_myrights_rfc4314_rfc8440() {
+        let cyrus = advertised(&["ACL", "RIGHTS=kxten", "list-myrights"]).acl();
+        assert!(cyrus.my_rights && cyrus.list_rights);
+        let one_by_one = advertised(&["ACL"]).acl();
+        assert!(one_by_one.my_rights && !one_by_one.list_rights);
+        assert_eq!(advertised(&["IMAP4rev1"]).acl(), Acl::default());
     }
 
     #[test]

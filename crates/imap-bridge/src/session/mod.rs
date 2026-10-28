@@ -12,24 +12,26 @@ pub mod fuzzing;
 mod guard;
 mod imap;
 mod listing;
+mod mailbox;
 mod message;
 mod quota;
 mod read;
+mod target;
 mod write;
 
 use std::future::Future;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
 use tokio_rustls::rustls::ClientConfig;
 
-pub use capability::{Capabilities, Literals, Moving, Searching};
+pub use capability::{Acl, Capabilities, Literals, Moving, Searching};
 pub use error::SessionError;
 pub(crate) use error::io_error;
 pub use guard::{MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
 pub use imap::ImapSession;
-pub use listing::{ListEntry, ListReturn, Listing, StatusEntry, StatusItems};
+pub use listing::{ListEntry, ListReturn, Listing, RightsEntry, StatusEntry, StatusItems};
+pub use mailbox::{MAX_MAILBOX_NAME_BYTES, MailboxName, NameError, Place, Rights};
 pub use message::{
     BODY_WINDOW_BYTES, BodyPart, Disposition, FetchItems, FetchedMessage, FlagFetch, Flagged,
     GmailItems, GmailSearch, Leaf, MAX_FETCH_MESSAGES, MAX_FLAGGED, MAX_HEADER_BYTES,
@@ -41,34 +43,8 @@ pub use message::{
 pub use quota::MAX_QUOTA_ROOTS;
 pub use read::{MAX_TREE_BYTES, MAX_WIRE_NAME_BYTES};
 pub(crate) use read::{sendable_field, writable_day};
+pub use target::{STEP_TIMEOUT, Target, TlsMode};
 pub use write::{MAX_COMMAND_BYTES, label_bytes};
-
-/// One connect attempt or one step of a command gets this long: the
-/// whole command where the client library runs it, each response where
-/// the bridge reads the answer itself. A slower server counts as
-/// unreachable.
-pub const STEP_TIMEOUT: Duration = Duration::from_secs(20);
-
-/// How a connection is encrypted; plaintext is not an option.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TlsMode {
-    /// TLS from the first byte.
-    Implicit,
-    /// A plaintext greeting, then STARTTLS before any credential.
-    Starttls,
-}
-
-/// A server to reach. The caller resolves the host and checks the
-/// addresses; the bridge connects to them in order and resolves nothing.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Target {
-    /// The name the certificate must carry, sent as SNI.
-    pub host: String,
-    /// Where to connect, port included, tried in order.
-    pub addresses: Vec<SocketAddr>,
-    /// Whether TLS starts at the first byte or after STARTTLS.
-    pub tls: TlsMode,
-}
 
 /// The seam over the client library. Every step runs within the timeout
 /// the connection was opened with.
@@ -157,6 +133,65 @@ pub trait Session: Sized + Send {
         mailbox: &str,
         items: StatusItems,
     ) -> impl Future<Output = Result<StatusEntry, SessionError>> + Send;
+
+    /// CREATE of a name the user typed (RFC 3501 section 6.3.3).
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::delete`].
+    fn create(
+        &mut self,
+        name: &MailboxName,
+    ) -> impl Future<Output = Result<(), SessionError>> + Send;
+
+    /// RENAME of a mailbox to a name the user typed (RFC 3501 section 6.3.5).
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::delete`].
+    fn rename(
+        &mut self,
+        from: &str,
+        to: &MailboxName,
+    ) -> impl Future<Output = Result<(), SessionError>> + Send;
+
+    /// DELETE of a mailbox by its wire name (RFC 3501 section 6.3.4).
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::list`]; `Protocol` as well for a NO in UTF-8 (Dovecot
+    /// names a missing mailbox so) and, before anything is sent, for a
+    /// name that cannot be sent or a command past `MAX_COMMAND_BYTES`.
+    fn delete(&mut self, mailbox: &str) -> impl Future<Output = Result<(), SessionError>> + Send;
+
+    /// SUBSCRIBE of a mailbox by its wire name (RFC 3501 section 6.3.6).
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::delete`].
+    fn subscribe(&mut self, mailbox: &str)
+    -> impl Future<Output = Result<(), SessionError>> + Send;
+
+    /// UNSUBSCRIBE of a mailbox by its wire name (RFC 3501 section 6.3.7).
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::delete`].
+    fn unsubscribe(
+        &mut self,
+        mailbox: &str,
+    ) -> impl Future<Output = Result<(), SessionError>> + Send;
+
+    /// MYRIGHTS of a mailbox by its wire name (RFC 4314 section 3.5); the
+    /// caller asks it where ACL is advertised.
+    ///
+    /// # Errors
+    ///
+    /// As [`Session::status`], a MYRIGHTS line in place of the STATUS one.
+    fn my_rights(
+        &mut self,
+        mailbox: &str,
+    ) -> impl Future<Output = Result<Rights, SessionError>> + Send;
 
     /// EXAMINE of one mailbox by its wire name (RFC 3501 section 6.3.2):
     /// read-only, so nothing the read path does changes a flag. From

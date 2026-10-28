@@ -4,7 +4,8 @@
 
 //! The compose Dovecot as the live tests reach it: the trust, the
 //! bridge's own session, a second connection that edits the account
-//! and one JMAP call against a store.
+//! and one JMAP call against a store. The compose Cyrus answers on its
+//! IMAPS port the same way.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -68,7 +69,13 @@ pub fn dovecot(port: u16, tls: TlsMode) -> Target {
 
 /// The bridge's own session, signed in.
 pub async fn bridge_session() -> ImapSession {
-    let target = dovecot(IMAPS_PORT, TlsMode::Implicit);
+    bridge_session_on(IMAPS_PORT).await
+}
+
+/// The same on another IMAPS port of the host's loopback: the compose
+/// Cyrus takes the same user under the same certificate authority.
+pub async fn bridge_session_on(port: u16) -> ImapSession {
+    let target = dovecot(port, TlsMode::Implicit);
     let mut session = ImapSession::connect(tls(true), &target, STEP_TIMEOUT)
         .await
         .unwrap();
@@ -87,7 +94,12 @@ pub async fn within<T>(step: impl Future<Output = T>) -> T {
 /// it creates and deletes folders, appends, searches, marks and
 /// expunges messages.
 pub async fn editor() -> Editor {
-    let tcp = within(TcpStream::connect((DOVECOT_HOST, IMAPS_PORT)))
+    editor_on(IMAPS_PORT).await
+}
+
+/// The same on another IMAPS port, as [`bridge_session_on`] has it.
+pub async fn editor_on(port: u16) -> Editor {
+    let tcp = within(TcpStream::connect((DOVECOT_HOST, port)))
         .await
         .unwrap();
     let name = ServerName::try_from(DOVECOT_HOST).unwrap();

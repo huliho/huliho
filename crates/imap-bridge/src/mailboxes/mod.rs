@@ -158,6 +158,7 @@ fn list_return(capabilities: &Capabilities) -> ListReturn {
         subscribed: extended,
         special_use: extended && capabilities.has("SPECIAL-USE"),
         status: (extended && capabilities.has("LIST-STATUS")).then(|| status_items(capabilities)),
+        my_rights: false,
     }
 }
 
@@ -200,6 +201,7 @@ mod tests {
                 subscribed: true,
                 special_use: true,
                 status: Some(StatusItems { modseq: true }),
+                my_rights: false,
             }
         );
         let plain = advertised(&["IMAP4rev1"]);

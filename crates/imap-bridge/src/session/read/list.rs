@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! LIST, LSUB and STATUS: the mailbox names with their attributes and
-//! counts, each answer read under its own line limit.
+//! LIST, LSUB and STATUS: the mailbox names with their attributes,
+//! counts and rights, each answer read under its own line limit.
 
 use async_imap::imap_proto::{MailboxDatum, NameAttribute, Response, StatusAttribute};
 
 use super::{Room, Selection, modseq, quoted, unescaped, wire_name};
-use crate::session::{ListEntry, ListReturn, Listing, SessionError, StatusEntry, StatusItems};
+use crate::session::{
+    ListEntry, ListReturn, Listing, Rights, RightsEntry, SessionError, StatusEntry, StatusItems,
+};
 
 /// The mailboxes one account may list. A listing past it fails, since
 /// a cut listing would destroy the rows of the names it leaves out.
@@ -17,6 +19,10 @@ const MAX_MAILBOXES: usize = 10_000;
 /// The lines of its own one LIST or LSUB answer may carry: a LIST line
 /// and a STATUS line per mailbox (RFC 5819).
 const MAX_LIST_LINES: usize = 2 * MAX_MAILBOXES;
+
+/// The lines a LIST that asks for the rights may carry beside those: a
+/// MYRIGHTS line per mailbox (RFC 8440).
+const MAX_RIGHTS_LINES: usize = MAX_MAILBOXES;
 
 /// The lines of its own one STATUS answer carries.
 const STATUS_LINES: usize = 1;
@@ -41,6 +47,9 @@ fn list_command(options: ListReturn) -> String {
     if let Some(items) = options.status {
         returned.push(format!("STATUS ({})", status_items(items)));
     }
+    if options.my_rights {
+        returned.push("MYRIGHTS".to_owned());
+    }
     if returned.is_empty() {
         return "LIST \"\" \"*\"".to_owned();
     }
@@ -56,13 +65,18 @@ fn status_items(items: StatusItems) -> &'static str {
 }
 
 /// The listing without the names that are not sendable; past
-/// `MAX_MAILBOXES` entries or STATUS lines it fails.
+/// `MAX_MAILBOXES` entries, STATUS lines or MYRIGHTS lines it fails.
 pub(in crate::session) async fn list(
     selection: &mut Selection<'_>,
     options: ListReturn,
     room: Room,
 ) -> Result<Listing, SessionError> {
-    let bounds = room.bounds(MAX_LIST_LINES);
+    let rights = if options.my_rights {
+        MAX_RIGHTS_LINES
+    } else {
+        0
+    };
+    let bounds = room.bounds(MAX_LIST_LINES + rights);
     let mut listing = Listing::default();
     selection
         .collect(&list_command(options), bounds, |response| {
@@ -73,7 +87,8 @@ pub(in crate::session) async fn list(
 }
 
 /// One line of a LIST answer into the listing: an entry, a STATUS line
-/// riding along (RFC 5819) or nothing.
+/// (RFC 5819) or a MYRIGHTS line (RFC 8440) riding along; other lines
+/// add nothing. A MYRIGHTS line whose name is not sendable is left out.
 pub(super) fn keep(listing: &mut Listing, response: &Response<'_>) -> Result<(), SessionError> {
     match response {
         Response::MailboxData(MailboxDatum::List {
@@ -86,6 +101,13 @@ pub(super) fn keep(listing: &mut Listing, response: &Response<'_>) -> Result<(),
         ),
         Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
             hold(&mut listing.statuses, status_entry(mailbox, status)?)
+        }
+        Response::MyRights(found) => {
+            let rights = wire_name(&found.mailbox).map(|mailbox| RightsEntry {
+                mailbox,
+                rights: Rights::of(&found.rights),
+            });
+            hold(&mut listing.rights, rights)
         }
         _ => Ok(()),
     }
@@ -247,16 +269,17 @@ mod tests {
     }
 
     #[test]
-    fn the_list_command_carries_only_the_options_asked_for_rfc5258_3() {
+    fn the_list_command_carries_only_the_options_asked_for_rfc5258_3_rfc8440_3() {
         assert_eq!(list_command(ListReturn::default()), "LIST \"\" \"*\"");
         let all = ListReturn {
             subscribed: true,
             special_use: true,
             status: Some(StatusItems { modseq: true }),
+            my_rights: true,
         };
         assert_eq!(
             list_command(all),
-            "LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))"
+            "LIST \"\" \"*\" RETURN (SUBSCRIBED SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ) MYRIGHTS)"
         );
         let plain_status = ListReturn {
             status: Some(StatusItems { modseq: false }),
@@ -278,6 +301,14 @@ mod tests {
             assert_eq!(listed(lsub.as_bytes()), None);
             let status = format!("* STATUS {} (MESSAGES 1)\r\n", literal(name));
             assert_eq!(counted(status.as_bytes()), None);
+            let rights = format!("* MYRIGHTS {} lrs\r\n", literal(name));
+            let mut listing = Listing::default();
+            keep(
+                &mut listing,
+                &Response::from_bytes(rights.as_bytes()).unwrap().1,
+            )
+            .unwrap();
+            assert_eq!(listing.rights, []);
         }
         let quoted_long = format!("* LIST () \"/\" \"{long}\"\r\n");
         assert_eq!(listed(quoted_long.as_bytes()), None);

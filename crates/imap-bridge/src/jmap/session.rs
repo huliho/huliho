@@ -16,6 +16,7 @@ use super::{
     MAX_SIZE_REQUEST,
 };
 use crate::runtime::Registration;
+use crate::session::MAX_MAILBOX_NAME_BYTES;
 use crate::store::{Store, StoreError};
 
 /// The core capability (RFC 8620 section 2).
@@ -35,10 +36,6 @@ pub const HULIHO_CAPABILITY: &str = "https://huliho.com/jmap";
 /// the account advertises QUOTA, since the object then lists the quota
 /// capability on the account.
 const QUOTA_STATE_MARK: &str = "-quota";
-
-/// A mailbox name on the wire is 255 octets at most on every server
-/// the bridge meets.
-const MAX_MAILBOX_NAME_BYTES: u32 = 255;
 
 /// No upload route exists, so uploads read as zero.
 const MAX_SIZE_UPLOAD: u32 = 0;
