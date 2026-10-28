@@ -5,15 +5,13 @@
 //! The session on async-imap over tokio-rustls.
 
 mod auth;
+mod connect;
 
 use std::fmt;
-use std::io;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_imap::error::Error as ImapError;
-use async_imap::imap_proto::{Response, Status};
 use async_imap::{Client, Connection};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
@@ -24,13 +22,14 @@ use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::pki_types::ServerName;
 
 use self::auth::{Xoauth2, auth_error};
+use self::connect::{connect_tcp, greeting, handshake};
 use super::capability::{Tags, capabilities_of};
 use super::guard::Guarded;
 use super::{
-    Capabilities, FetchItems, FetchedMessage, FlagFetch, Flagged, ListReturn, Listing, MoveAsk,
-    Moved, PartAsk, PreviewAsk, PreviewBytes, QuotaRoot, SearchAsk, Selected, Session,
-    SessionError, StatusEntry, StatusItems, StoreAsk, Structure, Target, TlsMode, UidRange,
-    Writable, io_error, quota, read, write,
+    Capabilities, FetchItems, FetchedMessage, FlagFetch, Flagged, ListReturn, Listing, MailboxName,
+    MoveAsk, Moved, PartAsk, PreviewAsk, PreviewBytes, QuotaRoot, Rights, SearchAsk, Selected,
+    Session, SessionError, StatusEntry, StatusItems, StoreAsk, Structure, Target, TlsMode,
+    UidRange, Writable, io_error, mailbox, quota, read, write,
 };
 
 pub(super) type Stream = Guarded<TlsStream<TcpStream>>;
@@ -165,6 +164,36 @@ impl Session for ImapSession {
     ) -> Result<StatusEntry, SessionError> {
         let room = self.room();
         read::status(&mut self.selection()?, mailbox, items, room).await
+    }
+
+    async fn create(&mut self, name: &MailboxName) -> Result<(), SessionError> {
+        let room = self.room();
+        mailbox::create(&mut self.selection()?, name, room).await
+    }
+
+    async fn rename(&mut self, from: &str, to: &MailboxName) -> Result<(), SessionError> {
+        let room = self.room();
+        mailbox::rename(&mut self.selection()?, (from, to), room).await
+    }
+
+    async fn delete(&mut self, mailbox: &str) -> Result<(), SessionError> {
+        let room = self.room();
+        mailbox::named(&mut self.selection()?, "DELETE", mailbox, room).await
+    }
+
+    async fn subscribe(&mut self, mailbox: &str) -> Result<(), SessionError> {
+        let room = self.room();
+        mailbox::named(&mut self.selection()?, "SUBSCRIBE", mailbox, room).await
+    }
+
+    async fn unsubscribe(&mut self, mailbox: &str) -> Result<(), SessionError> {
+        let room = self.room();
+        mailbox::named(&mut self.selection()?, "UNSUBSCRIBE", mailbox, room).await
+    }
+
+    async fn my_rights(&mut self, mailbox: &str) -> Result<Rights, SessionError> {
+        let room = self.room();
+        mailbox::my_rights(&mut self.selection()?, mailbox, room).await
     }
 
     async fn examine(&mut self, mailbox: &str) -> Result<Selected, SessionError> {
@@ -343,61 +372,6 @@ impl ImapSession {
             }
             Err(_elapsed) => Err(SessionError::Timeout),
         }
-    }
-}
-
-/// The addresses in order; the last failure is the answer when none
-/// accepts.
-async fn connect_tcp(addresses: &[SocketAddr], step: Duration) -> Result<TcpStream, SessionError> {
-    let mut failure = SessionError::NoAddress;
-    for address in addresses {
-        match timeout(step, TcpStream::connect(address)).await {
-            Ok(Ok(stream)) => return Ok(stream),
-            Ok(Err(error)) => failure = SessionError::Connect(error),
-            Err(_elapsed) => failure = SessionError::Timeout,
-        }
-    }
-    Err(failure)
-}
-
-async fn handshake(
-    connector: &TlsConnector,
-    server_name: ServerName<'static>,
-    tcp: TcpStream,
-    step: Duration,
-) -> Result<TlsStream<TcpStream>, SessionError> {
-    // tokio-rustls reports what rustls refused as invalid data; any other
-    // kind is the transport giving up.
-    timeout(step, connector.connect(server_name, tcp))
-        .await
-        .map_err(|_elapsed| SessionError::Timeout)?
-        .map_err(|error| match error.kind() {
-            io::ErrorKind::InvalidData => SessionError::Tls(error),
-            io::ErrorKind::UnexpectedEof => SessionError::Closed,
-            _ => SessionError::Io(error),
-        })
-}
-
-/// Reads the greeting; only an OK leads anywhere (RFC 9051 section 7.1).
-async fn greeting<T: Wire>(client: &mut Client<T>, step: Duration) -> Result<(), SessionError> {
-    let response = timeout(step, client.read_response())
-        .await
-        .map_err(|_elapsed| SessionError::Timeout)?
-        .map_err(io_error)?
-        .ok_or(SessionError::Closed)?;
-    match response.parsed() {
-        Response::Data {
-            status: Status::Ok, ..
-        } => Ok(()),
-        Response::Data {
-            status: Status::Bye,
-            ..
-        } => Err(SessionError::Closed),
-        Response::Data {
-            status: Status::PreAuth,
-            ..
-        } => Err(SessionError::Protocol("the greeting is PREAUTH")),
-        _ => Err(SessionError::Protocol("the greeting is not an OK")),
     }
 }
 

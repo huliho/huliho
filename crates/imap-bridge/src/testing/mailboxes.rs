@@ -18,6 +18,7 @@ use super::folder::Folder;
 use super::messages::Message;
 use crate::session::Literals;
 
+mod folders;
 mod gmail;
 mod listing;
 mod moves;
@@ -25,6 +26,9 @@ mod quota;
 #[cfg(test)]
 mod tests;
 
+pub use folders::OWNER_RIGHTS;
+#[cfg(test)]
+pub(crate) use folders::arguments;
 pub(super) use gmail::labels_of;
 pub use gmail::{ALL_MAIL, SPAM, TRASH};
 pub(super) use moves::is_transfer;
@@ -50,6 +54,11 @@ pub enum Extension {
     LiteralMinus,
     /// The three Gmail FETCH items and the two Gmail search keys.
     Gmail,
+    /// MYRIGHTS (RFC 4314), advertised as Cyrus does with the rights it
+    /// adds to the core ones.
+    Acl,
+    /// The MYRIGHTS return option of LIST (RFC 8440).
+    ListMyrights,
 }
 
 impl Extension {
@@ -65,6 +74,8 @@ impl Extension {
             Self::LiteralPlus => "LITERAL+",
             Self::LiteralMinus => "LITERAL-",
             Self::Gmail => "X-GM-EXT-1",
+            Self::Acl => "ACL RIGHTS=kxten",
+            Self::ListMyrights => "LIST-MYRIGHTS",
         }
     }
 

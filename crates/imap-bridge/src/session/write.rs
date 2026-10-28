@@ -69,7 +69,7 @@ fn uid_set(uids: &[u32]) -> Result<String, SessionError> {
 }
 
 /// The command as built; past `MAX_COMMAND_BYTES` it is never sent.
-fn fitting(command: String) -> Result<String, SessionError> {
+pub(super) fn fitting(command: String) -> Result<String, SessionError> {
     if command.len() > MAX_COMMAND_BYTES {
         return Err(SessionError::Protocol(LINE_LIMIT));
     }

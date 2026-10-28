@@ -435,6 +435,21 @@ the literals take and whether the Gmail keys apply. With `until` set,
 each read of the answer waits until then in place of the session's
 step.
 
+The session layer carries the folder commands too, each read as STATUS
+is: `create`, `rename`, `delete`, `subscribe` and `unsubscribe` (RFC
+3501 sections 6.3.3 to 6.3.7) and `my_rights` (RFC 4314 section 3.5).
+A name the user typed reaches the line only as a `MailboxName`: in NFC,
+255 bytes of UTF-8 at most (`session::MAX_MAILBOX_NAME_BYTES`), in
+modified UTF-7 after its parent and the delimiter LIST gave, then
+quoted. An empty name is refused before anything is sent. So is one
+that holds a control character or the delimiter and one that starts or
+ends with white space. A LIST with `ListReturn::my_rights` asks the
+MYRIGHTS return option (RFC 8440) and keeps its lines in
+`Listing.rights`; `Capabilities::acl` says whether the server names the
+rights per mailbox and through LIST. Rights keep every lowercase letter
+and digit once, in ASCII order, so a character outside RFC 4314 grants
+nothing. A NO reads as `Refused` whatever its code.
+
 An `Email/query` with a text or a sender has the server searched
 between two passes over its request, on a connection of the account's
 own, one search at a time. A folder account searches the folders of
@@ -528,8 +543,13 @@ open `[READ-ONLY]` or show another
 UIDVALIDITY on one SELECT. UID SEARCH reads its window of sequence
 numbers with the keys CHARSET, TEXT, FROM, UNSEEN, FLAGGED, SINCE and
 BEFORE; a string comes as an atom, quoted or as a literal. The Gmail
-mode adds X-GM-RAW and X-GM-LABELS. LITERAL+ and LITERAL- are switches
-too: the Dovecot shape carries LITERAL+, the Gmail mode LITERAL-. A
+mode adds X-GM-RAW and X-GM-LABELS. CREATE, RENAME, DELETE, SUBSCRIBE
+and UNSUBSCRIBE edit the folders and refuse with the code a real server
+sends: `ALREADYEXISTS`, `NONEXISTENT`, `HASCHILDREN` or `USEATTR`. ACL
+and LIST-MYRIGHTS are switches for MYRIGHTS per folder and through
+LIST, with the letters a test names per folder. LITERAL+ and LITERAL-
+are switches too: the Dovecot shape carries LITERAL+, the Gmail mode
+LITERAL-. A
 literal the script does not read without its continuation request is
 read whole and answered BAD. Misbehavior is a switch as well:
 volunteered lines, a connection that drops, a MODSEQ item, a NO in raw
@@ -537,8 +557,10 @@ UTF-8, messages that leave between two searches, the Gmail items
 volunteered unasked, a STORE or a move that is refused, answered BAD,
 dropped or never answered, a `COPYUID` of the test's own words, a
 continuation request withheld or refused, a search in one charset
-alone, a SEARCH line padded to a size, a SEARCH answered late plus an
-EXAMINE answer without EXISTS. `Mailboxes::searches` counts the UID
+alone, a SEARCH line padded to a size, a SEARCH answered late, an
+EXAMINE answer without EXISTS, every folder command refused with a code
+of the test's own plus a DELETE of a parent that keeps its name as
+`\Noselect`. `Mailboxes::searches` counts the UID
 SEARCH commands every connection received. Its `Mailboxes`
 stand in for a second client between two passes: a message appended,
 one expunged by UID, the flags of one replaced, the counts and the
@@ -546,9 +568,10 @@ mod-sequences following. Its Gmail mode
 (`Mailboxes::gmail`) lists the folders as Gmail does, answers the three
 Gmail items where asked and BAD where the extension is off, takes a
 STORE of `X-GM-LABELS` with the Starred label and `\Flagged` kept
-together, counts a label folder from the labels of All Mail's messages
-and lets a test relabel a message or move it between stores as a
-second client would.
+together, counts a label folder from the labels of All Mail's messages,
+creates, renames and deletes a label with the labels of the mail
+following and lets a test relabel a message or move it between stores
+as a second client would.
 `testing::TestConnector` signs a
 user in on such a server or refuses every connection.
 `testing::seal::TestSealer` binds a blob to its row without a cipher.
