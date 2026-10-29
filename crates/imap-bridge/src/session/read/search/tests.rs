@@ -12,6 +12,7 @@ use super::*;
 use crate::session::{GmailSearch, MAX_STRUCTURED_BYTES, Searching};
 use crate::testing::command::{self, Command, Continuation, Reading};
 use crate::testing::messages::search::{Key, parse};
+use crate::utf7;
 
 /// The bytes one UID takes in a SEARCH answer at most: a space and ten
 /// digits.
@@ -235,7 +236,7 @@ fn a_literal_waits_for_the_continuation_where_the_server_reads_none_without_rfc7
 }
 
 #[test]
-fn gmail_takes_the_text_and_the_sender_as_one_raw_string_and_the_label_as_a_literal() {
+fn gmail_takes_the_text_and_the_sender_as_one_raw_string_and_the_label_as_a_utf8_literal() {
     let inbox = SearchAsk {
         gmail: Some(GmailSearch {
             label: Some("\\Inbox"),
@@ -250,17 +251,31 @@ fn gmail_takes_the_text_and_the_sender_as_one_raw_string_and_the_label_as_a_lite
             raw.len()
         )
     );
+    let name = "Work \"Q3\" & Zoë";
+    let listed = utf7::encode(name);
     let user = SearchAsk {
         gmail: Some(GmailSearch {
-            label: Some("Work \"Q3\""),
+            label: Some(&listed),
         }),
         ..ask("", "")
     };
     assert_eq!(
         built(&user).unwrap().first,
-        "UID SEARCH CHARSET UTF-8 1:3 X-GM-LABELS {9+}\r\nWork \"Q3\""
+        format!(
+            "UID SEARCH CHARSET UTF-8 1:3 X-GM-LABELS {{{}+}}\r\n{name}",
+            name.len()
+        )
     );
-    for label in ["\\All", "\\Trash", "", "a\r\nb"] {
+    // The last three decode to a NUL, a line break and `\All`.
+    for label in [
+        "\\All",
+        "\\Trash",
+        "",
+        "a\r\nb",
+        "Zo&AAA-",
+        "a&AA0ACg-b",
+        "&AFw-All",
+    ] {
         let refused = SearchAsk {
             gmail: Some(GmailSearch { label: Some(label) }),
             ..ask("x", "")
@@ -299,8 +314,8 @@ fn a_day_goes_out_as_an_imap_date_with_four_digits_of_year_rfc3501_9() {
 }
 
 /// Text a client could type: line breaks, quotes, backslashes,
-/// parentheses, a NUL, size markers, a second command, characters
-/// outside ASCII and terms near the byte cap.
+/// parentheses, an ampersand, a NUL, size markers, a second command,
+/// characters outside ASCII and terms near the byte cap.
 fn typed() -> impl Strategy<Value = String> {
     let piece = prop_oneof![
         Just("\r\n".to_owned()),
@@ -308,6 +323,7 @@ fn typed() -> impl Strategy<Value = String> {
         Just("\\".to_owned()),
         Just("(".to_owned()),
         Just(")".to_owned()),
+        Just("&".to_owned()),
         Just("\0".to_owned()),
         Just("{5}".to_owned()),
         Just("{3+}\r\n".to_owned()),
@@ -374,5 +390,30 @@ proptest! {
             command::Part::Literal(_) => None,
         }).collect();
         prop_assert!(words.iter().all(|text| !text.contains(['\r', '\n', '\0'])), "{words:?}");
+    }
+
+    #[test]
+    fn a_label_reaches_the_server_as_its_name_in_utf8_or_never_goes_out(
+        name in typed(),
+        literals in literals(),
+    ) {
+        let listed = utf7::encode(&name);
+        let asked = SearchAsk {
+            gmail: Some(GmailSearch { label: Some(&listed) }),
+            server: Searching { literals, gmail: true },
+            ..ask("", "")
+        };
+        match built(&asked) {
+            Err(SessionError::Protocol(words)) => {
+                prop_assert_eq!(words, NO_LABEL);
+                prop_assert!(wire_label(&name).is_none(), "{name:?}");
+            }
+            Err(other) => return Err(TestCaseError::fail(other.to_string())),
+            Ok(command) => {
+                prop_assert!(wire_label(&name).is_some(), "{name:?}");
+                let search = parse(&served(&wire(&command), literals)).unwrap();
+                prop_assert_eq!(search.keys, vec![Key::Window(1, 3), Key::GmailLabels(name)]);
+            }
+        }
     }
 }

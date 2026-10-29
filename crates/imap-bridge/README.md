@@ -427,13 +427,14 @@ the server advertises LITERAL+ or, up to 4096 bytes, LITERAL- (RFC
 7888); otherwise it waits for the continuation request. A term past 256
 bytes, more than eight terms or a NUL is refused before anything is
 sent (`SearchAsk::check`). On Gmail the text and the sender go as one
-X-GM-RAW string and a label as X-GM-LABELS. `CHARSET UTF-8` goes out
-once per command, right after `UID SEARCH`, when the command carries a
-literal. A NO with the `BADCHARSET` code reads as
-`SessionError::BadCharset`. `Capabilities::searching` says which form
-the literals take and whether the Gmail keys apply. With `until` set,
-each read of the answer waits until then in place of the session's
-step.
+X-GM-RAW string and a label as X-GM-LABELS in UTF-8, the form Gmail's
+SEARCH reads; LIST, FETCH and STORE spell a label in modified UTF-7.
+`CHARSET UTF-8` goes out once per command, right after `UID SEARCH`,
+when the command carries a literal. A NO with the `BADCHARSET` code
+reads as `SessionError::BadCharset`. `Capabilities::searching` says
+which form the literals take and whether the Gmail keys apply. With
+`until` set, each read of the answer waits until then in place of the
+session's step.
 
 The session layer carries the folder commands too, each read as STATUS
 is: `create`, `rename`, `delete`, `subscribe` and `unsubscribe` (RFC
@@ -543,14 +544,14 @@ open `[READ-ONLY]` or show another
 UIDVALIDITY on one SELECT. UID SEARCH reads its window of sequence
 numbers with the keys CHARSET, TEXT, FROM, UNSEEN, FLAGGED, SINCE and
 BEFORE; a string comes as an atom, quoted or as a literal. The Gmail
-mode adds X-GM-RAW and X-GM-LABELS. CREATE, RENAME, DELETE, SUBSCRIBE
-and UNSUBSCRIBE edit the folders and refuse with the code a real server
-sends: `ALREADYEXISTS`, `NONEXISTENT`, `HASCHILDREN` or `USEATTR`. ACL
-and LIST-MYRIGHTS are switches for MYRIGHTS per folder and through
-LIST, with the letters a test names per folder. LITERAL+ and LITERAL-
-are switches too: the Dovecot shape carries LITERAL+, the Gmail mode
-LITERAL-. A
-literal the script does not read without its continuation request is
+mode adds X-GM-RAW and X-GM-LABELS, a label read in UTF-8 as Gmail
+reads it. CREATE, RENAME, DELETE, SUBSCRIBE and UNSUBSCRIBE edit the
+folders and refuse with the code a real server sends: `ALREADYEXISTS`,
+`NONEXISTENT`, `HASCHILDREN` or `USEATTR`. ACL and LIST-MYRIGHTS are
+switches for MYRIGHTS per folder and through LIST, with the letters a
+test names per folder. LITERAL+ and LITERAL- are switches too: the
+Dovecot shape carries LITERAL+, the Gmail mode LITERAL-. A literal the
+script does not read without its continuation request is
 read whole and answered BAD. Misbehavior is a switch as well:
 volunteered lines, a connection that drops, a MODSEQ item, a NO in raw
 UTF-8, messages that leave between two searches, the Gmail items
