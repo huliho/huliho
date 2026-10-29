@@ -24,6 +24,7 @@ use crate::session::write::{LINE_LIMIT, wire_label};
 use crate::session::{
     Literals, MAX_COMMAND_BYTES, SEARCH_TERM_BYTES, SEARCH_TERMS, SearchAsk, SessionError, io_error,
 };
+use crate::utf7;
 
 /// The SEARCH line of one window.
 const SEARCH_LINES: usize = 1;
@@ -244,7 +245,8 @@ fn bare(term: &str) -> String {
 /// a FROM key per term, on Gmail the text and the sender as one X-GM-RAW
 /// string, then the plaintext conditions. A Gmail label goes as a
 /// literal, since Gmail reads a system label written as an atom in a
-/// SEARCH as no label at all.
+/// SEARCH as no label at all. It goes in UTF-8, the form Gmail's SEARCH
+/// reads the key in; what it decodes to passes the STORE's label rule.
 fn keys(ask: &SearchAsk<'_>) -> Result<Vec<Piece>, SessionError> {
     ask.check()?;
     let (text, from) = (terms(ask.text), terms(ask.from));
@@ -254,12 +256,12 @@ fn keys(ask: &SearchAsk<'_>) -> Result<Vec<Piece>, SessionError> {
             keys.push(Piece::Words("X-GM-RAW".to_owned()));
             keys.push(Piece::Literal(raw(&text, &from)));
         }
-        if let Some(label) = gmail.label {
-            if wire_label(label).is_none() {
+        if let Some(label) = gmail.label.map(utf7::decode) {
+            if wire_label(&label).is_none() {
                 return Err(SessionError::Protocol(NO_LABEL));
             }
             keys.push(Piece::Words("X-GM-LABELS".to_owned()));
-            keys.push(Piece::Literal(label.to_owned()));
+            keys.push(Piece::Literal(label));
         }
     } else {
         for (key, found) in [("TEXT", &text), ("FROM", &from)] {

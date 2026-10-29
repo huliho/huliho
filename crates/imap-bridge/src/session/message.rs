@@ -161,8 +161,8 @@ pub struct SearchAsk<'a> {
 /// What a search on a Gmail account adds.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct GmailSearch<'a> {
-    /// The label a mailbox scope stands for, as Gmail spells it; an
-    /// X-GM-LABELS key.
+    /// The label a mailbox scope stands for, as Gmail lists and stores
+    /// it; the X-GM-LABELS key carries it in UTF-8.
     pub label: Option<&'a str>,
 }
 

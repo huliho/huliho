@@ -6,13 +6,15 @@
 //! with the keys the bridge sends (RFC 3501 section 6.4.4): `CHARSET`,
 //! `TEXT`, `FROM`, `UNSEEN`, `FLAGGED`, `SINCE` and `BEFORE`, a string as
 //! an atom, quoted or a literal; on a Gmail account `X-GM-RAW` and
-//! `X-GM-LABELS` as well. Every key must match.
+//! `X-GM-LABELS` as well. Every key must match. As on Gmail, a label key
+//! is read in UTF-8 while a message holds its labels in modified UTF-7.
 
 use std::fmt::Write as _;
 
 use super::{Conversation, Message};
 use crate::testing::command::{Command, Part};
 use crate::testing::mailboxes::{Extension, Mailboxes, unquote};
+use crate::utf7;
 
 /// The months an IMAP date names (RFC 3501 section 9).
 const MONTHS: [&str; 12] = [
@@ -251,7 +253,7 @@ fn matches(message: &Message, key: &Key) -> bool {
         Key::GmailLabels(label) => message
             .labels
             .iter()
-            .any(|held| held.eq_ignore_ascii_case(label)),
+            .any(|held| utf7::decode(held).eq_ignore_ascii_case(label)),
     }
 }
 
@@ -372,6 +374,20 @@ mod tests {
         assert!(reads("A1 UID SEARCH 1:9 X-GM-RAW plan"));
         assert!(!reads("A1 UID SEARCH 1:9"));
         assert!(!reads("A1 UID SEARCH 1:9 UNSEEN SINCE 1-Feb-2026"));
+    }
+
+    #[test]
+    fn a_label_key_matches_in_utf8_and_never_in_modified_utf7() {
+        let wire = utf7::encode("Receipts & Zoë");
+        let message = Message::new(1).labeled(&["\\Inbox", &wire]);
+        for (label, found) in [
+            ("Receipts & Zoë", true),
+            (wire.as_str(), false),
+            ("\\Inbox", true),
+        ] {
+            let key = Key::GmailLabels(label.to_owned());
+            assert_eq!(matches(&message, &key), found, "{label}");
+        }
     }
 
     #[test]
