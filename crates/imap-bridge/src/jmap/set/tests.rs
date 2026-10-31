@@ -43,6 +43,18 @@ fn a_whole_keywords_object_names_what_the_email_is_left_with_rfc8621_4_1_1() {
 }
 
 #[test]
+fn a_mailbox_named_by_creation_id_takes_the_id_the_request_made_rfc8620_5_3() {
+    let created = CreatedIds::from([("new".to_owned(), "m9".to_owned())]);
+    let paths = json!({ "mailboxIds/#new": true, "mailboxIds/m1": null, "mailboxIds/#lost": true });
+    let mut mailboxes = patch(&paths).unwrap().mailboxes.unwrap();
+    mailboxes.resolve(&created);
+    assert_eq!(mailboxes.add, ["#lost", "m9"]);
+    assert_eq!(mailboxes.remove, ["m1"]);
+    assert_eq!(mailboxes.path("m9"), "mailboxIds/#new");
+    assert_eq!(mailboxes.path("#lost"), "mailboxIds/#lost");
+}
+
+#[test]
 fn a_mailbox_path_adds_with_true_and_removes_with_null_rfc8621_4_6() {
     let read = patch(&json!({ "mailboxIds/m1": null, "mailboxIds/m~12": true })).unwrap();
     let mailboxes = read.mailboxes.unwrap();

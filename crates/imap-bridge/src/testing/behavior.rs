@@ -76,9 +76,15 @@ pub struct Behavior {
     /// Every folder command answers NO with this response code, written
     /// as the wire carries it.
     pub folder_refusal: Option<&'static str>,
+    /// A SUBSCRIBE of a folder that exists answers NO with this response
+    /// code, written as the wire carries it; CREATE and UNSUBSCRIBE
+    /// answer as usual.
+    pub subscribe_refusal: Option<&'static str>,
     /// What a DELETE of a selectable folder with folders under it comes
     /// to.
     pub parent_delete: ParentDelete,
+    /// What a LOGOUT comes to; the BYE and the tagged OK as it stands.
+    pub logging_out: Storing,
 }
 
 /// How the server takes a DELETE of a folder with folders under it.

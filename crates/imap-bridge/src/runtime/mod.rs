@@ -12,7 +12,9 @@
 //! takes it one window at a time.
 
 mod bridge;
+pub(crate) mod folders;
 pub(crate) mod search;
+mod timing;
 mod worker;
 
 use std::future::Future;
@@ -25,6 +27,10 @@ use tokio::time::timeout;
 
 pub use bridge::{Bridge, Registration};
 pub use search::{SEARCH_CACHE_ENTRIES, SEARCH_CACHE_TTL};
+pub use timing::{
+    CONVERSATION_DEADLINE, GMAIL_LIST_AGE, RECONNECT_PAUSE, REFRESH_INTERVAL, RETRY_INTERVAL,
+    SEARCH_DEADLINE, SESSION_IDLE_CLOSE, Timing,
+};
 
 use crate::gmail;
 use crate::mailboxes::SyncError;
@@ -33,31 +39,11 @@ use crate::store::{AccountKey, MailboxId};
 use crate::sync::refresh::{Given, Refreshed, Refresher};
 use crate::sync::{Cache, NARROWING_BUDGET};
 
-/// A `/changes` call refreshes its account at most this often; until
-/// the server pushes, a client polls about twice as slowly.
-pub const REFRESH_INTERVAL: Duration = Duration::from_secs(30);
-
-/// The connections one Gmail account may hold at once, far under
-/// Gmail's own cap of fifteen. The requests take one conversation; the
-/// header sync keeps one of its own, so a large store never holds up the
-/// reading pane; the searches run on the third.
+/// The connections one Gmail account may hold signed in at once, far
+/// under Gmail's own cap of fifteen. The requests take one
+/// conversation; the header sync keeps one of its own, so a large store
+/// never holds up the reading pane; the searches run on the third.
 pub const GMAIL_CONNECTIONS: usize = 3;
-
-/// A kept session is logged out once nothing used it for this long.
-pub const SESSION_IDLE_CLOSE: Duration = Duration::from_mins(5);
-
-/// What one turn on the conversation may take: a refresh, a preview
-/// fetch, a body fetch, the writes of an `Email/set`, one window of a
-/// blob or one batch of the header sync. It also bounds one UID FETCH
-/// answer, which has per-line timeouts alone.
-pub const CONVERSATION_DEADLINE: Duration = Duration::from_secs(60);
-
-/// What the searches of one round of a request may take together, from
-/// the moment the first is asked, their wait for an earlier search of
-/// the account included; past it a call answers `serverUnavailable`. It
-/// stays inside one turn on the conversation, and nothing between the
-/// bridge and the client bounds a search otherwise.
-pub const SEARCH_DEADLINE: Duration = Duration::from_secs(45);
 
 /// The accounts whose header sync runs at once, process wide.
 pub const SYNC_PARALLELISM: usize = 2;
@@ -66,43 +52,6 @@ pub const SYNC_PARALLELISM: usize = 2;
 /// for the next round: above the narrowing budget, so a folder full of
 /// hostile messages narrows to its end, with room for a flaky link.
 pub const FOLDER_FAILURE_BOUND: usize = NARROWING_BUDGET + 16;
-
-/// The pause before a fresh connection after a failure.
-pub const RECONNECT_PAUSE: Duration = Duration::from_secs(2);
-
-/// How long an account waits for its next round after a round ended in
-/// failures or found the host holding the account back.
-pub const RETRY_INTERVAL: Duration = Duration::from_mins(5);
-
-/// The clocks of the runtime as one value, so a test can shorten them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Timing {
-    /// Between two refreshes of one account.
-    pub interval: Duration,
-    /// What one turn on the conversation may take.
-    pub deadline: Duration,
-    /// What the searches of one round of a request may take.
-    pub search: Duration,
-    /// How long a session stays open unused.
-    pub idle_close: Duration,
-    /// How long a task waits after a round that did not finish.
-    pub retry_interval: Duration,
-    /// The pause before connecting again after a failure.
-    pub reconnect_pause: Duration,
-}
-
-impl Default for Timing {
-    fn default() -> Self {
-        Self {
-            interval: REFRESH_INTERVAL,
-            deadline: CONVERSATION_DEADLINE,
-            search: SEARCH_DEADLINE,
-            idle_close: SESSION_IDLE_CLOSE,
-            retry_interval: RETRY_INTERVAL,
-            reconnect_pause: RECONNECT_PAUSE,
-        }
-    }
-}
 
 /// Why the host opened no session.
 #[derive(Debug, Error)]
@@ -120,8 +69,9 @@ pub enum ConnectError {
 /// Where connections come from: the host signs in with the credential
 /// it keeps and reports every outcome wherever it counts them.
 pub trait Connector: Send + Sync {
-    /// The session the host opens.
-    type Session: Session;
+    /// The session the host opens. It owns its connection, so its
+    /// LOGOUT can run on a task of its own.
+    type Session: Session + 'static;
 
     /// A signed-in session for the account.
     ///
@@ -179,6 +129,10 @@ pub struct Wire<C: Connector> {
     timing: Timing,
     refreshed: Option<Instant>,
     last_used: Option<Instant>,
+    /// When the session signed in.
+    signed_in: Option<Instant>,
+    /// Whether no mailbox pass ran on the session yet.
+    unpassed: bool,
     refresher: Refresher,
 }
 
@@ -243,6 +197,7 @@ impl<C: Connector> Link<C> {
         if !wire.due() {
             return Ok(());
         }
+        wire.close_stale_list();
         if wire.session(cache).await.is_err() {
             return Ok(());
         }
@@ -250,6 +205,7 @@ impl<C: Connector> Link<C> {
             condstore: wire.condstore,
             gmail: wire.gmail,
             viewed: viewed.as_ref(),
+            first_pass: std::mem::take(&mut wire.unpassed),
         };
         let deadline = wire.timing.deadline;
         let Wire {
@@ -278,8 +234,8 @@ impl<C: Connector> Link<C> {
     /// Logs the conversation and the search connection out once nothing
     /// used either for `bound`; how long to wait before the next look.
     pub(crate) async fn close_idle(&self, bound: Duration) -> Duration {
-        let conversation = self.wire.lock().await.close_idle(bound).await;
-        conversation.min(self.search.close_idle(bound).await)
+        let conversation = self.wire.lock().await.close_idle(bound);
+        conversation.min(self.search.close_idle(bound))
     }
 }
 
@@ -295,6 +251,8 @@ impl<C: Connector> Wire<C> {
             timing,
             refreshed: None,
             last_used: None,
+            signed_in: None,
+            unpassed: true,
             refresher: Refresher::default(),
         }
     }
@@ -322,6 +280,8 @@ impl<C: Connector> Wire<C> {
             self.moving = capabilities.moving();
             self.searching = capabilities.searching();
             self.gmail = gmail::confirmed(cache.gmail, &capabilities);
+            self.signed_in = Some(Instant::now());
+            self.unpassed = true;
             fresh
         };
         self.last_used = Some(Instant::now());
@@ -351,6 +311,28 @@ impl<C: Connector> Wire<C> {
     /// unread lines; the next use connects again.
     pub(crate) fn drop_session(&mut self) {
         self.session = None;
+    }
+
+    /// Logs a Gmail session out once it is older than the list age,
+    /// since Gmail shows a connection the folders as they stood when it
+    /// signed in; the next use signs in afresh.
+    fn close_stale_list(&mut self) {
+        let age = self.timing.list_age;
+        if self.gmail && self.signed_in.is_some_and(|at| at.elapsed() >= age) {
+            self.log_out();
+        }
+    }
+
+    /// Ends a healthy session with LOGOUT (RFC 9051 section 6.1.3) on a
+    /// task of its own, so a server that holds the answer holds up no
+    /// request. The connection is gone whatever LOGOUT answers.
+    fn log_out(&mut self) {
+        if let Some(session) = self.session.take() {
+            tokio::spawn(async move {
+                let _ended = session.logout().await;
+            });
+        }
+        self.last_used = None;
     }
 
     /// The session as [`Wire::session`] answers it, taken out for a turn
@@ -394,7 +376,7 @@ impl<C: Connector> Wire<C> {
 
     /// Logs the session out once nothing used it for `bound`; how long
     /// to wait before the next look.
-    pub(crate) async fn close_idle(&mut self, bound: Duration) -> Duration {
+    pub(crate) fn close_idle(&mut self, bound: Duration) -> Duration {
         let Some(last_used) = self.last_used.filter(|_| self.session.is_some()) else {
             return bound;
         };
@@ -402,11 +384,7 @@ impl<C: Connector> Wire<C> {
         if idle < bound {
             return bound.saturating_sub(idle);
         }
-        if let Some(session) = self.session.take() {
-            // The connection is gone whatever LOGOUT answers.
-            let _ended = session.logout().await;
-        }
-        self.last_used = None;
+        self.log_out();
         bound
     }
 }
@@ -418,14 +396,7 @@ mod tests {
     const _: () = assert!(FOLDER_FAILURE_BOUND > NARROWING_BUDGET);
 
     #[test]
-    fn the_clocks_default_to_the_documented_values() {
-        let timing = Timing::default();
-        assert_eq!(timing.interval, Duration::from_secs(30));
-        assert_eq!(timing.deadline, Duration::from_secs(60));
-        assert_eq!(timing.search, Duration::from_secs(45));
-        assert_eq!(timing.idle_close, Duration::from_secs(300));
-        assert_eq!(timing.retry_interval, Duration::from_secs(300));
-        assert_eq!(timing.reconnect_pause, Duration::from_secs(2));
+    fn the_counts_default_to_the_documented_values() {
         assert_eq!(SYNC_PARALLELISM, 2);
         assert_eq!(GMAIL_CONNECTIONS, 3);
     }

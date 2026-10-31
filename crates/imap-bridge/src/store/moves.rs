@@ -256,7 +256,7 @@ impl Writing<'_, '_> {
             folder: &change.to,
             uid_validity: change.uid_validity,
         };
-        if !folders::stands(transaction, key, &standing)?
+        if !folders::pinned(transaction, key, &standing)?
             || holds(transaction, key, &change.to, change.uid)?
         {
             let lost = GoneRow {

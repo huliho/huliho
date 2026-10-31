@@ -43,8 +43,17 @@ LIST with the RETURN options the server's capabilities allow
 (SUBSCRIBED, SPECIAL-USE and STATUS behind LIST-EXTENDED, SPECIAL-USE
 and LIST-STATUS). What the listing does not carry it asks separately:
 LSUB for the subscriptions, one STATUS per selectable mailbox for the
-counts. It maps the lines to rows: roles from the attributes first and
-from a fixed table of names second, one mailbox per role, names decoded
+counts. Where the server advertises ACL it reads the user's rights:
+through the MYRIGHTS return option where LIST-MYRIGHTS stands beside
+LIST-EXTENDED, else one MYRIGHTS per selectable mailbox on the first
+pass of a connection and for a mailbox whose row holds none; a server
+without `RIGHTS=` has its `c` and `d` read so they never grant more than
+it does (RFC 4314 section 2.1.1). A mailbox the server cannot look up,
+because MYRIGHTS answers NO or the listing carries no MYRIGHTS line for
+it, holds every right the commands allow, as every mailbox does without
+ACL; letters a later listing leaves out go. It maps the lines to rows: the role
+the user set through `Mailbox/set` first, then the attributes, then a
+fixed table of names, one mailbox per role, names decoded
 from modified UTF-7, the hierarchy from the delimiter, the counts from
 STATUS. A mailbox without a STATUS answer, because the server said NO
 or left its line out of the listing, keeps its row with zero counts and
@@ -129,7 +138,11 @@ afterwards; the refresh visits the stores alone and a vanished label
 mailbox drops its memberships. The session object says
 `maxMailboxesPerEmail` is null on such an account.
 `runtime::GMAIL_CONNECTIONS` names the three connections one Gmail
-account may hold at once, which the host's runtime enforces.
+account may hold signed in at once, which the host's runtime enforces;
+one it logs out may close a moment later. Gmail
+shows a connection the folders as they stood when it signed in, so the
+mailbox pass of a Gmail account signs its conversation in afresh once
+it is five minutes old (`runtime::GMAIL_LIST_AGE`).
 
 The connection comes from the host through the `runtime::Connector`
 trait: `connect(key)` answers a signed-in session or a typed failure,
@@ -297,7 +310,8 @@ hundred objects `requestTooLarge` (`jmap::MAX_OBJECTS_IN_SET`).
 its flag (RFC 8621 section 4.1.1): the four system keywords as `\Seen`,
 `\Flagged`, `\Answered` and `\Draft`, any other as an atom. A mailbox
 the account does not hold or that holds no mail answers
-`invalidProperties`.
+`invalidProperties`. A mailbox named by a creation id with `#` in front
+is the one a `Mailbox/set` earlier in the request made under it.
 
 On a folder account a message lies in one folder, so a change of its
 mailboxes is a move (RFC 8621 section 1.3.1): an update that leaves the
@@ -451,6 +465,40 @@ rights per mailbox and through LIST. Rights keep every lowercase letter
 and digit once, in ASCII order, so a character outside RFC 4314 grants
 nothing. A NO reads as `Refused` whatever its code.
 
+`Mailbox/set` (RFC 8621 section 2.5) creates, renames, moves,
+subscribes and destroys folders and sets a role. Every object is
+checked against the rows before anything is sent, in the order RFC
+8620 section 5.3 gives creates, updates and destroys. Each step sees
+what the steps before it did: a mailbox the call creates is a row for
+the objects after it and a RENAME moves the names every later RENAME,
+SUBSCRIBE and DELETE of the call sends. A creation id with `#` in
+front, as a parent or as the mailbox an update or a destroy names, is
+a mailbox the call creates, else one an earlier call of the request
+made or its `createdIds` name; such an update or destroy answers under
+the id of its mailbox once it landed. A name taken
+under its parent or one `MailboxName` refuses answers
+`invalidProperties`, as does a parent the account lacks or one that
+lies under the mailbox; a destroy with a child answers
+`mailboxHasChild` and one with mail and without
+`onDestroyRemoveEmails` `mailboxHasEmail`; a role outside RFC 8621's
+list or held by a second mailbox once the call is done answers
+`invalidProperties`; an object the rights refuse answers `forbidden`.
+INBOX is never renamed or destroyed, a role mailbox never destroyed or
+unsubscribed and on Gmail the stores, `[Gmail]` and the system labels
+take no change. A create sends CREATE with a SUBSCRIBE after it,
+unless it asks for `isSubscribed: false`; its row is written at once.
+A SUBSCRIBE the server refuses there leaves the folder created with
+`isSubscribed` false. A rename sends RENAME and rewrites the wire name
+of the row and of every row under it, so the ids stay. `isSubscribed`
+is SUBSCRIBE or UNSUBSCRIBE. A destroy is DELETE, the rows leaving with
+their emails as a vanished folder's do; a Gmail label leaves its
+messages in All Mail. A role is the bridge's own: it lives on the row
+and the next pass reads it ahead of the server's. A name goes out under
+the delimiter of a LIST the call reads first. What the server took is
+one state. Any other NO answers `serverFail` without the server's
+words; after a refused RENAME or DELETE one pass on a fresh connection
+shows what stands, and after any refusal the next use signs in afresh.
+
 An `Email/query` with a text or a sender has the server searched
 between two passes over its request, on a connection of the account's
 own, one search at a time. A folder account searches the folders of
@@ -472,16 +520,20 @@ in SQL over the hits. No query text and no sender is logged.
 
 The rows live in `bridge_` tables inside the host's database.
 `store::MIGRATIONS` carries their schema for the host's migration list
-as two migrations, the tables and then the index on the message ids by
-thread with the progress columns of the refresh; every row carries the
+as three migrations: the tables, then the index on the message ids by
+thread with the progress columns of the refresh, then the role the
+user set and the rights MYRIGHTS named on each mailbox; every row carries the
 host's opaque account key. Ids are a type letter in front of UUID text.
 The state string is a per-account counter; every change writes a row
 to a log that the three `/changes` methods read, kept for the newest
 ten thousand rows. `jmap::handle` runs a Request object (RFC 8620
 section 3.3) against those rows and answers `Mailbox/get`,
-`Mailbox/changes`, `Email/get`, `Email/set`, `Email/query`,
+`Mailbox/changes`, `Mailbox/set`, `Email/get`, `Email/set`, `Email/query`,
 `Email/changes`, `Thread/get`, `Thread/changes`, `Quota/get`,
-`Quota/changes` and `Core/echo`.
+`Quota/changes` and `Core/echo`. It keeps one map of creation ids per
+request, seeded from its `createdIds` and grown by every mailbox a
+`Mailbox/set` makes; the map comes back as `createdIds` when the
+request carried them (section 3.4).
 `Email/get` serves the
 metadata, the header properties and the preview from the rows, the
 body properties and the `header:` forms from the server. `Email/query`

@@ -207,7 +207,7 @@ async fn wait<C: Connector>(account: &Account<C>, timing: Timing, limit: Option<
     loop {
         let mut nap = account.link.close_idle(timing.idle_close).await;
         if let Some(own) = &account.own {
-            nap = nap.min(own.lock().await.close_idle(timing.idle_close).await);
+            nap = nap.min(own.lock().await.close_idle(timing.idle_close));
         }
         if let Some(until) = until {
             let left = until.saturating_duration_since(Instant::now());

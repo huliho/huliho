@@ -29,22 +29,32 @@ pub struct Standing<'a> {
     pub uid_validity: u32,
 }
 
-/// Whether the folder row exists under the UIDVALIDITY the fetch ran
+/// Whether the folder row stands under the UIDVALIDITY the fetch ran
 /// under, which covers a removed account, a vanished mailbox and a
-/// renumbering since the fetch.
-pub(super) fn stands(
-    connection: &Connection,
+/// renumbering since the fetch. A row that holds none yet, as one a
+/// `Mailbox/set` made before any pass, takes this one and stands.
+pub(super) fn pinned(
+    transaction: &Transaction<'_>,
     key: &AccountKey,
     standing: &Standing<'_>,
 ) -> Result<bool, StoreError> {
-    let uid_validity: Option<Option<u32>> = connection
+    let uid_validity: Option<Option<u32>> = transaction
         .query_row(
             "SELECT uid_validity FROM bridge_mailboxes WHERE account_key = ?1 AND id = ?2",
             params![key.as_str(), standing.folder],
             |row| row.get(0),
         )
         .optional()?;
-    Ok(uid_validity == Some(Some(standing.uid_validity)))
+    match uid_validity {
+        Some(None) => {
+            transaction.execute(
+                "UPDATE bridge_mailboxes SET uid_validity = ?3 WHERE account_key = ?1 AND id = ?2",
+                params![key.as_str(), standing.folder, standing.uid_validity],
+            )?;
+            Ok(true)
+        }
+        found => Ok(found == Some(Some(standing.uid_validity))),
+    }
 }
 
 /// One folder inside a write, with the sequence its log rows go under.

@@ -13,7 +13,7 @@ use super::command::{Command, Reading, read as read_command};
 use super::messages::{Conversation, search};
 use super::{
     Fake, GOOGLE_ERROR, Greeting, Lines, Listen, Mailboxes, Opening, PASSWORD, Phase, Protocol,
-    Starttls, TOKEN, USER, decoded, open, read_line, record,
+    Starttls, Storing, TOKEN, USER, decoded, open, read_line, record,
 };
 
 /// The name the certificate carries.
@@ -96,6 +96,20 @@ impl Script {
         conversation.search(&self.mailboxes, command, tag)
     }
 
+    /// The answer to EXAMINE, SELECT, NOOP or a UID command; one the
+    /// behavior never answers holds the connection.
+    async fn selected_answer(
+        &self,
+        conversation: &mut Conversation,
+        command: &str,
+        tag: &str,
+    ) -> Option<String> {
+        if conversation.stalls(command, self.mailboxes.behavior) {
+            std::future::pending::<()>().await;
+        }
+        conversation.answer(&self.mailboxes, command, tag)
+    }
+
     fn opening(&self) -> Opening {
         Opening {
             greeting: self.greeting,
@@ -132,6 +146,49 @@ impl Script {
                     .collect::<Vec<_>>()
                     .join(" ")
             }
+        }
+    }
+
+    /// The answer to a mailbox command. `None` once the connection ends
+    /// with it, as Dovecot ends one whose open mailbox a DELETE took.
+    async fn folder_answer<W: AsyncWrite + Unpin>(
+        &self,
+        writer: &mut W,
+        conversation: &Conversation,
+        (verb, command, tag): (&str, &str, &str),
+    ) -> Option<String> {
+        let reply = self.mailboxes.answer(verb, command, tag);
+        if reply.starts_with(&format!("{tag} OK")) && conversation.deletes_selected(command) {
+            let bye = "* BYE Selected mailbox was deleted, have to disconnect\r\n";
+            writer
+                .write_all(format!("{reply}{bye}").as_bytes())
+                .await
+                .ok()?;
+            return None;
+        }
+        Some(reply)
+    }
+
+    /// The answer to LOGOUT as the behavior has it. `None` once the
+    /// connection ends with it, after the BYE and the tagged OK or
+    /// without a word.
+    async fn logout_answer<W: AsyncWrite + Unpin>(
+        &self,
+        writer: &mut W,
+        tag: &str,
+    ) -> Option<String> {
+        match self.mailboxes.behavior.logging_out {
+            Storing::Stores => {
+                writer
+                    .write_all(format!("* BYE bye\r\n{tag} OK done\r\n").as_bytes())
+                    .await
+                    .ok();
+                None
+            }
+            Storing::Drops => None,
+            Storing::Refuses => Some(format!("{tag} NO refused\r\n")),
+            Storing::Bad => Some(format!("{tag} BAD refused\r\n")),
+            Storing::Stalls => std::future::pending().await,
         }
     }
 }
@@ -202,34 +259,24 @@ impl Protocol for Script {
                 }
                 "LOGIN" => format!("{tag} NO [AUTHENTICATIONFAILED] Authentication failed.\r\n"),
                 "AUTHENTICATE" if phase.is_tls() => {
-                    if xoauth2(&mut reader, &mut writer, lines, self.user).await? {
-                        format!("{tag} OK signed in\r\n")
-                    } else {
-                        format!("{tag} NO [AUTHENTICATIONFAILED] Invalid credentials (Failure)\r\n")
-                    }
+                    let signed_in = xoauth2(&mut reader, &mut writer, lines, self.user).await?;
+                    authenticated(tag, signed_in)
                 }
-                "LOGOUT" => {
-                    writer
-                        .write_all(format!("* BYE bye\r\n{tag} OK done\r\n").as_bytes())
-                        .await
-                        .ok();
-                    return None;
-                }
+                "LOGOUT" => self.logout_answer(&mut writer, tag).await?,
                 "LIST" | "LSUB" | "STATUS" | "CREATE" | "RENAME" | "DELETE" | "SUBSCRIBE"
                 | "UNSUBSCRIBE" | "MYRIGHTS"
                     if phase.is_tls() =>
                 {
-                    self.mailboxes.answer(&verb, command, tag)
+                    self.folder_answer(&mut writer, &conversation, (&verb, command, tag))
+                        .await?
                 }
                 "GETQUOTAROOT" if phase.is_tls() => self.mailboxes.quota_root(tag),
                 "UID" if phase.is_tls() && command.starts_with("UID SEARCH ") => {
                     self.search(&mut conversation, &received, tag).await
                 }
                 "EXAMINE" | "SELECT" | "UID" | "NOOP" if phase.is_tls() => {
-                    if conversation.stalls(command, self.mailboxes.behavior) {
-                        std::future::pending::<()>().await;
-                    }
-                    conversation.answer(&self.mailboxes, command, tag)?
+                    self.selected_answer(&mut conversation, command, tag)
+                        .await?
                 }
                 _ => format!("{tag} BAD unknown command\r\n"),
             };
@@ -237,6 +284,15 @@ impl Protocol for Script {
             // A TLS write may return with ciphertext still buffered.
             writer.flush().await.ok()?;
         }
+    }
+}
+
+/// The tagged answer to AUTHENTICATE, as Google words it.
+fn authenticated(tag: &str, signed_in: bool) -> String {
+    if signed_in {
+        format!("{tag} OK signed in\r\n")
+    } else {
+        format!("{tag} NO [AUTHENTICATIONFAILED] Invalid credentials (Failure)\r\n")
     }
 }
 

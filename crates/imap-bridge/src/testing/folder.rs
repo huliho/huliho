@@ -39,12 +39,24 @@ pub struct Folder {
     /// A SELECT opens the folder `[READ-ONLY]`, as a shared folder
     /// without write rights opens; every write there answers NO.
     pub read_only: bool,
-    /// The letters MYRIGHTS names for the folder while ACL is on;
-    /// `None` names an owner's.
-    pub rights: Option<&'static str>,
+    /// What MYRIGHTS names for the folder while ACL is on.
+    pub rights: MyRights,
     /// The mail EXAMINE, UID SEARCH and UID FETCH answer from; the
     /// counts above are what STATUS says and may differ on purpose.
     pub mail: Vec<Message>,
+}
+
+/// What MYRIGHTS answers for a folder while ACL is on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MyRights {
+    /// An owner's letters.
+    #[default]
+    Owner,
+    /// These letters.
+    Letters(&'static str),
+    /// A NO; a LIST-MYRIGHTS answer leaves the line out as well (RFC
+    /// 8440 section 3).
+    Refused,
 }
 
 impl Folder {
@@ -65,7 +77,7 @@ impl Folder {
             highest_modseq: 1,
             permanent: Some(PERMANENT_FLAGS),
             read_only: false,
-            rights: None,
+            rights: MyRights::Owner,
             mail: Vec::new(),
         }
     }

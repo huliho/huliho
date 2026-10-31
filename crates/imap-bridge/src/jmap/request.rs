@@ -5,8 +5,9 @@
 //! One Request object run against an account: every call in order off
 //! the runtime, a refresh ahead of a `/changes` call and a later pass
 //! over the calls from the first `Email/get` whose previews or bodies
-//! were fetched in between, the first `Email/set` whose keywords were
-//! stored there or the first `Email/query` the server was searched for.
+//! were fetched in between, the first `Email/set` or `Mailbox/set` whose
+//! writes were done there or the first `Email/query` the server was
+//! searched for.
 
 #[cfg(test)]
 mod tests;
@@ -25,6 +26,7 @@ use super::{
     Request, RequestError, Response, Using, references, run, session, using, write,
 };
 use crate::mailboxes::SyncError;
+use crate::runtime::folders::{self, Ask, CreatedIds, Round};
 use crate::runtime::search::{Failure, Hits, Plan};
 use crate::runtime::{Connector, Link};
 use crate::store::{EmailId, MailboxId, StoreError};
@@ -47,6 +49,14 @@ fn sync_failed(error: SyncError) -> Result<(), RequestError> {
     }
 }
 
+/// What a request carries across its passes: the body windows it may
+/// still spend and the creation ids it resolved so far, seeded from its
+/// `createdIds` (RFC 8620 section 3.3).
+struct Carried {
+    windows: usize,
+    created: CreatedIds,
+}
+
 /// Runs one Request object against the account and answers the Response
 /// object as JSON, its `sessionState` the session object's state as the
 /// request leaves it: the value the host derived, marked while the
@@ -57,7 +67,9 @@ fn sync_failed(error: SyncError) -> Result<(), RequestError> {
 /// a search answer on the next pass the same way. None waits on a server
 /// that is down: the cache answers as it stands; a body it does not hold
 /// and a search past the deadline of its round answer
-/// `serverUnavailable`; an update that could not be stored says so.
+/// `serverUnavailable`; an update that could not be stored says so. A
+/// request that came with `createdIds` gets them back with every
+/// creation id its calls resolved (RFC 8620 section 3.4).
 ///
 /// # Errors
 ///
@@ -93,13 +105,16 @@ pub async fn handle<C: Connector>(
     if let Some(viewed) = answered.viewed.take() {
         link.view(viewed);
     }
-    let mut windows = MAX_BODY_WINDOWS;
+    let mut carried = Carried {
+        windows: MAX_BODY_WINDOWS,
+        created: request.created_ids.clone().unwrap_or_default(),
+    };
     for _ in 1..MAX_PASSES {
         if answered.needs.is_empty() {
             break;
         }
         let needs = std::mem::take(&mut answered.needs);
-        let reruns = fetched(cache, link, needs, &mut windows).await?;
+        let reruns = fetched(cache, link, needs, &mut carried).await?;
         let first = reruns.iter().map(|(index, _)| *index).min().unwrap_or(0);
         let mut brought = std::mem::take(&mut answered.brought);
         brought.extend(reruns);
@@ -113,7 +128,7 @@ pub async fn handle<C: Connector>(
     let quota = cache.store.quota(&cache.key).advertised;
     let response = Response {
         method_responses: answered.responses,
-        created_ids: request.created_ids,
+        created_ids: request.created_ids.is_some().then_some(carried.created),
         session_state: session::session_state(session_state, quota),
     };
     serde_json::to_vec(&response).map_err(|error| RequestError::Store(StoreError::Encoding(error)))
@@ -126,6 +141,7 @@ enum Need {
     Previews(Vec<EmailId>),
     Bodies(BodyAsk),
     Write(SetAsk),
+    Folders(Ask),
     Search(Plan),
 }
 
@@ -135,6 +151,7 @@ enum Brought {
     Rows,
     Bodies(Bodies),
     Written(Outcome),
+    Folders(folders::Outcome),
     Searched(Result<Hits, Failure>),
 }
 
@@ -148,22 +165,23 @@ fn bring(reruns: &mut Reruns, index: usize, brought: Brought) {
     }
 }
 
-/// Brings what the needs name: the keywords of the `Email/set` calls
-/// that stand in a row from the first call with a need, in their order,
-/// the previews of every call at once, then the bodies per call within
-/// the windows the request may still spend, then the searches in the
-/// order of their calls under one deadline, as the writes run under
-/// theirs. Which calls run again, with what each was
+/// Brings what the needs name: the writes of the `Email/set` and
+/// `Mailbox/set` calls that stand in a row from the first call with a
+/// need, in their order, the previews of every call at once, then the
+/// bodies per call within the windows the request may still spend, then
+/// the searches in the order of their calls under one deadline, as the
+/// writes run under theirs. Which calls run again, with what each was
 /// brought. A call answers what the calls before it left and nothing of
 /// the calls behind it (RFC 8620 section 3.10): the next pass runs every
 /// call from that first one again, so a write behind a call that is no
 /// write of this round is left for the pass after it, where its call
-/// notes it again.
+/// notes it again; a write sees the creation ids of the writes before
+/// it alone.
 async fn fetched<C: Connector>(
     cache: &Cache,
     link: &Link<C>,
     needs: Vec<(usize, Need)>,
-    windows: &mut usize,
+    carried: &mut Carried,
 ) -> Result<Reruns, RequestError> {
     let mut ids: Vec<EmailId> = Vec::new();
     let mut asks: Vec<(usize, BodyAsk)> = Vec::new();
@@ -172,10 +190,13 @@ async fn fetched<C: Connector>(
     // Where the next write of the row stands; the needs come in the
     // order of their calls.
     let mut row = needs.first().map(|(index, _)| *index);
-    // The deadline the writes of this round share.
-    let mut until = None;
+    let Carried { windows, created } = carried;
+    let mut round = Round {
+        until: None,
+        created,
+    };
     for (index, need) in needs {
-        let write = matches!(need, Need::Write(_));
+        let write = matches!(need, Need::Write(_) | Need::Folders(_));
         let in_row = write && row == Some(index);
         row = in_row.then_some(index + 1);
         if write && !in_row {
@@ -194,8 +215,12 @@ async fn fetched<C: Connector>(
             }
             Need::Bodies(ask) => asks.push((index, ask)),
             Need::Search(plan) => plans.push((index, plan)),
-            Need::Write(ask) => match write::apply(cache, link, &ask, &mut until).await {
+            Need::Write(ask) => match write::apply(cache, link, &ask, &mut round).await {
                 Ok(outcome) => bring(&mut reruns, index, Brought::Written(outcome)),
+                Err(error) => sync_failed(error)?,
+            },
+            Need::Folders(ask) => match folders::apply(cache, link, &ask, &mut round).await {
+                Ok(outcome) => bring(&mut reruns, index, Brought::Folders(outcome)),
                 Err(error) => sync_failed(error)?,
             },
         }
@@ -280,6 +305,8 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
         bodies: RefCell::new(None),
         set_ask: RefCell::new(None),
         written: RefCell::new(None),
+        folder_ask: RefCell::new(None),
+        folders_done: RefCell::new(None),
         search_ask: RefCell::new(None),
         searched: RefCell::new(None),
     };
@@ -302,6 +329,10 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
             Some(Brought::Written(outcome)) => Some(outcome),
             _ => None,
         };
+        *context.folders_done.borrow_mut() = match had {
+            Some(Brought::Folders(outcome)) => Some(outcome),
+            _ => None,
+        };
         *context.searched.borrow_mut() = match had {
             Some(Brought::Searched(found)) => Some(found),
             _ => None,
@@ -310,6 +341,7 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
         let previews = std::mem::take(&mut *context.missing_previews.borrow_mut());
         let ask = context.body_ask.borrow_mut().take();
         let set = context.set_ask.borrow_mut().take();
+        let folder = context.folder_ask.borrow_mut().take();
         let search = context.search_ask.borrow_mut().take();
         if had.is_none() {
             if !previews.is_empty() {
@@ -320,6 +352,9 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
             }
             if let Some(ask) = set {
                 needs.push((index, Need::Write(ask)));
+            }
+            if let Some(ask) = folder {
+                needs.push((index, Need::Folders(ask)));
             }
             if let Some(plan) = search {
                 needs.push((index, Need::Search(plan)));

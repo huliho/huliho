@@ -11,7 +11,7 @@
 
 use super::{Extension, Mailboxes, quote, unquote};
 use crate::testing::behavior::ParentDelete;
-use crate::testing::folder::Folder;
+use crate::testing::folder::{Folder, MyRights};
 
 /// The rights MYRIGHTS names on a folder that names none of its own:
 /// an owner's, as Cyrus answers for INBOX.
@@ -88,7 +88,7 @@ impl Mailboxes {
                 .lock()
                 .iter()
                 .find(|folder| folder.name == *name)
-                .map(rights_line)
+                .and_then(rights_line)
                 .ok_or(Failure::No(Some(NONEXISTENT))),
             _ => Err(Failure::Bad),
         }
@@ -121,7 +121,9 @@ impl Mailboxes {
 
     /// The folder and every folder under it under the new name (RFC
     /// 3501 section 6.3.5); on Gmail the labels and the messages that
-    /// carry them follow. The script keeps INBOX where it is.
+    /// carry them follow. As Dovecot does, the subscriptions stay with
+    /// the old names, so the new ones start unsubscribed (RFC 9051
+    /// section 6.3.6). The script keeps INBOX where it is.
     fn rename(&self, from: &str, to: &str) -> Result<String, Failure> {
         let mut folders = self.lock();
         self.editable(&folders, from)?;
@@ -142,6 +144,7 @@ impl Mailboxes {
                 relabeled.push((std::mem::replace(label, renamed.clone()), renamed.clone()));
             }
             folder.name = renamed;
+            folder.subscribed = false;
         }
         for message in folders.iter_mut().flat_map(|folder| folder.mail.iter_mut()) {
             for label in &mut message.labels {
@@ -178,11 +181,19 @@ impl Mailboxes {
         Ok(String::new())
     }
 
+    /// SUBSCRIBE of a missing name answers NO, as does one of a folder
+    /// that exists where the behavior says so; UNSUBSCRIBE of a missing
+    /// name is done already (RFC 9051 section 6.3.8).
     fn subscription(&self, name: &str, subscribed: bool) -> Result<String, Failure> {
         let mut folders = self.lock();
-        let folder = folders.iter_mut().find(|folder| folder.name == name);
-        let folder = folder.ok_or(Failure::No(Some(NONEXISTENT)))?;
-        folder.subscribed = subscribed;
+        match folders.iter_mut().find(|folder| folder.name == name) {
+            Some(_) if subscribed && self.behavior.subscribe_refusal.is_some() => {
+                return Err(Failure::No(self.behavior.subscribe_refusal));
+            }
+            Some(folder) => folder.subscribed = subscribed,
+            None if subscribed => return Err(Failure::No(Some(NONEXISTENT))),
+            None => {}
+        }
         Ok(String::new())
     }
 
@@ -204,8 +215,13 @@ impl Mailboxes {
     }
 }
 
-/// The MYRIGHTS line of one folder (RFC 4314 section 3.8).
-pub(super) fn rights_line(folder: &Folder) -> String {
-    let rights = folder.rights.unwrap_or(OWNER_RIGHTS);
-    format!("* MYRIGHTS {} {rights}\r\n", quote(&folder.name))
+/// The MYRIGHTS line of one folder (RFC 4314 section 3.8); none for a
+/// folder the server cannot look up.
+pub(super) fn rights_line(folder: &Folder) -> Option<String> {
+    let rights = match folder.rights {
+        MyRights::Owner => OWNER_RIGHTS,
+        MyRights::Letters(letters) => letters,
+        MyRights::Refused => return None,
+    };
+    Some(format!("* MYRIGHTS {} {rights}\r\n", quote(&folder.name)))
 }

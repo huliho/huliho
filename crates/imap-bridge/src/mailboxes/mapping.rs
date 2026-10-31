@@ -8,9 +8,10 @@
 
 use std::collections::{HashMap, HashSet};
 
+use super::INBOX;
 use crate::gmail;
-use crate::session::{ListEntry, StatusEntry};
-use crate::store::MailboxFacts;
+use crate::session::{ListEntry, Listing, StatusEntry};
+use crate::store::{MailboxFacts, PassInputs, RoleOverride};
 use crate::utf7;
 
 /// The roles a mailbox can carry (RFC 8621 section 2: the IANA mailbox
@@ -66,8 +67,6 @@ const NAMED_ROLES: [(&str, &str); 13] = [
     ("Archives", "archive"),
 ];
 
-/// The one name RFC 3501 section 5.1 fixes, in any case.
-const INBOX: &str = "INBOX";
 const NOSELECT: &str = "\\NOSELECT";
 const NONEXISTENT: &str = "\\NONEXISTENT";
 const SUBSCRIBED: &str = "\\SUBSCRIBED";
@@ -92,13 +91,32 @@ pub fn map(
     subscriptions: &Subscriptions,
     gmail: bool,
 ) -> Vec<MailboxFacts> {
+    let listing = Listing {
+        entries: entries.to_vec(),
+        statuses: statuses.to_vec(),
+        rights: Vec::new(),
+    };
+    map_with_overrides(&listing, subscriptions, gmail, &PassInputs::default())
+}
+
+/// [`map`] over one listing with the roles the user set, by wire name,
+/// read ahead of the attributes and the name table.
+#[must_use]
+pub fn map_with_overrides(
+    listing: &Listing,
+    subscriptions: &Subscriptions,
+    gmail: bool,
+    inputs: &PassInputs,
+) -> Vec<MailboxFacts> {
+    let entries = &listing.entries;
     let context = Context {
-        statuses: statuses
+        statuses: listing
+            .statuses
             .iter()
             .map(|status| (status.mailbox.as_str(), status))
             .collect(),
         names: entries.iter().map(|entry| entry.name.as_str()).collect(),
-        roles: assign_roles(entries, gmail),
+        roles: assign_roles(entries, gmail, &inputs.overrides),
         subscriptions,
         gmail,
     };
@@ -166,7 +184,7 @@ fn split(name: &str, delimiter: Option<char>) -> (Option<&str>, &str) {
 
 /// Where a role sits in the tree: the pinned six in their order, every
 /// other mailbox at `SORT_ORDER_REST`.
-fn sort_order(role: Option<&str>) -> u32 {
+pub(crate) fn sort_order(role: Option<&str>) -> u32 {
     role.and_then(|role| ROLES[..PINNED].iter().position(|pinned| *pinned == role))
         .and_then(|position| u32::try_from(position).ok())
         .unwrap_or(SORT_ORDER_REST)
@@ -184,15 +202,36 @@ struct Claim<'a> {
     role: &'static str,
 }
 
-/// One role per mailbox and one mailbox per role.
-fn assign_roles(entries: &[ListEntry], gmail: bool) -> HashMap<&str, &'static str> {
+/// One role per mailbox and one mailbox per role. A selectable mailbox
+/// with a role the user set takes that role or none at all and claims
+/// nothing more; the claims share out the roles left.
+fn assign_roles<'a>(
+    entries: &'a [ListEntry],
+    gmail: bool,
+    overrides: &HashMap<String, RoleOverride>,
+) -> HashMap<&'a str, &'static str> {
+    let mut taken = HashSet::new();
+    let mut assigned = HashMap::new();
+    let mut settled = HashSet::new();
+    for entry in entries
+        .iter()
+        .filter(|entry| is_selectable(&entry.attributes))
+    {
+        let Some(set) = overrides.get(&entry.name) else {
+            continue;
+        };
+        settled.insert(entry.name.as_str());
+        let role = ROLES.iter().find(|known| set.role() == Some(**known));
+        if let Some(role) = role.filter(|role| taken.insert(**role)) {
+            assigned.insert(entry.name.as_str(), *role);
+        }
+    }
     let mut claims: Vec<Claim<'_>> = entries
         .iter()
+        .filter(|entry| !settled.contains(entry.name.as_str()))
         .filter_map(|entry| claim(entry, gmail))
         .collect();
     claims.sort();
-    let mut taken = HashSet::new();
-    let mut assigned = HashMap::new();
     for claim in claims {
         if taken.insert(claim.role) {
             assigned.insert(claim.name, claim.role);
@@ -299,10 +338,11 @@ mod tests {
                 attributes: vec!["\\ALL".to_owned()],
             },
         ];
-        let gmail = assign_roles(&entries, true);
+        let none = HashMap::new();
+        let gmail = assign_roles(&entries, true, &none);
         assert_eq!(gmail.get("[Gmail]/All Mail"), Some(&"archive"));
         assert_eq!(gmail.get("Archive"), None);
-        let folders = assign_roles(&entries, false);
+        let folders = assign_roles(&entries, false, &none);
         assert_eq!(folders.get("[Gmail]/All Mail"), Some(&"all"));
         assert_eq!(folders.get("Archive"), Some(&"archive"));
     }

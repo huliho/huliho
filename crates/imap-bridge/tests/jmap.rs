@@ -93,6 +93,7 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
     assert_eq!(mail["maxMailboxesPerEmail"], 1);
     assert_eq!(mail["maxMailboxDepth"], Value::Null);
     assert_eq!(mail["maxSizeMailboxName"], 255);
+    assert_eq!(mail["mayCreateTopLevelMailbox"], true);
     let account = &session["accounts"][ACCOUNT];
     assert_eq!(account["name"], ADDRESS);
     assert_eq!(
@@ -135,17 +136,20 @@ async fn mailbox_get_answers_every_mailbox_with_its_rights_and_counts_rfc8621_2(
         (&json!(0), &json!(0))
     );
     assert_eq!(inbox["isSubscribed"], true);
-    // The server advertises MOVE and UIDPLUS, so emails move in and out.
+    // The server advertises MOVE and UIDPLUS and no ACL, so emails move
+    // in and out and a child may be made; INBOX is never renamed or
+    // deleted (RFC 3501 sections 6.3.4 and 6.3.5).
     for granted in [
         "mayReadItems",
         "mayAddItems",
         "mayRemoveItems",
         "maySetSeen",
         "maySetKeywords",
+        "mayCreateChild",
     ] {
         assert_eq!(inbox["myRights"][granted], true, "{granted}");
     }
-    for withheld in ["mayCreateChild", "mayRename", "mayDelete", "maySubmit"] {
+    for withheld in ["mayRename", "mayDelete", "maySubmit"] {
         assert_eq!(inbox["myRights"][withheld], false, "{withheld}");
     }
     assert_eq!(keys(&inbox["myRights"]).len(), 9);

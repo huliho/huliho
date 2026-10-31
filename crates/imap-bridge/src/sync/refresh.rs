@@ -34,6 +34,9 @@ pub struct Given<'a> {
     /// The mailbox the client looked at last; without CONDSTORE only its
     /// flags are scanned.
     pub viewed: Option<&'a MailboxId>,
+    /// Whether this is the first pass on the session, which reads the
+    /// rights of every mailbox afresh.
+    pub first_pass: bool,
 }
 
 /// One refresh: where it writes and what it knows.
@@ -85,13 +88,15 @@ impl Refresher {
         cache: &Cache,
         given: Given<'_>,
     ) -> Result<Refreshed, SyncError> {
-        let found = match mailboxes::observe(session, given.gmail).await {
+        let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
+        let inputs = blocking(move || store.pass_inputs(&key)).await?;
+        let observed = mailboxes::observe(session, given.gmail, &inputs, given.first_pass);
+        let found = match observed.await {
             Ok(found) => found,
             Err(error) => return Ok(ended(&error, false)),
         };
         let quota = found.quota;
-        let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
-        blocking(move || store.apply_pass(&key, &found.facts, found.moving)).await?;
+        mailboxes::write(cache, found).await?;
         let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
         let snapshot = blocking(move || store.mailbox_snapshot(&key)).await?;
         let undone = snapshot

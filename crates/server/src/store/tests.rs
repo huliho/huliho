@@ -4,6 +4,8 @@
 
 //! The migrations walked with rows in them and the busy timeout.
 
+mod folder_migration;
+
 use super::*;
 
 #[test]

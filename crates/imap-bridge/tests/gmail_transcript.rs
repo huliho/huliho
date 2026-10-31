@@ -151,7 +151,7 @@ async fn the_suite_recorded_off_the_scripted_server_replays_the_same_way() {
         step: STEP,
     };
     let recorded = Suite::against(connection, Some(path.clone())).await;
-    Scenario::new(recorded, Second::Model(mailboxes))
+    Scenario::new(recorded, Second::Model(Box::new(mailboxes)))
         .run()
         .await;
     let transcript = Transcript::from_json(&std::fs::read_to_string(&path).unwrap()).unwrap();

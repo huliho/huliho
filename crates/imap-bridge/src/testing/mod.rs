@@ -42,9 +42,9 @@ use crate::verify::Credential;
 
 pub use behavior::{Behavior, ParentDelete, Storing};
 pub use connector::{Counting, TestConnector};
-pub use folder::Folder;
+pub use folder::{Folder, MyRights};
 pub use imap::FakeImap;
-pub use mailboxes::{Extension, Mailboxes};
+pub use mailboxes::{Extension, Flat, Mailboxes};
 pub use messages::Message;
 pub use parts::Part;
 pub use record::Recorder;

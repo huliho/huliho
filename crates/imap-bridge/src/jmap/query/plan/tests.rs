@@ -47,6 +47,7 @@ fn snapshot(rows: Vec<MailboxRow>) -> MailboxSnapshot {
         done: HashSet::new(),
         gmail,
         moving: Moving::default(),
+        rights: HashMap::new(),
     }
 }
 

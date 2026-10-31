@@ -5,11 +5,11 @@
 //! The mailbox mapping without a connection: roles, names, hierarchy
 //! and sort order over LIST and STATUS lines, plus the name codec.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use huliho_imap_bridge::mailboxes::{ROLES, Subscriptions, map};
-use huliho_imap_bridge::session::{ListEntry, StatusEntry};
-use huliho_imap_bridge::store::MailboxFacts;
+use huliho_imap_bridge::mailboxes::{ROLES, Subscriptions, map, map_with_overrides};
+use huliho_imap_bridge::session::{ListEntry, Listing, StatusEntry};
+use huliho_imap_bridge::store::{MailboxFacts, PassInputs, RoleOverride};
 use huliho_imap_bridge::utf7;
 use proptest::prelude::*;
 
@@ -181,6 +181,43 @@ fn subscriptions_come_from_the_attribute_or_from_lsub_rfc5258_3_1() {
         (by_lsub[0].subscribed, by_lsub[1].subscribed),
         (false, true)
     );
+}
+
+/// The role the user set comes ahead of the attribute and the name
+/// table; a mailbox the user took a role from claims none, and the role
+/// it freed goes to the next claim.
+#[test]
+fn the_role_the_user_set_comes_first_and_one_it_freed_goes_to_the_next_claim_rfc8621_2() {
+    let listing = Listing {
+        entries: vec![
+            entry("INBOX", &[]),
+            entry("Sent", &["\\SENT"]),
+            entry("Verzonden", &[]),
+            entry("Archive", &[]),
+            entry("Archives", &[]),
+            entry("Lists", &["\\NOSELECT"]),
+        ],
+        ..Listing::default()
+    };
+    let overrides = HashMap::from([
+        (
+            "Verzonden".to_owned(),
+            RoleOverride::Role("sent".to_owned()),
+        ),
+        ("Archive".to_owned(), RoleOverride::NoRole),
+        ("Lists".to_owned(), RoleOverride::Role("junk".to_owned())),
+    ]);
+    let inputs = PassInputs {
+        overrides,
+        ..PassInputs::default()
+    };
+    let facts = map_with_overrides(&listing, &Subscriptions::Attributes, false, &inputs);
+    assert_eq!(role_of(&facts, "Verzonden"), Some("sent"));
+    assert_eq!(role_of(&facts, "Sent"), None);
+    assert_eq!(role_of(&facts, "Archive"), None);
+    assert_eq!(role_of(&facts, "Archives"), Some("archive"));
+    assert_eq!(role_of(&facts, "Lists"), None);
+    assert_eq!(facts[2].sort_order, 2);
 }
 
 #[test]
