@@ -15,7 +15,9 @@ use huliho_imap_bridge::session::{
 };
 use huliho_imap_bridge::testing::imap::FakeImap;
 use huliho_imap_bridge::testing::mailboxes::{ALL_MAIL, OWNER_RIGHTS};
-use huliho_imap_bridge::testing::{Behavior, Extension, Folder, Mailboxes, Message, ParentDelete};
+use huliho_imap_bridge::testing::{
+    Behavior, Extension, Folder, Mailboxes, Message, MyRights, ParentDelete,
+};
 use session_rig::{session as signed_in, start};
 
 const TOP: Place<'static> = Place {
@@ -231,7 +233,7 @@ fn cyrus(list_rights: bool) -> Mailboxes {
         mailboxes.extensions.insert(Extension::ListMyrights);
     }
     mailboxes.push(Folder {
-        rights: Some("lrs"),
+        rights: MyRights::Letters("lrs"),
         ..Folder::new("Locked")
     });
     mailboxes.push(Folder::noselect("Shared"));

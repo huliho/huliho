@@ -19,7 +19,7 @@ use huliho_imap_bridge::jmap::{
     CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY, handle,
 };
 use huliho_imap_bridge::mailboxes::{self, SyncError};
-use huliho_imap_bridge::runtime::Link;
+use huliho_imap_bridge::runtime::{Link, Timing};
 use huliho_imap_bridge::session::{ImapSession, Session, Target, TlsMode};
 use huliho_imap_bridge::store::{AccountKey, MailboxRow, Store};
 use huliho_imap_bridge::sync::{Cache, FolderSync, Step};
@@ -41,6 +41,11 @@ const MAX_SESSIONS: usize = 20;
 
 /// A limit above every blob of the corpus.
 const BLOB_LIMIT: u64 = 1024 * 1024;
+
+/// Longer than any run of the suite, so a recording never signs its
+/// conversation in afresh for a pass and the replay opens the
+/// connections the recording did.
+const LIST_AGE: Duration = Duration::from_hours(1);
 
 /// How the bridge reaches the server: the trust, where it is, who signs
 /// in and how long one step may take.
@@ -110,6 +115,11 @@ impl Suite {
             user: connection.user.clone(),
             password: connection.password.clone(),
         };
+        let timing = Timing {
+            interval: Duration::ZERO,
+            list_age: LIST_AGE,
+            ..Timing::default()
+        };
         Self {
             cache: Cache {
                 store: Arc::new(Store::in_memory().unwrap()),
@@ -117,7 +127,7 @@ impl Suite {
                 key: AccountKey::new(ACCOUNT),
                 gmail: true,
             },
-            link: Arc::new(Link::with_interval(connector, Duration::ZERO)),
+            link: Arc::new(Link::with_timing(connector, timing)),
             connection,
             server,
         }

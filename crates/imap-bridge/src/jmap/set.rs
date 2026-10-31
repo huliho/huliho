@@ -14,6 +14,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use super::{Context, MAX_OBJECTS_IN_SET, MethodError, arguments};
+use crate::runtime::folders::CreatedIds;
 
 #[cfg(test)]
 pub(super) use patch::patch as read_patch;
@@ -79,6 +80,30 @@ pub(super) struct SetAsk {
     pub updates: Vec<(String, Patch)>,
     /// The emails to destroy, each once, in the order named.
     pub destroy: Vec<String>,
+}
+
+impl SetAsk {
+    /// The ask with every mailbox a patch names by creation id replaced
+    /// by the id it stands for; one the request made nothing under
+    /// stays as written (RFC 8620 section 5.3).
+    pub(super) fn resolved(&self, created: &CreatedIds) -> Self {
+        let updates = self
+            .updates
+            .iter()
+            .map(|(id, patch)| {
+                let mut patch = patch.clone();
+                if let Some(edit) = &mut patch.mailboxes {
+                    edit.resolve(created);
+                }
+                (id.clone(), patch)
+            })
+            .collect();
+        Self {
+            if_in_state: self.if_in_state.clone(),
+            updates,
+            destroy: self.destroy.clone(),
+        }
+    }
 }
 
 /// One update done: the properties the server changed beyond what its

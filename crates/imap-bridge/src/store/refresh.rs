@@ -79,7 +79,7 @@ impl Store {
     ) -> Result<Option<u64>, StoreError> {
         self.write(key, |transaction| {
             let mut ledger = Ledger::default();
-            if !folders::stands(transaction, key, standing)? {
+            if !folders::pinned(transaction, key, standing)? {
                 return Ok(None);
             }
             let labels = gmail::Labels::read(transaction, key, standing.folder)?;
@@ -130,7 +130,7 @@ impl Store {
     ) -> Result<Option<u64>, StoreError> {
         self.write(key, |transaction| {
             let mut ledger = Ledger::default();
-            if !folders::stands(transaction, key, standing)? {
+            if !folders::pinned(transaction, key, standing)? {
                 return Ok(None);
             }
             for uid in uids {
@@ -172,7 +172,7 @@ impl Store {
         synced: Synced,
     ) -> Result<(), StoreError> {
         self.write(key, |transaction| {
-            if !folders::stands(transaction, key, standing)? {
+            if !folders::pinned(transaction, key, standing)? {
                 return Ok(());
             }
             transaction.execute(

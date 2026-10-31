@@ -136,7 +136,7 @@ impl MailboxName {
 pub struct Rights(String);
 
 impl Rights {
-    pub(super) fn of(found: &[AclRight]) -> Self {
+    pub(crate) fn of(found: &[AclRight]) -> Self {
         let mut letters: Vec<char> = found
             .iter()
             .map(|right| char::from(*right))

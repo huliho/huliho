@@ -124,7 +124,7 @@ fn write_batch(
         folder: batch.folder,
         uid_validity: batch.uid_validity,
     };
-    if !folders::stands(transaction, key, &standing)? {
+    if !folders::pinned(transaction, key, &standing)? {
         return Ok(None);
     }
     let mut waiting = folders::unmatched(transaction, key, batch.folder)?;

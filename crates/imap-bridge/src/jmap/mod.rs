@@ -7,8 +7,9 @@
 //! from the store. A `/changes` call refreshes the account first when a
 //! refresh is due; an `Email/get` that asks for previews the rows lack
 //! or for bodies fetches them and answers again, with every call after
-//! it; an `Email/set` stores its keywords on the server the same way and
-//! an `Email/query` with a text or a sender has the server searched.
+//! it; an `Email/set` and a `Mailbox/set` write to the server the same
+//! way and an `Email/query` with a text or a sender has the server
+//! searched.
 
 mod bodies;
 mod body;
@@ -19,6 +20,7 @@ pub mod fuzzing;
 mod get;
 mod headers;
 mod mailbox;
+mod mailbox_set;
 mod previews;
 mod query;
 mod quota;
@@ -38,6 +40,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
 
+use crate::runtime::folders;
 use crate::runtime::search::{Failure, Hits, Plan};
 use crate::seal::Sealer;
 use crate::store::{AccountKey, EmailId, MailboxId, Store, StoreError};
@@ -194,6 +197,11 @@ pub(crate) struct Context<'a> {
     set_ask: RefCell<Option<set::SetAsk>>,
     /// What came of that, set for the call on a later pass.
     written: RefCell<Option<&'a set::Outcome>>,
+    /// What a `Mailbox/set` wants done on the server, noted on the
+    /// first pass.
+    folder_ask: RefCell<Option<folders::Ask>>,
+    /// What came of that, set for the call on a later pass.
+    folders_done: RefCell<Option<&'a folders::Outcome>>,
     /// What an `Email/query` wants searched on the server, noted on the
     /// first pass.
     search_ask: RefCell<Option<Plan>>,
@@ -297,6 +305,7 @@ fn dispatch(
         "Core/echo" if context.using.has(CORE_CAPABILITY) => Ok(arguments.clone()),
         "Mailbox/get" if mail => mailbox::get(context, arguments),
         "Mailbox/changes" if mail => changes::mailbox(context, arguments),
+        "Mailbox/set" if mail => mailbox_set::set(context, arguments),
         "Email/get" if mail => email::get(context, arguments),
         "Email/set" if mail => set::email(context, arguments),
         "Email/query" if mail => query::email(context, arguments),

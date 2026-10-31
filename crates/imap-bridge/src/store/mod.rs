@@ -39,7 +39,10 @@ pub use gmail::GmailFacts;
 pub(crate) use ids::ID_LENGTH;
 pub use ids::{AccountKey, EmailId, MailboxId, ThreadId};
 pub use keywords::{KeywordChange, KeywordRow};
-pub use mailboxes::{Counts, MailboxFacts, MailboxRow, MailboxSnapshot};
+pub use mailboxes::{
+    Counts, MailboxChange, MailboxFacts, MailboxRow, MailboxSnapshot, MailboxesWritten, Pass,
+    PassInputs, RoleOverride,
+};
 pub use moves::{GoneRow, LabelChange, MoveChange, SetWrite, SetWritten, Written};
 pub use personal::{Address, Personal, PreviewPart};
 pub use previews::Located;
@@ -54,10 +57,12 @@ pub use threads::ThreadSnapshot;
 /// applies them in order under its own version counter. The second
 /// entry indexes the message ids by thread, which a merge of two
 /// threads and the end of one search by, and gives the progress row of
-/// a folder the values the refresh stands at.
+/// a folder the values the refresh stands at. The third gives a mailbox
+/// the role the user set and the rights MYRIGHTS named.
 pub const MIGRATIONS: &[&str] = &[
     include_str!("schema.sql"),
     include_str!("refresh_progress.sql"),
+    include_str!("mailbox_set.sql"),
 ];
 
 /// Every table of the bridge, the ones an account's rows leave from.

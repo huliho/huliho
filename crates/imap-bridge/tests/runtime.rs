@@ -47,6 +47,7 @@ fn quick() -> Timing {
         deadline: Duration::from_secs(5),
         search: Duration::from_secs(5),
         idle_close: Duration::from_secs(60),
+        list_age: Duration::from_secs(60),
         retry_interval: Duration::from_millis(200),
         reconnect_pause: Duration::from_millis(5),
     }

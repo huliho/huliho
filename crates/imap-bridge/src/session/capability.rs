@@ -78,6 +78,7 @@ impl Capabilities {
         Acl {
             my_rights: self.has("ACL"),
             list_rights: self.has("LIST-MYRIGHTS"),
+            current: self.iter().any(|name| name.starts_with("RIGHTS=")),
         }
     }
 }
@@ -90,6 +91,9 @@ pub struct Acl {
     /// LIST-MYRIGHTS: a LIST with the MYRIGHTS return option names them
     /// for every mailbox (RFC 8440).
     pub list_rights: bool,
+    /// `RIGHTS=`: the letters are RFC 4314's; a server without it names
+    /// the `c` and `d` of RFC 2086 (RFC 4314 section 2.1.1).
+    pub current: bool,
 }
 
 /// What a search needs to know of the server.
@@ -264,9 +268,9 @@ mod tests {
     #[test]
     fn a_server_names_the_rights_with_acl_and_for_a_listing_with_list_myrights_rfc4314_rfc8440() {
         let cyrus = advertised(&["ACL", "RIGHTS=kxten", "list-myrights"]).acl();
-        assert!(cyrus.my_rights && cyrus.list_rights);
+        assert!(cyrus.my_rights && cyrus.list_rights && cyrus.current);
         let one_by_one = advertised(&["ACL"]).acl();
-        assert!(one_by_one.my_rights && !one_by_one.list_rights);
+        assert!(one_by_one.my_rights && !one_by_one.list_rights && !one_by_one.current);
         assert_eq!(advertised(&["IMAP4rev1"]).acl(), Acl::default());
     }
 

@@ -7,6 +7,7 @@
 //! is one row (X-GM-MSGID) and a thread is the server's (X-GM-THRID).
 //! The rules here need no connection and no database.
 
+use crate::mailboxes::INBOX;
 use crate::session::{Capabilities, ListEntry};
 
 /// The capability that carries the three FETCH items.
@@ -29,7 +30,6 @@ const LABELED_ATTRIBUTES: [(&str, &str); 4] = [
 ];
 
 /// The label of the INBOX, the one folder named rather than marked.
-const INBOX: &str = "INBOX";
 const INBOX_LABEL: &str = "\\Inbox";
 
 /// Every spelling a server uses for a system label and the one the

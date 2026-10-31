@@ -183,6 +183,6 @@ fn mail_capability(gmail: bool) -> Value {
         "maxSizeMailboxName": MAX_MAILBOX_NAME_BYTES,
         "maxSizeAttachmentsPerEmail": MAX_SIZE_ATTACHMENTS_PER_EMAIL,
         "emailQuerySortOptions": EMAIL_QUERY_SORT_OPTIONS,
-        "mayCreateTopLevelMailbox": false,
+        "mayCreateTopLevelMailbox": true,
     })
 }

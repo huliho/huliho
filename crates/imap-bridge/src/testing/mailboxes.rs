@@ -97,6 +97,30 @@ impl Extension {
     }
 }
 
+/// Which LIST lines carry NIL as the delimiter (RFC 9051 section 7.3.1).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Flat {
+    /// None: every line carries the delimiter.
+    #[default]
+    Nowhere,
+    /// The INBOX line, as a server may answer for a mailbox that takes
+    /// no child.
+    Inbox,
+    /// Every line, as a server without hierarchy answers.
+    Everywhere,
+}
+
+impl Flat {
+    /// Whether the line of the folder with that name carries NIL.
+    pub(super) fn lists_nil(self, name: &str) -> bool {
+        match self {
+            Self::Nowhere => false,
+            Self::Inbox => name.eq_ignore_ascii_case("INBOX"),
+            Self::Everywhere => true,
+        }
+    }
+}
+
 /// The folders behind one scripted server, shared with the test that
 /// edits them between passes.
 #[derive(Debug, Clone)]
@@ -109,6 +133,8 @@ pub struct Mailboxes {
     /// An `* OK [ALERT]` line after the first folder's lines of a LIST
     /// answer.
     pub chatter: bool,
+    /// The LIST lines that carry NIL in place of the delimiter.
+    pub flat: Flat,
     /// How the server misbehaves on a selected mailbox.
     pub behavior: Behavior,
     /// What a GETQUOTAROOT answers, shared with the test that edits it
@@ -142,6 +168,7 @@ impl Mailboxes {
             delimiter: '/',
             extensions,
             chatter: false,
+            flat: Flat::default(),
             behavior: Behavior::default(),
             quota: Arc::new(Mutex::new(QuotaAnswer::default())),
             searches: Arc::new(AtomicUsize::new(0)),

@@ -21,6 +21,11 @@ pub const MARKER: (&str, &str) = ("X-Huliho-Live", "transcript");
 /// The user label the suite creates and one message gains.
 pub const LABEL: &str = "Project";
 
+/// The label the first client creates through `Mailbox/set` and the
+/// name it renames it to; both hold a character outside ASCII.
+pub const FOLDER: &str = "Huliho map \u{fc}";
+pub const FOLDER_RENAMED: &str = "Huliho map \u{f6}";
+
 /// The messages in the account when the suite starts.
 pub const SEEDED: u32 = 5;
 

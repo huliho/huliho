@@ -13,6 +13,7 @@ use std::time::Duration;
 use huliho_imap_bridge::session::{
     ImapSession, ListReturn, STEP_TIMEOUT, Session, Target, TlsMode,
 };
+use huliho_imap_bridge::utf7;
 use tokio::net::TcpStream;
 use tokio::time::{sleep, timeout};
 use tokio_rustls::TlsConnector;
@@ -21,7 +22,7 @@ use tokio_rustls::rustls::pki_types::ServerName;
 use tokio_rustls::rustls::{ClientConfig, RootCertStore};
 
 use super::Connection;
-use super::corpus::{Change, LABEL, MARKER, seed, seeds};
+use super::corpus::{Change, FOLDER, FOLDER_RENAMED, LABEL, MARKER, seed, seeds};
 
 /// The variable that names the account.
 pub const ADDRESS: &str = "HULIHO_LIVE_GMAIL_ADDRESS";
@@ -200,7 +201,9 @@ pub async fn clear(editor: &mut Editor, stores: &Stores) {
             .unwrap();
     }
     // A label that is not there answers NO, which is the state wanted.
-    let _ = within(editor.delete(LABEL)).await;
+    for label in [LABEL, FOLDER, FOLDER_RENAMED] {
+        let _ = within(editor.delete(&utf7::encode(label))).await;
+    }
 }
 
 /// The UIDs in `store` that carry the marker; the store stays selected.

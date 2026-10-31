@@ -16,8 +16,8 @@ use thiserror::Error;
 const DATABASE_FILE: &str = "huliho.db";
 
 /// Forward-only numbered migrations, embedded so the binary carries its
-/// schema; the sixth and the seventh are the bridge's, so one version
-/// counter covers its tables as well.
+/// schema; the bridge's follow the server's own, so one version counter
+/// covers its tables as well.
 const MIGRATION_SOURCES: &[&str] = &[
     include_str!("migrations/0001_identity.sql"),
     include_str!("migrations/0002_sessions.sql"),
@@ -26,6 +26,7 @@ const MIGRATION_SOURCES: &[&str] = &[
     include_str!("migrations/0005_instance_admin.sql"),
     huliho_imap_bridge::store::MIGRATIONS[0],
     huliho_imap_bridge::store::MIGRATIONS[1],
+    huliho_imap_bridge::store::MIGRATIONS[2],
 ];
 
 /// The operator CLI writes while the server runs; a connection waits this

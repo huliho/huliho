@@ -43,7 +43,10 @@ impl Mailboxes {
         if options.contains("SPECIAL-USE") && !self.has(Extension::SpecialUse) {
             return Err(Refusal::Bad);
         }
-        let status_items = options.split_once("STATUS (").map(|(_, items)| items);
+        // The STATUS items end at their own parenthesis; MYRIGHTS may follow.
+        let status_items = options
+            .split_once("STATUS (")
+            .map(|(_, items)| items.split_once(')').map_or(items, |(items, _)| items));
         if status_items.is_some() && !self.has(Extension::ListStatus) {
             return Err(Refusal::Bad);
         }
@@ -62,9 +65,12 @@ impl Mailboxes {
             {
                 lines.push_str(&self.status_line(folder, items)?);
             }
-            // RFC 8440 section 3: after the LIST line, for a mailbox that exists.
-            if my_rights && folder.is_selectable() {
-                lines.push_str(&rights_line(folder));
+            // RFC 8440 section 3: after the LIST line, for a mailbox whose rights it can give.
+            if my_rights
+                && folder.is_selectable()
+                && let Some(line) = rights_line(folder)
+            {
+                lines.push_str(&line);
             }
             if self.chatter && index == 0 {
                 lines.push_str("* OK [ALERT] scripted\r\n");
@@ -108,10 +114,14 @@ impl Mailboxes {
         {
             attributes.push(special);
         }
+        let delimiter = if self.flat.lists_nil(&folder.name) {
+            "NIL".to_owned()
+        } else {
+            format!("\"{}\"", self.delimiter)
+        };
         format!(
-            "* {verb} ({}) \"{}\" {}\r\n",
+            "* {verb} ({}) {delimiter} {}\r\n",
             attributes.join(" "),
-            self.delimiter,
             quote(&folder.name)
         )
     }

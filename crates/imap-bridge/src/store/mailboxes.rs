@@ -3,8 +3,12 @@
 // Additional terms apply, see NOTICE.
 
 //! The mailbox rows: what a listing pass wrote and what `Mailbox/get`
-//! reads, with the thread counts over the memberships.
+//! reads, with the thread counts over the memberships and the rights
+//! MYRIGHTS named.
 
+mod counts;
+mod rights;
+mod set;
 #[cfg(test)]
 mod tests;
 
@@ -16,6 +20,8 @@ use super::changes::{ChangeKind, ObjectType, log, next_sequence, prune, state_of
 use super::folders::{self, FolderWrite};
 use super::{AccountKey, MailboxId, Store, StoreError};
 use crate::session::Moving;
+
+pub use set::{MailboxChange, MailboxesWritten, PassInputs, RoleOverride};
 
 /// What one listing pass knows about a mailbox before the store names
 /// its row: the parent by wire name, since the parent's id may not
@@ -36,6 +42,30 @@ pub struct MailboxFacts {
     pub highest_modseq: Option<u64>,
     pub total_emails: u32,
     pub unread_emails: u32,
+}
+
+#[cfg(test)]
+impl MailboxFacts {
+    /// A selectable, subscribed, empty folder of that wire name with
+    /// that role, its leaf as its name.
+    pub(crate) fn folder(imap_name: &str, role: Option<&str>) -> Self {
+        Self {
+            name: imap_name.rsplit('/').next().unwrap_or(imap_name).to_owned(),
+            imap_name: imap_name.to_owned(),
+            parent_imap_name: None,
+            role: role.map(str::to_owned),
+            sort_order: 6,
+            subscribed: true,
+            selectable: true,
+            store: true,
+            gmail_label: None,
+            uid_validity: Some(1),
+            uid_next: Some(1),
+            highest_modseq: None,
+            total_emails: 0,
+            unread_emails: 0,
+        }
+    }
 }
 
 /// A mailbox as the table holds it.
@@ -74,6 +104,21 @@ pub struct MailboxSnapshot {
     /// The commands the server offers for moving mail, as the last
     /// mailbox pass of this process read them; none before the first.
     pub moving: Moving,
+    /// The rights MYRIGHTS named per mailbox, as letters; a mailbox not
+    /// named holds every right the server's commands allow.
+    pub rights: HashMap<MailboxId, String>,
+}
+
+/// One mailbox pass as the store writes it.
+#[derive(Debug, Clone, Copy)]
+pub struct Pass<'a> {
+    pub found: &'a [MailboxFacts],
+    /// The commands the server offers for moving mail.
+    pub moving: Moving,
+    /// The letters MYRIGHTS named, by wire name, where the server
+    /// advertises ACL; a name left out loses the letters on record.
+    /// `None` where it does not, which clears them.
+    pub rights: Option<&'a HashMap<String, String>>,
 }
 
 const COLUMNS: &str = "id, parent_id, name, imap_name, role, sort_order, subscribed, selectable, \
@@ -87,7 +132,7 @@ impl Store {
     /// new state. The emails of a folder whose UIDVALIDITY changed wait
     /// for the fresh sync to match them. Answers the account's state
     /// afterwards. `found` names each mailbox once. A parent it does not
-    /// hold leaves the mailbox at the top.
+    /// hold leaves the mailbox at the top. Every row loses its letters.
     ///
     /// # Errors
     ///
@@ -97,29 +142,30 @@ impl Store {
         key: &AccountKey,
         found: &[MailboxFacts],
     ) -> Result<u64, StoreError> {
-        self.write(key, |transaction| apply(transaction, key, found, false))
+        let kept = HashMap::new();
+        self.write(key, |transaction| {
+            apply(transaction, key, (found, Some(&kept)), false)
+        })
     }
 
     /// One mailbox pass: [`Store::apply_mailboxes`] with the commands the
-    /// server offers for moving mail as the pass read them. When either
-    /// is new to this process or changed, every mailbox reads as updated
-    /// under the pass's state, since its rights follow them. The words
-    /// are checked and recorded under one lock around the write, and a
-    /// write that fails records nothing.
+    /// server offers for moving mail and the rights as the pass read
+    /// them. When the commands are new to this process or changed, every
+    /// mailbox reads as updated under the pass's state, since its rights
+    /// follow them; a mailbox whose letters changed reads so too. The
+    /// commands are checked and recorded under one lock around the
+    /// write, and a write that fails records nothing.
     ///
     /// # Errors
     ///
     /// Returns the database error.
-    pub fn apply_pass(
-        &self,
-        key: &AccountKey,
-        found: &[MailboxFacts],
-        moving: Moving,
-    ) -> Result<u64, StoreError> {
+    pub fn apply_pass(&self, key: &AccountKey, pass: Pass<'_>) -> Result<u64, StoreError> {
         let mut recorded = self.moving_lock();
-        let flipped = recorded.get(key) != Some(&moving);
-        let state = self.write(key, |transaction| apply(transaction, key, found, flipped))?;
-        recorded.insert(key.clone(), moving);
+        let flipped = recorded.get(key) != Some(&pass.moving);
+        let state = self.write(key, |transaction| {
+            apply(transaction, key, (pass.found, pass.rights), flipped)
+        })?;
+        recorded.insert(key.clone(), pass.moving);
         Ok(state)
     }
 
@@ -141,21 +187,22 @@ impl Store {
             Ok(MailboxSnapshot {
                 state: state_of(connection, key)?,
                 rows,
-                counts: read_counts(connection, key)?,
-                done: read_done(connection, key)?,
+                counts: counts::read_counts(connection, key)?,
+                done: counts::read_done(connection, key)?,
                 gmail,
                 moving,
+                rights: rights::read(connection, key)?,
             })
         })
     }
 }
 
-/// The pass's rows written; with `rights_moved` every mailbox the pass
-/// found reads as updated.
+/// The pass's rows and letters written; with `rights_moved` every
+/// mailbox the pass found reads as updated.
 fn apply(
     transaction: &Transaction<'_>,
     key: &AccountKey,
-    found: &[MailboxFacts],
+    (found, letters): (&[MailboxFacts], Option<&HashMap<String, String>>),
     rights_moved: bool,
 ) -> Result<u64, StoreError> {
     let existing: HashMap<String, MailboxRow> = read_rows(transaction, key)?
@@ -206,6 +253,11 @@ fn apply(
                 upsert(transaction, key, &row)?;
                 changes.push((row.id, ChangeKind::Created));
             }
+        }
+    }
+    for (id, kind) in rights::apply(transaction, key, &ids, letters)? {
+        if !changes.iter().any(|(changed, _)| *changed == id) {
+            changes.push((id, kind));
         }
     }
     let vanished: Vec<&MailboxId> = existing
@@ -337,62 +389,4 @@ fn row_from(row: &Row<'_>) -> rusqlite::Result<MailboxRow> {
             unread_emails: row.get(14)?,
         },
     })
-}
-
-/// The counts of RFC 8621 section 2: a thread is unread while one of its
-/// emails carries neither `$seen` nor `$draft`.
-fn read_counts(
-    connection: &Connection,
-    key: &AccountKey,
-) -> Result<HashMap<MailboxId, Counts>, StoreError> {
-    let mut statement = connection.prepare(
-        "SELECT m.mailbox_id, COUNT(*), COUNT(DISTINCT e.thread_id),
-                COUNT(DISTINCT CASE
-                    WHEN json_extract(e.keywords, '$.\"$seen\"') IS NULL
-                     AND json_extract(e.keywords, '$.\"$draft\"') IS NULL
-                    THEN e.thread_id END),
-                COUNT(CASE
-                    WHEN json_extract(e.keywords, '$.\"$seen\"') IS NULL
-                     AND json_extract(e.keywords, '$.\"$draft\"') IS NULL
-                    THEN 1 END)
-         FROM bridge_memberships m
-         JOIN bridge_emails e ON e.account_key = m.account_key AND e.id = m.email_id
-         WHERE m.account_key = ?1
-         GROUP BY m.mailbox_id",
-    )?;
-    let counts = statement
-        .query_map([key.as_str()], |row| {
-            Ok((
-                row.get::<_, MailboxId>(0)?,
-                Counts {
-                    synced_emails: row.get(1)?,
-                    total_threads: row.get(2)?,
-                    unread_threads: row.get(3)?,
-                    unread_emails: row.get(4)?,
-                },
-            ))
-        })?
-        .collect::<Result<HashMap<_, _>, _>>()?;
-    Ok(counts)
-}
-
-/// The folders that are done and, once the store with the archive role
-/// is among them, every label mailbox, whose rows live in that store.
-fn read_done(connection: &Connection, key: &AccountKey) -> Result<HashSet<MailboxId>, StoreError> {
-    let mut statement = connection.prepare(
-        "SELECT folder_id FROM bridge_sync WHERE account_key = ?1 AND done = 1
-         UNION
-         SELECT l.id FROM bridge_mailboxes l
-         WHERE l.account_key = ?1 AND l.store = 0 AND l.gmail_label IS NOT NULL
-           AND EXISTS (
-               SELECT 1 FROM bridge_mailboxes a
-               JOIN bridge_sync s ON s.account_key = a.account_key AND s.folder_id = a.id
-               WHERE a.account_key = ?1 AND a.store = 1 AND a.role = ?2 AND s.done = 1)",
-    )?;
-    let done = statement
-        .query_map(params![key.as_str(), crate::gmail::ALL_MAIL_ROLE], |row| {
-            row.get(0)
-        })?
-        .collect::<Result<HashSet<_>, _>>()?;
-    Ok(done)
 }

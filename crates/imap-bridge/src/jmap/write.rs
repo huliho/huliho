@@ -25,6 +25,7 @@ use tokio::time::{Instant, timeout};
 
 use super::set::{Outcome, SetAsk, SetError, Updated};
 use crate::mailboxes::SyncError;
+use crate::runtime::folders::Round;
 use crate::runtime::{Connector, Link, Wire};
 use crate::session::{Moving, Session, SessionError, Writable};
 use crate::store::{EmailId, MailboxId, MailboxRow, SetWrite, SetWritten};
@@ -152,7 +153,8 @@ impl Work {
 /// rows are written, so two writes of one account never pass on one
 /// state. The writes of one round share a deadline: `until` is set by
 /// the first that goes to the server and a write that finds it over
-/// sends nothing.
+/// sends nothing. A mailbox a patch names by creation id is the one the
+/// round resolved it to.
 ///
 /// # Errors
 ///
@@ -161,14 +163,17 @@ pub(super) async fn apply<C: Connector>(
     cache: &Cache,
     link: &Link<C>,
     ask: &SetAsk,
-    until: &mut Option<Instant>,
+    round: &mut Round<'_>,
 ) -> Result<Outcome, SyncError> {
+    let ask = &ask.resolved(round.created);
     let mut wire = link.wire.lock().await;
     let Some((mut work, expected)) = plan::planned(cache, ask).await? else {
         return Ok(Outcome::StateMismatch);
     };
     if !work.folders.is_empty() {
-        let until = *until.get_or_insert_with(|| Instant::now() + wire.deadline());
+        let until = *round
+            .until
+            .get_or_insert_with(|| Instant::now() + wire.deadline());
         let left = until.saturating_duration_since(Instant::now());
         let moves = work.folders.values().any(Folder::moves_mail);
         send(&mut wire, cache, &mut work, left).await;

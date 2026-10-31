@@ -196,9 +196,9 @@ impl<C: Connector> Searches<C> {
 
     /// Logs the search connection out once nothing used it for `bound`;
     /// one a search holds is in use.
-    pub(super) async fn close_idle(&self, bound: Duration) -> Duration {
+    pub(super) fn close_idle(&self, bound: Duration) -> Duration {
         match self.wire.try_lock() {
-            Ok(mut wire) => wire.close_idle(bound).await,
+            Ok(mut wire) => wire.close_idle(bound),
             Err(_held) => bound,
         }
     }

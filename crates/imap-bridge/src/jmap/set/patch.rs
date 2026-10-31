@@ -11,6 +11,7 @@ use serde_json::Value;
 
 use super::super::references::unescaped;
 use super::SetError;
+use crate::runtime::folders::{CreatedIds, creation_id};
 use crate::sync::mapping::canonical_keyword;
 
 /// The two properties an update may patch.
@@ -63,6 +64,21 @@ impl MailboxEdit {
     /// The path the patch named the mailbox by.
     pub(in crate::jmap) fn path(&self, mailbox: &str) -> String {
         path_of(&self.named, mailbox, MAILBOX_IDS)
+    }
+
+    /// Every mailbox named by a creation id the request resolved takes
+    /// the id it stands for; the paths keep the name as written.
+    pub(in crate::jmap) fn resolve(&mut self, created: &CreatedIds) {
+        let resolve = |mailbox: &mut String| {
+            if let Some(id) = creation_id(mailbox).and_then(|creation| created.get(creation)) {
+                mailbox.clone_from(id);
+            }
+        };
+        self.add.iter_mut().for_each(resolve);
+        self.remove.iter_mut().for_each(resolve);
+        for (mailbox, _) in &mut self.named {
+            resolve(mailbox);
+        }
     }
 }
 

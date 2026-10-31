@@ -14,7 +14,7 @@ use std::fmt::Write as _;
 use super::behavior::{Behavior, Storing};
 use super::fetch;
 use super::folder::Folder;
-use super::mailboxes::{Mailboxes, Refusal, is_transfer, labels_of, unquote};
+use super::mailboxes::{Mailboxes, Refusal, is_transfer, labels_of, quote, unquote};
 use super::parts::Part;
 
 /// Where the scripted Gmail ids start, so no UID reads as one.
@@ -200,6 +200,13 @@ pub(super) struct Conversation {
 }
 
 impl Conversation {
+    /// Whether this command deletes the mailbox the connection has
+    /// open.
+    pub(super) fn deletes_selected(&self, command: &str) -> bool {
+        let selected = self.selected.as_deref();
+        selected.is_some_and(|name| command == format!("DELETE {}", quote(name)))
+    }
+
     /// Whether this command is the UID FETCH or a UID STORE the
     /// behavior never answers.
     pub(super) fn stalls(&self, command: &str, behavior: Behavior) -> bool {

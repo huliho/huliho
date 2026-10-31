@@ -336,7 +336,7 @@ impl Store {
         uids: &[u32],
     ) -> Result<Option<()>, StoreError> {
         self.write(key, |transaction| {
-            if !folders::stands(transaction, key, standing)? {
+            if !folders::pinned(transaction, key, standing)? {
                 return Ok(None);
             }
             for uid in uids {

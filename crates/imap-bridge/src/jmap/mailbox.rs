@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use super::{Context, HULIHO_CAPABILITY, MAX_OBJECTS_IN_GET, MethodError, arguments};
-use crate::session::Moving;
+use crate::mailboxes::rights;
 use crate::store::{MailboxRow, MailboxSnapshot};
 
 /// The property the vendor capability adds: the emails the bridge holds
@@ -89,7 +89,10 @@ pub(super) fn get(
 /// The properties to render: every one when none is named, the named
 /// ones plus `id` otherwise; `syncedEmails` exists only under the
 /// vendor capability.
-fn properties(named: Option<&[String]>, huliho: bool) -> Result<Vec<&'static str>, MethodError> {
+pub(super) fn properties(
+    named: Option<&[String]>,
+    huliho: bool,
+) -> Result<Vec<&'static str>, MethodError> {
     let Some(named) = named else {
         let mut all = PROPERTIES.to_vec();
         if huliho {
@@ -119,7 +122,7 @@ fn properties(named: Option<&[String]>, huliho: bool) -> Result<Vec<&'static str
 /// sync of the folder is done and what the memberships say afterwards:
 /// STATUS counts a message flagged `\Deleted` and an unseen draft,
 /// which JMAP does not (RFC 8621 sections 2 and 4.1.1).
-fn object(row: &MailboxRow, snapshot: &MailboxSnapshot, wanted: &[&str]) -> Value {
+pub(super) fn object(row: &MailboxRow, snapshot: &MailboxSnapshot, wanted: &[&str]) -> Value {
     let facts = &row.facts;
     let counted = snapshot.counts.get(&row.id).copied().unwrap_or_default();
     let (total_emails, unread_emails) = if snapshot.done.contains(&row.id) {
@@ -137,14 +140,7 @@ fn object(row: &MailboxRow, snapshot: &MailboxSnapshot, wanted: &[&str]) -> Valu
         ("unreadEmails", json!(unread_emails)),
         ("totalThreads", json!(counted.total_threads)),
         ("unreadThreads", json!(counted.unread_threads)),
-        (
-            "myRights",
-            rights(
-                facts.selectable,
-                snapshot.gmail && facts.store,
-                snapshot.moving,
-            ),
-        ),
+        ("myRights", rights::of(row, snapshot).object()),
         ("isSubscribed", json!(facts.subscribed)),
         (SYNCED_EMAILS, json!(counted.synced_emails)),
     ];
@@ -156,37 +152,12 @@ fn object(row: &MailboxRow, snapshot: &MailboxSnapshot, wanted: &[&str]) -> Valu
         .into()
 }
 
-/// The rights of an account whose writes are keywords, moves and
-/// destroys: reading where the mailbox can be selected, `$seen` and
-/// every other keyword on its emails and, where the server moves mail,
-/// adding and removing emails; nothing else until a method for it
-/// exists (RFC 8621 section 2). A store of a Gmail account needs MOVE
-/// for that, since a move between the stores is `UID MOVE` alone.
-fn rights(selectable: bool, gmail_store: bool, moving: Moving) -> Value {
-    let offered = if gmail_store {
-        moving.move_command
-    } else {
-        moving.moves()
-    };
-    let moves = selectable && offered;
-    json!({
-        "mayReadItems": selectable,
-        "mayAddItems": moves,
-        "mayRemoveItems": moves,
-        "maySetSeen": true,
-        "maySetKeywords": true,
-        "mayCreateChild": false,
-        "mayRename": false,
-        "mayDelete": false,
-        "maySubmit": false,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::session::Moving;
     use crate::store::{MailboxFacts, MailboxId};
 
     /// A server that offers MOVE and UIDPLUS.
@@ -224,44 +195,14 @@ mod tests {
             done: HashSet::new(),
             gmail: false,
             moving: BOTH,
+            rights: HashMap::new(),
         };
         let rendered = object(&row, &snapshot, &["myRights", "isSubscribed"]);
         assert_eq!(rendered["myRights"]["mayReadItems"], false);
         assert_eq!(rendered["myRights"]["mayAddItems"], false);
+        assert_eq!(rendered["myRights"]["mayCreateChild"], true);
         assert_eq!(rendered["isSubscribed"], false);
         assert_eq!(rendered.as_object().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn emails_move_in_and_out_of_a_selectable_mailbox_where_the_server_moves_mail_rfc8621_2() {
-        let move_alone = Moving {
-            move_command: true,
-            uidplus: false,
-        };
-        let uidplus = Moving {
-            move_command: false,
-            uidplus: true,
-        };
-        for (selectable, gmail_store, moving, moves) in [
-            (true, false, BOTH, true),
-            (true, false, move_alone, true),
-            (true, false, uidplus, true),
-            (true, false, Moving::default(), false),
-            (false, false, BOTH, false),
-            (true, true, BOTH, true),
-            (true, true, move_alone, true),
-            (true, true, uidplus, false),
-            (false, true, BOTH, false),
-        ] {
-            let rights = rights(selectable, gmail_store, moving);
-            let case = format!("{selectable} {gmail_store} {moving:?}");
-            assert_eq!(rights["mayAddItems"], moves, "{case}");
-            assert_eq!(rights["mayRemoveItems"], moves, "{case}");
-            assert_eq!(rights["maySetSeen"], true);
-            for never in ["mayCreateChild", "mayRename", "mayDelete", "maySubmit"] {
-                assert_eq!(rights[never], false, "{never}");
-            }
-        }
     }
 
     #[test]
