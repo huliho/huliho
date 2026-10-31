@@ -10,6 +10,12 @@ overrides:
   "express>qs": ^6.16.0
   "body-parser>qs": ^6.16.0
   "get-uri>basic-ftp": ^6.2.1
+  "@joshwooding/vite-plugin-react-docgen-typescript>glob": ^14.0.3
+  "@sentry/bundler-plugins>glob": ^14.0.3
+  "@eslint/config-array>minimatch": ^11.0.1
+  "@typescript-eslint/typescript-estree>minimatch": ^11.0.1
+  "eslint>minimatch": ^11.0.1
+  "eslint-plugin-sonarjs>minimatch": ^11.0.1
 allowBuilds:
   # The platform binary arrives as an optional dependency; the install script only re-downloads it.
   esbuild: false

@@ -13,5 +13,5 @@ id = "GHSA-mrhx-c7xc-m3w5"
 reason = "zod 3 sits under chromium-bidi in the lighthouse 12 of Lighthouse CI, which connects to Chrome over CDP and so never runs the WebDriver BiDi code that validates with it; the 3 line has no fixed release"
 
 [[IgnoredVulns]]
-id = "GHSA-qwgh-2vcv-g2f7"
-reason = "block-buffer 0.10 sits under sha2 0.10 in oauth2 5.0.0, its newest release, which hashes only through the one-shot Sha256::digest, so no caught panic can leave a buffer that is used again; the 0.10 line has no fixed release"
+id = "GHSA-g3hv-75wg-m249"
+reason = "minimatch 3.1.5 sits under glob 7 in the rimraf of chrome-launcher in Lighthouse CI 0.15.1, its newest release; the 3 line has no optimizationLevel preprocessing, which is the code the advisory names; glob 7 reads the RegExp entries of Minimatch#set that the fixed 11 line replaced; every newer minimatch is held on that fixed line"
