@@ -79,13 +79,16 @@ export interface Calls {
   changes(type: ReadType, sinceState: string, id: string): MethodCall;
   // One email with its body values, each cut at `maxBodyValueBytes`.
   body(emailId: string, maxBodyValueBytes: number, id: string): MethodCall;
-  // The updates by object id and the ids to destroy; a null `ifInState`
-  // writes whatever the state is.
+  // The objects to create by creation id, the updates by object id and
+  // the ids to destroy; a null `ifInState` writes whatever the state is.
   set(
     type: Exclude<ObjectType, "Thread">,
     changes: {
+      create?: Record<string, Record<string, unknown>>;
       update?: Record<string, PatchObject>;
       destroy?: readonly string[];
+      // A mailbox destroy takes its emails along (RFC 8621 section 2.5).
+      onDestroyRemoveEmails?: boolean;
       ifInState: string | null;
     },
     id: string,
@@ -133,13 +136,15 @@ export function callsFor(accountId: string): Calls {
       },
       id,
     }),
-    set: (type, { update, destroy, ifInState }, id) => ({
+    set: (type, { create, update, destroy, onDestroyRemoveEmails, ifInState }, id) => ({
       name: `${type}/set`,
       arguments: {
         accountId,
         ifInState,
+        ...(create === undefined ? {} : { create }),
         ...(update === undefined ? {} : { update }),
         ...(destroy === undefined ? {} : { destroy }),
+        ...(onDestroyRemoveEmails === undefined ? {} : { onDestroyRemoveEmails }),
       },
       id,
     }),

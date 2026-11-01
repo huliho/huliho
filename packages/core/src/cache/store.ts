@@ -54,6 +54,9 @@ export interface SearchRow {
   queryState: string;
   total: number | null;
   pages: Page[];
+  // The thread of every held id as its page brought it, which an email
+  // keeps for life (RFC 8621 section 4.1.1).
+  threadIds: Record<string, string>;
   // Its place in the order the account's searches ran in.
   run: number;
 }

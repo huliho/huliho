@@ -273,8 +273,10 @@ function refusals(
 }
 
 // The arguments of a set the account takes, in the state it names.
-function setArgsOf(server: FakeJmap, raw: Args): z.infer<typeof setArgsSchema> {
-  const args = setArgsSchema.safeParse(raw);
+export function setArgsOf<
+  Value extends { accountId: string; ifInState?: string | null | undefined },
+>(server: FakeJmap, schema: z.ZodMiniType<Value>, raw: Args): Value {
+  const args = schema.safeParse(raw);
   if (!args.success) {
     throw new MethodError("invalidArguments");
   }
@@ -294,7 +296,7 @@ function setArgsOf(server: FakeJmap, raw: Args): z.infer<typeof setArgsSchema> {
 // Email/set for updates of keywords and mailboxes and for destroys, as
 // RFC 8621 section 4.6 has it.
 export function emailSet(server: FakeJmap, raw: Args): Args {
-  const args = setArgsOf(server, raw);
+  const args = setArgsOf(server, setArgsSchema, raw);
   const oldState = String(server.sequence);
   const updates = Object.entries(args.update ?? {});
   const destroys = args.destroy ?? [];

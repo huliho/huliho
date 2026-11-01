@@ -19,6 +19,12 @@ import type { Invocation, SessionObject } from "./schemas";
 
 const JMAP_ROUTE = "/api/jmap";
 
+// The longest mailbox name where the account names none, in octets of
+// UTF-8: the cap the bridge holds names to.
+const NAME_BYTES_DEFAULT = 255;
+
+const nameBytesSchema = z.int().check(z.positive());
+
 // The problem type of a request past one of the server's limits
 // (RFC 8620 section 3.6.1).
 const LIMIT_PROBLEM = "urn:ietf:params:jmap:error:limit";
@@ -77,6 +83,13 @@ export class MethodFailure extends Error {
   }
 }
 
+// What the account allows a folder (RFC 8621 section 1.3.1): a create
+// at the top of the tree and the longest name in octets of UTF-8.
+export interface MailboxLimits {
+  mayCreateTopLevelMailbox: boolean;
+  maxSizeMailboxName: number;
+}
+
 // What the client keeps of the session object.
 export interface JmapSession {
   // The upstream account the mail capability names; every call carries it.
@@ -95,6 +108,7 @@ export interface JmapSession {
   maxCallsInRequest: number;
   maxObjectsInGet: number;
   maxObjectsInSet: number;
+  mailboxLimits: MailboxLimits;
   state: string;
 }
 
@@ -171,6 +185,7 @@ function sessionOf(object: SessionObject): JmapSession {
   const core = coreLimitsSchema.parse(capabilities.get(CORE_CAPABILITY));
   const account = new Map(Object.entries(object.accounts)).get(accountId);
   const spoken = [HULIHO_CAPABILITY, QUOTA_CAPABILITY].filter((name) => capabilities.has(name));
+  const mail = new Map(Object.entries(account?.accountCapabilities ?? {})).get(MAIL_CAPABILITY);
   return {
     accountId,
     apiUrl: object.apiUrl,
@@ -185,7 +200,22 @@ function sessionOf(object: SessionObject): JmapSession {
     maxCallsInRequest: core.maxCallsInRequest,
     maxObjectsInGet: core.maxObjectsInGet,
     maxObjectsInSet: core.maxObjectsInSet,
+    mailboxLimits: mailboxLimitsOf(mail),
     state: object.state,
+  };
+}
+
+// The folder limits of the account's mail capability, each field read on
+// its own: one that is absent or fails reads as no create at the top and
+// NAME_BYTES_DEFAULT, as a null name size does.
+function mailboxLimitsOf(mail: unknown): MailboxLimits {
+  const fields = new Map<string, unknown>(
+    typeof mail === "object" && mail !== null ? Object.entries(mail) : [],
+  );
+  const bytes = nameBytesSchema.safeParse(fields.get("maxSizeMailboxName"));
+  return {
+    mayCreateTopLevelMailbox: fields.get("mayCreateTopLevelMailbox") === true,
+    maxSizeMailboxName: bytes.success ? bytes.data : NAME_BYTES_DEFAULT,
   };
 }
 

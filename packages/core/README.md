@@ -66,6 +66,15 @@ mailboxes involved take a change at all, so one the server said it
 refuses is never logged. `runJob` marks a whole mailbox read or empties
 it, one `jobRound` at a time. `readQuota` answers the quota a bar shows,
 which the mailbox pass keeps current where the account has quota.
+`setMailbox` writes the account's folders: one `Mailbox/set` with its
+creates, updates and destroys goes out in front of a poll's request,
+so what the server wrote lands in the store before the call resolves,
+the emails and lists a destroy took included; each object the server
+refused comes back with its SetError. `visibleMailboxes` names the
+mailboxes the tree draws: the subscribed ones and the roles plus the
+folders above a subscribed folder, every mailbox where the account
+subscribes none. The session keeps what the
+account allows a folder, a create at the top and the longest name.
 `offeredActions` reads what a mailbox offers from its role and the
 rights of the mailboxes involved, never from the kind of account, the
 mailboxes a move may enter among it; `offeredJobs` reads which folder

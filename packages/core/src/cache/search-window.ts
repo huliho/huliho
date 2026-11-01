@@ -71,9 +71,8 @@ async function shownOf(
     threadsShown.add(shown.threadId);
     return fresh;
   });
-  // An id the store holds no email for stands for a thread of its own.
-  const gone = ids.filter((id) => !emails.has(id)).length;
-  return { rows, threads: threadIds.length + gone };
+  // An id counts under its thread whether or not the store still holds it.
+  return { rows, threads: new Set(Object.values(row.threadIds)).size };
 }
 
 function lastPage(row: SearchRow): SearchRow["pages"][number] | undefined {
@@ -109,7 +108,7 @@ async function started(
     .toSorted((a, b) => b.run - a.run);
   const run = (others.at(0)?.run ?? 0) + 1;
   return {
-    row: { id: key, queryState: "", total: null, pages: [], run },
+    row: { id: key, queryState: "", total: null, pages: [], threadIds: {}, run },
     leaving: others.slice(SEARCH_ROWS - 1).map((held) => held.id),
   };
 }
@@ -162,7 +161,19 @@ async function landed(
   fetched: Fetched,
 ): Promise<Gathered> {
   const { client, store, view } = context;
-  const row = withPage(base.row, page, fetched);
+  const paged = withPage(base.row, page, fetched);
+  const known = new Map([
+    ...Object.entries(paged.threadIds),
+    ...fetched.emails.map((email): [string, string] => [email.id, email.threadId]),
+  ]);
+  // The held ids keep their threads; an id the page brought no thread for
+  // stands for one of its own.
+  const row = {
+    ...paged,
+    threadIds: Object.fromEntries(
+      paged.pages.flatMap((held) => held.ids).map((id) => [id, known.get(id) ?? id]),
+    ),
+  };
   await land(store, client.accountId, {
     emails: { put: fetched.emails },
     threads: { put: fetched.threads },

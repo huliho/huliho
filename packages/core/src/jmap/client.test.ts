@@ -40,8 +40,50 @@ test("the session comes from the account's route and names the upstream account,
     maxCallsInRequest: 16,
     maxObjectsInGet: 500,
     maxObjectsInSet: 500,
+    mailboxLimits: { mayCreateTopLevelMailbox: true, maxSizeMailboxName: 255 },
     state: "s1",
   });
+});
+
+test("the account's mail capability gives the folder limits, a null name size read as 255 (RFC 8621 section 1.3.1)", async () => {
+  const server = serve();
+  server.topLevel = false;
+  server.maxSizeMailboxName = 100;
+  expect((await new JmapClient(ACCOUNT).session()).mailboxLimits).toEqual({
+    mayCreateTopLevelMailbox: false,
+    maxSizeMailboxName: 100,
+  });
+  server.topLevel = true;
+  server.maxSizeMailboxName = null;
+  expect((await new JmapClient(ACCOUNT).session()).mailboxLimits).toEqual({
+    mayCreateTopLevelMailbox: true,
+    maxSizeMailboxName: 255,
+  });
+});
+
+const FALLBACK = { mayCreateTopLevelMailbox: false, maxSizeMailboxName: 255 };
+
+test.each([
+  ["no field", {}, FALLBACK],
+  [
+    "fields of the wrong kind",
+    { mayCreateTopLevelMailbox: "true", maxSizeMailboxName: "300" },
+    FALLBACK,
+  ],
+  ["a size of zero", { mayCreateTopLevelMailbox: 1, maxSizeMailboxName: 0 }, FALLBACK],
+  ["no object", "mail", FALLBACK],
+  ["no capability", undefined, FALLBACK],
+  [
+    "one field that fails",
+    { mayCreateTopLevelMailbox: true, maxSizeMailboxName: -1 },
+    { ...FALLBACK, mayCreateTopLevelMailbox: true },
+  ],
+])("a mail capability with %s reads each field that fails as absent", async (_, mail, limits) => {
+  const server = serve();
+  const capabilities = mail === undefined ? {} : { [MAIL_CAPABILITY]: mail };
+  const accounts = { [UPSTREAM]: { isReadOnly: false, accountCapabilities: capabilities } };
+  server.queue.push(json(200, { ...server.session(), accounts }));
+  expect((await new JmapClient(ACCOUNT).session()).mailboxLimits).toEqual(limits);
 });
 
 test("a read-only account takes no write and neither does one the session leaves out", async () => {

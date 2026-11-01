@@ -58,6 +58,14 @@ export {
   SENDER_SUGGESTIONS,
   WINDOW_SIZE,
 } from "./cache/limits";
+export { setMailbox } from "./cache/mailbox-set";
+export type {
+  MailboxCreate,
+  MailboxRefusal,
+  MailboxSetOutcome,
+  MailboxUpdate,
+  MailboxWrite,
+} from "./cache/mailbox-set";
 export { syncMailboxes } from "./cache/mailboxes";
 export { MemoryMailStore } from "./cache/memory";
 export { dropHeld, mutateMany, releaseHeld, releaseLapsed } from "./cache/pending";
@@ -109,6 +117,7 @@ export type {
   ThreadRow,
 } from "./cache/store";
 export { readThread } from "./cache/thread";
+export { visibleMailboxes } from "./cache/visible";
 export { queryWindow } from "./cache/window";
 export type { WindowPage } from "./cache/window";
 export { CredentialError } from "./credentials";
@@ -119,7 +128,7 @@ export { BODY_VALUE_BYTES, BODY_VALUE_BYTES_LARGE } from "./jmap/body";
 export type { EmailBodyPart, EmailBodyValue } from "./jmap/body";
 export type { EmailFilter, ObjectType } from "./jmap/calls";
 export { JmapClient, JmapError, MethodFailure, SERVER_UNAVAILABLE } from "./jmap/client";
-export type { JmapFailureCode, JmapSession } from "./jmap/client";
+export type { JmapFailureCode, JmapSession, MailboxLimits } from "./jmap/client";
 export { HULIHO_CAPABILITY, emailHeaderSchema, mailboxSchema } from "./jmap/schemas";
 export type { EmailHeader, EmailState, Mailbox, Thread } from "./jmap/schemas";
 export { linkRisk, linkText } from "./links";

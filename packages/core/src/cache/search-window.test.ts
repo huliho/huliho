@@ -303,7 +303,7 @@ test("a row the server shifts onto the next page shows once, on the page that he
   expect(second.total).toBe(BULK);
 });
 
-test("a thread the server answers again under another member counts once in the total while more pages remain", async () => {
+test("a thread the server answers again under another member counts once in the total while more pages remain, also once a poll took the first member out of the store", async () => {
   const { server, client, store } = serve();
   const count = 3 * WINDOW_SIZE + 2;
   bulk(server, count);
@@ -320,6 +320,12 @@ test("a thread the server answers again under another member counts once in the 
   expect(second.rows).toHaveLength(WINDOW_SIZE);
   expect(second.rows.map((row) => row.id)).not.toContain("x2");
   expect(second.total).toBe(count + 1);
+  // The poll takes x1 out of the store, so the thread shows under x2.
+  await applyChanges(client, store, []);
+  expect((await store.emails(ACCOUNT, ["x1"])).size).toBe(0);
+  const polled = await searchWindow(client, store, { ...search, page: 1 });
+  expect(polled.rows.map((row) => row.id)).toContain("x2");
+  expect(polled.total).toBe(count + 1);
 });
 
 test("past SEARCH_ROWS searches the one that ran first leaves, and asking it again searches anew", async () => {
