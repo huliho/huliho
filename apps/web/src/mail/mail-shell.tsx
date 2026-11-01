@@ -5,12 +5,20 @@
 import type { Mailbox } from "@huliho/core";
 import {
   accountsQueryOptions,
+  mailboxLimitsQueryOptions,
   mailboxesQueryOptions,
   preferencesQueryOptions,
 } from "@huliho/state";
 import { useQuery } from "@tanstack/react-query";
 import type { UseQueryResult } from "@tanstack/react-query";
-import { Navigate, Outlet, useMatch, useParams, useSearch } from "@tanstack/react-router";
+import {
+  Navigate,
+  Outlet,
+  useMatch,
+  useNavigate,
+  useParams,
+  useSearch,
+} from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { mailCache } from "../cache/client";
@@ -18,6 +26,7 @@ import { useMailCache } from "../cache/use-mail-cache";
 import { useLocale } from "../i18n/locale";
 import { useLayout } from "../shell/breakpoints";
 import { DEFAULT_READING_PANE } from "../theme/appearance";
+import type { FolderShell } from "./actions/folder-items";
 import { useJumpCommands } from "./jump-commands";
 import { rememberLastAccount } from "./last-account";
 import { prefetchMenus } from "./menus-chunk";
@@ -52,6 +61,22 @@ function useShown(mailboxId: string | undefined): { shownId?: string; searching:
   return shownId === undefined ? { searching } : { shownId, searching };
 }
 
+// What the folder items take once the account's limits are in: those
+// limits and the way to the account's inbox, which leaves the route of a
+// folder the user deletes or hides.
+function useFolders(accountId: string): FolderShell | null {
+  const navigate = useNavigate();
+  const limits = useQuery(mailboxLimitsQueryOptions(mailCache, accountId)).data;
+  return limits === undefined
+    ? null
+    : {
+        limits,
+        leave: () => {
+          void navigate({ to: "/mail/$accountId", params: { accountId }, replace: true });
+        },
+      };
+}
+
 // The mail screen of one account: it leases the worker the accounts of
 // the session and the mailbox it shows, remembers the account for the
 // next visit, registers the jump to each mailbox and the search and
@@ -69,6 +94,7 @@ export function MailShell() {
   const list = useQuery(accountsQueryOptions);
   const tree = useQuery(mailboxesQueryOptions(mailCache, accountId));
   const preferences = useQuery(preferencesQueryOptions);
+  const folders = useFolders(accountId);
   useMailCache(shownId === undefined ? null : { accountId, mailboxId: shownId });
   useJumpCommands(tree.data ?? null, { accountId, mailboxId, locale });
   useSearchCommand(
@@ -102,6 +128,7 @@ export function MailShell() {
       account={account}
       tree={treeState(tree)}
       currentMailboxId={shownId}
+      folders={folders}
       currentThreadId={threadId}
       searching={searching}
       actsFrom={actsFrom}

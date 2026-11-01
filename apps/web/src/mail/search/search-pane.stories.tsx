@@ -191,6 +191,7 @@ function DrawnPane({
 function suggested(text: string, senders: readonly Sender[] = []): SuggestionGroup[] {
   return suggestionsOf({
     text,
+    operators: NO_PARAMS,
     senders,
     mailboxes: MAILBOXES,
     recents: RECENTS,

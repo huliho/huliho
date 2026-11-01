@@ -4,8 +4,7 @@
 
 import { chunk } from "../shell/chunk";
 
-// The account menu, the bulk bar, the mailbox menu, the quota bar, the
-// search and the search button's hint are one chunk outside the initial
-// bundle, so the code they share stays out of the page's start; the shell
+// What `./account-menu` exports is one chunk outside the initial bundle,
+// so the code those parts share stays out of the page's start. The shell
 // fetches it on mount, so the first press and `/` find it in.
 export const prefetchMenus = chunk(() => import("./account-menu"));

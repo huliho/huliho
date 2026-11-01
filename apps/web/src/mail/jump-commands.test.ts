@@ -29,6 +29,18 @@ test("every mailbox gets a jump in the tree's order, with the letter the tree sh
   expect(jump).toHaveBeenCalledWith("mb-drafts");
 });
 
+test("a folder the tree leaves out gets no jump, and a folder above a subscribed one keeps its own", () => {
+  const hidden = MAILBOXES.map((row) =>
+    row.id === "mb-facturen" || row.id === "mb-verbouwing" ? { ...row, isSubscribed: false } : row,
+  );
+  const commands = jumpCommands(hidden, "en", vi.fn<(mailboxId: string) => void>());
+  expect(commands.map((command) => command.id)).not.toContain("go.mb-facturen");
+  expect(commands.find((command) => command.id === "go.mb-verbouwing")?.keys).toEqual([
+    { key: "g" },
+    { key: "v" },
+  ]);
+});
+
 test("a folder whose name has no free letter is listed without keys", () => {
   const model = MAILBOXES[0];
   if (model === undefined) {

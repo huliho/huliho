@@ -18,11 +18,13 @@ import type { AppliedChanges, MailStore, Mailbox, StopCause } from "@huliho/core
 
 import { bodyDetail } from "./bodies";
 import { BodyQueue } from "./body-queue";
+import { folderCalls } from "./folders";
 import { Jobs } from "./jobs";
 import { LEASE_LOCK } from "./locks";
 import type { Locks } from "./locks";
 import type { CacheMessage } from "./messages";
 import { attempt } from "./outcome";
+import { heldUntil } from "./persist-gate";
 import { Searches } from "./searches";
 import type { CacheApi } from "./surface";
 import type { Choice, WorkerStore } from "./store-choice";
@@ -78,30 +80,6 @@ function lockName(accountId: string): string {
   return `huliho-cache:${accountId}`;
 }
 
-// The store with every write held until the window reported the
-// persistence request, so the request goes out before the first row lands.
-function held(store: MailStore, gate: Promise<unknown>): MailStore {
-  return {
-    mailboxes: (accountId) => store.mailboxes(accountId),
-    emails: (accountId, ids) => store.emails(accountId, ids),
-    threads: (accountId, ids) => store.threads(accountId, ids),
-    query: (accountId, mailboxId) => store.query(accountId, mailboxId),
-    queries: (accountId) => store.queries(accountId),
-    search: (accountId, key) => store.search(accountId, key),
-    searches: (accountId) => store.searches(accountId),
-    senders: (accountId) => store.senders(accountId),
-    state: (accountId, type) => store.state(accountId, type),
-    body: (accountId, emailId) => store.body(accountId, emailId),
-    bodySizes: () => store.bodySizes(),
-    pending: (accountId) => store.pending(accountId),
-    quota: (accountId) => store.quota(accountId),
-    commit: async (accountId, batch) => {
-      await gate;
-      await store.commit(accountId, batch);
-    },
-  };
-}
-
 // Runs the accounts a session holds: the mailbox tree at the start, then
 // the poll at its interval and on focus. Every reconciliation of one
 // account runs under its lock and every change goes to every tab. A
@@ -112,6 +90,7 @@ export class Coordinator {
   private readonly writes: Writes;
   private readonly jobs: Jobs;
   private readonly searches: Searches;
+  private readonly folders: Pick<CacheApi, "setMailbox" | "mailboxLimits">;
   private readonly bodies = new BodyQueue();
   private readonly persisted = Promise.withResolvers<undefined>();
   private readonly accounts = new Map<string, Account>();
@@ -126,7 +105,7 @@ export class Coordinator {
 
   constructor(deps: Dependencies) {
     this.deps = deps;
-    this.store = held(deps.store, this.persisted.promise);
+    this.store = heldUntil(deps.store, this.persisted.promise);
     const host = {
       client: (accountId: string) => this.client(accountId),
       locked: <Value>(accountId: string, run: (store: MailStore) => Promise<Value>) =>
@@ -143,6 +122,7 @@ export class Coordinator {
       },
     });
     this.searches = new Searches({ ...host, store: this.store });
+    this.folders = folderCalls({ ...host, watched: (accountId) => this.watches.of(accountId) });
   }
 
   // The surface of one tab; its watch lives and dies with it.
@@ -153,6 +133,7 @@ export class Coordinator {
       ...this.tabSurface(this.tabs),
       ...this.reads(),
       ...this.changes(),
+      ...this.folders,
       search: (accountId, key, page, call) => searches.search(accountId, key, page, call),
       cancelSearch: (ticket) => {
         searches.cancel(ticket);

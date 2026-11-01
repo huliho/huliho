@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import { visibleMailboxes } from "@huliho/core";
 import type { Mailbox } from "@huliho/core";
 
 import type { MoveTarget } from "../../commands/move-sections";
@@ -52,8 +53,8 @@ function pathOf(mailbox: Mailbox, byId: ReadonlyMap<string, Mailbox>): string[] 
   return names;
 }
 
-// The mailboxes a move may enter in the tree's order, the roles first,
-// each named with the mailboxes above it.
+// The mailboxes a move may enter among those the tree draws, in its
+// order with the roles first, each named with the mailboxes above it.
 export function moveTargetsOf(
   ids: readonly string[],
   mailboxes: readonly Mailbox[],
@@ -61,7 +62,7 @@ export function moveTargetsOf(
 ): MoveTarget[] {
   const allowed = new Set(ids);
   const byId = new Map(mailboxes.map((row) => [row.id, row]));
-  const model = buildTree(mailboxes, locale);
+  const model = buildTree(visibleMailboxes(mailboxes), locale);
   return [...flatten(model.roles), ...flatten(model.folders)]
     .filter((row) => allowed.has(row.mailbox.id))
     .map(({ mailbox }) => ({ id: mailbox.id, name: mailbox.name, path: pathOf(mailbox, byId) }));

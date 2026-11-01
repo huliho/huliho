@@ -7,6 +7,7 @@ import type { AccountRow, MailCache } from "@huliho/core";
 import { Skeleton } from "../design-system/skeleton";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
+import type { FolderShell } from "./actions/folder-items";
 import { AccountSwitcher } from "./account-switcher";
 import { MailboxTree } from "./mailbox-tree";
 import { QuotaFoot } from "./quota-foot";
@@ -24,6 +25,7 @@ export interface SidebarProps {
   tree: TreeState;
   currentMailboxId: string | undefined;
   showLetters: boolean;
+  folders?: FolderShell | null | undefined;
   onNavigate?: (() => void) | undefined;
 }
 
@@ -61,6 +63,7 @@ export function Sidebar(props: SidebarProps) {
           mailboxes={tree.mailboxes}
           currentId={props.currentMailboxId}
           showLetters={props.showLetters}
+          folders={props.folders}
           onNavigate={props.onNavigate}
         />
       )}

@@ -126,7 +126,9 @@ changes every minute and when a tab comes back into view and tells
 every tab over a broadcast channel what changed, which invalidates
 the queries by their keys. The window asks the browser for persistent
 storage once per page and the worker holds every write until that
-request has an answer. A failure crosses the worker boundary as a
+request is out, never until it is answered: a grant covers every row
+already written, and a browser that prompts answers only when the
+person does. A failure crosses the worker boundary as a
 result with its code and cause, so the shell can tell a stopped
 account from a server that did not answer. Sign-out deletes the
 database; every other tab of the session hears it and shows the
@@ -238,13 +240,18 @@ account switcher (a menu with every account of the session, each with
 its inbox's unread count and the word Expired or Stopped after the
 name of a stopped one, then Settings and Sign out) over the mailbox
 tree: the six roles in a fixed order,
-then the folders with their depth. The tree is one tab stop: the arrow
+then the folders with their depth. The tree draws the folders the
+account subscribes to, with the ones above them so each keeps its
+place; where it subscribes to nothing it draws every folder. The tree
+is one tab stop: the arrow
 keys move inside it and Tab leaves it. Mailbox names are the server's
 words; the counts are unread mail, and drafts for the drafts folder.
-Each mailbox has a jump, `g` then its letter: the six roles keep fixed
-letters and a folder takes the first free letter of its name, shown
-beside it at the desktop width; a folder without one is reached
-through the palette. A jump puts the focus on the list's first row.
+Each mailbox the tree draws has a jump, `g` then its letter: the six
+roles keep fixed letters and a folder takes the first free letter of
+its name, shown beside it at the desktop width; a folder without one
+is reached through the palette. A jump puts the focus on the list's
+first row. After the tree, on the row of its Folders caption, a button
+asks for a new folder at the top where the server allows one.
 Cmd/Ctrl+Shift+L opens the account menu at the tablet and desktop
 widths, where the switcher is on the screen.
 
@@ -337,10 +344,30 @@ text; Enter moves and the toast names the mailbox. The toolbar and the
 bar move through the same picker.
 
 The mailbox's name in the list's header opens its menu: Mark all as
-read while the mailbox holds unread mail, and in Trash and Junk the
-action that empties it below a rule. A right click, the context-menu
+read while the mailbox holds unread mail, then New subfolder, Rename,
+Hide and Delete as the mailbox's rights and its role allow them (the
+inbox is never renamed or deleted, a role folder never hidden or
+deleted, nothing is hidden where the account subscribes to nothing),
+Delete and the action that empties Trash or Junk below a rule; an item
+the mailbox does not offer is absent. A right click, the context-menu
 key and a long press open the same menu on a tree item. Every item is
-in the palette too. Emptying asks a dialog with Cancel first. A job
+in the palette too, New folder beside them, none with a key. New
+folder, New subfolder and Rename ask a dialog with one field for the
+name and the parent in its description, the name selected on a rename.
+The name goes out trimmed and in NFC; an empty one, one past the
+length the server takes or the name of a folder beside it is refused
+on the field and never sent. Create or Rename waits for the server's
+answer, Escape holds meanwhile and the dialog closes on the server's
+yes; the server's refusal and a missing connection read in the
+dialog's failure line and the text stays. Delete refuses a folder with
+subfolders; offline, Delete and Hide refuse at once. A folder with mail
+asks the confirm that emptying asks, Cancel first and the count in its
+sentence; an empty folder goes at once and the confirm asks when mail
+reached it meanwhile. Hide takes the folder out of the tree with the
+subscribed folders under it. A delete or a hide of the mailbox shown
+leaves for the inbox first. Each write that lands says so in a toast; a
+delete or a hide refused says why in a danger toast. The dialogs and
+the writes behind the items load with the account menu's chunk. A job
 runs in the worker round by round and takes the header while it runs:
 its sentence, the count, a hairline and Cancel, which ends it after
 the round that runs. Its end lands in a toast and the header's status

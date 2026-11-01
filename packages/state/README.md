@@ -12,7 +12,8 @@ mobile app's own store) as its first argument and stays fresh until a
 cache message invalidates it. A mail query runs whatever the network
 does, since the cache answers from what it holds; one that failed asks
 again when the network comes back. Their keys start with the account id, so
-`[accountId, "mailboxes"]`, `[accountId, "window", mailboxId, page]`,
+`[accountId, "mailboxes"]`, `[accountId, "mailboxes", "limits"]` (the
+folder limits, read again with the tree), `[accountId, "window", mailboxId, page]`,
 `[accountId, "thread", threadId]`, `[accountId, "body", emailId]`,
 `[accountId, "quota"]`, `[accountId, "search", key, locale, page]` and
 `[accountId, "senders", prefix]` share a prefix per account and the

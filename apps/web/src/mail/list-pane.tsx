@@ -9,6 +9,7 @@ import { ErrorState } from "../design-system/error-state";
 import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import { PaneBoundary } from "../shell/pane-boundary";
+import type { FolderShell } from "./actions/folder-items";
 import { PaneHeader } from "./pane-header";
 import { LoadingRows } from "./thread-list";
 import type { PanePosition } from "./thread-pane";
@@ -25,6 +26,7 @@ interface ListPaneProps {
   account: AccountRow;
   tree: TreeState;
   currentMailboxId: string | undefined;
+  folders: FolderShell | null;
   // The list's width beside the pane or its height above it, in CSS
   // pixels; null where the list fills the screen.
   size: number | null;
@@ -68,6 +70,7 @@ export function ListPane(props: ListPaneProps) {
           mailbox={mailbox}
           mailboxes={mailboxes}
           pending={tree.status === "pending"}
+          folders={props.folders}
           onOpenSidebar={props.onOpenSidebar}
         />
       )}

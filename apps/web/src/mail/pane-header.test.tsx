@@ -8,12 +8,14 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { commandsSnapshot, installCommandListener, registerCommand } from "../commands/registry";
 import { stubWidthQueries } from "../shell/width-queries-rig";
-import { ConfirmEmpty, askEmpty } from "./actions/confirm-empty";
+import { askFolder } from "./actions/folder-asks";
+import { FolderHost } from "./actions/folder-host";
+import type { FolderShell } from "./actions/folder-items";
 import { JOB_LAPSE_MS, heardJob } from "./actions/job-store";
 import { lendSelection } from "./actions/selection-lend";
-import { WRITABLE, boxOf } from "./actions/writable-rig";
+import { MANAGED, WRITABLE, boxOf, managedOf } from "./actions/writable-rig";
 import { fixtureCache } from "./fixture-cache";
-import { FASTMAIL, INBOX_ID, MAILBOXES } from "./fixtures";
+import { FASTMAIL, FOLDER_LIMITS, INBOX_ID, MAILBOXES } from "./fixtures";
 import { prefetchMenus } from "./menus-chunk";
 import { PaneHeader } from "./pane-header";
 
@@ -40,7 +42,12 @@ function progress(state: JobProgress["state"], done = 500): JobProgress {
 }
 
 // The header on a tree, with the dialog a job may ask.
-function pane(cache: MailCache, mailbox: Mailbox | undefined, mailboxes: readonly Mailbox[]) {
+function pane(
+  cache: MailCache,
+  mailbox: Mailbox | undefined,
+  mailboxes: readonly Mailbox[],
+  folders: FolderShell | null = null,
+) {
   return (
     <>
       <PaneHeader
@@ -50,18 +57,23 @@ function pane(cache: MailCache, mailbox: Mailbox | undefined, mailboxes: readonl
         mailbox={mailbox}
         mailboxes={mailboxes}
         pending={false}
+        folders={folders}
       />
-      <ConfirmEmpty locale="en" />
+      <FolderHost locale="en" />
     </>
   );
 }
 
-async function header(mailbox: Mailbox | undefined = INBOX) {
+async function header(
+  mailbox: Mailbox | undefined = INBOX,
+  mailboxes: readonly Mailbox[] = WRITABLE,
+  folders: FolderShell | null = null,
+) {
   const cache = fixtureCache({});
   await act(async () => {
     await prefetchMenus();
   });
-  render(pane(cache, mailbox, WRITABLE));
+  render(pane(cache, mailbox, mailboxes, folders));
   return cache;
 }
 
@@ -112,6 +124,34 @@ test("under a mouse the menu holds Mark all as read while the mailbox has unread
   });
 });
 
+test("once the account's limits are in, the menu holds the folder items and the palette their commands", async () => {
+  stubWidthQueries({ wide: true });
+  const leave = vi.fn<() => void>();
+  await header(managedOf("mb-facturen"), MANAGED, { limits: FOLDER_LIMITS, leave });
+  expect(await menuItems("Facturen")).toEqual([
+    "Mark all as read",
+    "New subfolder",
+    "Rename",
+    "Hide",
+    "Delete",
+  ]);
+  expect(screen.getByRole("menuitem", { name: "Delete" }).dataset["danger"]).toBe("true");
+  const commands = commandsSnapshot().filter((command) => command.id.startsWith("folder."));
+  expect(commands.map((command) => [command.id, command.label, command.keys])).toEqual([
+    ["folder.new", "New folder", []],
+    ["folder.subfolder", "New subfolder", []],
+    ["folder.rename", "Rename folder", []],
+    ["folder.hide", "Hide folder", []],
+    ["folder.delete", "Delete folder", []],
+  ]);
+  expect(commands.every((command) => command.group === "act")).toBe(true);
+  // The items act on the mailbox shown, so a hide leaves it first.
+  fireEvent.click(screen.getByRole("menuitem", { name: "Hide" }));
+  await vi.waitFor(() => {
+    expect(leave).toHaveBeenCalledOnce();
+  });
+});
+
 test("the name stays plain where its menu would hold nothing", async () => {
   stubWidthQueries({ wide: true, coarse: true });
   const unregister = pickable();
@@ -159,9 +199,12 @@ test("asking to empty keeps the page's keys until the dialog holds the focus", a
     run,
   });
   const uninstall = installCommandListener();
-  render(<ConfirmEmpty locale="en" />);
+  await act(async () => {
+    await prefetchMenus();
+  });
+  render(<FolderHost locale="en" />);
   act(() => {
-    askEmpty({ mailbox: boxOf("junk"), confirm: nothing });
+    askFolder({ kind: "empty", mailbox: boxOf("junk"), confirm: nothing });
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", cancelable: true }));
   });
   expect(run).not.toHaveBeenCalled();
@@ -307,6 +350,24 @@ test("the name's button leaving with the last unread hands the focus to the list
   expect(name.textContent).toBe(NAME);
   expect(within(name).queryByRole("button")).toBeNull();
   expect(document.activeElement).toBe(screen.getByLabelText("Threads"));
+});
+
+test("the name's button leaving with its mailbox hands the focus to the button that comes in", async () => {
+  stubWidthQueries({ wide: true });
+  const cache = fixtureCache({});
+  await act(async () => {
+    await prefetchMenus();
+  });
+  const folders = { limits: FOLDER_LIMITS, leave: nothing };
+  const { rerender } = render(pane(cache, managedOf("mb-facturen"), MANAGED, folders));
+  act(() => {
+    screen.getByRole("button", { name: "Facturen" }).focus();
+  });
+  // The route passes through the account's inbox redirect, which names no mailbox.
+  rerender(pane(cache, undefined, MANAGED, folders));
+  expect(document.activeElement).toBe(document.body);
+  rerender(pane(cache, managedOf(INBOX_ID), MANAGED, folders));
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: NAME }));
 });
 
 test("a job no word of reaches for a while leaves the header", async () => {

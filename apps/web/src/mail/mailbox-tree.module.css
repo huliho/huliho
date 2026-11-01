@@ -2,6 +2,11 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Additional terms apply, see NOTICE. */
 
+/* The box the New folder control is placed in, beside the tree. */
+.box {
+  position: relative;
+}
+
 .tree {
   display: flex;
   flex-direction: column;
@@ -10,14 +15,37 @@
   list-style: none;
 }
 
-.groupLabel {
-  display: block;
+/* The caption's row takes the control's height, so the control at its
+   end stands on it. */
+.caption {
+  display: flex;
+  align-items: center;
+  min-block-size: var(--hhx-hit-target);
   margin-block-start: var(--hhx-space-3);
-  padding: var(--hhx-space-1) var(--hhx-space-3);
+}
+
+.groupLabel {
+  padding-inline: var(--hhx-space-3);
   font-size: var(--hhx-type-1);
   letter-spacing: var(--hhx-tracking-caps);
   text-transform: uppercase;
   color: var(--hh-text-muted);
+}
+
+.newFolder {
+  position: absolute;
+  inset-inline-end: 0;
+  color: var(--hh-text-muted);
+}
+
+.newFolder:hover {
+  color: var(--hh-text);
+}
+
+.newFolderIcon {
+  inline-size: var(--hhx-icon-inline);
+  block-size: var(--hhx-icon-inline);
+  stroke-width: var(--hhx-icon-stroke);
 }
 
 /* The link spans the item and shares its columns, so the letter beside

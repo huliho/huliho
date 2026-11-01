@@ -7,6 +7,9 @@ import type {
   Job,
   ListPage,
   Mailbox,
+  MailboxLimits,
+  MailboxSetOutcome,
+  MailboxWrite,
   Mutation,
   PatchMutation,
   QuotaReading,
@@ -46,6 +49,8 @@ export interface CacheApi {
   // Sign out: the tab names itself, so every other tab hears who did it.
   clear(by: string): Promise<void>;
   mailboxes(accountId: string): Promise<CacheResult<Mailbox[]>>;
+  mailboxLimits(accountId: string): Promise<CacheResult<MailboxLimits>>;
+  setMailbox(accountId: string, write: MailboxWrite): Promise<CacheResult<MailboxSetOutcome>>;
   // A page crosses as the rows the list draws, made on this side.
   window(accountId: string, mailboxId: string, page: number): Promise<CacheResult<ListPage>>;
   search(

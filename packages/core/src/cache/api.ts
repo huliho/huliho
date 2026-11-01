@@ -3,8 +3,10 @@
 // Additional terms apply, see NOTICE.
 
 import type { DownloadSource } from "../download";
+import type { MailboxLimits } from "../jmap/client";
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
 import type { Job } from "./jobs";
+import type { MailboxSetOutcome, MailboxWrite } from "./mailbox-set";
 import type { Mutation, PatchMutation } from "./pending";
 import type { QuotaReading } from "./quota";
 import type { ListPage } from "./rows";
@@ -42,11 +44,16 @@ export interface SearchCall {
 // The cache as a client reads it, whatever runs it: the mailbox tree, a
 // page of a list or of a search, the senders of the held mail, a thread,
 // the marker's action, the body of one email, the changes to emails, the
-// folder jobs and the quota. A failure throws JmapError, so a caller
-// reads the stop cause or the limit's name; a method the server refused
-// throws MethodFailure with its error type.
+// folder writes, the folder jobs and the quota. A failure throws
+// JmapError, so a caller reads the stop cause or the limit's name; a
+// method the server refused throws MethodFailure with its error type.
 export interface MailCache {
   mailboxes(accountId: string): Promise<Mailbox[]>;
+  // What the account's mail capability says about its folders.
+  mailboxLimits(accountId: string): Promise<MailboxLimits>;
+  // One write of the account's folders under its lock; what the server
+  // wrote is in the store before it resolves.
+  setMailbox(accountId: string, write: MailboxWrite): Promise<MailboxSetOutcome>;
   window(accountId: string, mailboxId: string, page: number): Promise<ListPage>;
   // A page of the search the key names, as `searchKeyOf` writes it; a
   // search given up rejects with the signal's reason.

@@ -8,6 +8,7 @@ import type {
   EmailHeader,
   ListPage,
   Mailbox,
+  MailboxLimits,
   MemberState,
   Sender,
   ThreadDetail,
@@ -82,6 +83,14 @@ export const MAILBOXES_EMPTY_INBOX: Mailbox[] = build(
 );
 
 export const INBOX_ID = "mb-inbox";
+
+// The folder limits of an account that takes a folder at the top and
+// names of up to 255 octets of UTF-8, as the bridge takes them.
+const NAME_BYTES = 255;
+export const FOLDER_LIMITS: MailboxLimits = {
+  mayCreateTopLevelMailbox: true,
+  maxSizeMailboxName: NAME_BYTES,
+};
 
 // The senders of the held mail, as the suggestions read them.
 export const SENDERS: Sender[] = [

@@ -25,6 +25,15 @@ export function mailboxesQueryOptions(cache: MailCache, accountId: string) {
   });
 }
 
+// Whether a folder may stand at the top and the longest name it takes.
+export function mailboxLimitsQueryOptions(cache: MailCache, accountId: string) {
+  return queryOptions({
+    queryKey: queryKeys.mailboxLimits(accountId),
+    queryFn: () => cache.mailboxLimits(accountId),
+    ...settled,
+  });
+}
+
 export function threadWindowQueryOptions(
   cache: MailCache,
   accountId: string,

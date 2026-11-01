@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import { visibleMailboxes } from "@huliho/core";
 import type { Mailbox } from "@huliho/core";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -20,11 +21,11 @@ const NONE: readonly Command[] = [];
 // Where a jump takes the keyboard: the mailbox, with the focus into its list.
 type Jump = (mailboxId: string) => void;
 
-// One command per mailbox, in the tree's order: the six roles with
-// their fixed letters, then the folders with the letter the tree
+// One command per mailbox the tree draws, in its order: the six roles
+// with their fixed letters, then the folders with the letter the tree
 // shows; a folder without one is reached through the palette alone.
 export function jumpCommands(mailboxes: readonly Mailbox[], locale: Locale, jump: Jump): Command[] {
-  const model = buildTree(mailboxes, locale);
+  const model = buildTree(visibleMailboxes(mailboxes), locale);
   return [...flatten(model.roles), ...flatten(model.folders)].map((row) => ({
     id: `go.${row.mailbox.id}`,
     label: m.command_go_to({ mailbox: row.mailbox.name }, { locale }),

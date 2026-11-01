@@ -8,6 +8,8 @@ import type { KeyboardEvent, MouseEvent, PointerEvent, ReactNode } from "react";
 
 import type { MenuPoint } from "../design-system/menu";
 import type { Locale } from "../paraglide/runtime.js";
+import { folderItems, withFolderItems } from "./actions/folder-items";
+import type { FolderShell } from "./actions/folder-items";
 import { jobItems } from "./actions/folder-jobs";
 import type { FolderItem } from "./actions/folder-jobs";
 import { useRunningJob } from "./actions/job-store";
@@ -28,7 +30,10 @@ interface TreeMenuInput {
   locale: Locale;
   cache: MailCache;
   accountId: string;
+  // Every mailbox of the account, the hidden ones too.
   mailboxes: readonly Mailbox[];
+  folders: FolderShell | null;
+  shownId: string | undefined;
 }
 
 // What the tree wears to open the menu, and the menu itself.
@@ -66,12 +71,17 @@ function isMenuKey(event: KeyboardEvent<HTMLElement>): boolean {
 // mailbox offers something. That call answers whether the item offers
 // anything, so an open menu answers yes as well.
 function useOpened(input: TreeMenuInput, running: boolean) {
-  const { locale, cache, accountId, mailboxes } = input;
+  const { locale, cache, accountId, mailboxes, folders, shownId } = input;
   const [opened, setOpened] = useState<Opened | null>(null);
   const [open, setOpen] = useState(false);
   const openRef = useRef(false);
   const itemsOf = (mailbox: Mailbox): FolderItem[] =>
-    jobItems({ locale, cache, accountId, mailbox }, running);
+    withFolderItems(
+      jobItems({ locale, cache, accountId, mailbox }, running),
+      folders === null
+        ? []
+        : folderItems({ locale, cache, accountId, mailbox, mailboxes, shownId, ...folders }),
+    );
   return {
     opened,
     open,

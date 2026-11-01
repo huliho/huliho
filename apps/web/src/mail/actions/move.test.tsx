@@ -101,6 +101,15 @@ test("the picker lists every mailbox a move may enter in the tree's order, a nes
   ]);
 });
 
+test("the picker offers the mailboxes the tree draws, never a hidden folder", () => {
+  const hidden = WRITABLE.map((box) =>
+    box.id === FACTUREN ? { ...box, isSubscribed: false } : box,
+  );
+  expect(moveTargetsOf([FACTUREN, "mb-verbouwing"], hidden, "en")).toEqual([
+    { id: "mb-verbouwing", name: "Verbouwing", path: [] },
+  ]);
+});
+
 test("a loop in the server's parents ends the path", () => {
   // A folder under a role stands at the top of the tree, so the loop
   // through the inbox leaves it in the picker.

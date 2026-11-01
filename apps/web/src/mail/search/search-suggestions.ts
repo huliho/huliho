@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-import { EVERY_MAILBOX, foldText, startsAWord, treeOrder } from "@huliho/core";
+import {
+  EVERY_MAILBOX,
+  foldText,
+  queryOf,
+  startsAWord,
+  treeOrder,
+  visibleMailboxes,
+} from "@huliho/core";
 import type { Mailbox, SearchParams, Sender } from "@huliho/core";
 
 import { tailOf } from "./search-draft";
@@ -31,6 +38,8 @@ export interface Recent {
 
 export interface SuggestionInput {
   text: string;
+  // The tokens the field holds before the text.
+  operators: SearchParams;
   // The senders the worker answered for the word being typed.
   senders: readonly Sender[];
   mailboxes: readonly Mailbox[];
@@ -85,9 +94,11 @@ function senderRows(senders: readonly Sender[]): Suggestion[] {
   }));
 }
 
+// The mailboxes the tree draws whose name has a word the prefix starts.
 function mailboxRows(input: SuggestionInput, prefix: string): Suggestion[] {
-  const byId = new Map(input.mailboxes.map((row) => [row.id, row]));
-  return treeOrder(input.mailboxes, input.locale).flatMap((id): Suggestion[] => {
+  const visible = visibleMailboxes(input.mailboxes);
+  const byId = new Map(visible.map((row) => [row.id, row]));
+  return treeOrder(visible, input.locale).flatMap((id): Suggestion[] => {
     const mailbox = byId.get(id);
     return mailbox === undefined || !startsAWord(mailbox.name, prefix)
       ? []
@@ -110,10 +121,13 @@ function flagRows(keys: readonly ("unread" | "starred" | "attachment")[], prefix
     .map((key): Suggestion => ({ kind: "token", value: `flag:${key}`, token: { key } }));
 }
 
+// The plain search names the text, or the tokens as the field writes them
+// where no text is typed, so the row stands whenever something would run.
 function plainRows(input: SuggestionInput): SuggestionGroup[] {
   const text = input.text.trim();
   const tail = tailOf(input.text);
-  const run: Suggestion[] = text === "" ? [] : [{ kind: "run", value: "run", text }];
+  const held = text === "" ? queryOf(input.operators, input) : text;
+  const run: Suggestion[] = held === "" ? [] : [{ kind: "run", value: "run", text: held }];
   const more = tail === "" ? [] : [...senderRows(input.senders), ...mailboxRows(input, tail)];
   return [{ value: "suggest", items: [...run, ...more] }];
 }
@@ -162,8 +176,9 @@ function recentRows(input: SuggestionInput): SuggestionGroup {
 }
 
 // The rows under the field for what it holds: after an operator what
-// fills it in, else the plain search first, then the senders and the
-// mailboxes the word being typed starts; then the recents that match.
+// fills it in, else the plain search first while the field holds anything,
+// then the senders and the mailboxes the word being typed starts; then the
+// recents that match.
 export function suggestionsOf(input: SuggestionInput): SuggestionGroup[] {
   const operator = OPERATOR.exec(tailOf(input.text));
   const word = operator?.[1]?.toLowerCase();

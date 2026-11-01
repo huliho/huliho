@@ -8,13 +8,19 @@ import {
   createRootRoute,
   createRouter,
 } from "@tanstack/react-router";
-import type { MailCache } from "@huliho/core";
+import type { MailCache, Mailbox } from "@huliho/core";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { useEffect, useState } from "react";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+import { closeFolderAsk, settleFolderAsk } from "./actions/folder-asks";
+import { FolderHost } from "./actions/folder-host";
+import type { FolderShell } from "./actions/folder-items";
 import { LONG_PRESS_MS } from "./actions/long-press";
+import { MANAGED } from "./actions/writable-rig";
+import { StillObserver } from "./card-rig";
 import { fixtureCache } from "./fixture-cache";
-import { MAILBOXES } from "./fixtures";
+import { FOLDER_LIMITS, MAILBOXES } from "./fixtures";
 import { MailboxTree } from "./mailbox-tree";
 import { prefetchMenus } from "./menus-chunk";
 
@@ -25,32 +31,51 @@ interface Options {
   showLetters?: boolean;
   onNavigate?: () => void;
   cache?: MailCache;
+  mailboxes?: readonly Mailbox[];
+  folders?: FolderShell | null;
+}
+
+// Hands the tree another list, as a poll does.
+let showRows: (rows: readonly Mailbox[]) => void = () => undefined;
+
+function Rig({
+  rows,
+  ...props
+}: Omit<Options, "path" | "mailboxes"> & { rows: readonly Mailbox[] }) {
+  const [mailboxes, setMailboxes] = useState(rows);
+  useEffect(() => {
+    showRows = setMailboxes;
+  }, []);
+  return (
+    <>
+      <MailboxTree
+        locale="en"
+        cache={props.cache ?? fixtureCache({})}
+        accountId="acc-1"
+        mailboxes={mailboxes}
+        currentId={props.currentId}
+        showLetters={props.showLetters ?? true}
+        folders={props.folders ?? null}
+        onNavigate={props.onNavigate}
+      />
+      <FolderHost locale="en" />
+    </>
+  );
 }
 
 // The links need a router; a memory one at the tree's own address serves.
 async function renderTree({
   path = "/mail/acc-1/mb-inbox",
   currentId = "mb-inbox",
-  showLetters = true,
-  onNavigate,
-  cache = fixtureCache({}),
+  mailboxes = MAILBOXES,
+  ...props
 }: Options = {}) {
   await act(async () => {
     await prefetchMenus();
   });
   const router = createRouter({
     routeTree: createRootRoute({
-      component: () => (
-        <MailboxTree
-          locale="en"
-          cache={cache}
-          accountId="acc-1"
-          mailboxes={MAILBOXES}
-          currentId={currentId}
-          showLetters={showLetters}
-          onNavigate={onNavigate}
-        />
-      ),
+      component: () => <Rig rows={mailboxes} currentId={currentId} {...props} />,
     }),
     history: createMemoryHistory({ initialEntries: [path] }),
   });
@@ -62,7 +87,24 @@ function item(name: string | RegExp): HTMLElement {
   return screen.getByRole("treeitem", { name });
 }
 
-afterEach(cleanup);
+// jsdom has no ResizeObserver; the tree watches its rows with one.
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", StillObserver);
+});
+
+// A dialog the test asked for leaves with it.
+function dropAsk(): void {
+  act(() => {
+    closeFolderAsk();
+    settleFolderAsk();
+  });
+}
+
+afterEach(() => {
+  dropAsk();
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 test("the roles come first in their order, then the folders with their depth", async () => {
   const tree = await renderTree();
@@ -188,4 +230,76 @@ test("a long press opens the menu and the click it leaves behind goes nowhere", 
     vi.useRealTimers();
   }
   expect(await screen.findByRole("menuitem", { name: "Mark all as read" })).toBeDefined();
+});
+
+// The fixtures' tree with the folders the ids name unsubscribed.
+function hiding(...ids: string[]): Mailbox[] {
+  return MAILBOXES.map((row) => (ids.includes(row.id) ? { ...row, isSubscribed: false } : row));
+}
+
+const FOLDERS: FolderShell = { limits: FOLDER_LIMITS, leave: () => undefined };
+
+test("the tree draws the subscribed folders and the roles, a parent above a subscribed folder too", async () => {
+  const tree = await renderTree({ mailboxes: hiding("mb-facturen", "mb-verbouwing") });
+  expect(
+    within(tree)
+      .getAllByRole("treeitem")
+      .slice(-2)
+      .map((row) => row.textContent),
+  ).toEqual(["Verbouwing", "Offertes"]);
+  expect(screen.queryByRole("treeitem", { name: /^Facturen/ })).toBeNull();
+  cleanup();
+  const none = await renderTree({
+    mailboxes: MAILBOXES.map((row) => ({ ...row, isSubscribed: false })),
+  });
+  expect(within(none).getAllByRole("treeitem")).toHaveLength(MAILBOXES.length);
+});
+
+test("New folder stands outside the tree at the caption and asks for a folder at the top", async () => {
+  const tree = await renderTree({ folders: FOLDERS });
+  const button = screen.getByRole("button", { name: "New folder" });
+  expect(tree.contains(button)).toBe(false);
+  fireEvent.click(button);
+  const dialog = await screen.findByRole("dialog", { name: "New folder" });
+  expect(dialog.textContent).toContain("At the top level");
+  dropAsk();
+  cleanup();
+  await renderTree({
+    folders: { ...FOLDERS, limits: { ...FOLDER_LIMITS, mayCreateTopLevelMailbox: false } },
+  });
+  expect(screen.queryByRole("button", { name: "New folder" })).toBeNull();
+  cleanup();
+  await renderTree();
+  expect(screen.queryByRole("button", { name: "New folder" })).toBeNull();
+});
+
+test("an item that leaves while it holds the focus hands it to the tree's tab stop", async () => {
+  await renderTree({ path: "/mail/acc-1/mb-inbox" });
+  item("Offertes").focus();
+  act(() => {
+    showRows(MAILBOXES.filter((row) => row.id !== "mb-offertes"));
+  });
+  expect(document.activeElement).toBe(item("Inbox, 23 unread"));
+});
+
+test("a folder's menu holds the folder items after its jobs, the delete in danger; a hide of the mailbox shown leaves it", async () => {
+  const leave = vi.fn<() => void>();
+  await renderTree({
+    path: "/mail/acc-1/mb-facturen",
+    currentId: "mb-facturen",
+    mailboxes: MANAGED,
+    folders: { ...FOLDERS, leave },
+  });
+  fireEvent.contextMenu(item("Facturen, 3 unread"));
+  const menu = await screen.findByRole("menu");
+  expect(
+    within(menu)
+      .getAllByRole("menuitem")
+      .map((entry) => entry.textContent),
+  ).toEqual(["Mark all as read", "New subfolder", "Rename", "Hide", "Delete"]);
+  expect(within(menu).getByRole("menuitem", { name: "Delete" }).dataset["danger"]).toBe("true");
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Hide" }));
+  await vi.waitFor(() => {
+    expect(leave).toHaveBeenCalledOnce();
+  });
 });

@@ -13,7 +13,8 @@ import { m } from "../paraglide/messages.js";
 import type { Locale } from "../paraglide/runtime.js";
 import type { Layout } from "../shell/breakpoints";
 import { PaneBoundary } from "../shell/pane-boundary";
-import { ConfirmEmpty } from "./actions/confirm-empty";
+import { FolderHost } from "./actions/folder-host";
+import type { FolderShell } from "./actions/folder-items";
 import { placesOf } from "./actions/taken";
 import { LIST_DEFAULT_ROWS, LIST_MIN_ROWS, PANE_MIN_HEIGHT_PX, useListHeight } from "./list-height";
 import { ListPane } from "./list-pane";
@@ -43,6 +44,8 @@ interface Shared {
   account: AccountRow;
   tree: TreeState;
   currentMailboxId: string | undefined;
+  // What the folder items take; null until the account's limits are in.
+  folders: FolderShell | null;
 }
 
 interface ShellFrameProps extends Shared {
@@ -343,14 +346,14 @@ function useSheet(): Sheet {
 // keeps a render failure to itself.
 export function ShellFrame(props: ShellFrameProps) {
   const { locale, layout, readingPane, cache, accounts, account, tree, children } = props;
-  const { currentMailboxId, onCloseThread } = props;
+  const { currentMailboxId, folders, onCloseThread } = props;
   const frame = useRef<HTMLDivElement>(null);
   const side = useRef<HTMLDivElement>(null);
   const seam = useRef<HTMLDivElement>(null);
   const sheet = useSheet();
   const position = positionOf(layout, readingPane);
   const list = useListSize({ frame, side, seam }, position);
-  const shared = { locale, cache, accounts, account, tree, currentMailboxId };
+  const shared = { locale, cache, accounts, account, tree, currentMailboxId, folders };
   const sidebar = (
     <PaneBoundary>
       <Sidebar {...shared} showLetters={layout === "desktop"} onNavigate={sheet.hide} />
@@ -394,7 +397,7 @@ export function ShellFrame(props: ShellFrameProps) {
           {sidebar}
         </SideSheet>
       )}
-      <ConfirmEmpty locale={locale} />
+      <FolderHost locale={locale} />
     </div>
   );
 }

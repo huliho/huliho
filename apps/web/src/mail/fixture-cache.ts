@@ -10,6 +10,8 @@ import type {
   ListPage,
   ListRow,
   MailCache,
+  MailboxSetOutcome,
+  MailboxWrite,
   Mutation,
   PatchMutation,
   ThreadDetail,
@@ -17,7 +19,7 @@ import type {
 } from "@huliho/core";
 
 import { previewDetail } from "./body-fixtures";
-import { MAILBOXES, SENDERS } from "./fixtures";
+import { FOLDER_LIMITS, MAILBOXES, SENDERS } from "./fixtures";
 
 // How a fixture cache answers a page: with rows, with a refusal or not at all.
 export type PageAnswer = ListPage | "never" | Error;
@@ -61,6 +63,24 @@ export interface Recorded {
   released: number[][];
   dropped: number[][];
   jobs: Job[];
+  folders: MailboxWrite[];
+}
+
+// The answer a fixture gives a folder write: every object written, each
+// create under the next new id.
+function writtenAll(write: MailboxWrite, first: number): MailboxSetOutcome {
+  const creates = Object.keys(write.create ?? {});
+  return {
+    created: Object.fromEntries(
+      creates.map((key, index) => [key, `mb-new-${String(first + index)}`]),
+    ),
+    updated: Object.keys(write.update ?? {}),
+    destroyed: [...(write.destroy ?? [])],
+    notCreated: {},
+    notUpdated: {},
+    notDestroyed: {},
+    changes: { mailboxes: true, windows: [], threads: [] },
+  };
 }
 
 // A patch with its values turned over, as the change that takes it back.
@@ -91,12 +111,20 @@ function undoOf(mutations: readonly Mutation[], first: number): Undo {
   };
 }
 
-// The changes, the jobs and the quota of a fixture cache, each a no-op
-// it records.
+type Writes = "mutate" | "mutateMany" | "release" | "drop" | "job" | "cancelJob" | "quota";
+
+// The changes, the folder writes, the jobs and the quota of a fixture
+// cache, each a no-op it records.
 function recordedWrites(
   recorded: Recorded,
-): Pick<MailCache, "mutate" | "mutateMany" | "release" | "drop" | "job" | "cancelJob" | "quota"> {
+): Pick<MailCache, Writes | "setMailbox" | "mailboxLimits"> {
   return {
+    setMailbox: (_accountId, write) => {
+      const first = recorded.folders.flatMap((done) => Object.keys(done.create ?? {})).length;
+      recorded.folders.push(write);
+      return Promise.resolve(writtenAll(write, first + 1));
+    },
+    mailboxLimits: () => Promise.resolve(FOLDER_LIMITS),
     mutate: (_accountId, mutation) => {
       recorded.mutations.push(mutation);
       return Promise.resolve();
@@ -141,6 +169,7 @@ export function fixtureCache(
     released: [],
     dropped: [],
     jobs: [],
+    folders: [],
   };
   const held = new Map(Object.entries(threads));
   const heldBodies = new Map(Object.entries(bodies));
