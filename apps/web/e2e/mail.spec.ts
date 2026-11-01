@@ -382,6 +382,8 @@ test("the shell is axe-clean and matches its screenshots at four widths", async 
         await expect.soft(page).toHaveScreenshot(`mail-${theme}-${viewport.name}.png`);
         await page.goto("/mail/acc-1/mb-verbouwing");
         await expect(page.getByText("Verbouwing is empty.")).toBeVisible();
+        // The folder's items make its name a menu button once the account's limits are in.
+        await expect(page.locator("main header h1").getByRole("button")).toBeVisible();
         await expect.soft(page).toHaveScreenshot(`mail-empty-${theme}-${viewport.name}.png`);
       });
     }
