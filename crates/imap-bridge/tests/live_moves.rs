@@ -36,6 +36,10 @@ const FOLDER: &str = "Huliho moves";
 /// The folders the compose Dovecot always holds that the moves reach.
 const HELD: [&str; 4] = ["INBOX", "Archive", "Junk", "Trash"];
 
+/// The folder whose rights the compose Dovecot narrows, which takes mail
+/// in and lets none out.
+const LOCKED: &str = "Locked";
+
 /// The messages by number and the step that moves each.
 const ARCHIVED: u32 = 1;
 const JUNKED: u32 = 2;
@@ -202,12 +206,13 @@ impl Bridge {
 }
 
 /// The ids of every mailbox by role, the folder of the user's by its
-/// name; each one lets mail in and out, since Dovecot moves.
+/// name; each one but `Locked` lets mail in and out, since Dovecot moves.
 async fn roles(cache: &Cache, link: &Link<TestConnector>) -> HashMap<String, String> {
     let mut roles = HashMap::new();
     for mailbox in mailbox_list(cache, link).await {
+        let free = mailbox["name"] != LOCKED;
         assert_eq!(mailbox["myRights"]["mayAddItems"], true, "{mailbox}");
-        assert_eq!(mailbox["myRights"]["mayRemoveItems"], true, "{mailbox}");
+        assert_eq!(mailbox["myRights"]["mayRemoveItems"], free, "{mailbox}");
         let name = match mailbox["role"].as_str() {
             Some(role) => role.to_owned(),
             None => mailbox["name"].as_str().unwrap().to_owned(),

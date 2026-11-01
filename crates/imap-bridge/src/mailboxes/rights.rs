@@ -61,6 +61,32 @@ impl Right {
             Self::Submit => "maySubmit",
         }
     }
+
+    /// The letters of RFC 4314 section 4 the right takes, all of them;
+    /// none for submission, which no IMAP right grants.
+    fn letters(self) -> Option<&'static str> {
+        match self {
+            Self::ReadItems => Some("r"),
+            Self::AddItems => Some("i"),
+            Self::RemoveItems => Some("te"),
+            Self::SetSeen => Some("s"),
+            Self::SetKeywords => Some("w"),
+            Self::CreateChild => Some("k"),
+            Self::Rename | Self::Delete => Some("x"),
+            Self::Submit => None,
+        }
+    }
+}
+
+/// Whether the letters a mailbox's row keeps grant the right, the
+/// server's commands and the fixed rules aside. A mailbox without letters
+/// grants every right but submission (RFC 4314 section 3.5).
+#[must_use]
+pub fn allows(letters: Option<&str>, right: Right) -> bool {
+    let Some(needed) = right.letters() else {
+        return false;
+    };
+    letters.is_none_or(|held| needed.chars().all(|letter| held.contains(letter)))
 }
 
 /// The rights the user holds on one mailbox.
@@ -114,10 +140,10 @@ pub fn kept(rights: &Rights, obsolete: bool) -> String {
 pub fn of(row: &MailboxRow, snapshot: &MailboxSnapshot) -> MailboxRights {
     let facts = &row.facts;
     let letters = snapshot.rights.get(&row.id).map(String::as_str);
-    let held = |letter: char| letters.is_none_or(|letters| letters.contains(letter));
+    let held = |right: Right| allows(letters, right);
     let fixed = snapshot.gmail && is_gmail_own(row);
     let none = MailboxRights::default();
-    let child = held('k') && !fixed;
+    let child = held(Right::CreateChild) && !fixed;
     if !facts.selectable {
         return none.with(Right::CreateChild, child);
     }
@@ -126,12 +152,12 @@ pub fn of(row: &MailboxRow, snapshot: &MailboxSnapshot) -> MailboxRights {
     } else {
         snapshot.moving.moves()
     };
-    let editable = held('x') && !fixed && !facts.imap_name.eq_ignore_ascii_case(INBOX);
-    none.with(Right::ReadItems, held('r'))
-        .with(Right::AddItems, moves && held('i'))
-        .with(Right::RemoveItems, moves && held('t') && held('e'))
-        .with(Right::SetSeen, held('s'))
-        .with(Right::SetKeywords, held('w'))
+    let editable = held(Right::Delete) && !fixed && !facts.imap_name.eq_ignore_ascii_case(INBOX);
+    none.with(Right::ReadItems, held(Right::ReadItems))
+        .with(Right::AddItems, moves && held(Right::AddItems))
+        .with(Right::RemoveItems, moves && held(Right::RemoveItems))
+        .with(Right::SetSeen, held(Right::SetSeen))
+        .with(Right::SetKeywords, held(Right::SetKeywords))
         .with(Right::CreateChild, child)
         .with(Right::Rename, editable)
         .with(Right::Delete, editable && facts.role.is_none())

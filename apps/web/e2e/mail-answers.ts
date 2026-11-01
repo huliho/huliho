@@ -5,11 +5,12 @@
 // The JMAP methods the cache calls, answered from a corpus: the query
 // of a mailbox window or a search with its anchor and collapse, the gets
 // by id or by reference with the body of a message, the writes, the
-// changes since a state, the mailbox list and the quotas.
+// changes since a state, the mailboxes with their writes and the quotas.
 
 import { bodyOf, bodyPropertiesOf } from "./mail-bodies";
 import { UPSTREAM, emailObject } from "./mail-corpus";
 import type { Corpus, CorpusEmail } from "./mail-corpus";
+import { mailboxSet } from "./mail-folders";
 import { isSearch, searchIds } from "./mail-search";
 import { emailSet } from "./mail-writes";
 
@@ -54,6 +55,14 @@ export interface MailServer {
   heldSearches: (() => void)[];
   // The method error a search answers in place of its results.
   searchError: string | null;
+  // The SetError type every object of a Mailbox/set answers in place of
+  // its write.
+  folderRefusal: string | null;
+  // Whether a mailbox may be created at the top level, as the session's
+  // mail limits say.
+  topLevel: boolean;
+  // How many mailboxes Mailbox/set created, which numbers the next id.
+  nextMailbox: number;
   // The account's quotas, null for an account without the capability.
   quotas: Record<string, unknown>[] | null;
 }
@@ -80,6 +89,9 @@ export function serverFor(
     holdSearches: false,
     heldSearches: [],
     searchError: null,
+    folderRefusal: null,
+    topLevel: true,
+    nextMailbox: 0,
     quotas,
   };
 }
@@ -335,8 +347,20 @@ function changes(server: MailServer, type: Change["type"], args: Args): Args {
   };
 }
 
-function mailboxGet(server: MailServer): Args {
-  return { accountId: UPSTREAM, state: stateOf(server), list: server.mailboxes, notFound: [] };
+// Every mailbox for ids null or absent, else the ones named outright or
+// by reference (RFC 8620 section 5.1).
+function mailboxGet(server: MailServer, args: Args, prior: Map<string, Args>): Args {
+  const every = !("#ids" in args) && (args["ids"] ?? null) === null;
+  const ids = every ? [] : idsOf(args, prior);
+  const listed = (id: unknown): boolean => server.mailboxes.some((row) => row["id"] === id);
+  return {
+    accountId: UPSTREAM,
+    state: stateOf(server),
+    list: every
+      ? server.mailboxes
+      : server.mailboxes.filter((row) => ids.includes(String(row["id"]))),
+    notFound: ids.filter((id) => !listed(id)),
+  };
 }
 
 // The quotas never move, so their state stands still (RFC 9425 section 4).
@@ -371,6 +395,7 @@ type Method = (server: MailServer, args: Args, prior: Map<string, Args>) => Args
 
 const METHODS = new Map<string, Method>([
   ["Mailbox/get", mailboxGet],
+  ["Mailbox/set", mailboxSet],
   ["Mailbox/changes", (server, args) => changes(server, "Mailbox", args)],
   ["Email/get", emailGet],
   ["Email/set", emailSet],

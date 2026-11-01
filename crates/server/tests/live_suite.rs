@@ -8,8 +8,10 @@
 //! attachments downloaded and its mark as read among them. Then the
 //! latency bound of an inbox window on the synced Dovecot mailbox, the
 //! search bound on Cyrus and on Dovecot, the searches of the Dovecot
-//! without an index ending inside the deadline and one Gmail account
-//! through the same routes when the environment names it.
+//! without an index ending inside the deadline, the folder cycle on
+//! Cyrus natively and over IMAPS and on both Dovecots, the refusals of
+//! Dovecot's narrowed folder and one Gmail account through the same
+//! routes when the environment names it.
 
 #![cfg(feature = "live-targets")]
 
@@ -26,7 +28,7 @@ use std::time::{Duration, Instant};
 use live_rig::corpus::THREAD_SIZE;
 use live_rig::{
     Editor, LIST_PROPERTIES, Live, MEASURED_WINDOWS, Mail, Synced, Target, Window, clear, editor,
-    expunge, flag, leave, listed, number_of, reading, searching, seed,
+    expunge, flag, folders, leave, listed, number_of, reading, searching, seed,
 };
 use serde_json::{Value, json};
 
@@ -71,9 +73,10 @@ const COMPOSE_QUOTA_MESSAGES: u64 = 10_000;
 const GMAIL_ADDRESS: &str = "HULIHO_LIVE_GMAIL_ADDRESS";
 const GMAIL_APP_PASSWORD: &str = "HULIHO_LIVE_GMAIL_APP_PASSWORD";
 
-/// The tests that seed one target's inbox take turns.
+/// The tests that edit one target's mail take turns.
 static CYRUS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static DOVECOT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+static PLAIN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// The email id and thread id of every corpus message, by number.
 type Corpus = HashMap<u32, (String, String)>;
@@ -329,7 +332,38 @@ async fn dovecot_answers_every_search_within_the_search_bound() {
 
 #[tokio::test]
 async fn dovecot_without_an_index_ends_every_search_inside_the_deadline() {
+    let _plain = PLAIN.lock().await;
     searching::inside_the_deadline().await;
+}
+
+#[tokio::test]
+async fn cyrus_runs_the_folder_cycle_through_the_proxy_rfc8621_2_5() {
+    let _cyrus = CYRUS.lock().await;
+    folders::cycle(Target::Cyrus).await;
+}
+
+#[tokio::test]
+async fn cyrus_runs_the_folder_cycle_through_the_bridge_over_imaps_rfc8621_2_5() {
+    let _cyrus = CYRUS.lock().await;
+    folders::cycle(Target::CyrusBridge).await;
+}
+
+#[tokio::test]
+async fn dovecot_runs_the_folder_cycle_through_the_bridge_rfc8621_2_5() {
+    let _dovecot = DOVECOT.lock().await;
+    folders::cycle(Target::Dovecot).await;
+}
+
+#[tokio::test]
+async fn dovecot_without_an_acl_runs_the_folder_cycle_through_the_bridge_rfc8621_2_5() {
+    let _plain = PLAIN.lock().await;
+    folders::cycle(Target::DovecotPlain).await;
+}
+
+#[tokio::test]
+async fn dovecot_refuses_every_folder_command_and_move_out_of_its_narrowed_folder_rfc4314_4() {
+    let _dovecot = DOVECOT.lock().await;
+    folders::locked().await;
 }
 
 /// The Gmail test account, when the environment names it.

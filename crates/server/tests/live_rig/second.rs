@@ -114,13 +114,13 @@ pub async fn clear(editor: &mut Editor) {
         .unwrap();
 }
 
-/// Appends to the inbox as a non-synchronizing literal (RFC 7888), with
-/// the date as written. The client library's own APPEND fails on any
-/// line ahead of the continuation request, such as an untagged NO a
-/// server may send there (RFC 3501 section 7).
-async fn append(editor: &mut Editor, date: &str, message: &str) {
+/// Appends to the mailbox of that wire name as a non-synchronizing
+/// literal (RFC 7888), with the date as written. The client library's
+/// own APPEND fails on any line ahead of the continuation request, such
+/// as an untagged NO a server may send there (RFC 3501 section 7).
+pub async fn append(editor: &mut Editor, mailbox: &str, date: &str, message: &str) {
     let size = message.len();
-    let command = format!("APPEND {INBOX} {date} {{{size}+}}\r\n{message}");
+    let command = format!("APPEND \"{mailbox}\" {date} {{{size}+}}\r\n{message}");
     within(editor.run_command_and_check_ok(&command))
         .await
         .unwrap();
@@ -131,7 +131,7 @@ pub async fn seed(editor: &mut Editor, from: u32, through: u32) {
     for number in from..=through {
         let message = Seed(number);
         let date = format!("\"{}\"", message.internal_date());
-        append(editor, &date, &message.rfc5322()).await;
+        append(editor, INBOX, &date, &message.rfc5322()).await;
     }
 }
 
@@ -139,7 +139,7 @@ pub async fn seed(editor: &mut Editor, from: u32, through: u32) {
 pub async fn seed_rich(editor: &mut Editor, number: u32) {
     let message = Seed(number);
     let date = format!("\"{}\"", message.internal_date());
-    append(editor, &date, &message.rich()).await;
+    append(editor, INBOX, &date, &message.rich()).await;
 }
 
 /// Whether this connection finds the corpus message among the seen

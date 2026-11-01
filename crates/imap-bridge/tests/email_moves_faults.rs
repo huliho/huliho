@@ -5,8 +5,8 @@
 //! Moves and destroys the server does not take: a refused MOVE or
 //! expunge, a copy whose expunge fails, a `COPYUID` that does not pair
 //! with the ask, a STORE of `\Deleted` that never answers, a folder that
-//! does not keep `\Deleted` and a host out of reach each leave the rows
-//! as they were and say so per object.
+//! does not keep `\Deleted`, rights MYRIGHTS narrows and a host out of
+//! reach each leave the rows as they were and say so per object.
 
 mod set_rig;
 mod sync_rig;
@@ -18,7 +18,7 @@ use huliho_imap_bridge::session::TlsMode;
 use huliho_imap_bridge::store::ObjectType;
 use huliho_imap_bridge::testing::folder::PERMANENT_FLAGS;
 use huliho_imap_bridge::testing::imap::HOST;
-use huliho_imap_bridge::testing::{Behavior, Extension, Folder, Storing, TestConnector};
+use huliho_imap_bridge::testing::{Behavior, Extension, Folder, MyRights, Storing, TestConnector};
 use serde_json::{Value, json};
 use set_rig::{Set, refused, started};
 use sync_rig::{ACCOUNT, inbox};
@@ -199,6 +199,53 @@ async fn a_folder_that_does_not_keep_deleted_takes_no_destroy_and_no_copied_move
     assert_eq!(destroyed["notDestroyed"][&set.ids[&2]]["type"], "forbidden");
     assert_eq!(set.written(), ["SELECT \"INBOX\"", "SELECT \"INBOX\""]);
     untouched(&set, before).await;
+}
+
+/// Two messages in an INBOX beside an Archive on a server with ACL, each
+/// folder holding the rights named.
+async fn narrowed(inbox: MyRights, archive: MyRights) -> Set {
+    let mail = (1..=2).map(huliho_imap_bridge::testing::Message::new);
+    let mut mailboxes = sync_rig::inbox(mail.collect());
+    mailboxes.extensions.insert(Extension::Acl);
+    let mut folders = mailboxes.folders();
+    folders[0].rights = inbox;
+    mailboxes.set(folders);
+    mailboxes.push(Folder {
+        rights: archive,
+        ..Folder::special(ARCHIVE, "\\Archive")
+    });
+    started(mailboxes, INBOX, false).await
+}
+
+/// The letters MYRIGHTS names refuse a write with nothing sent (RFC 4314
+/// section 4): no move out of a folder without `t` and `e` and none into
+/// one without `i`, no destroy without `t` and `e`, no keyword but
+/// `$seen` without `w`. What the letters grant still goes out.
+#[tokio::test]
+async fn the_letters_refuse_a_move_a_destroy_and_a_keyword_with_nothing_sent_rfc4314_4() {
+    let set = narrowed(MyRights::Letters("ilrs"), MyRights::Owner).await;
+    let before = set.state();
+    let answered = archive_both(&set).await;
+    assert_eq!(refused(&set, &answered, 1), "forbidden", "{answered}");
+    let destroyed = set.set(json!({ "destroy": [set.ids[&2]] })).await;
+    assert_eq!(destroyed["notDestroyed"][&set.ids[&2]]["type"], "forbidden");
+    let flagged = set
+        .update(&[(1, json!({ "keywords/$flagged": true }))])
+        .await;
+    assert_eq!(refused(&set, &flagged, 1), "forbidden", "{flagged}");
+    assert!(set.written().is_empty(), "{:?}", set.written());
+    untouched(&set, before).await;
+    let unread = set.update(&[(1, json!({ "keywords/$seen": null }))]).await;
+    assert!(unread["notUpdated"].is_null(), "{unread}");
+    assert!(
+        set.written()
+            .iter()
+            .any(|line| line.starts_with("UID STORE "))
+    );
+    let set = narrowed(MyRights::Owner, MyRights::Letters("lrs")).await;
+    let answered = archive_both(&set).await;
+    assert_eq!(refused(&set, &answered, 2), "forbidden", "{answered}");
+    assert!(set.written().is_empty(), "{:?}", set.written());
 }
 
 #[tokio::test]

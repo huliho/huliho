@@ -179,6 +179,32 @@ fn every_right_is_what_kept_spells_for_the_full_set_rfc4314_2_1() {
 }
 
 #[test]
+fn a_write_takes_every_letter_its_right_needs_and_no_letters_grant_all_but_submission_rfc4314_4() {
+    let narrowed = Some("ilrs");
+    for (right, held) in [
+        (Right::ReadItems, true),
+        (Right::AddItems, true),
+        (Right::RemoveItems, false),
+        (Right::SetSeen, true),
+        (Right::SetKeywords, false),
+        (Right::CreateChild, false),
+        (Right::Rename, false),
+        (Right::Delete, false),
+        (Right::Submit, false),
+    ] {
+        assert_eq!(allows(narrowed, right), held, "{right:?}");
+    }
+    assert!(
+        !allows(Some("lrst"), Right::RemoveItems),
+        "t alone removes nothing"
+    );
+    assert!(allows(Some("lrste"), Right::RemoveItems));
+    for right in Right::ALL {
+        assert_eq!(allows(None, right), right != Right::Submit, "{right:?}");
+    }
+}
+
+#[test]
 fn the_object_names_every_right_rfc8621_2() {
     let object = MailboxRights::default().object();
     let names: Vec<&String> = object.as_object().unwrap().keys().collect();

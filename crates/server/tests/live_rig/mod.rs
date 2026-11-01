@@ -8,9 +8,10 @@
 //! connection that edits the mailbox is `second`; the steps of a
 //! message that is opened are `reading`; an account that holds the
 //! latency corpus is `synced`; the searches of that corpus are
-//! `searching`.
+//! `searching`; the folder cycle through `Mailbox/set` is `folders`.
 
 pub mod corpus;
+pub mod folders;
 pub mod reading;
 pub mod searching;
 mod second;
@@ -35,7 +36,7 @@ use huliho_server::upstream::Upstream;
 use serde_json::{Value, json};
 use tokio::time::sleep;
 
-pub use second::{Editor, clear, editor, expunge, flag, seed, seed_rich, seen, within};
+pub use second::{Editor, append, clear, editor, expunge, flag, seed, seed_rich, seen, within};
 pub use synced::{Synced, leave};
 
 use crate::answers::answer;
@@ -86,11 +87,13 @@ pub const LOOKS: usize = 30;
 /// How many looks after a failed round the bridge tries again.
 const RETRY_LOOKS: u32 = 5;
 
-/// The compose targets: Cyrus over JMAP, the Dovecot with a search index
-/// and the Dovecot without one, both through the bridge.
+/// The compose targets: Cyrus over JMAP, the same Cyrus over IMAPS, the
+/// Dovecot with a search index and the Dovecot without one, the last
+/// three through the bridge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Target {
     Cyrus,
+    CyrusBridge,
     Dovecot,
     DovecotPlain,
 }
@@ -98,7 +101,7 @@ pub enum Target {
 impl Target {
     fn imaps_port(self) -> u16 {
         match self {
-            Self::Cyrus => CYRUS_IMAPS_PORT,
+            Self::Cyrus | Self::CyrusBridge => CYRUS_IMAPS_PORT,
             Self::Dovecot => DOVECOT_IMAPS_PORT,
             Self::DovecotPlain => PLAIN_IMAPS_PORT,
         }
@@ -110,7 +113,9 @@ impl Target {
         self != Self::Cyrus
     }
 
-    /// The submission port of a Dovecot.
+    /// The submission port the account's credential check signs in to.
+    /// Cyrus runs none, so its bridge account takes Dovecot's, which
+    /// accepts the same user.
     fn submission_port(self) -> u16 {
         if self == Self::DovecotPlain {
             PLAIN_SUBMISSION_PORT
@@ -127,7 +132,7 @@ impl Target {
                 "kind": "jmap",
                 "sessionUrl": format!("https://{HOST}:{CYRUS_JMAP_PORT}/jmap"),
             }),
-            Self::Dovecot | Self::DovecotPlain => json!({
+            Self::CyrusBridge | Self::Dovecot | Self::DovecotPlain => json!({
                 "kind": "imap",
                 "username": MAIL_ADDRESS,
                 "imap": { "host": HOST, "port": self.imaps_port(), "tls": "implicit" },
