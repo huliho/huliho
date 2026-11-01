@@ -10,6 +10,7 @@ import { answerCalls, asksBody, asksSet, noteArrival, serverFor } from "./mail-a
 import type { Invocation, MailServer } from "./mail-answers";
 import { UPSTREAM, arrive, corpusFor } from "./mail-corpus";
 import type { Corpus, CorpusEmail } from "./mail-corpus";
+import { MAX_NAME_BYTES } from "./mail-folder-rules";
 import { asksSearch } from "./mail-search";
 import { mockPolicies } from "./policy-mocks";
 import type { PolicyStore } from "./policy-mocks";
@@ -26,6 +27,7 @@ interface SessionShape {
   vendor: boolean;
   quota: boolean;
   maxObjectsInSet: number;
+  topLevel: boolean;
 }
 // The problem a request past the server's concurrency gets (RFC 8620 section 3.6.1).
 const LIMIT_PROBLEM = {
@@ -125,6 +127,18 @@ export const WRITABLE_MAILBOXES: MailboxBody[] = MAILBOXES.map((row) => ({
   myRights: { ...row.myRights, mayAddItems: true, mayRemoveItems: true },
 }));
 
+// A mailbox on a server that lets the user manage the folders: INBOX is
+// never renamed or deleted and a role mailbox never deleted (RFC 8621
+// section 2).
+function managed(row: MailboxBody): MailboxBody {
+  const inbox = row.role === "inbox";
+  const myRights = { ...row.myRights, mayCreateChild: true, mayRename: !inbox };
+  return { ...row, myRights: { ...myRights, mayDelete: row.role === null } };
+}
+
+// The tree of WRITABLE_MAILBOXES with the folders managed.
+export const FOLDER_MAILBOXES: MailboxBody[] = WRITABLE_MAILBOXES.map(managed);
+
 function isInvocation(value: unknown): value is Invocation {
   return Array.isArray(value) && value.length === 3 && typeof value[0] === "string";
 }
@@ -137,13 +151,16 @@ function calls(route: Route): Invocation[] {
 }
 
 // The session object of an account on the proxy, as the worker reads
-// it; a bridge account carries the vendor capability as well, an
-// account with quotas the quota capability.
-function sessionBody(accountId: string, { vendor, quota, maxObjectsInSet }: SessionShape): object {
+// it, with the account's mail limits the folder dialogs read (RFC 8621
+// section 1.3.1); a bridge account carries the vendor capability as
+// well, an account with quotas the quota capability.
+function sessionBody(accountId: string, shape: SessionShape): object {
+  const { vendor, quota, maxObjectsInSet, topLevel } = shape;
   const extra = {
     ...(vendor ? { [HULIHO_CAPABILITY]: {} } : {}),
     ...(quota ? { [QUOTA_CAPABILITY]: {} } : {}),
   };
+  const limits = { maxSizeMailboxName: MAX_NAME_BYTES, mayCreateTopLevelMailbox: topLevel };
   return {
     capabilities: {
       [CORE_CAPABILITY]: {
@@ -164,7 +181,7 @@ function sessionBody(accountId: string, { vendor, quota, maxObjectsInSet }: Sess
         name: "mira@example.com",
         isPersonal: true,
         isReadOnly: false,
-        accountCapabilities: { [MAIL_CAPABILITY]: {}, ...extra },
+        accountCapabilities: { [MAIL_CAPABILITY]: limits, ...extra },
       },
     },
     primaryAccounts: { [MAIL_CAPABILITY]: UPSTREAM },
@@ -195,6 +212,8 @@ export interface MailOptions {
   quotas?: Record<string, unknown>[];
   // The most emails one write takes, so a folder job runs in rounds.
   maxObjectsInSet?: number;
+  // Whether a mailbox may be created at the top level; true without it.
+  mayCreateTopLevelMailbox?: boolean;
 }
 
 // The mocked mail behind a page: the server the routes answer from, a
@@ -261,6 +280,7 @@ export async function mockMail(
     ),
   );
   const server = serverFor(corpus, listed, options.quotas ?? null);
+  server.topLevel = options.mayCreateTopLevelMailbox ?? true;
   const policies = options.policies ?? new Map();
   const context = page.context();
   await context.addInitScript(() => {
@@ -270,6 +290,7 @@ export async function mockMail(
     vendor: options.vendor === true,
     quota: options.quotas !== undefined,
     maxObjectsInSet: options.maxObjectsInSet ?? MAX_OBJECTS_IN_SET,
+    topLevel: server.topLevel,
   };
   await context.route(SESSION_ROUTE, (route) =>
     route.fulfill({ json: sessionBody(accountIdOf(route), shape) }),

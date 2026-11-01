@@ -11,17 +11,20 @@
 //! carries that store alone, and leaving either is a move into All Mail
 //! with the labels of the patch stored there. A destroy on Gmail stays
 //! in Spam and Trash, since the account's own setting decides what an
-//! expunge does anywhere else.
+//! expunge does anywhere else. A write the letters MYRIGHTS named do not
+//! grant answers `forbidden` before anything is sent.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
+use super::super::query::SEEN;
 use super::super::set::{MailboxEdit, Patch, SetAsk, SetError};
 use super::keywords;
 use super::moves::{self, Relabel};
 use super::{Expected, Member, Tally, Work};
 use crate::gmail::ALL_MAIL_ROLE;
 use crate::mailboxes::SyncError;
+use crate::mailboxes::rights::{self, Right};
 use crate::session::Moving;
 use crate::store::{KeywordRow, MailboxId, MailboxRow, SetWrite};
 use crate::sync::{Cache, blocking};
@@ -72,16 +75,16 @@ pub(super) async fn planned(
         .map(|(id, _)| id.clone())
         .chain(ask.destroy.iter().cloned())
         .collect();
-    let (state, found, rows) = blocking(move || {
+    let (state, found, rows, letters) = blocking(move || {
         let names: Vec<&str> = ids.iter().map(String::as_str).collect();
         let (state, found) = store.keyword_rows(&key, &names)?;
-        let rows: HashMap<MailboxId, MailboxRow> = store
-            .mailbox_snapshot(&key)?
+        let snapshot = store.mailbox_snapshot(&key)?;
+        let rows: HashMap<MailboxId, MailboxRow> = snapshot
             .rows
             .into_iter()
             .map(|row| (row.id.clone(), row))
             .collect();
-        Ok((state, found, rows))
+        Ok((state, found, rows, snapshot.rights))
     })
     .await?;
     if ask
@@ -96,6 +99,7 @@ pub(super) async fn planned(
     let mut work = Work {
         folders: std::collections::BTreeMap::new(),
         rows,
+        letters,
         tallies: vec![Tally::default(); ask.updates.len() + ask.destroy.len()],
         stored: SetWrite {
             gmail: labeled,
@@ -141,6 +145,10 @@ fn update(
     if !keyword_part && plan == Plan::Nothing {
         return Ok(());
     }
+    let changed: Vec<&String> = patch.keywords.set.iter().chain(&remove).collect();
+    if !permitted(work, row, &changed, &plan) {
+        return Err(SetError::Forbidden);
+    }
     let member = Member {
         index,
         id: row.id.clone(),
@@ -182,6 +190,9 @@ fn destroy(
 ) -> Result<(), SetError> {
     let row = row.ok_or(SetError::NotFound)?;
     let uid = row.uid.ok_or(SetError::ServerUnavailable)?;
+    if !may(work, &row.folder, Right::RemoveItems) {
+        return Err(SetError::Forbidden);
+    }
     if labeled {
         let role = work
             .rows
@@ -203,6 +214,46 @@ fn destroy(
         .push(member);
     work.tallies[index].left = 1;
     Ok(())
+}
+
+/// Whether the letters of the folder grant the right (RFC 4314 section
+/// 4).
+fn may(work: &Work, folder: &MailboxId, right: Right) -> bool {
+    rights::allows(work.letters.get(folder).map(String::as_str), right)
+}
+
+/// Whether the rights let the update run (RFC 8621 section 2): each
+/// keyword it changes takes `maySetSeen` or `maySetKeywords` where the
+/// email lies, a move `mayRemoveItems` there and `mayAddItems` where it
+/// goes, a label the same on its mailbox.
+fn permitted(work: &Work, row: &KeywordRow, changed: &[&String], plan: &Plan) -> bool {
+    let here = &row.folder;
+    let keywords = changed.iter().all(|keyword| {
+        let right = if keyword.as_str() == SEEN {
+            Right::SetSeen
+        } else {
+            Right::SetKeywords
+        };
+        may(work, here, right)
+    });
+    let labels = |relabel: &Relabel| {
+        let added = relabel.add.iter().all(|id| may(work, id, Right::AddItems));
+        added
+            && relabel
+                .remove
+                .iter()
+                .all(|id| may(work, id, Right::RemoveItems))
+    };
+    keywords
+        && match plan {
+            Plan::Nothing => true,
+            Plan::Labels(relabel) => labels(relabel),
+            Plan::Move { to, then } => {
+                may(work, here, Right::RemoveItems)
+                    && may(work, to, Right::AddItems)
+                    && then.as_ref().is_none_or(labels)
+            }
+        }
 }
 
 /// What the mailbox edit does to the row. Every mailbox it names is one

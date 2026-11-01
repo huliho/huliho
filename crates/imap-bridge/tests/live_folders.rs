@@ -6,7 +6,9 @@
 //! name outside ASCII created, renamed with its mail and a folder under
 //! it, subscribed, unsubscribed and deleted on Dovecot, each step seen
 //! from a second connection and through the mailbox pass. Beside it the
-//! rights Cyrus names over IMAPS, per mailbox and through LIST.
+//! folder Dovecot narrows refusing the folder commands, the Dovecot
+//! without ACL and the rights Cyrus names over IMAPS, per mailbox and
+//! through LIST.
 
 #![cfg(feature = "live-targets")]
 
@@ -28,8 +30,12 @@ const FOLDER: &str = "Mappen ü";
 const RENAMED: &str = "Mappen ö";
 const CHILD: &str = "Kind é";
 
-/// The compose Cyrus over implicit TLS.
+/// The compose Cyrus and the Dovecot without ACL, over implicit TLS.
 const CYRUS_IMAPS_PORT: u16 = 9993;
+const PLAIN_IMAPS_PORT: u16 = 32093;
+
+/// The folder the compose Dovecot's ACL leaves the owner `ilrs` on.
+const LOCKED: &str = "Locked";
 
 /// One name as the second connection lists it.
 #[derive(Debug)]
@@ -182,7 +188,54 @@ async fn dovecot_runs_the_folder_cycle_a_second_client_sees_rfc3501_6_3_3_to_6_3
         "{names:?}"
     );
 
-    // No ACL here, so MYRIGHTS is a command Dovecot does not know.
+    // The ACL plugin names the owner's rights on its own folders.
+    let acl = session.capabilities().await.unwrap().acl();
+    assert!(acl.my_rights && acl.list_rights);
+    let inbox = session.my_rights("INBOX").await.unwrap();
+    assert!(
+        "iklrstwx".chars().all(|letter| inbox.has(letter)),
+        "{inbox:?}"
+    );
+    session.logout().await.unwrap();
+    within(editor.logout()).await.unwrap();
+}
+
+/// The folder Dovecot's ACL narrows to `ilrs` refuses a folder under it,
+/// its rename and its delete (RFC 4314 section 4); each NO keeps the
+/// session.
+#[tokio::test]
+async fn dovecot_refuses_the_folder_commands_on_the_folder_it_narrows_rfc4314_4() {
+    let mut session = bridge_session().await;
+    let listing = session.list(ListReturn::default()).await.unwrap();
+    let inbox = listing.entries.iter().find(|entry| entry.name == "INBOX");
+    let delimiter = inbox.unwrap().delimiter;
+    assert_eq!(session.my_rights(LOCKED).await.unwrap().letters(), "ilrs");
+    let under = Place {
+        parent: Some(LOCKED),
+        delimiter,
+    };
+    let child = MailboxName::new(CHILD, under).unwrap();
+    let created = session.create(&child).await;
+    assert!(matches!(created, Err(SessionError::Refused)), "{created:?}");
+    let top = Place {
+        parent: None,
+        delimiter,
+    };
+    let renamed = session
+        .rename(LOCKED, &MailboxName::new(RENAMED, top).unwrap())
+        .await;
+    assert!(matches!(renamed, Err(SessionError::Refused)), "{renamed:?}");
+    let deleted = session.delete(LOCKED).await;
+    assert!(matches!(deleted, Err(SessionError::Refused)), "{deleted:?}");
+    session.noop().await.unwrap();
+    session.logout().await.unwrap();
+}
+
+/// The Dovecot without the ACL plugin advertises no ACL, so MYRIGHTS is
+/// a command it does not know.
+#[tokio::test]
+async fn the_dovecot_without_acl_knows_no_myrights_rfc4314_3_5() {
+    let mut session = bridge_session_on(PLAIN_IMAPS_PORT).await;
     assert!(!session.capabilities().await.unwrap().acl().my_rights);
     let unknown = session.my_rights("INBOX").await;
     assert!(
@@ -191,7 +244,6 @@ async fn dovecot_runs_the_folder_cycle_a_second_client_sees_rfc3501_6_3_3_to_6_3
     );
     session.noop().await.unwrap();
     session.logout().await.unwrap();
-    within(editor.logout()).await.unwrap();
 }
 
 /// What the second connection's own MYRIGHTS answers, in the form the

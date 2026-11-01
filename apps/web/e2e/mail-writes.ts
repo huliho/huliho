@@ -165,14 +165,10 @@ function updated(server: MailServer, id: string, patch: unknown): string | null 
   return null;
 }
 
-// One destroy: the SetError type when it is refused, null once done. The
-// message leaves its mailbox and its thread, the thread with its last.
-function destroyed(server: MailServer, id: string): string | null {
-  const message = server.corpus.emails.get(id);
-  const refusal = server.refused.get(id);
-  if (refusal !== undefined || message === undefined || server.gone.has(id)) {
-    return refusal ?? "notFound";
-  }
+// The message leaves its mailbox and its thread, the thread with its
+// last, both logged.
+export function removeEmail(server: MailServer, message: CorpusEmail): void {
+  const id = message.id;
   relisted(server, message.mailboxId, id, false);
   server.corpus.emails.delete(id);
   const left = (server.corpus.threads.get(message.threadId) ?? []).filter((held) => held !== id);
@@ -183,6 +179,16 @@ function destroyed(server: MailServer, id: string): string | null {
   }
   logged(server, "Email", id, "destroyed");
   logged(server, "Thread", message.threadId, left.length === 0 ? "destroyed" : "updated");
+}
+
+// One destroy: the SetError type when it is refused, null once done.
+function destroyed(server: MailServer, id: string): string | null {
+  const message = server.corpus.emails.get(id);
+  const refusal = server.refused.get(id);
+  if (refusal !== undefined || message === undefined || server.gone.has(id)) {
+    return refusal ?? "notFound";
+  }
+  removeEmail(server, message);
   recount(server, message.mailboxId);
   return null;
 }

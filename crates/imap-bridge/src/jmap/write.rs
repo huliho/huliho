@@ -85,6 +85,9 @@ struct Expected {
 struct Work {
     folders: BTreeMap<MailboxId, Folder>,
     rows: HashMap<MailboxId, MailboxRow>,
+    /// The letters MYRIGHTS named per folder; a folder without them takes
+    /// every write the server's commands allow.
+    letters: HashMap<MailboxId, String>,
     /// The updates of the ask, then its destroys.
     tallies: Vec<Tally>,
     /// What the server took, for the rows.

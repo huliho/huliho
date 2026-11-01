@@ -37,8 +37,9 @@ pub const QUERY_LIMIT: u32 = 200;
 /// The one property a comparator may name.
 const RECEIVED_AT: &str = "receivedAt";
 
-/// The keywords the coarse UNSEEN and FLAGGED keys stand for.
-const SEEN: &str = "$seen";
+/// The keywords the coarse UNSEEN and FLAGGED keys stand for; `$seen` is
+/// also the one keyword `maySetSeen` covers (RFC 8621 section 2).
+pub(super) const SEEN: &str = "$seen";
 const FLAGGED: &str = "$flagged";
 
 /// The fixed words of a filter the bridge refuses.

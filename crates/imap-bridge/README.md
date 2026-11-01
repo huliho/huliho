@@ -311,7 +311,12 @@ its flag (RFC 8621 section 4.1.1): the four system keywords as `\Seen`,
 `\Flagged`, `\Answered` and `\Draft`, any other as an atom. A mailbox
 the account does not hold or that holds no mail answers
 `invalidProperties`. A mailbox named by a creation id with `#` in front
-is the one a `Mailbox/set` earlier in the request made under it.
+is the one a `Mailbox/set` earlier in the request made under it. Where
+MYRIGHTS named the user's rights on a folder, a write they do not grant
+answers `forbidden` before anything is sent (RFC 4314 section 4): a
+keyword takes `s` for `$seen` and `w` for any other, a move `t` and `e`
+on the folder the message leaves and `i` on the one it enters, a
+destroy `t` and `e`.
 
 On a folder account a message lies in one folder, so a change of its
 mailboxes is a move (RFC 8621 section 1.3.1): an update that leaves the

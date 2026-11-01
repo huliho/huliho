@@ -22,12 +22,13 @@
 # it finds unindexed. Its learn hook writes "spam" or "ham" with the
 # Message-ID of every message copied or moved into Junk or moved out of it
 # to /tmp/learned inside the container; a move from Junk to Trash writes
-# nothing.
+# nothing. Its access control lists leave the user every right on its
+# folders but Locked, which takes mail in and lets none out.
 #
-# dovecot-plain: the same image without a search index, a quota or the
-# learn hook, so a search reads every message. IMAP with STARTTLS on
-# 31243, IMAPS on 32093 and submission on 31687, each 100 above
-# Dovecot's, with a mail volume of its own.
+# dovecot-plain: the same image without a search index, a quota, the
+# learn hook or access control lists, so a search reads every message.
+# IMAP with STARTTLS on 31243, IMAPS on 32093 and submission on 31687,
+# each 100 above Dovecot's, with a mail volume of its own.
 
 configs:
   certs-init:
@@ -137,6 +138,30 @@ configs:
         mailbox Archive {
           auto = subscribe
           special_use = \Archive
+        }
+      }
+
+  dovecot-acl.conf:
+    content: |
+      # Access control lists (RFC 4314). The owner holds every right on its
+      # own folders but Locked, created and subscribed on first login,
+      # where it may list, read, mark seen and add mail and nothing more:
+      # no folder under it, no rename, no delete and no mail out of it.
+      mail_plugins {
+        acl = yes
+      }
+      acl_driver = vfile
+      protocol imap {
+        mail_plugins {
+          imap_acl = yes
+        }
+      }
+      namespace inbox {
+        mailbox Locked {
+          auto = subscribe
+          acl owner {
+            rights = lrsi
+          }
         }
       }
 
@@ -310,6 +335,9 @@ services:
         mode: 0444
       - source: dovecot-quota.conf
         target: /etc/dovecot/conf.d/quota.conf
+        mode: 0444
+      - source: dovecot-acl.conf
+        target: /etc/dovecot/conf.d/acl.conf
         mode: 0444
       - source: dovecot-learn.conf
         target: /etc/dovecot/conf.d/learn.conf
