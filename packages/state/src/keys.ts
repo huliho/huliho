@@ -13,6 +13,8 @@ export const queryKeys = {
   sessions: ["sessions"],
   users: ["users"],
   mailboxes: (accountId: string) => [accountId, "mailboxes"] as const,
+  // The account's folder limits, read again with its tree.
+  mailboxLimits: (accountId: string) => [accountId, "mailboxes", "limits"] as const,
   // Every page of one list; a page adds its number.
   windows: (accountId: string, mailboxId: string) => [accountId, "window", mailboxId] as const,
   window: (accountId: string, mailboxId: string, page: number) =>

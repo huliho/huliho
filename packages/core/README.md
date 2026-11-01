@@ -82,12 +82,13 @@ jobs a mailbox offers. `actionMutations` turns an action on a thread
 into the changes of its emails in that mailbox, `moveMutations` does
 so for a move to the mailbox picked and `verbOf` names what a refused
 change did.
-`MailCache` is what an adapter offers the query hooks: the tree, a
-page, a thread, the reveal, the
+`MailCache` is what an adapter offers the query hooks: the tree, what
+the account allows a folder, one write of its folders, a page, a
+thread, the reveal, the
 body of one email with where its parts download from, one change to
 an email or the changes to several with the release or the drop of a
-held destroy, the folder jobs and the quota, each answered from the
-cache. A store that keeps rows on
+held destroy, the folder jobs and the quota, every read answered from
+the cache. A store that keeps rows on
 disk checks them against the row schemas when they come back.
 
 It reads what a message says about itself as well. `unflow` joins the

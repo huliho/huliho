@@ -110,6 +110,7 @@ export function useField(context: FieldContext, ran: SearchParams, search: RanSe
   const groups = suggestionsOf({
     ...context,
     text: draft.text,
+    operators: draft.operators,
     senders: prefix === null ? [] : (senders.data ?? []),
     recents: recentsOf(context),
     today,

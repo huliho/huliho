@@ -33,6 +33,11 @@ export function countWords(progress: JobProgress, locale: Locale): string | null
     : m.job_count({ done: progress.done, total: totalOf(progress) }, { locale });
 }
 
+// A job asked offline ran nothing.
+export function offlineSentence(locale: Locale): string {
+  return m.job_offline({}, { locale });
+}
+
 // What a job that ended says, in the toast and the header's region.
 export function endSentence(progress: JobProgress, mailbox: Mailbox, locale: Locale): string {
   const kind = kindOf(progress, mailbox);

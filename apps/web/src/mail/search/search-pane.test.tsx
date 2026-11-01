@@ -123,8 +123,9 @@ const shortcut = () => screen.queryByRole("button", { name: "from: a sender" });
 // The element the field's description points at.
 const described = () => document.getElementById(field().getAttribute("aria-describedby") ?? "");
 
+// Typed as a keyboard types it, so the list's highlight follows the text.
 function type(text: string): void {
-  fireEvent.change(field(), { target: { value: text } });
+  fireEvent.input(field(), { target: { value: text }, inputType: "insertText" });
 }
 
 function press(key: string, target: HTMLElement = field()): void {
@@ -199,6 +200,24 @@ test("a sender picked from the suggestions becomes a token and runs at once", as
   await waitFor(() => {
     expect(region().textContent).toBe("3 results in all mailboxes");
   });
+});
+
+test("a token typed after a run keeps the plain search first, so Enter runs the field, not the recent", async () => {
+  const both = searchKeyOf({ from: PIETER, unread: true });
+  renderPane(searching({ [searchKeyOf({ from: PIETER })]: RESULTS, [both]: RESULTS }));
+  type("from:pie");
+  fireEvent.click(await screen.findByRole("option", { name: /Pieter Blom/ }));
+  await waitFor(() => {
+    expect(region().textContent).toBe("3 results in all mailboxes");
+  });
+  type("is:unread");
+  type("is:unread ");
+  const run = screen.getByRole("option", { name: `Search for “from:${PIETER} is:unread”` });
+  expect(screen.getAllByRole("option")[0]).toBe(run);
+  press("Enter");
+  expect(route()).toEqual({ from: PIETER, unread: "1", box: "mb-inbox" });
+  expect(screen.getByRole("button", { name: "Remove is: unread" })).toBeDefined();
+  expect(recentSearches(FASTMAIL.id, false)).toEqual([both, searchKeyOf({ from: PIETER })]);
 });
 
 test("an operator typed with a space after it becomes a token; Backspace at the start takes it", () => {

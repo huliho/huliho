@@ -14,6 +14,25 @@ function writable(box: Mailbox): Mailbox {
 // The fixtures' tree on a server that moves messages.
 export const WRITABLE: Mailbox[] = MAILBOXES.map(writable);
 
+// A mailbox on a server that lets the user manage the folders: INBOX is
+// never renamed or deleted and a role mailbox never deleted.
+function managed(box: Mailbox): Mailbox {
+  const inbox = box.role === "inbox";
+  const rights = { ...box.myRights, mayCreateChild: true, mayRename: !inbox };
+  return { ...box, myRights: { ...rights, mayDelete: box.role === null } };
+}
+
+// The writable tree with the folders managed.
+export const MANAGED: Mailbox[] = WRITABLE.map(managed);
+
+export function managedOf(id: string): Mailbox {
+  const found = MANAGED.find((box) => box.id === id);
+  if (found === undefined) {
+    throw new Error(`no ${id} in the fixtures`);
+  }
+  return found;
+}
+
 export function boxOf(role: string): Mailbox {
   const found = WRITABLE.find((box) => box.role === role);
   if (found === undefined) {

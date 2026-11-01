@@ -284,18 +284,26 @@ test("a tab leases on mount, renews at the interval, polls on its return and sto
   expect(spawn).toHaveBeenCalledOnce();
 });
 
-test("persistence is asked for once per page and reported even when the request fails", async () => {
-  const persist = vi.fn<() => Promise<boolean>>(() => Promise.reject(new Error("refused")));
-  const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
-  const { remote, windowSide } = await page(persist);
-  windowSide.attachCache(LEASE)();
-  windowSide.attachCache(LEASE)();
-  await vi.waitFor(() => {
-    expect(remote.persisted).toHaveBeenCalledOnce();
-  });
-  expect(persist).toHaveBeenCalledOnce();
-  expect(logged).toHaveBeenCalledOnce();
-});
+test.each([
+  ["answers at once", () => Promise.resolve(true), 0],
+  ["never answers", () => new Promise<boolean>(() => undefined), 0],
+  ["fails the request", () => Promise.reject(new Error("refused")), 1],
+])(
+  "persistence is asked for once per page and the worker hears once the request is out, whether the browser %s",
+  async (_how, answer, failures) => {
+    const persist = vi.fn<() => Promise<boolean>>(answer);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { remote, windowSide } = await page(persist);
+    windowSide.attachCache(LEASE)();
+    windowSide.attachCache(LEASE)();
+    await vi.waitFor(() => {
+      expect(remote.persisted).toHaveBeenCalledOnce();
+    });
+    expect(persist).toHaveBeenCalledOnce();
+    expect(persist).toHaveBeenCalledBefore(remote.persisted);
+    expect(logged).toHaveBeenCalledTimes(failures);
+  },
+);
 
 test("a strict instance asks for no persistent storage and still reports", async () => {
   const persist = vi.fn<() => Promise<boolean>>(() => Promise.resolve(true));

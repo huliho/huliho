@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import type { SearchParams } from "@huliho/core";
 import { expect, test } from "vitest";
 
+import { withBox } from "../actions/writable-rig";
 import { FIXED_NOW, MAILBOXES, SENDERS } from "../fixtures";
 import { presetDay, senderPrefix, suggestionsOf } from "./search-suggestions";
 import type { Recent, SuggestionGroup, SuggestionInput } from "./search-suggestions";
@@ -16,6 +18,7 @@ const RECENTS: Recent[] = [
 function input(text: string, more: Partial<SuggestionInput> = {}): SuggestionInput {
   return {
     text,
+    operators: {},
     senders: [],
     mailboxes: MAILBOXES,
     recents: RECENTS,
@@ -35,6 +38,26 @@ function values(groups: readonly SuggestionGroup[]): Record<string, string[]> {
 test("an empty field offers the recents alone, newest first", () => {
   expect(values(suggestionsOf(input("")))).toEqual({ recent: ["recent:r1", "recent:r2"] });
   expect(suggestionsOf(input("", { recents: [] }))).toEqual([]);
+});
+
+test("tokens with no text offer the plain search first, as the field writes them, then the recents", () => {
+  const operators: SearchParams = {
+    from: "pieter@blom-installaties.example",
+    in: "mb-facturen",
+    unread: true,
+  };
+  const groups = suggestionsOf(input("", { operators }));
+  expect(values(groups)).toEqual({ suggest: ["run"], recent: ["recent:r1", "recent:r2"] });
+  expect(groups[0]?.items[0]).toEqual({
+    kind: "run",
+    value: "run",
+    text: "from:pieter@blom-installaties.example in:Facturen is:unread",
+  });
+  expect(suggestionsOf(input("off", { operators }))[0]?.items[0]).toEqual({
+    kind: "run",
+    value: "run",
+    text: "off",
+  });
 });
 
 test("a word offers the plain search first, then the senders and the mailboxes it starts", () => {
@@ -83,6 +106,15 @@ test("in: offers the mailboxes in the tree's order with the widening under its r
   expect(values(suggestionsOf(input("in:fac", { recents: [] })))).toEqual({
     suggest: ["in:mb-facturen"],
   });
+});
+
+test("in: offers the mailboxes the tree draws, never a hidden folder", () => {
+  const facturen = MAILBOXES.find((row) => row.id === "mb-facturen");
+  if (facturen === undefined) {
+    throw new Error("the fixtures hold no Facturen");
+  }
+  const hidden = withBox({ ...facturen, isSubscribed: false });
+  expect(values(suggestionsOf(input("in:fac", { mailboxes: hidden, recents: [] })))).toEqual({});
 });
 
 test("after: and before: offer the three presets with the day each starts on", () => {

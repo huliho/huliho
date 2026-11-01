@@ -6,6 +6,7 @@ export { accountsQueryOptions, consentQueryOptions } from "./accounts";
 export { MAIL_KEY_WORDS, queryKeys } from "./keys";
 export {
   bodyQueryOptions,
+  mailboxLimitsQueryOptions,
   mailboxesQueryOptions,
   quotaQueryOptions,
   threadQueryOptions,

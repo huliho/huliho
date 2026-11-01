@@ -39,7 +39,7 @@ function heardJobEnd(queryClient: QueryClient, accountId: string, progress: JobP
   const mailboxes = queryClient.getQueryData(mailboxesQueryOptions(mailCache, accountId).queryKey);
   const mailbox = mailboxes?.find((row) => row.id === progress.job.mailboxId);
   if (mailbox !== undefined && tells(queryClient)) {
-    showJobEnd({ cache: mailCache, accountId, progress, mailbox, locale: getLocale() });
+    void showJobEnd({ cache: mailCache, accountId, progress, mailbox, locale: getLocale() });
   }
 }
 

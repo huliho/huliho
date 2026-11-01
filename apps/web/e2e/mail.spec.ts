@@ -165,9 +165,11 @@ test("the arrow keys walk the tree and Tab leaves it as one stop", async ({ page
   await expect(tree(page).getByRole("treeitem", { name: "Offertes" })).toBeFocused();
   await page.keyboard.press("Home");
   await expect(tree(page).getByRole("treeitem", { name: "Inbox, 23 unread" })).toBeFocused();
-  // Tab reaches the mailbox's menu and the search in the header, then the
-  // list once its first page is in.
+  // Tab reaches New folder at the tree's caption, the mailbox's menu and
+  // the search in the header, then the list once its first page is in.
   await expect(page.getByRole("grid").locator('[aria-rowindex="1"]')).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "New folder", exact: true })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.locator("main header").getByRole("button", { name: "Inbox" })).toBeFocused();
   await page.keyboard.press("Tab");
@@ -380,6 +382,8 @@ test("the shell is axe-clean and matches its screenshots at four widths", async 
         await expect.soft(page).toHaveScreenshot(`mail-${theme}-${viewport.name}.png`);
         await page.goto("/mail/acc-1/mb-verbouwing");
         await expect(page.getByText("Verbouwing is empty.")).toBeVisible();
+        // The folder's items make its name a menu button once the account's limits are in.
+        await expect(page.locator("main header h1").getByRole("button")).toBeVisible();
         await expect.soft(page).toHaveScreenshot(`mail-empty-${theme}-${viewport.name}.png`);
       });
     }

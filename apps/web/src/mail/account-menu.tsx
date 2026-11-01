@@ -26,10 +26,16 @@ import type { AccountSwitcherProps } from "./account-card";
 import { useInboxCounts } from "./inbox-counts";
 import { MonoCount } from "./mono-count";
 
-// The bulk bar, the mailbox menus, the quota bar, the search and the hint
-// of the header's search button ride this module's chunk with the account
-// menu, so the code they share stays one chunk.
+// The bulk bar, the mailbox menus, the folder dialogs, a folder job's
+// progress and words, the quota bar, the search and the hints of the
+// header's search button and the tree's New folder control ride this
+// module's chunk with the account menu, so the code they share stays one
+// chunk.
 export { BulkBar } from "./actions/bulk-bar";
+export { FolderDialogs } from "./actions/folder-dialogs";
+export { newFolder, runFolder } from "./actions/folder-runs";
+export { JobProgressBar, OfflineAsk } from "./actions/job-progress";
+export { endSentence, offlineSentence, runningSentence } from "./actions/job-words";
 export { FolderMenu, TreeMenu } from "./folder-menu";
 export { HintedQuota } from "./quota-hint";
 export { SearchView } from "./search/search-view";

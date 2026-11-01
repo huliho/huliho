@@ -10,13 +10,14 @@ import type { Command } from "../../commands/registry";
 import { useCommand } from "../../commands/use-command";
 import { m } from "../../paraglide/messages.js";
 import type { Locale } from "../../paraglide/runtime.js";
-import { askEmpty } from "./confirm-empty";
+import { askFolder } from "./folder-asks";
+import type { FolderAction } from "./folder-asks";
 import { askedOffline, heardJob } from "./job-store";
 
 // One item of a mailbox's menu as the shell words it for the menus
-// chunk; the jobs that empty stand under a rule in danger.
+// chunk; the items that destroy stand under a rule in danger.
 export interface FolderItem {
-  id: "select" | Job["kind"];
+  id: "select" | Job["kind"] | FolderAction;
   label: string;
   danger: boolean;
   run: () => void;
@@ -65,7 +66,8 @@ function runOf({ cache, accountId, mailbox }: FolderJobInput, kind: Job["kind"])
   }
   return () => {
     if (navigator.onLine) {
-      askEmpty({
+      askFolder({
+        kind: "empty",
         mailbox,
         confirm: () => {
           startJob(cache, accountId, job);

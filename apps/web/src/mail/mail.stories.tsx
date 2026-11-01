@@ -11,6 +11,7 @@ import {
   ACCOUNTS,
   EXPIRED,
   FASTMAIL,
+  FOLDER_LIMITS,
   GMAIL,
   INBOX_ID,
   INBOX_PAGE,
@@ -37,6 +38,8 @@ function nothing(): void {
 }
 
 const LOADED: TreeState = { status: "success", mailboxes: MAILBOXES };
+// The folder items of an account that takes a folder at the top.
+const FOLDERS = { limits: FOLDER_LIMITS, leave: nothing };
 const LOADING: TreeState = { status: "pending" };
 const FAILED: TreeState = { status: "error", retry: nothing };
 const EMPTY_INBOX: TreeState = { status: "success", mailboxes: MAILBOXES_EMPTY_INBOX };
@@ -72,6 +75,7 @@ function Shell(props: ShellProps): JSX.Element {
       account={account}
       tree={tree}
       currentMailboxId={currentMailboxId}
+      folders={FOLDERS}
       currentThreadId={currentThreadId}
       searching={false}
       actsFrom={undefined}
@@ -196,6 +200,7 @@ export const SidebarAlone: StoryObj = {
           tree={LOADED}
           currentMailboxId="mb-facturen"
           showLetters
+          folders={FOLDERS}
         />
       ),
       "/mail/acc-1/mb-facturen",
@@ -215,6 +220,7 @@ export const SidebarMarks: StoryObj = {
           tree={LOADED}
           currentMailboxId={INBOX_ID}
           showLetters
+          folders={FOLDERS}
         />
       ),
       `/mail/${EXPIRED.id}/${INBOX_ID}`,

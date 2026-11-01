@@ -62,6 +62,8 @@ test("the sidebar's foot shows the quota as a meter; its hint names the figures 
   await expect(hint).toBeHidden();
   await sidebar(page).getByRole("treeitem").first().focus();
   await page.keyboard.press("Tab");
+  await expect(sidebar(page).getByRole("button", { name: "New folder" })).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(meter).toBeFocused();
   await expect(hint).toBeVisible();
   expect(await axeOn(page).analyze()).toMatchObject({ violations: [] });

@@ -166,6 +166,8 @@ async function search(
 // answer of `mutateMany` ends with one `release` or one `drop`.
 export const mailCache: MailCache = {
   mailboxes: (accountId) => unwrap(worker().mailboxes(accountId)),
+  mailboxLimits: (accountId) => unwrap(worker().mailboxLimits(accountId)),
+  setMailbox: (accountId, write) => unwrap(worker().setMailbox(accountId, write)),
   window: (accountId, mailboxId, page) => unwrap(worker().window(accountId, mailboxId, page)),
   search,
   senders: (accountId, prefix) => unwrap(worker().senders(accountId, prefix)),
@@ -193,26 +195,24 @@ export function clearCache(): Promise<void> {
 }
 
 // Persistent storage is asked for once per page, from the window, since
-// a worker cannot ask; the worker writes once the outcome is known, and
-// a request that fails counts as an outcome. An instance that keeps
-// mail off the disk has nothing to persist and asks for nothing.
-async function requestPersistence(strict: boolean): Promise<void> {
+// a worker cannot ask; the worker writes once the request is out, as a
+// grant covers every row the origin holds and a browser that prompts
+// answers only when the user does. An instance that keeps mail off the
+// disk has nothing to persist and asks for nothing.
+function requestPersistence(strict: boolean): void {
   if (persistenceRequested) {
     return;
   }
   persistenceRequested = true;
-  try {
-    if (!strict && "storage" in navigator) {
-      await navigator.storage.persist();
-    }
-  } catch (error) {
-    console.error(
-      "cache: persistence request failed",
-      error instanceof Error ? error.message : error,
-    );
-  } finally {
-    await worker().persisted();
+  if (!strict && "storage" in navigator) {
+    navigator.storage.persist().catch((error: unknown) => {
+      console.error(
+        "cache: persistence request failed",
+        error instanceof Error ? error.message : error,
+      );
+    });
   }
+  void worker().persisted();
 }
 
 // Asks the worker for a poll now, as a tab's return to view does: what
@@ -233,7 +233,7 @@ export function attachCache(lease: Lease): () => void {
       void worker().focus();
     }
   };
-  void requestPersistence(lease.strict);
+  requestPersistence(lease.strict);
   renew();
   const timer = setInterval(renew, LEASE_RENEW_MS);
   document.addEventListener("visibilitychange", seen);

@@ -4,7 +4,8 @@
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
-import { EmptyDialog } from "./confirm-empty";
+import { ConfirmDialog } from "./folder-dialogs";
+import { DIALOG_PARTS } from "./folder-host";
 import { boxOf } from "./writable-rig";
 
 function nothing(): void {
@@ -20,19 +21,23 @@ export default meta;
 // Trash with its twelve messages, Cancel holding the focus.
 export const Trash: StoryObj = {
   render: () => (
-    <EmptyDialog locale="en" mailbox={boxOf("trash")} open onCancel={nothing} onConfirm={nothing} />
+    <ConfirmDialog
+      locale="en"
+      ask={{ kind: "empty", mailbox: boxOf("trash"), confirm: nothing }}
+      open
+      parts={DIALOG_PARTS}
+    />
   ),
 };
 
 // Junk with one message, worded for one.
 export const JunkOfOne: StoryObj = {
   render: () => (
-    <EmptyDialog
+    <ConfirmDialog
       locale="en"
-      mailbox={{ ...boxOf("junk"), totalEmails: 1 }}
+      ask={{ kind: "empty", mailbox: { ...boxOf("junk"), totalEmails: 1 }, confirm: nothing }}
       open
-      onCancel={nothing}
-      onConfirm={nothing}
+      parts={DIALOG_PARTS}
     />
   ),
 };
