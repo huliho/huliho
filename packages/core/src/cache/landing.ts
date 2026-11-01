@@ -59,7 +59,7 @@ export function landEmails(
     const leaving = left.filter((it) => it.from.includes(row.id)).map((it) => it.id);
     if (strip(row, new Set([...gone, ...leaving]))) {
       folded.lists.push(row.id);
-      batch.queries = { put: [...(batch.queries?.put ?? []), row] };
+      batch.queries = { ...batch.queries, put: [...(batch.queries?.put ?? []), row] };
     }
   }
   batch.emails = { put: patched, remove: changes.destroyed };

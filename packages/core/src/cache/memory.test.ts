@@ -163,6 +163,7 @@ const SEARCH: SearchRow = {
   queryState: "3",
   total: 1,
   pages: [{ page: 0, ids: ["e1"] }],
+  threadIds: { e1: "t1" },
   run: 1,
 };
 

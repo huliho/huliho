@@ -77,35 +77,70 @@ export async function hydrateMailboxes(client: JmapClient, store: MailStore): Pr
   });
 }
 
-// The changes since the states the store holds for `types`, applied in
-// one batch per round; a type without a state is left alone. A round
-// that follows the mailboxes follows the account's quotas as well.
-export async function followChanges(
+// Calls a write sends ahead of the change logs in the first round's
+// request, with what reads their answers before the round lands.
+export interface Lead {
+  calls: readonly MethodCall[];
+  read(responses: readonly Invocation[]): void;
+}
+
+// The types to follow, the rounds a call may take and a lead for the
+// first round.
+export interface Follow {
+  types: readonly ObjectType[];
+  rounds: number;
+  lead?: Lead;
+}
+
+// One round in one request: the lead, the changes of every plan and the
+// account's quotas behind a mailbox plan, landed in one batch. Answers
+// the types with more changes to follow.
+async function round(
   client: JmapClient,
   store: MailStore,
-  types: readonly ObjectType[],
-  rounds: number,
-): Promise<Folded> {
-  const plans = await plansFor(store, client.accountId, types);
-  if (plans.length === 0) {
-    return nothingFolded();
-  }
-  const session = await client.session();
-  const calls = callsFor(session.accountId);
+  plans: readonly Plan[],
+  lead: Lead | undefined,
+): Promise<{ folded: Folded; more: ObjectType[] }> {
+  const calls = callsFor((await client.session()).accountId);
   const mailboxes = plans.some((plan) => plan.type === "Mailbox");
   const quota = mailboxes ? await quotaPass(client, store, false) : null;
   const responses = await client.request([
+    ...(lead?.calls ?? []),
     ...plans.flatMap((plan) => callsOf(calls, plan)),
     ...(quota?.calls ?? []),
   ]);
+  lead?.read(responses);
   const parsed = parse(plans, responses);
   const quotaLanded = (await quota?.land(responses)) ?? { batch: {}, moved: false };
-  const folded = await apply(client, store, parsed, quotaLanded);
-  const more = plans.filter((plan) => hasMore(parsed, plan.type)).map((plan) => plan.type);
+  return {
+    folded: await apply(client, store, parsed, quotaLanded),
+    more: plans.filter((plan) => hasMore(parsed, plan.type)).map((plan) => plan.type),
+  };
+}
+
+// The changes since the states the store holds for the types, applied in
+// one batch per round; a type without a state is left alone. A lead goes
+// out in front of the first round, alone where no type has a state.
+export async function followChanges(
+  client: JmapClient,
+  store: MailStore,
+  { types, rounds, lead }: Follow,
+): Promise<Folded> {
+  const plans = await plansFor(store, client.accountId, types);
+  if (plans.length === 0) {
+    if (lead !== undefined) {
+      lead.read(await client.request(lead.calls));
+    }
+    return nothingFolded();
+  }
+  const { folded, more } = await round(client, store, plans, lead);
   if (more.length === 0 || rounds <= 1) {
     return folded;
   }
-  return mergeFolded(folded, await followChanges(client, store, more, rounds - 1));
+  return mergeFolded(
+    folded,
+    await followChanges(client, store, { types: more, rounds: rounds - 1 }),
+  );
 }
 
 // The mailbox part of a request that writes: the calls that follow the
@@ -301,8 +336,26 @@ async function apply(
   if (parsed.mailbox === "refetch") {
     await hydrateMailboxes(client, store);
     landing.folded.mailboxes = true;
+    await dropListsWithoutMailbox(store, accountId, landing.folded);
   }
   return landing.folded;
+}
+
+// After the whole tree came anew, a list whose mailbox it lacks leaves
+// the store, as a destroy in the change log takes it.
+async function dropListsWithoutMailbox(
+  store: MailStore,
+  accountId: string,
+  folded: Folded,
+): Promise<void> {
+  const held = new Set((await store.mailboxes(accountId)).map(({ id }) => id));
+  const orphans = (await store.queries(accountId))
+    .map(({ id }) => id)
+    .filter((id) => !held.has(id));
+  if (orphans.length > 0) {
+    await store.commit(accountId, { queries: { remove: orphans } });
+    folded.lists = [...new Set([...folded.lists, ...orphans])];
+  }
 }
 
 async function landMailboxes(
@@ -316,8 +369,11 @@ async function landMailboxes(
     mailbox.put ??
     (await fetchInChunks(client, { type: "Mailbox", ids: [...named] }, mailboxSchema));
   batch.mailboxes = { put: put.filter((row) => named.has(row.id)), remove: changes.destroyed };
+  // A mailbox that is gone takes its list with it.
+  batch.queries = { remove: changes.destroyed };
   batch.states = { Mailbox: changes.newState };
   folded.mailboxes ||= named.size > 0 || changes.destroyed.length > 0;
+  folded.lists = [...new Set([...folded.lists, ...changes.destroyed])];
 }
 
 async function applyObjects(
@@ -332,6 +388,8 @@ async function applyObjects(
   const threads = await threadsOf(client, thread);
   const members = await membersOf(client, thread, threads);
   const held = await readHeld(client, store, states, threads);
+  const leaving = new Set(landing.batch.queries?.remove ?? []);
+  held.queries = held.queries.filter((row) => !leaving.has(row.id));
   if (email !== null) {
     landEmails(email.changes, states, held, landing);
   }

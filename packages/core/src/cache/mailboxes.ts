@@ -15,6 +15,9 @@ export async function syncMailboxes(client: JmapClient, store: MailStore): Promi
     await hydrateMailboxes(client, store);
     return true;
   }
-  const folded = await followChanges(client, store, ["Mailbox"], CHANGES_ROUNDS_MAX);
+  const folded = await followChanges(client, store, {
+    types: ["Mailbox"],
+    rounds: CHANGES_ROUNDS_MAX,
+  });
   return folded.mailboxes;
 }

@@ -183,8 +183,12 @@ export const queryAnswerSchema = z.object({
   limit: z.optional(z.int().check(z.positive())),
 });
 
-// Why one object of a /set was not written (RFC 8620 section 5.3).
-const setErrorSchema = z.object({ type: z.string() });
+// Why one object of a /set was not written (RFC 8620 section 5.3);
+// `invalidProperties` names the properties at fault.
+const setErrorSchema = z.object({
+  type: z.string(),
+  properties: z.optional(z.array(z.string())),
+});
 
 // The answer of a /set that updates and destroys (RFC 8620 section 5.3);
 // a server may leave an empty map out instead of naming it null.
@@ -197,6 +201,13 @@ export const setAnswerSchema = z.object({
   notDestroyed: z.nullish(z.record(z.string(), setErrorSchema)),
 });
 
+// The answer of a Mailbox/set, whose creates come back by creation id
+// with the id the server gave each (RFC 8620 section 5.3).
+export const mailboxSetAnswerSchema = z.extend(setAnswerSchema, {
+  created: z.nullish(z.record(z.string(), z.object({ id: idSchema }))),
+  notCreated: z.nullish(z.record(z.string(), setErrorSchema)),
+});
+
 // The problem details of a request that was not run (RFC 8620 section 3.6.1).
 export const problemSchema = z.object({ type: z.string(), limit: z.optional(z.string()) });
 
@@ -207,3 +218,4 @@ export type EmailHeader = z.infer<typeof emailHeaderSchema>;
 export type Thread = z.infer<typeof threadSchema>;
 export type Invocation = z.infer<typeof invocationSchema>;
 export type ChangesAnswer = z.infer<typeof changesAnswerSchema>;
+export type MailboxSetAnswer = z.infer<typeof mailboxSetAnswerSchema>;

@@ -170,6 +170,15 @@ export class FakeJmap {
   holdSearches = false;
   // The method error a search's query answers in place of its results.
   searchError: string | null = null;
+  // The account's word on a folder at the top and the longest name in
+  // octets, null for none (RFC 8621 section 1.3.1).
+  topLevel = true;
+  maxSizeMailboxName: number | null = 255;
+  // The SetError every object of a Mailbox/set answers in place of its
+  // write, null for none.
+  folderRefusal: string | null = null;
+  // The mailboxes Mailbox/set created, for the next new id.
+  nextMailbox = 0;
   private readonly held: (() => void)[] = [];
 
   readonly fetch: typeof fetch = (input, init) => {
@@ -339,6 +348,10 @@ export class FakeJmap {
     const vendor = this.vendor ? { [HULIHO_CAPABILITY]: {} } : {};
     const quota = this.quota ? { [QUOTA_CAPABILITY]: {} } : {};
     const accountQuota = this.quotaAccount ? quota : {};
+    const mail = {
+      mayCreateTopLevelMailbox: this.topLevel,
+      maxSizeMailboxName: this.maxSizeMailboxName,
+    };
     return {
       capabilities: { [CORE_CAPABILITY]: core, [MAIL_CAPABILITY]: {}, ...vendor, ...quota },
       accounts: {
@@ -346,7 +359,7 @@ export class FakeJmap {
           name: "sanne@example.test",
           isPersonal: true,
           isReadOnly: this.readOnly,
-          accountCapabilities: { [MAIL_CAPABILITY]: {}, ...vendor, ...accountQuota },
+          accountCapabilities: { [MAIL_CAPABILITY]: mail, ...vendor, ...accountQuota },
         },
       },
       primaryAccounts: { [MAIL_CAPABILITY]: UPSTREAM },

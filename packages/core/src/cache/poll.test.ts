@@ -5,6 +5,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 
 import { JmapClient } from "../jmap/client";
+import type { Invocation } from "../jmap/schemas";
 import { ACCOUNT, FakeJmap, at, email, mailbox } from "./fake-jmap";
 import { CHANGES_ROUNDS_MAX, WINDOW_SIZE } from "./limits";
 import { syncMailboxes } from "./mailboxes";
@@ -40,12 +41,22 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("an account without states asks nothing", async () => {
+test("an account without states asks nothing of its own and sends a lead alone", async () => {
   const server = new FakeJmap();
   vi.stubGlobal("fetch", server.fetch);
-  const applied = await applyChanges(new JmapClient(ACCOUNT), new MemoryMailStore(), []);
+  const [client, store] = [new JmapClient(ACCOUNT), new MemoryMailStore()];
+  const applied = await applyChanges(client, store, []);
   expect(applied).toEqual({ mailboxes: false, windows: [], threads: [] });
   expect(server.requests).toHaveLength(0);
+  const call = { name: "Mailbox/get", arguments: { accountId: "u1", ids: [] }, id: "lead" };
+  const read: string[][] = [];
+  const lead = {
+    calls: [call],
+    read: (responses: readonly Invocation[]) => read.push(responses.map(([, , id]) => id)),
+  };
+  expect(await applyChanges(client, store, [], lead)).toEqual(applied);
+  const posted = server.posted().map((calls) => calls.map(([, , id]) => id));
+  expect([read, posted]).toEqual([[["lead"]], [["lead"]]]);
 });
 
 test("a flag change patches the header row and the thread member in one round trip, names the thread and moves no list", async () => {
@@ -356,6 +367,45 @@ test("a list nobody watches is dropped once it may have moved; a watched one is 
   expect(await store.query(ACCOUNT, "archive")).toBeNull();
   expect((await store.query(ACCOUNT, "inbox"))?.pending).toEqual(["e6"]);
 });
+
+// The rig with the empty list of a folder trips held, then trips
+// destroyed on the server; the same round takes e1 out of the inbox's
+// list as well.
+async function tripsGone(): Promise<Rig> {
+  const rig = await serve(5);
+  const { server, client, store } = rig;
+  server.putMailbox(mailbox("trips"));
+  await applyChanges(client, store, ["inbox"]);
+  await queryWindow(client, store, "trips", 0);
+  server.removeMailbox("trips");
+  server.destroyEmail("e1");
+  server.requests.length = 0;
+  return rig;
+}
+
+test.each([
+  ["the change log", (): Promise<void> => Promise.resolve()],
+  [
+    "a tree fetched whole past the horizon of mailboxes",
+    (store: MemoryMailStore): Promise<void> =>
+      store.commit(ACCOUNT, { states: { Mailbox: "past" } }),
+  ],
+])(
+  "a mailbox another client destroys takes its list out of the store through %s; a tab that watched it asks no page of it",
+  async (_, setup) => {
+    const { server, client, store } = await tripsGone();
+    await setup(store);
+    const applied = await applyChanges(client, store, ["trips", "inbox"]);
+    expect(applied.windows).toContain("trips");
+    expect(await store.query(ACCOUNT, "trips")).toBeNull();
+    expect((await store.query(ACCOUNT, "inbox"))?.pages[0]?.ids).not.toContain("e1");
+    const queries = server
+      .posted()
+      .flat()
+      .filter(([name, args]) => name === "Email/query" && JSON.stringify(args).includes("trips"));
+    expect(queries).toEqual([]);
+  },
+);
 
 test("a mailbox change lands without touching the lists", async () => {
   const { server, client, store } = await serve(5);

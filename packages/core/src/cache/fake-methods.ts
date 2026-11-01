@@ -7,6 +7,7 @@ import { z } from "../schema";
 import type { FakeJmap } from "./fake-jmap";
 import { quotaAccount, quotaGet } from "./fake-quota";
 import { isSearch, matcherOf } from "./fake-search";
+import { mailboxSet } from "./fake-folders";
 import { MethodError, UPSTREAM } from "./fake-wire";
 import type { Args } from "./fake-wire";
 import { bodyOf, emailSet } from "./fake-writes";
@@ -85,6 +86,7 @@ export class FakeMethods {
     const methods = new Map<string, (raw: Args) => Args>([
       ["Mailbox/get", (raw) => this.mailboxGet(raw)],
       ["Mailbox/changes", (raw) => this.changes("Mailbox", raw)],
+      ["Mailbox/set", (raw) => mailboxSet(this.server, raw)],
       ["Email/get", (raw) => this.emailGet(raw)],
       ["Email/query", (raw) => this.emailQuery(raw)],
       ["Email/changes", (raw) => this.changes("Email", raw)],

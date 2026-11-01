@@ -4,6 +4,7 @@
 
 import type { JmapClient } from "../jmap/client";
 import { followChanges } from "./changes";
+import type { Lead } from "./changes";
 import { CHANGES_ROUNDS_MAX } from "./limits";
 import { refreshFirstPage } from "./refresh";
 import type { MailStore, QueryRow } from "./store";
@@ -19,18 +20,18 @@ export interface AppliedChanges {
 // One poll: the changes of every type since the held states, then the
 // first page of every watched list refreshed for the marker. A list
 // nobody watches is dropped once it may have moved, so its next visit
-// fetches it anew.
+// fetches it anew. A lead rides in front of the first request.
 export async function applyChanges(
   client: JmapClient,
   store: MailStore,
   watched: readonly string[],
+  lead?: Lead,
 ): Promise<AppliedChanges> {
-  const folded = await followChanges(
-    client,
-    store,
-    ["Mailbox", "Email", "Thread"],
-    CHANGES_ROUNDS_MAX,
-  );
+  const folded = await followChanges(client, store, {
+    types: ["Mailbox", "Email", "Thread"],
+    rounds: CHANGES_ROUNDS_MAX,
+    ...(lead === undefined ? {} : { lead }),
+  });
   const windows = new Set(folded.lists);
   if (folded.listMoved && !folded.reset) {
     const rows = await store.queries(client.accountId);
