@@ -13,7 +13,7 @@ import { MAILBOXES, mockMail, refuseMailWhile } from "./mail-mocks";
 import type { MailboxBody } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
-import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
+import { THEMES, VIEWPORTS, WCAG_TAGS, limitsIn } from "./sweep";
 
 const HOUR_MS = 3_600_000;
 // The shell has two widths of its own beside the sweep's: the smallest
@@ -374,6 +374,7 @@ test("the shell is axe-clean and matches its screenshots at four widths", async 
         await page.emulateMedia({ colorScheme: theme });
         await openShell(page);
         await expect(page.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
+        await limitsIn(page);
         await page.evaluate(async () => {
           await document.fonts.ready;
         });
@@ -382,8 +383,7 @@ test("the shell is axe-clean and matches its screenshots at four widths", async 
         await expect.soft(page).toHaveScreenshot(`mail-${theme}-${viewport.name}.png`);
         await page.goto("/mail/acc-1/mb-verbouwing");
         await expect(page.getByText("Verbouwing is empty.")).toBeVisible();
-        // The folder's items make its name a menu button once the account's limits are in.
-        await expect(page.locator("main header h1").getByRole("button")).toBeVisible();
+        await limitsIn(page, "title");
         await expect.soft(page).toHaveScreenshot(`mail-empty-${theme}-${viewport.name}.png`);
       });
     }
@@ -410,6 +410,7 @@ test("the shell reads in Dutch and in the pseudo-locale", async ({ page }) => {
   });
   await page.goto("/");
   await expect(page.getByRole("navigation", { name: /Máílbóxés áñd áççóúñts/ })).toBeVisible();
+  await limitsIn(page);
   await expect.soft(page).toHaveScreenshot("mail-en-XA-light-desktop.png");
 });
 

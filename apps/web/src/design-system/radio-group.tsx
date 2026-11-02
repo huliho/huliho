@@ -19,6 +19,8 @@ interface RadioGroupProps<T extends string> {
   describedBy?: string | undefined;
   options: readonly RadioOption<T>[];
   value: T;
+  // A disabled choice shows the word it holds and takes no other.
+  disabled?: boolean | undefined;
   onChange: (value: T) => void;
 }
 
@@ -29,6 +31,7 @@ export function RadioGroup<T extends string>({
   describedBy,
   options,
   value,
+  disabled = false,
   onChange,
 }: RadioGroupProps<T>) {
   return (
@@ -37,6 +40,7 @@ export function RadioGroup<T extends string>({
       aria-labelledby={labelledBy}
       aria-describedby={describedBy}
       value={value}
+      disabled={disabled}
       onValueChange={(next) => {
         onChange(next);
       }}

@@ -41,7 +41,7 @@ export function moveLent(to: string, source: MoveSource): void {
 // The names of the mailboxes above one, outermost first. A parent the
 // account lacks ends the path, and so does one already named, so a loop
 // in the server's parents cannot hold the picker up.
-function pathOf(mailbox: Mailbox, byId: ReadonlyMap<string, Mailbox>): string[] {
+export function pathOf(mailbox: Mailbox, byId: ReadonlyMap<string, Mailbox>): string[] {
   const names: string[] = [];
   const seen = new Set([mailbox.id]);
   let parent = mailbox.parentId === null ? undefined : byId.get(mailbox.parentId);

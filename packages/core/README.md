@@ -73,7 +73,9 @@ the emails and lists a destroy took included; each object the server
 refused comes back with its SetError. `visibleMailboxes` names the
 mailboxes the tree draws: the subscribed ones and the roles plus the
 folders above a subscribed folder, every mailbox where the account
-subscribes none. The session keeps what the
+subscribes none; `branchOf` names a folder with the folders without a
+role under it and `hideWrite` the write that takes that branch out of
+the tree. The session keeps what the
 account allows a folder, a create at the top and the longest name.
 `offeredActions` reads what a mailbox offers from its role and the
 rights of the mailboxes involved, never from the kind of account, the

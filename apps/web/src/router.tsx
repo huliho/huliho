@@ -77,6 +77,15 @@ interface AddAccountSearch {
   reconnect?: string;
 }
 
+// An account the session does not hold has no folder screen; the list of
+// accounts is the nearest page that stands.
+async function requireAccount(context: RouterContext, accountId: string): Promise<void> {
+  const list = await context.queryClient.query(accountsQueryOptions);
+  if (!list.accounts.some((account) => account.id === accountId)) {
+    redirect({ to: "/settings/accounts", throw: true });
+  }
+}
+
 // The shell has nothing to show without an account, so a session with
 // none starts by adding one.
 async function requireAccounts(context: RouterContext): Promise<AccountRow[]> {
@@ -229,6 +238,13 @@ const accountsRoute = createRoute({
   component: lazyRouteComponent(settings, "AccountsPage"),
 });
 
+const accountFoldersRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/accounts/$accountId/folders",
+  component: lazyRouteComponent(settings, "FoldersPage"),
+  beforeLoad: ({ context, params }) => requireAccount(context, params.accountId),
+});
+
 const appearanceRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: "/appearance",
@@ -269,6 +285,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute.addChildren([
       settingsIndexRoute,
       accountsRoute,
+      accountFoldersRoute,
       appearanceRoute,
       sessionsRoute,
       aboutRoute,

@@ -22,6 +22,7 @@ export function SettingsPage() {
   const matchRoute = useMatchRoute();
   const sidebarShown = useSidebarShown();
   const atIndex = matchRoute({ to: "/settings" }) !== false;
+  const atFolders = matchRoute({ to: "/settings/accounts/$accountId/folders" }) !== false;
   const page = SETTINGS_ENTRIES.find((entry) => matchRoute({ to: entry.to }) !== false);
   useCommand({
     id: "settings.close",
@@ -33,10 +34,12 @@ export function SettingsPage() {
     },
   });
   // A phone shows one page at a time, so its header names the page and
-  // its back arrow returns to the list.
-  const title =
-    sidebarShown || page === undefined ? m.settings_title({}, { locale }) : page.label(locale);
-  const backTo = sidebarShown || atIndex ? "/" : "/settings";
+  // its back arrow returns to the list; an account's folders return to
+  // the accounts.
+  const named = atFolders ? m.tree_folders({}, { locale }) : page?.label(locale);
+  const title = sidebarShown || named === undefined ? m.settings_title({}, { locale }) : named;
+  const parent = atFolders ? "/settings/accounts" : "/settings";
+  const backTo = sidebarShown || atIndex ? "/" : parent;
   return (
     <div className={styles.page}>
       <header className={styles.header}>

@@ -12,7 +12,7 @@ import { WRITABLE_MAILBOXES, mockMail } from "./mail-mocks";
 import type { MailboxBody } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
-import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
+import { THEMES, VIEWPORTS, WCAG_TAGS, limitsIn } from "./sweep";
 import { settled } from "./thread-pane";
 
 const HOUR_MS = 3_600_000;
@@ -266,6 +266,7 @@ test("the palette and the overlay are axe-clean and match their screenshots at t
       await test.step(`${theme} at ${viewport.name} width`, async () => {
         await page.emulateMedia({ colorScheme: theme });
         await openInbox(page);
+        await limitsIn(page);
         await rowAt(page, 1).focus();
         await page.keyboard.press(`${MOD}+k`);
         await expect(palette(page)).toBeVisible();
@@ -334,6 +335,7 @@ test("the palette and the overlay read in Dutch and in the pseudo-locale", async
     window.localStorage.setItem("PARAGLIDE_LOCALE", locale);
   }, PSEUDO_LOCALE);
   await page.goto("/mail/acc-1/mb-inbox");
+  await limitsIn(page);
   await page.getByRole("grid").locator('[aria-rowindex="1"]').focus();
   await page.keyboard.press(`${MOD}+k`);
   const mirrored = page.getByRole("dialog");

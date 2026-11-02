@@ -6,7 +6,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 import type { MockedMail } from "./mail-mocks";
-import { THEMES, VIEWPORTS, axeOn } from "./sweep";
+import { THEMES, VIEWPORTS, axeOn, limitsIn } from "./sweep";
 import { INBOX_PATH, openInbox, settled } from "./thread-pane";
 
 const GB = 1000 ** 3;
@@ -150,6 +150,7 @@ test("the foot reads right to left in the pseudo-locale", async ({ page }) => {
   // The sidebar's name reads in the pseudo-locale too.
   const pseudoSidebar = page.getByRole("navigation");
   await expect(pseudoSidebar.getByRole("meter")).toContainText("Álmóst fúll");
+  await limitsIn(page);
   await settled(page);
   await expect.soft(pseudoSidebar).toHaveScreenshot("quota-foot-en-XA-light-desktop.png");
 });

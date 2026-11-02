@@ -13,7 +13,7 @@ import { MAILBOXES, mockMail, refuseListWhile } from "./mail-mocks";
 import type { MailOptions, MailboxBody, MockedMail } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
-import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
+import { THEMES, VIEWPORTS, WCAG_TAGS, limitsIn } from "./sweep";
 
 const INBOX_ID = "mb-inbox";
 const ROWS = [accountRow(FIXED_NOW)];
@@ -257,6 +257,7 @@ test("the list states are axe-clean and match their screenshots at two widths", 
           await context.setOffline(false);
           await openInbox(page, drawn.mailboxes, drawn.options);
           await expect(rowAt(page, 1)).toBeVisible();
+          await limitsIn(page);
           await context.setOffline(drawn.offline);
           await drawn.settle(page);
           await page.evaluate(async () => {

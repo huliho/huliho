@@ -23,7 +23,7 @@ import type { MockedMail } from "./mail-mocks";
 import { network } from "./network";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
-import { THEMES, VIEWPORTS, axeOn, framesLoaded } from "./sweep";
+import { THEMES, VIEWPORTS, axeOn, framesLoaded, limitsIn } from "./sweep";
 import {
   INBOX_PATH,
   READ_INBOX,
@@ -221,6 +221,7 @@ test("a message longer than the source view reads shows its first part with the 
 // the tab is signed in, so no row has to be in sight.
 async function openThreadOf(page: Page, sender: string): Promise<Locator> {
   await page.goto(pathOf(rowFrom(sender)));
+  await limitsIn(page);
   const card = cards(page).last();
   await expect(card.getByRole("button").first()).toHaveAttribute("aria-expanded", "true");
   return card;
@@ -343,6 +344,7 @@ test("the details are axe-clean and match their screenshots on every tab in both
       const label = `the details in ${theme} at ${viewport.name} width`;
       await test.step(label, async () => {
         const { card } = await openCard(page, rowFrom(NEWSLETTER_SENDER));
+        await limitsIn(page);
         const details = await openDetails(page, card);
         await framesLoaded(page);
         await settled(page);

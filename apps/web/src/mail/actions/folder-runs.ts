@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import { branchOf, hideWrite } from "@huliho/core";
 import type { MailCache, Mailbox, MailboxWrite } from "@huliho/core";
 
 import { askFolder } from "./folder-asks";
@@ -84,21 +85,6 @@ export function newFolder(base: FolderBase, parent: Mailbox | null): void {
   askFolder(nameAsk(base, { parentId: parent?.id ?? null, renamed: null }));
 }
 
-// The folder and every folder without a role under it: the branch a hide
-// takes out of the tree as one. A role mailbox stays, since the tree
-// draws it on its own.
-function branchOf({ mailbox, mailboxes }: FolderItemInput): string[] {
-  const ids = [mailbox.id];
-  for (const id of ids) {
-    for (const row of mailboxes) {
-      if (row.parentId === id && row.role === null && !ids.includes(row.id)) {
-        ids.push(row.id);
-      }
-    }
-  }
-  return ids;
-}
-
 // The mailbox shown leaves first wherever it stands in the branch. The
 // write unsubscribes the subscribed folders of the branch; a folder drawn
 // without a subscription of its own stands above one, so there is one.
@@ -107,13 +93,12 @@ async function hide(input: FolderItemInput): Promise<void> {
     folderToast("hidden", "offline");
     return;
   }
-  const branch = branchOf(input);
+  const branch = branchOf(input.mailboxes, input.mailbox.id);
   if (input.shownId !== undefined && branch.includes(input.shownId)) {
     input.leave();
   }
-  const subscribed = input.mailboxes.filter((row) => row.isSubscribed && branch.includes(row.id));
-  const update = Object.fromEntries(subscribed.map((row) => [row.id, { isSubscribed: false }]));
-  folderToast("hidden", await writeFolder(input.cache, input.accountId, { update }));
+  const write = hideWrite(input.mailboxes, input.mailbox.id);
+  folderToast("hidden", await writeFolder(input.cache, input.accountId, write));
 }
 
 // A destroy leaves the mailbox shown first. A folder that took mail since

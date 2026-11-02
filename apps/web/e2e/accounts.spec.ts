@@ -71,7 +71,10 @@ test("the list names each account, its state and the actions it has", async ({ p
   await expect(connected.locator('[aria-hidden="true"]').first()).toHaveText("F");
   await expect(connected.getByRole("button", { name: "Remove Fastmail" })).toBeVisible();
   await expect(connected.getByRole("button")).toHaveCount(1);
-  await expect(connected.getByRole("link")).toHaveCount(0);
+  await expect(connected.getByRole("link", { name: "Folders of Fastmail" })).toHaveAttribute(
+    "href",
+    "/settings/accounts/acc-1/folders",
+  );
   const expired = rowOf(page, EXPIRED.address);
   await expect(expired).toContainText("Connection expired");
   await expect(expired.getByRole("link", { name: "Reconnect Gmail" })).toHaveAttribute(

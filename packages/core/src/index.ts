@@ -117,7 +117,7 @@ export type {
   ThreadRow,
 } from "./cache/store";
 export { readThread } from "./cache/thread";
-export { visibleMailboxes } from "./cache/visible";
+export { branchOf, hideWrite, visibleMailboxes } from "./cache/visible";
 export { queryWindow } from "./cache/window";
 export type { WindowPage } from "./cache/window";
 export { CredentialError } from "./credentials";
