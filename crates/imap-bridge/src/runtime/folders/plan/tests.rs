@@ -6,6 +6,7 @@
 //! each refusal with nothing planned for the server (RFC 8620 section
 //! 5.3, RFC 8621 section 2.5).
 
+mod case;
 mod references;
 mod roles;
 
@@ -23,7 +24,12 @@ const BOTH: Moving = Moving {
     uidplus: true,
 };
 
-fn row(id: &str, imap_name: &str, parent: Option<&str>, role: Option<&str>) -> MailboxRow {
+pub(in crate::runtime::folders) fn row(
+    id: &str,
+    imap_name: &str,
+    parent: Option<&str>,
+    role: Option<&str>,
+) -> MailboxRow {
     MailboxRow {
         id: MailboxId::from(id.to_owned()),
         parent_id: parent.map(|parent| MailboxId::from(parent.to_owned())),
@@ -33,7 +39,7 @@ fn row(id: &str, imap_name: &str, parent: Option<&str>, role: Option<&str>) -> M
 
 /// INBOX, Sent, Archive, `Work` with `Q3` under it and one email,
 /// `Locked` held as `lrs` and `Lists`, which nothing selects.
-fn dovecot() -> MailboxSnapshot {
+pub(in crate::runtime::folders) fn dovecot() -> MailboxSnapshot {
     let mut work = row("mwork", "Work", None, None);
     work.facts.total_emails = 1;
     let mut lists = row("mlists", "Lists", None, None);

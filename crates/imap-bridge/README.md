@@ -506,6 +506,14 @@ connection shows what stands. A CREATE or a RENAME whose name stands by
 then answers `invalidProperties` on `name` as the rows would have. After
 any refusal the next use runs on a connection that signed in after it.
 
+Gmail keeps one label per name whatever its case, so a Gmail account
+reads names beside each other in another way. A difference in ASCII case
+answers `invalidProperties` on `name` from the rows with nothing sent.
+Any other difference goes to the server, since Gmail's fold follows no
+standard: it refuses `é` beside `É` yet takes `Greek σ` beside `Greek Σ`.
+Once it refused, the pass reads the name whatever its case and width. A rename
+that changes the case alone is a RENAME like any other.
+
 An `Email/query` with a text or a sender has the server searched
 between two passes over its request, on a connection of the account's
 own, one search at a time. A folder account searches the folders of
@@ -619,7 +627,8 @@ dropped or never answered, a `COPYUID` of the test's own words, a
 continuation request withheld or refused, a search in one charset
 alone, a SEARCH line padded to a size, a SEARCH answered late, an
 EXAMINE answer without EXISTS, every folder command refused with a code
-of the test's own, Gmail's NO naming a taken label in raw UTF-8, a
+of the test's own, Gmail's NO naming a taken label in raw UTF-8, its NO
+to a name that differs in case alone, a
 RENAME that moves its folder and still answers NO plus a DELETE of a
 parent that keeps its name as
 `\Noselect`. `Mailboxes::searches` counts the UID

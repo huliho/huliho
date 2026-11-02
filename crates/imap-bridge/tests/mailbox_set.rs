@@ -9,6 +9,7 @@
 //! and the refusals the rows answer without a command.
 
 mod folders_rig;
+mod mailbox_set_case;
 mod mailbox_set_faults;
 mod mailbox_set_gmail;
 mod mailbox_set_order;

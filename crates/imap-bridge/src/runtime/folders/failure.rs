@@ -5,8 +5,12 @@
 //! What a folder command that failed comes to: how its object ends,
 //! whether the session stands and what the work does afterwards.
 
+use std::collections::HashMap;
+
+use unicode_normalization::UnicodeNormalization as _;
+
 use super::Refusal;
-use super::plan::names_of;
+use super::plan::nfc;
 use super::step::Naming;
 use crate::session::SessionError;
 use crate::store::{MailboxId, MailboxRow};
@@ -69,19 +73,42 @@ impl Contested {
     }
 }
 
-/// The objects whose name stands on the rows a pass left, so another
-/// client holds it. A RENAME counts while its mailbox still has its row.
-/// A pass matches rows by wire name, so a mailbox that moved has lost it:
-/// a server may move a tree one mailbox at a time and stop on the way.
-pub(super) fn taken(contested: &[Contested], rows: &[MailboxRow]) -> Vec<usize> {
-    let names = names_of(rows);
-    let stayed = |id: &MailboxId| rows.iter().any(|row| row.id == *id);
+/// A name as a pass reads it once Gmail refused one: whatever its case and
+/// its width. A name Gmail takes never gets here, so this reading may reach
+/// wider than Gmail's own fold.
+fn beside_on_gmail(name: &str) -> String {
+    name.nfkc().collect::<String>().to_lowercase()
+}
+
+/// The objects whose name stands beside them on the rows a pass left, so
+/// another client holds it. A RENAME counts while its mailbox still has its
+/// row. A pass matches rows by wire name, so a mailbox that moved has lost
+/// it: a server may move a tree one mailbox at a time and stop on the way.
+pub(super) fn taken(contested: &[Contested], rows: &[MailboxRow], gmail: bool) -> Vec<usize> {
+    let read = |name: &str| {
+        if gmail {
+            beside_on_gmail(name)
+        } else {
+            nfc(name)
+        }
+    };
+    let mut holders = HashMap::<_, Vec<&MailboxId>>::new();
+    for row in rows {
+        let place = (row.parent_id.as_ref(), read(&row.facts.name));
+        holders.entry(place).or_default().push(&row.id);
+    }
     contested
         .iter()
         .filter(|asked| {
-            let name = (asked.naming.under.id().cloned(), asked.naming.leaf.clone());
-            names.contains(&name) && asked.moving.as_ref().is_none_or(stayed)
+            let moving = asked.moving.as_ref();
+            let stayed = moving.is_none_or(|id| rows.iter().any(|row| row.id == *id));
+            let place = (asked.naming.under.id(), read(&asked.naming.leaf));
+            let held = holders.get(&place);
+            stayed && held.is_some_and(|ids| ids.iter().any(|id| Some(*id) != moving))
         })
         .map(|asked| asked.index)
         .collect()
 }
+
+#[cfg(test)]
+mod tests;

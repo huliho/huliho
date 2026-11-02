@@ -35,13 +35,20 @@ interface NameTarget {
   renamed: Mailbox | null;
 }
 
+// A name whatever its case and its width, in the form a server that keeps
+// one such name reads it.
+function folded(name: string): string {
+  return name.normalize("NFKC").toLowerCase();
+}
+
 // A name the server refused is taken where the tree that write left holds
-// it beside the folder, read in NFC as the dialog sends the name;
-// otherwise the server does not take it.
+// it beside the folder, in any case, since some servers keep one name per
+// case; otherwise the server does not take it.
 async function refusedName(base: FolderBase, target: NameTarget, name: string) {
   const rows = await treeAfter(base.cache, base.accountId);
+  const wanted = folded(name);
   const taken = namesUnder(rows, target.parentId, target.renamed?.id ?? null).some(
-    (row) => row.normalize("NFC") === name,
+    (row) => folded(row) === wanted,
   );
   return taken ? "taken" : "name";
 }

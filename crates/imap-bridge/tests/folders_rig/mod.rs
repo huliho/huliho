@@ -101,6 +101,11 @@ pub fn mailboxes_changed(rig: &Rig, since: u64) -> Vec<(String, ChangeKind)> {
     rig.changes(ObjectType::Mailbox, since)
 }
 
+/// What an object answers for a name that stands.
+pub fn name_taken() -> Value {
+    json!({ "type": "invalidProperties", "properties": ["name"] })
+}
+
 /// The `SetError` type an object of that list answered with.
 pub fn refused<'a>(answer: &'a Value, list: &str, id: &str) -> &'a str {
     answer[list][id]["type"]

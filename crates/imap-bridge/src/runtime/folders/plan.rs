@@ -31,7 +31,7 @@ struct Planning<'a> {
     created: HashMap<&'a str, MailboxId>,
     /// The creation ids the calls before this one resolved.
     references: &'a CreatedIds,
-    /// The names in NFC taken under each parent.
+    /// The names taken under each parent, as `sibling` reads them.
     names: HashSet<(Option<MailboxId>, String)>,
     /// The children each mailbox holds.
     children: HashMap<MailboxId, usize>,
@@ -52,15 +52,23 @@ pub(super) fn planned(snapshot: &MailboxSnapshot, ask: &Ask, references: &Create
     planning.planned
 }
 
-fn nfc(name: &str) -> String {
+pub(super) fn nfc(name: &str) -> String {
     name.nfc().collect()
 }
 
-/// The names in NFC taken under each parent.
-pub(super) fn names_of(rows: &[MailboxRow]) -> HashSet<(Option<MailboxId>, String)> {
-    rows.iter()
-        .map(|row| (row.parent_id.clone(), nfc(&row.facts.name)))
-        .collect()
+/// A name under its parent as the check before a command reads it: in NFC
+/// and on Gmail with its ASCII letters in one case, since Gmail refuses
+/// such a name on every try. Gmail's fold reaches further but follows no
+/// standard: it takes `Greek σ` beside `Greek Σ` and refuses `12 σ` beside
+/// `12 Σ`, so a wider reading here would refuse names it takes.
+fn sibling(parent: Option<MailboxId>, name: &str, gmail: bool) -> (Option<MailboxId>, String) {
+    let name = nfc(name);
+    let name = if gmail {
+        name.to_ascii_lowercase()
+    } else {
+        name
+    };
+    (parent, name)
 }
 
 fn is_inbox(row: &MailboxRow) -> bool {
@@ -81,7 +89,11 @@ impl<'a> Planning<'a> {
                 .iter()
                 .map(|row| (row.id.to_string(), row.clone()))
                 .collect(),
-            names: names_of(&snapshot.rows),
+            names: snapshot
+                .rows
+                .iter()
+                .map(|row| sibling(row.parent_id.clone(), &row.facts.name, snapshot.gmail))
+                .collect(),
             children: HashMap::new(),
             destroying: HashSet::new(),
             roles: None,
@@ -134,6 +146,10 @@ impl<'a> Planning<'a> {
         self.rows.get(id)
     }
 
+    fn sibling(&self, parent: Option<MailboxId>, name: &str) -> (Option<MailboxId>, String) {
+        sibling(parent, name, self.snapshot.gmail)
+    }
+
     fn may(&self, row: &MailboxRow, right: Right) -> bool {
         rights::of(row, self.snapshot).may(right)
     }
@@ -179,7 +195,7 @@ impl<'a> Planning<'a> {
             .to_owned();
         let parent = under.id().cloned();
         let inbox = parent.is_none() && leaf.eq_ignore_ascii_case(INBOX);
-        if inbox || self.names.contains(&(parent, leaf.clone())) {
+        if inbox || self.names.contains(&self.sibling(parent, &leaf)) {
             return Err(invalid("name"));
         }
         Ok(leaf)
@@ -200,7 +216,7 @@ impl<'a> Planning<'a> {
             None => None,
         };
         let parent = under.id().cloned();
-        self.names.insert((parent.clone(), leaf.clone()));
+        self.names.insert(self.sibling(parent.clone(), &leaf));
         if let Some(parent) = parent {
             *self.children.entry(parent).or_default() += 1;
         }
@@ -287,7 +303,7 @@ impl<'a> Planning<'a> {
         {
             return Err(invalid("parentId"));
         }
-        let own = (row.parent_id.clone(), nfc(&row.facts.name));
+        let own = self.sibling(row.parent_id.clone(), &row.facts.name);
         self.names.remove(&own);
         let leaf = match self.name(typed, &under) {
             Ok(leaf) => leaf,
@@ -297,7 +313,7 @@ impl<'a> Planning<'a> {
             }
         };
         let parent = under.id().cloned();
-        self.names.insert((parent.clone(), leaf.clone()));
+        self.names.insert(self.sibling(parent.clone(), &leaf));
         if !unmoved {
             self.leave_parent(row.parent_id.as_ref());
             if let Some(parent) = parent {
@@ -397,4 +413,4 @@ impl<'a> Planning<'a> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

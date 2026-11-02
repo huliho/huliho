@@ -7,7 +7,8 @@
 //! code a real server sends (RFC 5530, RFC 9051 section 7.1, RFC 6154
 //! section 3), which the client library's parser drops. On a Gmail
 //! account a label folder takes its label along: the mail stays in All
-//! Mail, and a name that stands is refused with the name in raw UTF-8.
+//! Mail, a name that stands is refused with the name in raw UTF-8 and one
+//! that differs from a label in case alone is refused as well.
 
 use super::{Extension, Mailboxes, quote, unquote};
 use crate::testing::behavior::{ParentDelete, Renaming};
@@ -26,11 +27,26 @@ const USE_ATTRIBUTE: &str = "USEATTR";
 /// The folders Gmail keeps for itself sit under this name.
 const GMAIL_SYSTEM: &str = "[Gmail]";
 
+/// Greek capital sigma, which Gmail tells apart from its small letter in a
+/// name such as `Greek Σ`; the script does so in every name.
+const CAPITAL_SIGMA: char = '\u{3a3}';
+
+/// The capital sharp s, which Gmail tells apart from its small letter.
+const CAPITAL_SHARP_S: char = '\u{1e9e}';
+
+/// Full-width ASCII, which Gmail reads as ASCII.
+const FULL_WIDTH: std::ops::RangeInclusive<u32> = 0xff01..=0xff5e;
+
+/// How far full-width ASCII stands from ASCII.
+const FULL_WIDTH_OFFSET: u32 = 0xfee0;
+
 /// Why a folder command failed: BAD for a form the script does not
 /// read, NO with the code a server would send.
 enum Failure {
     Bad,
     No(Option<&'static str>),
+    /// On Gmail, a name that differs from another in case alone.
+    Variant,
 }
 
 /// The quoted names after a verb with their escapes undone, then what
@@ -65,6 +81,10 @@ impl Mailboxes {
             Some((names, after)) => self.folder(verb, names, after),
             None => Err(Failure::Bad),
         };
+        let named = || {
+            let taken = read.iter().find_map(|(names, _)| names.last());
+            taken.map_or_else(String::new, |name| utf7::decode(name))
+        };
         match reply {
             Ok(lines) => format!("{lines}{tag} OK done\r\n"),
             Err(Failure::Bad) => format!("{tag} BAD not read\r\n"),
@@ -73,10 +93,18 @@ impl Mailboxes {
                 format!("{tag} NO [{NONEXISTENT}] Mailbox doesn't exist: Caf\u{e9}\r\n")
             }
             Err(Failure::No(Some(ALREADY_EXISTS))) if self.has(Extension::Gmail) => {
-                let taken = read.iter().find_map(|(names, _)| names.last());
-                let taken = taken.map_or_else(String::new, |name| utf7::decode(name));
+                let taken = named();
                 format!("{tag} NO [{ALREADY_EXISTS}] Duplicate folder name {taken} (Failure)\r\n")
             }
+            Err(Failure::Variant) if verb == "RENAME" => {
+                let taken = named();
+                format!(
+                    "{tag} NO [{ALREADY_EXISTS}] New folder name {taken} conflicts with existing folder name. (Failure)\r\n"
+                )
+            }
+            Err(Failure::Variant) => format!(
+                "{tag} NO [{ALREADY_EXISTS}] Folder name conflicts with existing folder name. (Failure)\r\n"
+            ),
             Err(Failure::No(Some(code))) => format!("{tag} NO [{code}] refused\r\n"),
         }
     }
@@ -109,6 +137,9 @@ impl Mailboxes {
         if name.eq_ignore_ascii_case("INBOX") || folders.iter().any(|folder| folder.name == name) {
             return Err(Failure::No(Some(ALREADY_EXISTS)));
         }
+        if gmail && holds_variant(&folders, name, name) {
+            return Err(Failure::Variant);
+        }
         if gmail && name.starts_with(GMAIL_SYSTEM) {
             return Err(Failure::No(None));
         }
@@ -136,6 +167,9 @@ impl Mailboxes {
         self.editable(&folders, from)?;
         if to.eq_ignore_ascii_case("INBOX") || folders.iter().any(|folder| folder.name == to) {
             return Err(Failure::No(Some(ALREADY_EXISTS)));
+        }
+        if self.has(Extension::Gmail) && holds_variant(&folders, to, from) {
+            return Err(Failure::Variant);
         }
         let under = format!("{from}{}", self.delimiter);
         let mut relabeled = Vec::new();
@@ -223,6 +257,35 @@ impl Mailboxes {
         }
         Ok(index)
     }
+}
+
+/// How Gmail tells label names apart, as far as the tests need it: every
+/// letter in one case and full-width ASCII as ASCII, its capital sigma and
+/// capital sharp s left alone.
+fn gmail_fold(wire: &str) -> String {
+    let mut fold = String::new();
+    for letter in utf7::decode(wire).chars() {
+        if matches!(letter, CAPITAL_SIGMA | CAPITAL_SHARP_S) {
+            fold.push(letter);
+            continue;
+        }
+        let code = u32::from(letter);
+        let narrow = FULL_WIDTH
+            .contains(&code)
+            .then(|| char::from_u32(code - FULL_WIDTH_OFFSET))
+            .flatten();
+        fold.extend(narrow.unwrap_or(letter).to_lowercase());
+    }
+    fold
+}
+
+/// Whether a folder other than `except` reads as the name under Gmail's
+/// fold.
+fn holds_variant(folders: &[Folder], name: &str, except: &str) -> bool {
+    let fold = gmail_fold(name);
+    folders
+        .iter()
+        .any(|folder| folder.name != except && gmail_fold(&folder.name) == fold)
 }
 
 /// The MYRIGHTS line of one folder (RFC 4314 section 3.8); none for a
