@@ -15,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 
 use unicode_normalization::UnicodeNormalization as _;
 
+use super::gmail;
 use super::step::{Naming, Planned, Step, Under, creation_order, invalid, name_error};
 use super::{Ask, CreatedIds, Refusal, creation_id};
 use crate::mailboxes::INBOX;
@@ -183,7 +184,8 @@ impl<'a> Planning<'a> {
     }
 
     /// The name as far as it reads without the server's delimiter, free
-    /// under its parent; INBOX at the top is taken in any case.
+    /// under its parent; INBOX at the top is taken in any case and Gmail
+    /// takes no two white space characters in a row.
     fn name(&self, typed: &str, under: &Under) -> Result<String, Refusal> {
         let anywhere = Place {
             parent: None,
@@ -195,7 +197,8 @@ impl<'a> Planning<'a> {
             .to_owned();
         let parent = under.id().cloned();
         let inbox = parent.is_none() && leaf.eq_ignore_ascii_case(INBOX);
-        if inbox || self.names.contains(&self.sibling(parent, &leaf)) {
+        let crowded = self.snapshot.gmail && gmail::crowded(&leaf);
+        if inbox || crowded || self.names.contains(&self.sibling(parent, &leaf)) {
             return Err(invalid("name"));
         }
         Ok(leaf)

@@ -17,6 +17,7 @@
 
 mod delimiters;
 mod failure;
+mod gmail;
 mod names;
 mod plan;
 mod send;
