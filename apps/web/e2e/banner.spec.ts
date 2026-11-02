@@ -12,7 +12,7 @@ import { FIXED_NOW } from "./mail-corpus";
 import { mockMail } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
-import { THEMES, VIEWPORTS, WCAG_TAGS } from "./sweep";
+import { THEMES, VIEWPORTS, WCAG_TAGS, limitsIn } from "./sweep";
 
 const HOUR_MS = 3_600_000;
 // How long the menu's chunk is held back, the way a slow network holds it.
@@ -259,9 +259,11 @@ test("the banner, the marks and the badges read in Dutch and in the pseudo-local
   await page.goto(`/mail/${EXPIRED.id}`);
   await expect(page.getByRole("link", { name: /Réçóññéçt/ })).toBeVisible();
   await expect(card(page, EXPIRED.address)).toContainText("Éxpíréd");
+  await limitsIn(page);
   await expect.soft(page).toHaveScreenshot("banner-expired-en-XA-light-desktop.png");
   await page.goto(`/mail/${STOPPED.id}`);
   await expect(page.getByRole("button", { name: /Rétrý/ })).toBeVisible();
+  await limitsIn(page);
   await card(page, STOPPED.address).click();
   await expect(page.getByRole("menu").getByText(/úñréád/)).toHaveCount(ROWS.length);
   await expect.soft(page).toHaveScreenshot("banner-menu-en-XA-light-desktop.png");
@@ -283,6 +285,7 @@ test("the banner is axe-clean and matches its screenshots at two widths", async 
           await openMail(page, drawn.accountId);
           await expect(page.getByRole("status").filter({ hasText: drawn.sentence })).toBeVisible();
           await expect(rowAt(page, 1)).toBeVisible();
+          await limitsIn(page);
           await page.evaluate(async () => {
             await document.fonts.ready;
           });

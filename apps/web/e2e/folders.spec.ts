@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 import { releaseSets } from "./mail-answers";
 import type { MailServer } from "./mail-answers";
 import { WRITABLE_MAILBOXES } from "./mail-mocks";
-import { THEMES, VIEWPORTS, axeOn } from "./sweep";
+import { THEMES, VIEWPORTS, axeOn, limitsIn } from "./sweep";
 import { INBOX_PATH, openInbox, settled, updates } from "./thread-pane";
 
 const TRASH_PATH = "/mail/acc-1/mb-trash";
@@ -191,6 +191,7 @@ test("the menus, the dialog and the progress read right to left in the pseudo-lo
   });
   await page.goto(INBOX_PATH);
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await limitsIn(page);
   const menu = page.getByRole("menu");
   await header(page).getByRole("button", { name: "Inbox" }).click();
   await expect(menu.getByRole("menuitem")).toHaveCount(1);

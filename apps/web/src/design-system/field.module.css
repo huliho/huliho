@@ -2,8 +2,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Additional terms apply, see NOTICE. */
 
+/* The column holds a select to its room, whatever its longest option says. */
 .field {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--hhx-space-1);
 }
 
@@ -13,6 +15,7 @@
 }
 
 .input {
+  min-inline-size: 0;
   min-block-size: var(--hhx-hit-target);
   padding: var(--hhx-space-3) var(--hhx-space-4);
   border: var(--hhx-border-width) solid var(--hh-border-control);
@@ -24,7 +27,8 @@
 }
 
 /* The attribute, since a select matches :read-only on its own. */
-.input[readonly] {
+.input[readonly],
+.input:disabled {
   background: var(--hh-bg);
   color: var(--hh-text-muted);
 }

@@ -3,6 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import type { Mailbox } from "../jmap/schemas";
+import type { MailboxWrite } from "./mailbox-set";
 
 // The mailboxes the tree, the jumps, the move picker, the search's `in:`
 // suggestions and the folder screen's choices draw: the subscribed ones
@@ -24,4 +25,29 @@ export function visibleMailboxes(mailboxes: readonly Mailbox[]): Mailbox[] {
     }
   }
   return mailboxes.filter((mailbox) => drawn.has(mailbox.id));
+}
+
+// The folder and every folder without a role under it: the branch a hide
+// takes out of the tree as one. A role mailbox stays, since the tree draws
+// it on its own.
+export function branchOf(mailboxes: readonly Mailbox[], id: string): string[] {
+  const ids = [id];
+  for (const at of ids) {
+    for (const row of mailboxes) {
+      if (row.parentId === at && row.role === null && !ids.includes(row.id)) {
+        ids.push(row.id);
+      }
+    }
+  }
+  return ids;
+}
+
+// The write that takes a folder out of the tree with the subscribed
+// folders of its branch.
+export function hideWrite(mailboxes: readonly Mailbox[], id: string): MailboxWrite {
+  const branch = new Set(branchOf(mailboxes, id));
+  const subscribed = mailboxes.filter((row) => row.isSubscribed && branch.has(row.id));
+  return {
+    update: Object.fromEntries(subscribed.map((row) => [row.id, { isSubscribed: false }])),
+  };
 }

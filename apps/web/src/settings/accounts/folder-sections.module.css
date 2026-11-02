@@ -1,0 +1,35 @@
+/* Copyright (C) 2026 Eric Kochen */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Additional terms apply, see NOTICE. */
+
+.roles {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--hhx-space-3);
+  max-inline-size: var(--hhx-measure-narrow);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--hhx-type-1);
+  color: var(--hh-text-muted);
+}
+
+.name {
+  flex: 1;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.closedList {
+  display: grid;
+  gap: var(--hhx-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.closed {
+  display: grid;
+  gap: var(--hhx-space-2);
+}

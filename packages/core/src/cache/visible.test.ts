@@ -6,7 +6,7 @@ import { expect, test } from "vitest";
 
 import type { Mailbox } from "../jmap/schemas";
 import { mailbox } from "./fake-jmap";
-import { visibleMailboxes } from "./visible";
+import { branchOf, hideWrite, visibleMailboxes } from "./visible";
 
 function box(
   id: string,
@@ -65,4 +65,33 @@ test("a role draws no folder above it, and parents that name each other end the 
       box("b", { parentId: "a" }),
     ]),
   ).toEqual(["sent", "a", "b"]);
+});
+
+test("a branch holds the folder and every folder without a role under it", () => {
+  const rows = [
+    box("parent"),
+    box("child", { parentId: "parent", subscribed: false }),
+    box("deep", { parentId: "child" }),
+    box("role", { parentId: "parent", role: "junk" }),
+    box("under-role", { parentId: "role" }),
+    box("other"),
+  ];
+  expect(branchOf(rows, "parent")).toEqual(["parent", "child", "deep"]);
+  expect(branchOf(rows, "other")).toEqual(["other"]);
+});
+
+test("a loop in the server's parents ends the branch", () => {
+  const rows = [box("a", { parentId: "b" }), box("b", { parentId: "a" })];
+  expect(branchOf(rows, "a")).toEqual(["a", "b"]);
+});
+
+test("a hide unsubscribes the subscribed folders of the branch, never a role", () => {
+  const rows = [
+    box("parent", { subscribed: false }),
+    box("child", { parentId: "parent" }),
+    box("quiet", { parentId: "parent", subscribed: false }),
+    box("role", { parentId: "parent", role: "junk" }),
+    box("other"),
+  ];
+  expect(hideWrite(rows, "parent")).toEqual({ update: { child: { isSubscribed: false } } });
 });

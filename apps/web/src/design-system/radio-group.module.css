@@ -35,6 +35,12 @@
   background: var(--hh-hover);
 }
 
+.segment[data-disabled] {
+  background: var(--hh-bg);
+  color: var(--hh-text-muted);
+  cursor: default;
+}
+
 /* The chosen segment carries weight as well as tint, so color is never the only signal. */
 .segment[data-checked] {
   background: var(--hh-accent-tint);

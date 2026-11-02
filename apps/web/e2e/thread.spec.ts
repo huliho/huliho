@@ -10,7 +10,7 @@ import { FIXED_NOW } from "./mail-corpus";
 import { mockMail } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
-import { THEMES, VIEWPORTS, axeOn } from "./sweep";
+import { THEMES, VIEWPORTS, axeOn, limitsIn } from "./sweep";
 import {
   CARDS_IN_SIGHT,
   INBOX_PATH,
@@ -279,6 +279,7 @@ test("the pane reads in Dutch and in the pseudo-locale", async ({ page }) => {
   for (const own of [subject, title, sender]) {
     expect(await directionOf(own)).toBe("ltr");
   }
+  await limitsIn(page);
   await bodiesLanded(page);
   await settled(page);
   await expect.soft(page).toHaveScreenshot("thread-en-XA-light-desktop.png");
@@ -304,6 +305,7 @@ async function drawnOpen(page: Page, drawn: Drawn, theme: (typeof THEMES)[number
   await test.step(`${drawn.name} in ${theme} at ${drawn.viewport.name} width`, async () => {
     await page.emulateMedia({ colorScheme: theme });
     await openInbox(page, drawn.readingPane);
+    await limitsIn(page);
     await rowAt(page, LONG_ROW).click();
     await expect(page.getByRole("heading", { name: subjectOf(LONG_ROW) })).toBeVisible();
     await bodiesLanded(page);

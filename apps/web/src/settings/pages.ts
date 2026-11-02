@@ -7,6 +7,7 @@
 export { AboutSettings } from "./about";
 export { AccountsPage } from "./accounts/accounts-page";
 export { AppearancePage } from "./appearance/appearance-page";
+export { FoldersPage } from "./accounts/folders-page";
 export { SessionsPage } from "./sessions/sessions-page";
 export { SettingsIndex } from "./settings-index";
 export { SettingsPage } from "./settings-page";

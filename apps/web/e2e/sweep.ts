@@ -4,6 +4,7 @@
 
 import { AxeBuilder } from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
+import { expect } from "@playwright/test";
 
 // Every sweep captures both themes at the phone and desktop reference
 // widths and holds the page to the same WCAG tags.
@@ -28,4 +29,23 @@ export function axeOn(page: Page): AxeBuilder {
 // its height, so a screenshot shows the message and not the still lines.
 export async function framesLoaded(page: Page): Promise<void> {
   await page.waitForFunction(() => document.querySelector("iframe[data-loading]") === null);
+}
+
+// At the desktop width the sidebar's New folder control stands once the
+// account's limits are in, which land after the rows on a repeat load;
+// the narrower layouts keep the sidebar in a sheet. The title signal
+// waits instead for the mailbox's name to be its menu's button, which
+// its folder items make at every width.
+export async function limitsIn(page: Page, signal: "sidebar" | "title" = "sidebar"): Promise<void> {
+  if (signal === "title") {
+    await expect(page.locator("main header h1").getByRole("button")).toBeVisible();
+    return;
+  }
+  const narrower = page.locator('[data-layout]:not([data-layout="desktop"])');
+  const newFolder = page
+    .locator('[data-layout="desktop"]')
+    .getByRole("tree")
+    .locator("..")
+    .getByRole("button");
+  await expect(narrower.or(newFolder)).toBeVisible();
 }

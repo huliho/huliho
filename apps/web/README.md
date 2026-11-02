@@ -74,6 +74,22 @@ the row id and says on the row what came of it; Remove takes the row
 out at once and reaches the server when its undo toast has run out,
 through the same deferred mutation as a revoke.
 
+Each account's row links to its Folders screen. There the six roles
+(Inbox, Drafts, Sent, Archive, Junk and Trash) each have a select over the
+folders the tree draws plus None, prefilled with what the server names.
+A pick goes out once the select has stood still, as one `Mailbox/set`
+that takes the role from its holder and gives it to the new folder; a
+folder that held another role lets that one go. A mailbox that takes no
+rename stands where the server fixes it: it keeps the role it holds, its
+row takes no change and no select offers it, so the inbox's row stands
+still on every account and every role row on Gmail. Under the roles stand the
+folders the tree leaves out, each with Show, which brings that folder
+back alone, and the mailboxes the server does not open, each with the
+choice between an empty row in the tree and none; Hide takes the
+subscribed folders under it along. Offline the screen holds every
+control and says why. A refusal lands in a toast and the control falls
+back to what the server holds.
+
 Settings > Appearance holds the theme, the density, the font size, the
 line height, the dark mode for messages, what follows an archive or a
 delete, the reading pane position and the language, each a row of

@@ -20,7 +20,7 @@ import { MAILBOXES, mockMail } from "./mail-mocks";
 import { network } from "./network";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
-import { THEMES, VIEWPORTS, axeOn } from "./sweep";
+import { THEMES, VIEWPORTS, axeOn, limitsIn } from "./sweep";
 import {
   INBOX_PATH,
   READ_INBOX,
@@ -273,6 +273,7 @@ test("every body state is axe-clean and matches its screenshots in both themes a
         const label = `${shown.name} in ${theme} at ${viewport.name} width`;
         await test.step(label, async () => {
           await openCard(page, rowFrom(shown.sender));
+          await limitsIn(page);
           await bodiesLanded(page);
           await settled(page);
           const results = await axeOn(page).analyze();

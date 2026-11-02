@@ -19,7 +19,7 @@ import { FIXED_NOW } from "./mail-corpus";
 import { mockMail } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
-import { THEMES, VIEWPORTS, axeOn } from "./sweep";
+import { THEMES, VIEWPORTS, axeOn, limitsIn } from "./sweep";
 import {
   READ_INBOX,
   ROWS,
@@ -269,6 +269,7 @@ test("the strip and its dialogs are axe-clean and match their screenshots in bot
       const label = `the strip in ${theme} at ${viewport.name} width`;
       await test.step(label, async () => {
         const { strip } = await openStrip(page);
+        await limitsIn(page);
         const preview = strip.getByRole("button", { name: PHOTO_BUTTON });
         await expect.poll(() => loaded(preview.locator("img"))).toBe(true);
         await settled(page);

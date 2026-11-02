@@ -122,6 +122,14 @@ function AccountItem(props: ItemProps) {
       </div>
       <div className={styles.actions}>
         <StateAction {...props} />
+        <Link
+          to="/settings/accounts/$accountId/folders"
+          params={{ accountId: row.id }}
+          className={cx(buttonStyles.button, buttonStyles.secondary)}
+          aria-label={m.accounts_folders_for({ name: row.name }, { locale })}
+        >
+          {m.tree_folders({}, { locale })}
+        </Link>
         <Button
           aria-label={m.accounts_remove_for({ name: row.name }, { locale })}
           data-account={row.id}

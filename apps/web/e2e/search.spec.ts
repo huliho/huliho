@@ -11,7 +11,7 @@ import { FIXED_NOW } from "./mail-corpus";
 import { mockMail } from "./mail-mocks";
 import { mockPreferences } from "./preference-mocks";
 import { mockSignedIn } from "./session-mocks";
-import { axeOn } from "./sweep";
+import { axeOn, limitsIn } from "./sweep";
 import { settled } from "./thread-pane";
 
 // The platform's command modifier, as Playwright names it.
@@ -173,6 +173,7 @@ test("the field, a token and the suggestions read in Dutch and mirror in the pse
   expect(await shortcut.evaluate(directionOf)).toBe("ltr");
   expect(await page.getByRole("combobox").evaluate(directionOf)).toBe("ltr");
   await expect(spoken(page)).toHaveText(/\d/u);
+  await limitsIn(page);
   await settled(page);
   await expect.soft(page).toHaveScreenshot(`search-${PSEUDO_LOCALE}-light-desktop.png`);
   // Escape clears the field with its token; the route's search then stands under it as a recent.

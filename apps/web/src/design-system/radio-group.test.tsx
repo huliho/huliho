@@ -64,3 +64,16 @@ test("a click picks a segment and reports its word alone", () => {
   fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
   expect(onChange).toHaveBeenCalledExactlyOnceWith("dark");
 });
+
+test("a disabled group shows its word and takes no press", () => {
+  const onChange = vi.fn<(value: string) => void>();
+  render(
+    <>
+      <h2 id="theme">Theme</h2>
+      <RadioGroup labelledBy="theme" options={OPTIONS} value="light" disabled onChange={onChange} />
+    </>,
+  );
+  fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
+  expect(onChange).not.toHaveBeenCalled();
+  expect(screen.getByRole("radio", { name: "Light" }).getAttribute("aria-checked")).toBe("true");
+});

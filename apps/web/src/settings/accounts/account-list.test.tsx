@@ -124,6 +124,19 @@ test("a connected row offers Remove alone; a stop offers Reconnect or Retry with
   expect(screen.getAllByRole("button", { name: /^Remove/ })).toHaveLength(3);
 });
 
+test("every row links to the account's folder screen, named by the account", async () => {
+  await renderList(ROWS);
+  for (const [name, id] of [
+    ["Fastmail", "acc-1"],
+    ["Gmail", "acc-2"],
+    ["dekker-mail.nl", "acc-3"],
+  ] as const) {
+    expect(screen.getByRole("link", { name: `Folders of ${name}` }).getAttribute("href")).toBe(
+      `/settings/accounts/${id}/folders`,
+    );
+  }
+});
+
 test("Retry and Remove name their row; a pending retry is held and says so", async () => {
   const rendered = await renderList(ROWS);
   fireEvent.click(screen.getByRole("button", { name: "Retry dekker-mail.nl" }));
