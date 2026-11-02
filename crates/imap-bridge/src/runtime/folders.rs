@@ -9,10 +9,11 @@
 //! 5.3 gives creates, updates and destroys, CREATE with SUBSCRIBE,
 //! RENAME, SUBSCRIBE or UNSUBSCRIBE and DELETE, each step naming what
 //! the steps before it made or moved. What the server took is written
-//! to the rows as one state. After a RENAME or a DELETE the server
-//! refused, one pass on a fresh connection shows what stands; after any
-//! refusal the next use signs in afresh, so on Gmail it sees the
-//! folders as they stand.
+//! to the rows as one state. After a failed CREATE, RENAME or DELETE one
+//! pass on a fresh connection shows what stands and a name that stands
+//! by then answers as the rows would have; after any refusal the next
+//! use runs on a connection that signed in after it, so on Gmail it sees
+//! the folders as they stand.
 
 mod delimiters;
 mod failure;
@@ -207,10 +208,13 @@ pub(crate) async fn apply<C: Connector>(
     let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
     let written = blocking(move || store.write_mailboxes(&key, &changes)).await?;
     let mut new_state = written.after;
-    if work.refused == Refused::Move {
-        new_state = settle(&mut wire, cache, round.until)
-            .await?
-            .unwrap_or(new_state);
+    if work.refused == Refused::Tree
+        && let Some(state) = settle(&mut wire, cache, round.until).await?
+    {
+        new_state = state;
+        let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
+        let after = blocking(move || store.mailbox_snapshot(&key)).await?;
+        work.passed(&after.rows);
     }
     let outcome = work.outcome(snapshot, new_state);
     if let Outcome::Done { created, .. } = &outcome {
@@ -223,10 +227,10 @@ pub(crate) async fn apply<C: Connector>(
     Ok(outcome)
 }
 
-/// One pass on a fresh connection after a RENAME or a DELETE the
-/// server refused, within what is left of the deadline, so the rows show
-/// what stands (Cyrus renames a tree one mailbox at a time). The state
-/// afterwards; `None` when no pass ran.
+/// One pass on a fresh connection after a failed CREATE, RENAME or
+/// DELETE, within what is left of the deadline, so the rows show what
+/// stands (another client may hold the name, Cyrus renames a tree one
+/// mailbox at a time). The state afterwards; `None` when no pass ran.
 async fn settle<C: Connector>(
     wire: &mut super::Wire<C>,
     cache: &Cache,

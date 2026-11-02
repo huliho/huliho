@@ -90,6 +90,12 @@ pub fn state(rig: &Rig) -> u64 {
     rig.cache.store.state(&rig.cache.key).unwrap()
 }
 
+/// The sign-ins the server saw.
+pub fn logins(rig: &Rig) -> usize {
+    let lines = rig.fake.lines();
+    lines.iter().filter(|line| line.contains(" LOGIN ")).count()
+}
+
 /// The mailbox changes after a state with their kinds.
 pub fn mailboxes_changed(rig: &Rig, since: u64) -> Vec<(String, ChangeKind)> {
     rig.changes(ObjectType::Mailbox, since)

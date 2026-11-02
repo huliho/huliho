@@ -11,13 +11,13 @@
 use std::collections::HashMap;
 
 use super::delimiters::Delimiters;
-use super::failure::{Refused, Stop, failure, kept};
+use super::failure::{Contested, Refused, Stop, failure, kept, taken};
 use super::names::{Moved, Names};
-use super::step::{Naming, Planned, Step, Under, name_error, sort_order_of};
+use super::step::{Naming, Planned, Step, Under, invalid, name_error, sort_order_of};
 use super::{Ask, Outcome, Refusal};
 use crate::mailboxes::INBOX;
 use crate::session::{ListReturn, MailboxName, Place, Session, SessionError};
-use crate::store::{MailboxChange, MailboxId, MailboxSnapshot, RoleOverride};
+use crate::store::{MailboxChange, MailboxId, MailboxRow, MailboxSnapshot, RoleOverride};
 
 /// One ask as its steps work through it.
 pub(super) struct Work {
@@ -37,6 +37,8 @@ pub(super) struct Work {
     delimiters: Option<Delimiters>,
     pub changes: Vec<MailboxChange>,
     pub refused: Refused,
+    /// The names of the failed CREATEs and RENAMEs, for a pass to read.
+    contested: Vec<Contested>,
     /// A RENAME or a DELETE the server took, which moves mail in a
     /// search.
     pub moves_mail: bool,
@@ -72,6 +74,7 @@ impl Work {
             delimiters: None,
             changes: Vec::new(),
             refused: Refused::Nothing,
+            contested: Vec::new(),
             moves_mail: false,
             inbox_open: false,
         }
@@ -208,14 +211,26 @@ impl Work {
     }
 
     /// The command failed: how its object ends, the session noted.
-    fn refused(&mut self, error: &SessionError, moves: bool) -> Stop {
-        let refused = if moves {
-            Refused::Move
-        } else {
-            Refused::Command
-        };
+    fn refused(&mut self, error: &SessionError, refused: Refused) -> Stop {
         self.refused = self.refused.max(refused);
         failure(error)
+    }
+
+    /// A CREATE or a RENAME failed: a pass follows and its name waits for
+    /// what the pass shows. The failure alone does not tell: Gmail's NO
+    /// names a label in raw UTF-8, which reads as an answer that cannot be
+    /// read.
+    fn contested(&mut self, error: &SessionError, asked: Contested) -> Stop {
+        self.contested.push(asked);
+        self.refused(error, Refused::Tree)
+    }
+
+    /// What a pass showed: a name it found taken answers as the rows would
+    /// have answered it (RFC 8621 section 2.5).
+    pub(super) fn passed(&mut self, rows: &[MailboxRow]) {
+        for index in taken(&self.contested, rows) {
+            self.end(index, Err(invalid("name")));
+        }
     }
 
     /// CREATE, then SUBSCRIBE unless the user asked otherwise; a
@@ -223,6 +238,7 @@ impl Work {
     /// unsubscribed. Whether the session still stands.
     async fn create<S: Session>(&mut self, session: &mut S, step: &Step) -> Result<bool, Stop> {
         let Step::Create {
+            index,
             id,
             naming,
             role,
@@ -234,14 +250,14 @@ impl Work {
         };
         let (name, delimiter) = self.named(session, naming).await?;
         if let Err(error) = session.create(&name).await {
-            return Err(self.refused(&error, false));
+            return Err(self.contested(&error, Contested::new(*index, naming, None)));
         }
         let mut subscribed = false;
         let mut stands = true;
         if *subscribe {
             match session.subscribe(name.wire()).await {
                 Ok(()) => subscribed = true,
-                Err(error) => stands = self.refused(&error, false).stands,
+                Err(error) => stands = self.refused(&error, Refused::Command).stands,
             }
         }
         self.names.made(id.clone(), name.wire().to_owned());
@@ -261,12 +277,12 @@ impl Work {
     /// UNSUBSCRIBE, then the role, each only where the update asks it.
     async fn update<S: Session>(&mut self, session: &mut S, step: &Step) -> Result<bool, Stop> {
         let Step::Update {
+            index,
             id,
             rename,
             followers,
             subscribe,
             role,
-            ..
         } = step
         else {
             return Ok(true);
@@ -276,7 +292,8 @@ impl Work {
             let (to, _) = self.named(session, naming).await?;
             self.open_inbox(session).await?;
             if let Err(error) = session.rename(&from, &to).await {
-                return Err(self.refused(&error, true));
+                let asked = Contested::new(*index, naming, Some(id.clone()));
+                return Err(self.contested(&error, asked));
             }
             self.moves_mail = true;
             self.changes.push(MailboxChange::Renamed {
@@ -296,7 +313,7 @@ impl Work {
                 session.unsubscribe(&wire).await
             };
             if let Err(error) = sent {
-                return Err(self.refused(&error, false));
+                return Err(self.refused(&error, Refused::Command));
             }
             self.changes.push(MailboxChange::Subscribed {
                 id: id.clone(),
@@ -356,7 +373,7 @@ impl Work {
         let wire = self.wire_of(id)?;
         self.open_inbox(session).await?;
         if let Err(error) = session.delete(&wire).await {
-            return Err(self.refused(&error, true));
+            return Err(self.refused(&error, Refused::Tree));
         }
         self.moves_mail = true;
         self.changes

@@ -56,6 +56,13 @@ fn nfc(name: &str) -> String {
     name.nfc().collect()
 }
 
+/// The names in NFC taken under each parent.
+pub(super) fn names_of(rows: &[MailboxRow]) -> HashSet<(Option<MailboxId>, String)> {
+    rows.iter()
+        .map(|row| (row.parent_id.clone(), nfc(&row.facts.name)))
+        .collect()
+}
+
 fn is_inbox(row: &MailboxRow) -> bool {
     row.facts.imap_name.eq_ignore_ascii_case(INBOX)
 }
@@ -74,11 +81,7 @@ impl<'a> Planning<'a> {
                 .iter()
                 .map(|row| (row.id.to_string(), row.clone()))
                 .collect(),
-            names: snapshot
-                .rows
-                .iter()
-                .map(|row| (row.parent_id.clone(), nfc(&row.facts.name)))
-                .collect(),
+            names: names_of(&snapshot.rows),
             children: HashMap::new(),
             destroying: HashSet::new(),
             roles: None,

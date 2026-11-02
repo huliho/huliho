@@ -143,9 +143,14 @@ pub fn cache(key: &str) -> Cache {
 /// A link to the compose Dovecot that refreshes on every `/changes`
 /// call.
 pub fn link() -> Link<TestConnector> {
+    link_on(IMAPS_PORT)
+}
+
+/// The same on another IMAPS port, as [`bridge_session_on`] has it.
+pub fn link_on(port: u16) -> Link<TestConnector> {
     let connector = TestConnector::Server {
         tls: tls(true),
-        target: dovecot(IMAPS_PORT, TlsMode::Implicit),
+        target: dovecot(port, TlsMode::Implicit),
         step: STEP_TIMEOUT,
         user: USER.to_owned(),
         password: PASSWORD.to_owned(),

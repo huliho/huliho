@@ -501,8 +501,10 @@ messages in All Mail. A role is the bridge's own: it lives on the row
 and the next pass reads it ahead of the server's. A name goes out under
 the delimiter of a LIST the call reads first. What the server took is
 one state. Any other NO answers `serverFail` without the server's
-words; after a refused RENAME or DELETE one pass on a fresh connection
-shows what stands, and after any refusal the next use signs in afresh.
+words. After a failed CREATE, RENAME or DELETE one pass on a fresh
+connection shows what stands. A CREATE or a RENAME whose name stands by
+then answers `invalidProperties` on `name` as the rows would have. After
+any refusal the next use runs on a connection that signed in after it.
 
 An `Email/query` with a text or a sender has the server searched
 between two passes over its request, on a connection of the account's
@@ -617,7 +619,9 @@ dropped or never answered, a `COPYUID` of the test's own words, a
 continuation request withheld or refused, a search in one charset
 alone, a SEARCH line padded to a size, a SEARCH answered late, an
 EXAMINE answer without EXISTS, every folder command refused with a code
-of the test's own plus a DELETE of a parent that keeps its name as
+of the test's own, Gmail's NO naming a taken label in raw UTF-8, a
+RENAME that moves its folder and still answers NO plus a DELETE of a
+parent that keeps its name as
 `\Noselect`. `Mailboxes::searches` counts the UID
 SEARCH commands every connection received. Its `Mailboxes`
 stand in for a second client between two passes: a message appended,

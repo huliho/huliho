@@ -13,6 +13,7 @@ mod mailbox_set_faults;
 mod mailbox_set_gmail;
 mod mailbox_set_order;
 mod mailbox_set_roles;
+mod mailbox_set_taken;
 mod sync_rig;
 
 use folders_rig::{
