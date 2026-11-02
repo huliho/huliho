@@ -10,14 +10,15 @@ use proptest::prelude::*;
 
 use super::*;
 
-/// A label of ASCII letters that neither starts nor ends in white space.
-const LABEL: &str = "[A-Za-z][A-Za-z ]{0,10}[A-Za-z]";
+/// A label of ASCII letters that neither starts nor ends in white space, each
+/// space alone, as Gmail keeps its labels.
+const LABEL: &str = "[A-Za-z]( ?[A-Za-z]){1,5}";
 
-/// The most letters such a label holds.
-const LABEL_LETTERS: usize = 12;
+/// The most characters such a label holds, spaces included.
+const LABEL_CHARACTERS: usize = 11;
 
 /// A Gmail account over the rows of `dovecot`, those without a role labels.
-fn gmail() -> MailboxSnapshot {
+pub(super) fn gmail() -> MailboxSnapshot {
     let mut snapshot = dovecot();
     snapshot.gmail = true;
     snapshot.rights.clear();
@@ -91,7 +92,7 @@ proptest! {
     #[test]
     fn any_ascii_case_of_a_label_is_refused_and_any_other_name_goes_out(
         label in LABEL,
-        flips in proptest::collection::vec(any::<bool>(), LABEL_LETTERS),
+        flips in proptest::collection::vec(any::<bool>(), LABEL_CHARACTERS),
     ) {
         let mut snapshot = gmail();
         snapshot.rows.push(row("mlabel", &label, None, None));

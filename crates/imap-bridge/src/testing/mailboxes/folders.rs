@@ -8,7 +8,8 @@
 //! section 3), which the client library's parser drops. On a Gmail
 //! account a label folder takes its label along: the mail stays in All
 //! Mail, a name that stands is refused with the name in raw UTF-8 and one
-//! that differs from a label in case alone is refused as well.
+//! that reads as a label under Gmail's fold is refused as well, as is one
+//! with white space in a row or a path past Gmail's limits.
 
 use super::{Extension, Mailboxes, quote, unquote};
 use crate::testing::behavior::{ParentDelete, Renaming};
@@ -40,13 +41,33 @@ const FULL_WIDTH: std::ops::RangeInclusive<u32> = 0xff01..=0xff5e;
 /// How far full-width ASCII stands from ASCII.
 const FULL_WIDTH_OFFSET: u32 = 0xfee0;
 
+/// The ASCII marks Gmail reads as a space between two letters.
+const READ_AS_SPACE: &str = "\"&(){|}-";
+
+/// The UTF-16 code units of a whole path Gmail takes.
+const MAX_PATH_UNITS: usize = 225;
+
+/// The bytes of UTF-8 of a whole path Gmail takes.
+const MAX_PATH_BYTES: usize = 255;
+
+/// Gmail's NO to two white space characters in a row.
+const EXCESS_WHITE_SPACE: &str = "[CANNOT] Folder contains excess whitespace";
+
+/// Gmail's NO to a whole path past `MAX_PATH_UNITS`.
+const NOT_ALLOWED: &str = "[CANNOT] Folder name is not allowed.";
+
+/// Gmail's NO to a whole path past `MAX_PATH_BYTES`.
+const SYSTEM_ERROR: &str = "System Error";
+
 /// Why a folder command failed: BAD for a form the script does not
 /// read, NO with the code a server would send.
 enum Failure {
     Bad,
     No(Option<&'static str>),
-    /// On Gmail, a name that differs from another in case alone.
+    /// On Gmail, a name that reads as another under its fold.
     Variant,
+    /// On Gmail, a name it refuses whatever stands beside it, in its words.
+    Said(&'static str),
 }
 
 /// The quoted names after a verb with their escapes undone, then what
@@ -106,6 +127,7 @@ impl Mailboxes {
                 "{tag} NO [{ALREADY_EXISTS}] Folder name conflicts with existing folder name. (Failure)\r\n"
             ),
             Err(Failure::No(Some(code))) => format!("{tag} NO [{code}] refused\r\n"),
+            Err(Failure::Said(words)) => format!("{tag} NO {words} (Failure)\r\n"),
         }
     }
 
@@ -133,6 +155,9 @@ impl Mailboxes {
     /// Gmail a label folder.
     fn create(&self, name: &str) -> Result<String, Failure> {
         let gmail = self.has(Extension::Gmail);
+        if gmail {
+            gmail_rules(name)?;
+        }
         let mut folders = self.lock();
         if name.eq_ignore_ascii_case("INBOX") || folders.iter().any(|folder| folder.name == name) {
             return Err(Failure::No(Some(ALREADY_EXISTS)));
@@ -163,6 +188,9 @@ impl Mailboxes {
     /// the old names, so the new ones start unsubscribed (RFC 9051
     /// section 6.3.6). The script keeps INBOX where it is.
     fn rename(&self, from: &str, to: &str) -> Result<String, Failure> {
+        if self.has(Extension::Gmail) {
+            gmail_rules(to)?;
+        }
         let mut folders = self.lock();
         self.editable(&folders, from)?;
         if to.eq_ignore_ascii_case("INBOX") || folders.iter().any(|folder| folder.name == to) {
@@ -259,9 +287,26 @@ impl Mailboxes {
     }
 }
 
+/// What Gmail refuses of a name whatever stands beside it, as far as the
+/// tests need it.
+fn gmail_rules(wire: &str) -> Result<(), Failure> {
+    let path = utf7::decode(wire);
+    let spaces: Vec<bool> = path.chars().map(char::is_whitespace).collect();
+    if spaces.windows(2).any(|pair| pair[0] && pair[1]) {
+        return Err(Failure::Said(EXCESS_WHITE_SPACE));
+    }
+    if path.encode_utf16().count() > MAX_PATH_UNITS {
+        return Err(Failure::Said(NOT_ALLOWED));
+    }
+    if path.len() > MAX_PATH_BYTES {
+        return Err(Failure::Said(SYSTEM_ERROR));
+    }
+    Ok(())
+}
+
 /// How Gmail tells label names apart, as far as the tests need it: every
-/// letter in one case and full-width ASCII as ASCII, its capital sigma and
-/// capital sharp s left alone.
+/// letter in one case, full-width ASCII as ASCII and the marks it reads as a
+/// space as one, its capital sigma and capital sharp s left alone.
 fn gmail_fold(wire: &str) -> String {
     let mut fold = String::new();
     for letter in utf7::decode(wire).chars() {
@@ -273,8 +318,13 @@ fn gmail_fold(wire: &str) -> String {
         let narrow = FULL_WIDTH
             .contains(&code)
             .then(|| char::from_u32(code - FULL_WIDTH_OFFSET))
-            .flatten();
-        fold.extend(narrow.unwrap_or(letter).to_lowercase());
+            .flatten()
+            .unwrap_or(letter);
+        if narrow.is_whitespace() || READ_AS_SPACE.contains(narrow) {
+            fold.push(' ');
+        } else {
+            fold.extend(narrow.to_lowercase());
+        }
     }
     fold
 }

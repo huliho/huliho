@@ -7,9 +7,8 @@
 
 use std::collections::HashMap;
 
-use unicode_normalization::UnicodeNormalization as _;
-
 use super::Refusal;
+use super::gmail;
 use super::plan::nfc;
 use super::step::Naming;
 use crate::session::SessionError;
@@ -73,13 +72,6 @@ impl Contested {
     }
 }
 
-/// A name as a pass reads it once Gmail refused one: whatever its case and
-/// its width. A name Gmail takes never gets here, so this reading may reach
-/// wider than Gmail's own fold.
-fn beside_on_gmail(name: &str) -> String {
-    name.nfkc().collect::<String>().to_lowercase()
-}
-
 /// The objects whose name stands beside them on the rows a pass left, so
 /// another client holds it. A RENAME counts while its mailbox still has its
 /// row. A pass matches rows by wire name, so a mailbox that moved has lost
@@ -87,7 +79,7 @@ fn beside_on_gmail(name: &str) -> String {
 pub(super) fn taken(contested: &[Contested], rows: &[MailboxRow], gmail: bool) -> Vec<usize> {
     let read = |name: &str| {
         if gmail {
-            beside_on_gmail(name)
+            gmail::beside(name)
         } else {
             nfc(name)
         }

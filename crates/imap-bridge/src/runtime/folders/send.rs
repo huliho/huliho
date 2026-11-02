@@ -12,6 +12,7 @@ use std::collections::HashMap;
 
 use super::delimiters::Delimiters;
 use super::failure::{Contested, Refused, Stop, failure, kept, taken};
+use super::gmail;
 use super::names::{Moved, Names};
 use super::step::{Naming, Planned, Step, Under, invalid, name_error, sort_order_of};
 use super::{Ask, Outcome, Refusal};
@@ -167,7 +168,8 @@ impl Work {
     }
 
     /// The name at its place, under the delimiter its level carries. A
-    /// parent the call was to make and did not names no mailbox.
+    /// parent the call was to make and did not names no mailbox. On Gmail
+    /// the whole path stays within what it takes.
     async fn named<S: Session>(
         &mut self,
         session: &mut S,
@@ -188,10 +190,15 @@ impl Work {
             parent: parent.as_deref(),
             delimiter,
         };
-        let name = MailboxName::new(&naming.typed, place).map_err(|error| Stop {
-            refusal: name_error(error),
+        let stop = |refusal| Stop {
+            refusal,
             stands: true,
-        })?;
+        };
+        let name =
+            MailboxName::new(&naming.typed, place).map_err(|error| stop(name_error(error)))?;
+        if self.gmail && gmail::past_limit(name.wire()) {
+            return Err(stop(invalid("name")));
+        }
         Ok((name, delimiter))
     }
 

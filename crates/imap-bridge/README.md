@@ -511,8 +511,12 @@ reads names beside each other in another way. A difference in ASCII case
 answers `invalidProperties` on `name` from the rows with nothing sent.
 Any other difference goes to the server, since Gmail's fold follows no
 standard: it refuses `é` beside `É` yet takes `Greek σ` beside `Greek Σ`.
-Once it refused, the pass reads the name whatever its case and width. A rename
-that changes the case alone is a RENAME like any other.
+Once it refused, the pass reads the name whatever its case and width, with
+every character that is no letter or digit as a space, since Gmail reads `a-b`
+beside `a b` as one name. A rename that changes the case alone is a RENAME like
+any other. Two white space characters in a row and a whole path past 225 UTF-16
+units or 255 bytes answer `invalidProperties` on `name` with no folder command,
+since Gmail refuses them on every try.
 
 An `Email/query` with a text or a sender has the server searched
 between two passes over its request, on a connection of the account's
@@ -628,7 +632,8 @@ continuation request withheld or refused, a search in one charset
 alone, a SEARCH line padded to a size, a SEARCH answered late, an
 EXAMINE answer without EXISTS, every folder command refused with a code
 of the test's own, Gmail's NO naming a taken label in raw UTF-8, its NO
-to a name that differs in case alone, a
+to a name that differs in case alone or in a mark it reads as a space,
+its NO to white space in a row and to a path past its limits, a
 RENAME that moves its folder and still answers NO plus a DELETE of a
 parent that keeps its name as
 `\Noselect`. `Mailboxes::searches` counts the UID
