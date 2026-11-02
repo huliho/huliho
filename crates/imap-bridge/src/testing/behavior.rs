@@ -83,6 +83,8 @@ pub struct Behavior {
     /// What a DELETE of a selectable folder with folders under it comes
     /// to.
     pub parent_delete: ParentDelete,
+    /// What a RENAME the server would take comes to.
+    pub renaming: Renaming,
     /// What a LOGOUT comes to; the BYE and the tagged OK as it stands.
     pub logging_out: Storing,
 }
@@ -96,6 +98,17 @@ pub enum ParentDelete {
     /// Its mail goes and its name stays as `\Noselect` (RFC 3501 section
     /// 6.3.4).
     KeepsName,
+}
+
+/// How the server takes a RENAME.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Renaming {
+    /// The folder moves and the tagged OK follows.
+    #[default]
+    Whole,
+    /// The folder moves and NO follows, as a server that renames a tree
+    /// one mailbox at a time and stops on the way.
+    StopsPartway,
 }
 
 /// How the server takes a write command.

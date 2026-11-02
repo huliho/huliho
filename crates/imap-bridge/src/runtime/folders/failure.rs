@@ -6,7 +6,10 @@
 //! whether the session stands and what the work does afterwards.
 
 use super::Refusal;
+use super::plan::names_of;
+use super::step::Naming;
 use crate::session::SessionError;
+use crate::store::{MailboxId, MailboxRow};
 
 /// Why a step ended early: how its object ends and whether the session
 /// still stands.
@@ -43,6 +46,42 @@ pub(super) enum Refused {
     Nothing,
     /// A command: the next use signs in afresh.
     Command,
-    /// A RENAME or a DELETE among them: a pass shows what stands.
-    Move,
+    /// A CREATE, a RENAME or a DELETE among them: a pass shows what
+    /// stands.
+    Tree,
+}
+
+/// A name a CREATE or a RENAME asked for that the server did not give.
+pub(super) struct Contested {
+    pub index: usize,
+    pub naming: Naming,
+    /// For a RENAME, the mailbox it moves.
+    pub moving: Option<MailboxId>,
+}
+
+impl Contested {
+    pub(super) fn new(index: usize, naming: &Naming, moving: Option<MailboxId>) -> Self {
+        Self {
+            index,
+            naming: naming.clone(),
+            moving,
+        }
+    }
+}
+
+/// The objects whose name stands on the rows a pass left, so another
+/// client holds it. A RENAME counts while its mailbox still has its row.
+/// A pass matches rows by wire name, so a mailbox that moved has lost it:
+/// a server may move a tree one mailbox at a time and stop on the way.
+pub(super) fn taken(contested: &[Contested], rows: &[MailboxRow]) -> Vec<usize> {
+    let names = names_of(rows);
+    let stayed = |id: &MailboxId| rows.iter().any(|row| row.id == *id);
+    contested
+        .iter()
+        .filter(|asked| {
+            let name = (asked.naming.under.id().cloned(), asked.naming.leaf.clone());
+            names.contains(&name) && asked.moving.as_ref().is_none_or(stayed)
+        })
+        .map(|asked| asked.index)
+        .collect()
 }

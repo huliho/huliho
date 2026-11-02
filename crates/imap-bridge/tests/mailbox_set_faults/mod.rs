@@ -4,14 +4,14 @@
 
 //! `Mailbox/set` where the server says no or narrows the rights: a
 //! refused command answers `serverFail` and costs the conversation, a
-//! refused RENAME is followed by a pass, a SUBSCRIBE refused after a
-//! CREATE leaves the folder created and unsubscribed, the rights follow
-//! MYRIGHTS one mailbox at a time or through LIST with a mailbox the
-//! server cannot look up holding every right, a DELETE the server keeps
-//! as a name comes back as `\Noselect`, a renamed folder that renumbers
-//! keeps its emails, an INBOX listed without a delimiter leaves the top
-//! level under the one the other lines carry and a listing without any
-//! delimiter refuses a parent.
+//! refused CREATE, RENAME or DELETE is followed by a pass, a SUBSCRIBE
+//! refused after a CREATE leaves the folder created and unsubscribed,
+//! the rights follow MYRIGHTS one mailbox at a time or through LIST with
+//! a mailbox the server cannot look up holding every right, a DELETE the
+//! server keeps as a name comes back as `\Noselect`, a renamed folder
+//! that renumbers keeps its emails, an INBOX listed without a delimiter
+//! leaves the top level under the one the other lines carry and a
+//! listing without any delimiter refuses a parent.
 
 use huliho_imap_bridge::store::{ChangeKind, ObjectType};
 use huliho_imap_bridge::testing::{
@@ -20,15 +20,9 @@ use huliho_imap_bridge::testing::{
 use serde_json::json;
 
 use crate::folders_rig::{
-    id_of, mailbox, mailboxes_changed, refused, rows, sent, set, started, state,
+    id_of, logins, mailbox, mailboxes_changed, refused, rows, sent, set, started, state,
 };
 use crate::sync_rig::{ACCOUNT, Rig};
-
-/// The sign-ins the server saw.
-fn logins(rig: &Rig) -> usize {
-    let lines = rig.fake.lines();
-    lines.iter().filter(|line| line.contains(" LOGIN ")).count()
-}
 
 /// The MYRIGHTS commands the server received.
 fn myrights(rig: &Rig) -> usize {
@@ -55,27 +49,45 @@ fn narrowed(list_rights: bool) -> Mailboxes {
 }
 
 /// A NO costs the call its object as `serverFail`, never the server's
-/// words; the next use signs in afresh. After a refused RENAME a pass
-/// on a fresh connection shows what stands before the answer.
+/// words. After a refused CREATE, RENAME or DELETE a pass on a fresh
+/// connection shows what stands before the answer. The next use keeps
+/// that connection.
 #[tokio::test]
-async fn a_refused_command_answers_server_fail_and_a_refused_rename_is_followed_by_a_pass() {
+async fn a_refused_command_answers_server_fail_and_a_pass_follows_it() {
     let mut mailboxes = Mailboxes::dovecot();
     mailboxes.push(Folder::new("Work"));
     mailboxes.behavior.folder_refusal = Some("ALREADYEXISTS");
     let rig = started(mailboxes, false).await;
     let work = id_of(&rig, "Work");
-    let answer = set(&rig, json!({ "create": { "k": { "name": "New" } } })).await;
-    assert_eq!(refused(&answer, "notCreated", "k"), "serverFail");
-    assert_eq!(answer["notCreated"]["k"].as_object().unwrap().len(), 1);
-    let before = logins(&rig);
-    rig.fake.script().mailboxes.push(Folder::new("Elsewhere"));
-    let answer = set(&rig, json!({ "update": { (&work): { "name": "Job" } } })).await;
-    assert_eq!(refused(&answer, "notUpdated", &work), "serverFail");
-    assert_eq!(logins(&rig), before + 2, "the call and the pass after it");
-    assert!(
-        rows(&rig)
+    let signed_in = logins(&rig);
+    let calls = [
+        (
+            "notCreated",
+            "k",
+            json!({ "create": { "k": { "name": "New" } } }),
+        ),
+        (
+            "notUpdated",
+            &work,
+            json!({ "update": { (&work): { "name": "Job" } } }),
+        ),
+        ("notDestroyed", &work, json!({ "destroy": [&work] })),
+    ];
+    for (index, (list, key, call)) in calls.iter().enumerate() {
+        let elsewhere = format!("Elsewhere {index}");
+        rig.fake.script().mailboxes.push(Folder::new(&elsewhere));
+        let answer = set(&rig, call.clone()).await;
+        assert_eq!(refused(&answer, list, key), "serverFail");
+        assert_eq!(answer[list][key].as_object().unwrap().len(), 1);
+        let stands = rows(&rig)
             .iter()
-            .any(|row| row.facts.imap_name == "Elsewhere")
+            .any(|row| row.facts.imap_name == elsewhere);
+        assert!(stands, "{elsewhere}");
+    }
+    assert_eq!(
+        logins(&rig),
+        signed_in + 1 + calls.len(),
+        "the conversation and one pass per refusal"
     );
     assert_eq!(id_of(&rig, "Work"), work);
 }

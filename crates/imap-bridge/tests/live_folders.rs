@@ -7,22 +7,27 @@
 //! it, subscribed, unsubscribed and deleted on Dovecot, each step seen
 //! from a second connection and through the mailbox pass. Beside it the
 //! folder Dovecot narrows refusing the folder commands, the Dovecot
-//! without ACL and the rights Cyrus names over IMAPS, per mailbox and
-//! through LIST.
+//! without ACL, the rights Cyrus names over IMAPS, per mailbox and through
+//! LIST and a name a second client took on each of the three.
 
 #![cfg(feature = "live-targets")]
 
 mod live_rig;
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use async_imap::imap_proto::{MailboxDatum, NameAttribute, Response, Status};
 use huliho_imap_bridge::mailboxes::sync;
+use huliho_imap_bridge::runtime::Link;
 use huliho_imap_bridge::session::{ListReturn, MailboxName, Place, Rights, Session, SessionError};
 use huliho_imap_bridge::sync::Cache;
+use huliho_imap_bridge::testing::TestConnector;
 use huliho_imap_bridge::utf7;
 use live_rig::{
-    Editor, USER, append, bridge_session, bridge_session_on, cache, editor, editor_on, link,
-    mailbox_list, within,
+    Editor, IMAPS_PORT, USER, answer, append, bridge_session, bridge_session_on, cache, editor,
+    editor_on, link, link_on, mailbox_list, within,
 };
+use serde_json::{Value, json};
 
 /// The names of the cycle, each outside ASCII, so the encoder runs
 /// live.
@@ -308,4 +313,65 @@ async fn cyrus_names_the_rights_per_mailbox_and_through_list_as_a_second_client_
     }
     session.logout().await.unwrap();
     within(editor.logout()).await.unwrap();
+}
+
+/// `Mailbox/set` on the conversation of the link.
+async fn set_on(cache: &Cache, link: &Link<TestConnector>, mut arguments: Value) -> Value {
+    arguments["accountId"] = json!(cache.key.as_str());
+    answer(cache, link, &json!(["Mailbox/set", arguments, "c1"])).await
+}
+
+/// A name a second client made after the bridge's last pass, asked for by
+/// a CREATE and by a RENAME on the target behind the port. Cyrus keeps a
+/// deleted mailbox under its name, so the names carry a stamp per run.
+async fn a_taken_name_answers_invalid_properties_on(port: u16) {
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    let stamp = stamp.as_millis();
+    let [own, first, second] =
+        ["Eigen", "Bezet ü", "Bezet ö"].map(|word| format!("{word} {stamp}"));
+    let (cache, link) = (cache("live-taken"), link_on(port));
+    let mut session = bridge_session_on(port).await;
+    let listing = session.list(ListReturn::default()).await.unwrap();
+    let inbox = listing.entries.iter().find(|entry| entry.name == "INBOX");
+    let top = Place {
+        parent: None,
+        delimiter: inbox.unwrap().delimiter,
+    };
+    sync(&mut session, &cache).await.unwrap();
+    session.logout().await.unwrap();
+    let mut other = editor_on(port).await;
+    let taken = json!({ "type": "invalidProperties", "properties": ["name"] });
+
+    let made = set_on(&cache, &link, json!({ "create": { "k": { "name": own } } })).await;
+    let id = made["created"]["k"]["id"].as_str().unwrap().to_owned();
+    let wire = MailboxName::new(&first, top).unwrap();
+    within(other.create(wire.wire())).await.unwrap();
+    let call = json!({ "create": { "k": { "name": first } } });
+    let created = set_on(&cache, &link, call).await;
+    assert_eq!(created["notCreated"]["k"], taken, "{port} {created}");
+
+    let wire = MailboxName::new(&second, top).unwrap();
+    within(other.create(wire.wire())).await.unwrap();
+    let call = json!({ "update": { (&id): { "name": second } } });
+    let renamed = set_on(&cache, &link, call).await;
+    assert_eq!(renamed["notUpdated"][&id], taken, "{port} {renamed}");
+
+    let list = mailbox_list(&cache, &link).await;
+    let of = |name: &str| {
+        let found = list.iter().find(|mailbox| mailbox["name"] == name);
+        found.unwrap()["id"].as_str().unwrap().to_owned()
+    };
+    let all = [of(&own), of(&first), of(&second)];
+    assert_eq!(all[0], id, "{port}: the mailbox keeps its id");
+    let call = json!({ "destroy": all, "onDestroyRemoveEmails": true });
+    let gone = set_on(&cache, &link, call).await;
+    assert_eq!(gone["destroyed"], json!(all), "{port} {gone}");
+    within(other.logout()).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_name_a_second_client_took_answers_invalid_properties_on_every_target_rfc8621_2_5() {
+    for port in [IMAPS_PORT, PLAIN_IMAPS_PORT, CYRUS_IMAPS_PORT] {
+        a_taken_name_answers_invalid_properties_on(port).await;
+    }
 }

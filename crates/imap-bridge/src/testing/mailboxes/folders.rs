@@ -7,11 +7,12 @@
 //! code a real server sends (RFC 5530, RFC 9051 section 7.1, RFC 6154
 //! section 3), which the client library's parser drops. On a Gmail
 //! account a label folder takes its label along: the mail stays in All
-//! Mail.
+//! Mail, and a name that stands is refused with the name in raw UTF-8.
 
 use super::{Extension, Mailboxes, quote, unquote};
-use crate::testing::behavior::ParentDelete;
+use crate::testing::behavior::{ParentDelete, Renaming};
 use crate::testing::folder::{Folder, MyRights};
+use crate::utf7;
 
 /// The rights MYRIGHTS names on a folder that names none of its own:
 /// an owner's, as Cyrus answers for INBOX.
@@ -59,8 +60,9 @@ impl Mailboxes {
             return format!("{tag} NO [{code}] refused\r\n");
         }
         let rest = command.split_once(' ').map_or("", |(_, rest)| rest);
-        let reply = match arguments(rest) {
-            Some((names, after)) => self.folder(verb, &names, after),
+        let read = arguments(rest);
+        let reply = match &read {
+            Some((names, after)) => self.folder(verb, names, after),
             None => Err(Failure::Bad),
         };
         match reply {
@@ -69,6 +71,11 @@ impl Mailboxes {
             Err(Failure::No(None)) => format!("{tag} NO refused\r\n"),
             Err(Failure::No(Some(NONEXISTENT))) if self.behavior.utf8_no => {
                 format!("{tag} NO [{NONEXISTENT}] Mailbox doesn't exist: Caf\u{e9}\r\n")
+            }
+            Err(Failure::No(Some(ALREADY_EXISTS))) if self.has(Extension::Gmail) => {
+                let taken = read.iter().find_map(|(names, _)| names.last());
+                let taken = taken.map_or_else(String::new, |name| utf7::decode(name));
+                format!("{tag} NO [{ALREADY_EXISTS}] Duplicate folder name {taken} (Failure)\r\n")
             }
             Err(Failure::No(Some(code))) => format!("{tag} NO [{code}] refused\r\n"),
         }
@@ -152,6 +159,9 @@ impl Mailboxes {
                     label.clone_from(new);
                 }
             }
+        }
+        if self.behavior.renaming == Renaming::StopsPartway {
+            return Err(Failure::No(None));
         }
         Ok(String::new())
     }
