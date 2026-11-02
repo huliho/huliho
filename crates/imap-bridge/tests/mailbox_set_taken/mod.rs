@@ -20,16 +20,13 @@ use huliho_imap_bridge::testing::imap::HOST;
 use huliho_imap_bridge::testing::{Folder, Mailboxes, Message, Renaming, TestConnector};
 use serde_json::{Value, json};
 
-use crate::folders_rig::{dovecot, id_of, logins, refused, rows, sent, set, started, state};
+use crate::folders_rig::{
+    dovecot, id_of, logins, name_taken, refused, rows, sent, set, started, state,
+};
 use crate::sync_rig::ACCOUNT;
 
 /// Room for a loopback exchange.
 const STEP: Duration = Duration::from_secs(2);
-
-/// What an object answers for a name that stands.
-fn name_taken() -> Value {
-    json!({ "type": "invalidProperties", "properties": ["name"] })
-}
 
 /// A CREATE the server refuses because the name stands: the pass writes
 /// the row and the answer's state is the one after it. The next try is

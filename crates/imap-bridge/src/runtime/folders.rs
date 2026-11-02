@@ -214,7 +214,7 @@ pub(crate) async fn apply<C: Connector>(
         new_state = state;
         let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
         let after = blocking(move || store.mailbox_snapshot(&key)).await?;
-        work.passed(&after.rows);
+        work.passed(&after);
     }
     let outcome = work.outcome(snapshot, new_state);
     if let Outcome::Done { created, .. } = &outcome {

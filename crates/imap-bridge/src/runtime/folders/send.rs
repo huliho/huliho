@@ -17,7 +17,7 @@ use super::step::{Naming, Planned, Step, Under, invalid, name_error, sort_order_
 use super::{Ask, Outcome, Refusal};
 use crate::mailboxes::INBOX;
 use crate::session::{ListReturn, MailboxName, Place, Session, SessionError};
-use crate::store::{MailboxChange, MailboxId, MailboxRow, MailboxSnapshot, RoleOverride};
+use crate::store::{MailboxChange, MailboxId, MailboxSnapshot, RoleOverride};
 
 /// One ask as its steps work through it.
 pub(super) struct Work {
@@ -227,8 +227,8 @@ impl Work {
 
     /// What a pass showed: a name it found taken answers as the rows would
     /// have answered it (RFC 8621 section 2.5).
-    pub(super) fn passed(&mut self, rows: &[MailboxRow]) {
-        for index in taken(&self.contested, rows) {
+    pub(super) fn passed(&mut self, after: &MailboxSnapshot) {
+        for index in taken(&self.contested, &after.rows, after.gmail) {
             self.end(index, Err(invalid("name")));
         }
     }

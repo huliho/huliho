@@ -307,6 +307,34 @@ test("a refused name is taken where the server keeps the sibling's name decompos
   await expect(nameAsked().write(composed)).resolves.toBe("taken");
 });
 
+// A folder of the tree a refused name is read against.
+function standing(id: string, name: string, parentId: string | null): Mailbox {
+  return { ...EMPTY_FOLDER, id, name, parentId };
+}
+
+test.each([
+  ["work", "taken"],
+  ["café", "taken"],
+  ["a", "taken"],
+  ["under", "name"],
+])(
+  "a refused %s reads as %s: taken in another case or width, and only under its own parent",
+  async (typed, reason) => {
+    const server = served(refusing, [
+      ...MANAGED,
+      standing("mb-work", "Work", null),
+      standing("mb-cafe", "CAFÉ", null),
+      standing("mb-wide", "Ａ", null),
+      standing("mb-under", "Under", "mb-verbouwing"),
+    ]);
+    newFolder(
+      { cache: server.cache, accountId: "acc-1", mailboxes: MANAGED, limits: FOLDER_LIMITS },
+      null,
+    );
+    await expect(nameAsked().write(typed)).resolves.toBe(reason);
+  },
+);
+
 test("a tree read that fails after a refusal leaves its cause in the console and never the name; the write reads as refused", async () => {
   vi.spyOn(toastManager, "add");
   const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
