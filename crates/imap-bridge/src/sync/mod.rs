@@ -82,7 +82,9 @@ impl FolderSync {
     /// Opens the folder read-only and lists what is left to fetch.
     /// `None` when there is nothing to do: the folder is done, holds no
     /// mail of its own, has no UIDVALIDITY on record, refuses EXAMINE
-    /// or was renumbered since the mailbox pass.
+    /// or was renumbered since the mailbox pass. A later opening lists
+    /// only below the lowest UID a batch passed; the first refresh takes
+    /// the rest from the values the first opening recorded.
     ///
     /// # Errors
     ///
