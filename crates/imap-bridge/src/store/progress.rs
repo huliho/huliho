@@ -22,9 +22,10 @@ pub enum Advance {
         lowest_uid: Option<u32>,
         /// Whether the folder holds nothing below `lowest_uid`.
         done: bool,
-        /// The server's values when the sync opened, recorded once the
-        /// folder is done, so the first refresh meets what arrived under
-        /// the sync.
+        /// The server's values when this opening of the sync read the
+        /// folder. The first write records them and a later opening keeps
+        /// them, so the first refresh meets all that arrived or changed
+        /// since the sync began.
         synced: Synced,
     },
     /// New mail of a folder that is done, oldest first: every UID below
@@ -42,6 +43,8 @@ pub enum Advance {
 pub struct Progress {
     pub lowest_synced_uid: Option<u32>,
     pub done: bool,
+    /// Empty until the first sync is done: before that the recorded values
+    /// say where the sync began, not how far the folder is synced.
     pub synced: Synced,
 }
 
@@ -63,14 +66,20 @@ impl Store {
                      FROM bridge_sync WHERE account_key = ?1 AND folder_id = ?2",
                     params![key.as_str(), folder],
                     |row| {
-                        Ok(Progress {
-                            lowest_synced_uid: row.get(0)?,
-                            done: row.get(1)?,
-                            synced: Synced {
+                        let done = row.get(1)?;
+                        let synced = if done {
+                            Synced {
                                 uid_next: row.get(2)?,
                                 highest_modseq: row.get(3)?,
                                 messages: row.get(4)?,
-                            },
+                            }
+                        } else {
+                            Synced::default()
+                        };
+                        Ok(Progress {
+                            lowest_synced_uid: row.get(0)?,
+                            done,
+                            synced,
                         })
                     },
                 )
@@ -82,8 +91,9 @@ impl Store {
 
 /// Writes how far the folder stands; whether this write is the one
 /// that finishes its first sync, which moves its counts to the
-/// memberships and records the server's values of the opening, so the
-/// first refresh meets what arrived under the sync.
+/// memberships. The first write of a first sync records the server's
+/// values of its opening and every later one keeps them; a row that holds
+/// none takes those of the opening that writes.
 pub(super) fn save(
     transaction: &Transaction<'_>,
     key: &AccountKey,
@@ -115,27 +125,28 @@ pub(super) fn save(
             |row| row.get(0),
         )
         .optional()?;
+    // MESSAGES comes with every opening, so a NULL count marks a row that
+    // holds no values yet; the three move together, as one EXAMINE gave them.
     transaction.execute(
-        "INSERT INTO bridge_sync (account_key, folder_id, lowest_synced_uid, done)
-         VALUES (?1, ?2, ?3, ?4)
+        "INSERT INTO bridge_sync
+           (account_key, folder_id, lowest_synced_uid, done, uid_next, highest_modseq, messages)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT (account_key, folder_id) DO UPDATE SET
            lowest_synced_uid = COALESCE(excluded.lowest_synced_uid, lowest_synced_uid),
-           done = excluded.done",
-        params![key.as_str(), batch.folder, lowest_uid, done],
+           done = excluded.done,
+           uid_next = CASE WHEN messages IS NULL THEN excluded.uid_next ELSE uid_next END,
+           highest_modseq = CASE WHEN messages IS NULL
+                                 THEN excluded.highest_modseq ELSE highest_modseq END,
+           messages = COALESCE(messages, excluded.messages)",
+        params![
+            key.as_str(),
+            batch.folder,
+            lowest_uid,
+            done,
+            synced.uid_next,
+            synced.highest_modseq,
+            synced.messages
+        ],
     )?;
-    let finished = done && was_done != Some(true);
-    if finished {
-        transaction.execute(
-            "UPDATE bridge_sync SET uid_next = ?3, highest_modseq = ?4, messages = ?5
-             WHERE account_key = ?1 AND folder_id = ?2",
-            params![
-                key.as_str(),
-                batch.folder,
-                synced.uid_next,
-                synced.highest_modseq,
-                synced.messages
-            ],
-        )?;
-    }
-    Ok(finished)
+    Ok(done && was_done != Some(true))
 }

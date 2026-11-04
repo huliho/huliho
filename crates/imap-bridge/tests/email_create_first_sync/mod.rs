@@ -6,16 +6,21 @@
 //! its first sync, which a pass leaves alone: its newest UIDs are read
 //! beside the walk, so `created` still carries the id (RFC 4315 section 3).
 
+use huliho_imap_bridge::store::Standing;
 use huliho_imap_bridge::sync::{SYNC_BATCH, Step};
 use huliho_imap_bridge::testing::{Extension, Folder, Message};
 use serde_json::{Map, Value, json};
 
 use crate::draft_rig::{DRAFTS, INBOX, account, create, created, drafts, email, object, without};
 use crate::set_rig::{Set, started};
-use crate::sync_rig::inbox;
+use crate::sync_rig::{ACCOUNT, inbox};
 
 /// Creates in one call, more than the mail a read beside a sync allows for.
 const MANY_CREATES: usize = 12;
+
+/// The mail another client delivers while the folder waits for its first
+/// sync to open it again.
+const ARRIVALS: u32 = 3;
 
 async fn waiting() -> Set {
     let mailboxes = account(without(&[Extension::Uidplus, Extension::Replace]));
@@ -51,6 +56,40 @@ async fn a_read_beside_a_running_first_sync_moves_no_progress_rfc4315_3() {
     created(&create(&set, object(&drafts(&set))).await);
     let after = cache.store.sync_progress(&cache.key, &folder).unwrap();
     assert_eq!(after, before);
+}
+
+#[tokio::test]
+async fn a_read_beside_a_first_sync_that_opens_again_leaves_one_row_per_uid_rfc4315_3() {
+    let messages = u32::try_from(SYNC_BATCH).unwrap() + 1;
+    let mut mailboxes = inbox(vec![Message::new(1)]);
+    let held = (1..=messages).map(Message::new).collect();
+    mailboxes.push(Folder::special(DRAFTS, "\\Drafts").with_mail(held));
+    mailboxes.extensions = without(&[Extension::Uidplus, Extension::Replace]);
+    let model = mailboxes.clone();
+    let set = Box::pin(started(mailboxes, INBOX, false)).await;
+    let (mut session, walk) = set.rig.open(DRAFTS).await;
+    let first = walk.unwrap().batch(&mut session, &set.rig.cache).await;
+    assert_eq!(first.unwrap(), Step::More);
+    let id = created(&create(&set, object(&drafts(&set))).await);
+    // The draft took the UID above the held mail; these arrive after it.
+    let top = messages + 1 + ARRIVALS;
+    for uid in messages + 2..=top {
+        model.append(DRAFTS, Message::new(uid));
+    }
+    Box::pin(set.rig.sync(DRAFTS)).await;
+    let arguments = json!({ "accountId": ACCOUNT, "sinceState": set.state().to_string() });
+    set.rig
+        .call(&json!(["Email/changes", arguments, "c1"]))
+        .await;
+    let row = set.rig.folder(DRAFTS);
+    let standing = Standing {
+        folder: &row.id,
+        uid_validity: row.facts.uid_validity.unwrap(),
+    };
+    let cache = &set.rig.cache;
+    let rows = cache.store.stored_uids(&cache.key, &standing).unwrap();
+    assert_eq!(rows, (1..=top).collect::<Vec<_>>());
+    assert_eq!(email(&set, &id, &["id"]).await["id"], id.as_str());
 }
 
 #[tokio::test]

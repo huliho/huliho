@@ -396,3 +396,4 @@ fn a_thread_that_keeps_an_email_elsewhere_is_updated_when_a_folder_vanishes() {
 }
 
 mod draft;
+mod reopen;
