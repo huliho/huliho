@@ -4,9 +4,9 @@
 
 //! A sealer without a cipher: the blob names its row in front of the
 //! plain bytes, so a test reads what was stored and a blob still opens
-//! on no other row.
+//! on no other row. A block names its place the same way.
 
-use crate::seal::{SealError, Sealer};
+use crate::seal::{Block, SealError, Sealer};
 use crate::store::{AccountKey, EmailId};
 
 /// The sealer of the tests; `locked` makes every blob refuse to open.
@@ -17,6 +17,15 @@ pub struct TestSealer {
 
 fn binding(key: &AccountKey, id: &EmailId) -> Vec<u8> {
     format!("{}\n{id}\n", key.as_str()).into_bytes()
+}
+
+fn place(key: &AccountKey, block: Block<'_>) -> Vec<u8> {
+    let Block {
+        upload,
+        index,
+        last,
+    } = block;
+    format!("{}\n{upload}\n{index}\n{last}\n", key.as_str()).into_bytes()
 }
 
 impl Sealer for TestSealer {
@@ -30,6 +39,24 @@ impl Sealer for TestSealer {
         }
         sealed
             .strip_prefix(binding(key, id).as_slice())
+            .map(<[u8]>::to_vec)
+    }
+
+    fn seal_block(
+        &self,
+        key: &AccountKey,
+        block: Block<'_>,
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, SealError> {
+        Ok([place(key, block).as_slice(), plaintext].concat())
+    }
+
+    fn open_block(&self, key: &AccountKey, block: Block<'_>, sealed: &[u8]) -> Option<Vec<u8>> {
+        if self.locked {
+            return None;
+        }
+        sealed
+            .strip_prefix(place(key, block).as_slice())
             .map(<[u8]>::to_vec)
     }
 

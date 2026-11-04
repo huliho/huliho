@@ -331,7 +331,7 @@ mod tests {
 
     use super::*;
     use crate::message::{Content, Part};
-    use crate::seal::SealError;
+    use crate::seal::{Block, SealError};
 
     /// The bytes of the blob of the test and the parts that name it.
     const BLOB_BYTES: usize = 10;
@@ -347,6 +347,19 @@ mod tests {
         }
 
         fn open(&self, _: &AccountKey, _: &EmailId, sealed: &[u8]) -> Option<Vec<u8>> {
+            Some(sealed.to_vec())
+        }
+
+        fn seal_block(
+            &self,
+            _: &AccountKey,
+            _: Block<'_>,
+            plain: &[u8],
+        ) -> Result<Vec<u8>, SealError> {
+            Ok(plain.to_vec())
+        }
+
+        fn open_block(&self, _: &AccountKey, _: Block<'_>, sealed: &[u8]) -> Option<Vec<u8>> {
             Some(sealed.to_vec())
         }
 

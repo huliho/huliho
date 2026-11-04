@@ -36,6 +36,9 @@ pub fn api_state(store: Arc<Store>) -> ApiState {
     ApiState {
         gate: Gate::new(Arc::clone(&store)),
         bridge_store: Arc::new(store.bridge_store().unwrap()),
+        // A fresh name, made only by an upload; the upload tests hold
+        // their own directory.
+        uploads: std::env::temp_dir().join(format!("huliho-uploads-{}", uuid::Uuid::new_v4())),
         bridge: Arc::new(OnceLock::new()),
         store,
         keys: Arc::new(keys()),

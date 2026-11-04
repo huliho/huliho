@@ -28,6 +28,7 @@ const CREDENTIAL_KEY_INFO: &[u8] = b"huliho account credentials v1";
 const PROVIDER_KEY_INFO: &[u8] = b"huliho provider secrets v1";
 const BRIDGE_CACHE_KEY_INFO: &[u8] = b"huliho bridge cache v1";
 const MESSAGE_ID_KEY_INFO: &[u8] = b"huliho bridge message ids v1";
+const UPLOAD_KEY_INFO: &[u8] = b"huliho bridge uploads v1";
 
 /// AEAD key size for XChaCha20-Poly1305 and the HMAC key size alike.
 const KEY_BYTES: usize = 32;
@@ -108,6 +109,7 @@ pub struct Keys {
     providers: XChaCha20Poly1305,
     bridge_cache: XChaCha20Poly1305,
     message_ids: Hmac<Sha256>,
+    uploads: XChaCha20Poly1305,
 }
 
 impl Keys {
@@ -126,6 +128,7 @@ impl Keys {
             providers: cipher(&hkdf, PROVIDER_KEY_INFO),
             bridge_cache: cipher(&hkdf, BRIDGE_CACHE_KEY_INFO),
             message_ids: mac(&hkdf, MESSAGE_ID_KEY_INFO),
+            uploads: cipher(&hkdf, UPLOAD_KEY_INFO),
         }
     }
 
@@ -152,6 +155,11 @@ impl Keys {
     /// The keyed hash a Message-ID is stored as for threading.
     pub(crate) fn message_ids(&self) -> &Hmac<Sha256> {
         &self.message_ids
+    }
+
+    /// The key for the blocks of the bridge's uploads.
+    pub(crate) fn uploads(&self) -> &XChaCha20Poly1305 {
+        &self.uploads
     }
 }
 
@@ -239,6 +247,7 @@ mod tests {
             PROVIDER_KEY_INFO,
             BRIDGE_CACHE_KEY_INFO,
             MESSAGE_ID_KEY_INFO,
+            UPLOAD_KEY_INFO,
         ];
         let keys: Vec<[u8; KEY_BYTES]> = labels.iter().map(|info| expand(&hkdf, info)).collect();
         for (index, key) in keys.iter().enumerate() {

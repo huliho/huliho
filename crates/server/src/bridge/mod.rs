@@ -4,8 +4,8 @@
 
 //! The in-process bridge as this server runs it: its connector signs in
 //! with the sealed credential through the gate, its sealer keeps the
-//! header cache under the instance secret and the accounts it serves
-//! are the IMAP rows.
+//! header cache and the uploads under the instance secret, its uploads
+//! live in the data volume and the accounts it serves are the IMAP rows.
 
 mod connector;
 mod sealer;
@@ -13,7 +13,7 @@ mod sealer;
 use std::sync::Arc;
 
 use huliho_imap_bridge::jmap::Urls;
-use huliho_imap_bridge::runtime::{Bridge, Registration, Timing};
+use huliho_imap_bridge::runtime::{Bridge, Host, Registration, Timing};
 use huliho_imap_bridge::store::AccountKey;
 use sha2::{Digest, Sha256};
 
@@ -33,6 +33,10 @@ pub type ServerBridge = Bridge<HostConnector>;
 /// tell any two apart.
 const SESSION_STATE_BYTES: usize = 8;
 
+/// The directory of the bridge's uploads in the data volume, beside the
+/// database: rebuildable state outside the snapshot and the backup.
+pub const UPLOADS_DIRECTORY: &str = "uploads";
+
 /// The bridge wired from the state: the same gate, keys and resolver
 /// the routes use, over the bridge's own connection to the database,
 /// on the runtime's clocks.
@@ -45,13 +49,12 @@ pub fn open(state: &ApiState) -> ServerBridge {
 #[must_use]
 pub fn open_with_timing(state: &ApiState, timing: Timing) -> ServerBridge {
     let connector = HostConnector::new(Reconnect::from(state));
-    let sealer = HostSealer::new(Arc::clone(&state.keys));
-    Bridge::with_timing(
-        Arc::clone(&state.bridge_store),
-        connector,
-        Arc::new(sealer),
-        timing,
-    )
+    let host = Host {
+        store: Arc::clone(&state.bridge_store),
+        sealer: Arc::new(HostSealer::new(Arc::clone(&state.keys))),
+        uploads: state.uploads.clone(),
+    };
+    Bridge::with_timing(host, connector, timing)
 }
 
 /// What the bridge is told about an account: its key, whether the row

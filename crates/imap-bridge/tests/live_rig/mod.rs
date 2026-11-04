@@ -137,6 +137,7 @@ pub fn cache(key: &str) -> Cache {
         sealer: Arc::new(TestSealer::default()),
         key: AccountKey::new(key),
         gmail: false,
+        uploads: huliho_imap_bridge::testing::uploads(),
     }
 }
 

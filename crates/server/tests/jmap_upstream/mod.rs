@@ -4,14 +4,17 @@
 
 //! A JMAP server for the proxy tests: a session object shaped by a
 //! script, an API endpoint that echoes the request or misbehaves on
-//! demand, a download endpoint that serves a scripted blob, every
-//! request on record with the credential it carried.
+//! demand, a download endpoint that serves a scripted blob, an upload
+//! endpoint that keeps what it takes, every request on record with the
+//! credential it carried.
+
+pub mod upload;
 
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::body::{Body, Bytes};
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -26,6 +29,8 @@ use tokio::sync::Notify;
 use url::Url;
 
 use crate::tls_server::TlsServer;
+
+pub use upload::Upload;
 
 /// The name the server lives under; the test certificate carries it.
 pub const HOST: &str = "example.test";
@@ -60,6 +65,8 @@ pub struct Script {
     pub api_url: String,
     /// The `downloadUrl` template the session object names.
     pub download_url: String,
+    /// The `uploadUrl` template the session object names.
+    pub upload_url: String,
     /// The URL of a websocket capability the session object advertises,
     /// none for a server without one.
     pub websocket_url: Option<String>,
@@ -75,6 +82,8 @@ pub struct Script {
     pub answer: Option<Vec<u8>>,
     /// What the download endpoint serves.
     pub blob: Blob,
+    /// What the upload endpoint answers.
+    pub upload: Upload,
 }
 
 /// A blob as the download endpoint serves it.
@@ -116,6 +125,7 @@ impl Script {
             download_url: format!(
                 "https://{HOST}:{port}/jmap/download/{{accountId}}/{{blobId}}/{{name}}?accept={{type}}"
             ),
+            upload_url: format!("https://{HOST}:{port}/jmap/upload/{{accountId}}/"),
             websocket_url: None,
             status: StatusCode::OK.as_u16(),
             json: true,
@@ -123,6 +133,7 @@ impl Script {
             hold: false,
             answer: None,
             blob: Blob::of(PNG),
+            upload: Upload::taken(),
         }
     }
 }
@@ -190,6 +201,10 @@ fn routes(shared: Shared) -> Router {
         .route(SESSION_PATH, get(session))
         .route(API_PATH, post(api))
         .route(DOWNLOAD_PATH, get(download))
+        .route(
+            upload::UPLOAD_PATH,
+            post(upload::upload).layer(DefaultBodyLimit::disable()),
+        )
         .with_state(shared)
 }
 
@@ -216,11 +231,12 @@ async fn session(State(shared): State<Shared>, headers: HeaderMap) -> Response {
     if !authorized(&headers) {
         return challenge();
     }
-    let (api_url, download_url, websocket_url) = {
+    let (api_url, download_url, upload_url, websocket_url) = {
         let script = shared.script.lock().unwrap();
         (
             script.api_url.clone(),
             script.download_url.clone(),
+            script.upload_url.clone(),
             script.websocket_url.clone(),
         )
     };
@@ -260,7 +276,7 @@ async fn session(State(shared): State<Shared>, headers: HeaderMap) -> Response {
         "username": ADDRESS,
         "apiUrl": api_url,
         "downloadUrl": download_url,
-        "uploadUrl": format!("https://{HOST}/jmap/upload/{{accountId}}/"),
+        "uploadUrl": upload_url,
         "eventSourceUrl": format!("https://{HOST}/jmap/eventsource/?types={{types}}&closeafter={{closeafter}}&ping={{ping}}"),
         "state": STATE
     });

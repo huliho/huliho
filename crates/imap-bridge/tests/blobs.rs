@@ -8,6 +8,7 @@
 //! the windows read ahead of a reader.
 
 mod blobs_rig;
+mod blobs_uploads;
 mod sync_rig;
 
 use blobs_rig::{

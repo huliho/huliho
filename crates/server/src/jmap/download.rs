@@ -105,7 +105,7 @@ impl Proxy {
         let template = self
             .upstream_urls(stored, &credential)
             .await?
-            .download_url
+            .download
             .ok_or_else(|| unsupported("the session object names no download template"))?;
         let url = self
             .checked_endpoint(&stored.session_url, &expand(&template, ask)?)
@@ -173,27 +173,37 @@ impl Proxy {
 /// Returns [`ProbeError::Unsupported`] for a template that lacks a
 /// variable, names another or leaves a brace open.
 pub fn expand(template: &str, ask: &BlobAsk<'_>) -> Result<String, AttemptError> {
-    let values = ask.values();
-    let mut seen = [false; VARIABLES.len()];
+    let variables: Vec<(&str, &str)> = VARIABLES.into_iter().zip(ask.values()).collect();
+    fill(template, &variables)
+}
+
+/// A template with each variable expanded to its value (RFC 6570 level
+/// 1), every value percent-encoded outside the unreserved set.
+///
+/// # Errors
+///
+/// As [`expand`].
+pub(super) fn fill(template: &str, variables: &[(&str, &str)]) -> Result<String, AttemptError> {
+    let mut seen = vec![false; variables.len()];
     let mut expanded = String::with_capacity(template.len());
     let mut rest = template;
     while let Some(open) = rest.find('{') {
         let close = rest[open..]
             .find('}')
             .map(|close| open + close)
-            .ok_or_else(|| unsupported("the download template leaves a brace open"))?;
+            .ok_or_else(|| unsupported("the template leaves a brace open"))?;
         let name = &rest[open + 1..close];
-        let index = VARIABLES
+        let index = variables
             .iter()
-            .position(|variable| *variable == name)
-            .ok_or_else(|| unsupported("the download template names an unknown variable"))?;
+            .position(|(variable, _)| *variable == name)
+            .ok_or_else(|| unsupported("the template names an unknown variable"))?;
         seen[index] = true;
         expanded.push_str(&rest[..open]);
-        expanded.extend(utf8_percent_encode(values[index], ENCODED));
+        expanded.extend(utf8_percent_encode(variables[index].1, ENCODED));
         rest = &rest[close + 1..];
     }
     if rest.contains('}') || seen.contains(&false) {
-        return Err(unsupported("the download template lacks a variable"));
+        return Err(unsupported("the template lacks a variable"));
     }
     expanded.push_str(rest);
     Ok(expanded)

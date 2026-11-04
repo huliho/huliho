@@ -3,11 +3,13 @@
 // Additional terms apply, see NOTICE.
 
 //! A blob read whole on a session the caller holds, for a message that
-//! carries it.
+//! carries it. An upload comes from the store and leaves the session as
+//! it stands.
 
 use super::address::Address;
 use super::{BlobError, Reader, Stop};
 use crate::session::Session;
+use crate::store::UploadId;
 use crate::sync::Cache;
 
 /// A blob of the account in one piece; `limit` bounds it as
@@ -23,6 +25,13 @@ pub(crate) async fn whole<S: Session>(
     blob_id: &str,
     limit: u64,
 ) -> Result<Vec<u8>, Stop> {
+    if let Some(upload) = UploadId::parse(blob_id) {
+        return cache
+            .uploads
+            .read(&cache.key, &upload, limit)
+            .await
+            .map_err(Stop::kept);
+    }
     let address = Address::parse(blob_id).ok_or(Stop::kept(BlobError::NotFound))?;
     let mut reader = Reader::placed(cache, &address, limit)
         .await

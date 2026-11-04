@@ -64,6 +64,7 @@ impl Rig {
                 sealer,
                 key,
                 gmail: false,
+                uploads: huliho_imap_bridge::testing::uploads(),
             },
             link: Link::with_interval(connector, Duration::ZERO),
             fake,

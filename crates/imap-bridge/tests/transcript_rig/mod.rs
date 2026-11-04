@@ -126,6 +126,7 @@ impl Suite {
                 sealer: Arc::new(TestSealer::default()),
                 key: AccountKey::new(ACCOUNT),
                 gmail: true,
+                uploads: huliho_imap_bridge::testing::uploads(),
             },
             link: Arc::new(Link::with_timing(connector, timing)),
             connection,
