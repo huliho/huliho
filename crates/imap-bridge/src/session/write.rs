@@ -21,7 +21,8 @@ use super::{MAX_STORE_UIDS, MoveAsk, Moved, SessionError, StoreAsk, StoreItem};
 
 /// The system flags a keyword maps to (RFC 8621 section 4.1.1). No
 /// other backslash flag is stored through a STORE ask.
-const STORABLE_SYSTEM_FLAGS: [&str; 4] = ["\\Seen", "\\Flagged", "\\Answered", "\\Draft"];
+pub(super) const STORABLE_SYSTEM_FLAGS: [&str; 4] =
+    ["\\Seen", "\\Flagged", "\\Answered", "\\Draft"];
 
 /// The Gmail system labels a label mailbox stands for, as Gmail spells
 /// them. Gmail reads any label that opens with a backslash as a system

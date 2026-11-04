@@ -200,6 +200,11 @@ pub(super) struct Conversation {
 }
 
 impl Conversation {
+    /// The mailbox the connection has open and whether it takes writes.
+    pub(super) fn opened(&self) -> (Option<&str>, bool) {
+        (self.selected.as_deref(), self.writable)
+    }
+
     /// Whether this command deletes the mailbox the connection has
     /// open.
     pub(super) fn deletes_selected(&self, command: &str) -> bool {

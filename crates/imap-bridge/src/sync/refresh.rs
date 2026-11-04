@@ -47,15 +47,15 @@ pub(super) struct Run<'a> {
 }
 
 /// What one refresh leaves behind: whether the session still stands and
-/// whether a store folder waits for its first sync.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// the store folders it left to their first sync.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refreshed {
     /// After `false` the caller drops the session and connects again
     /// before the next refresh.
     pub stands: bool,
-    /// A store folder whose first sync is not done, which the account's
+    /// The store folders whose first sync is not done, which the account's
     /// task picks up.
-    pub undone: bool,
+    pub waiting: Vec<MailboxRow>,
 }
 
 /// What the refreshes of one account carry from one to the next.
@@ -93,16 +93,18 @@ impl Refresher {
         let observed = mailboxes::observe(session, given.gmail, &inputs, given.first_pass);
         let found = match observed.await {
             Ok(found) => found,
-            Err(error) => return Ok(ended(&error, false)),
+            Err(error) => return Ok(ended(&error, Vec::new())),
         };
         let quota = found.quota;
         mailboxes::write(cache, found).await?;
         let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
         let snapshot = blocking(move || store.mailbox_snapshot(&key)).await?;
-        let undone = snapshot
+        let waiting: Vec<MailboxRow> = snapshot
             .rows
             .iter()
-            .any(|row| row.facts.store && !snapshot.done.contains(&row.id));
+            .filter(|row| row.facts.store && !snapshot.done.contains(&row.id))
+            .cloned()
+            .collect();
         // A label mailbox is done with its store and has no UIDs of its own.
         let mut rows: Vec<&MailboxRow> = snapshot
             .rows
@@ -120,7 +122,7 @@ impl Refresher {
                 Ok(()) => {}
                 Err(SyncError::Session(error)) => {
                     self.first = rows.get(index + 1).map(|row| row.id.clone());
-                    return Ok(ended(&error, undone));
+                    return Ok(ended(&error, waiting));
                 }
                 Err(other) => return Err(other),
             }
@@ -131,11 +133,11 @@ impl Refresher {
         }
         // Last, so a quota the server cannot describe costs no folder.
         if let Err(error) = mailboxes::quota(session, cache, quota).await {
-            return Ok(ended(&error, undone));
+            return Ok(ended(&error, waiting));
         }
         Ok(Refreshed {
             stands: true,
-            undone,
+            waiting,
         })
     }
 
@@ -265,10 +267,10 @@ fn stands(error: &SessionError) -> bool {
 }
 
 /// A refresh the session's failure ended.
-fn ended(error: &SessionError, undone: bool) -> Refreshed {
+fn ended(error: &SessionError, waiting: Vec<MailboxRow>) -> Refreshed {
     Refreshed {
         stands: stands(error),
-        undone,
+        waiting,
     }
 }
 

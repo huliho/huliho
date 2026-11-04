@@ -5,8 +5,9 @@
 //! The redaction pass over a recording: every address, subject, message
 //! id and Gmail id of the live session becomes a fixed value, the same
 //! one wherever it recurs; a body text becomes filler of its length and
-//! the greeting loses its words. A value that already has a fixed shape
-//! stays, so a corpus written in these shapes reads back as written.
+//! the greeting loses its words. A message a client sends keeps its
+//! Message-ID alone. A value that already has a fixed shape stays, so a
+//! corpus written in these shapes reads back as written.
 
 #[cfg(test)]
 mod tests;
@@ -20,7 +21,7 @@ use super::fixed::{
     pieces, section,
 };
 use crate::testing::PASSWORD;
-use crate::testing::command::{Command, Part};
+use crate::testing::command::{self, Command, Part};
 use crate::testing::mailboxes::{quote, unquote};
 use crate::testing::transcript::{Conversation, Exchange, Line, Segment, Transcript, split_tag};
 
@@ -133,6 +134,9 @@ impl Redactor {
     /// A command of runs of text and literals, every piece redacted and
     /// written back with its marker resized.
     fn command(&mut self, read: &Command) -> String {
+        let line = read.line();
+        let (_, command) = split_tag(&line);
+        let message = command::is_message_command(command);
         let mut out = String::new();
         let mut parts = read.parts.iter().peekable();
         while let Some(part) = parts.next() {
@@ -140,7 +144,11 @@ impl Redactor {
             let redacted = self.text(run);
             match parts.next_if(|next| matches!(next, Part::Literal(_))) {
                 Some(Part::Literal(literal)) => {
-                    let literal = self.text(literal);
+                    let literal = if message {
+                        self.message(literal)
+                    } else {
+                        self.text(literal)
+                    };
                     out.push_str(&resized(&redacted, literal.len()));
                     out.push_str("\r\n");
                     out.push_str(&literal);
@@ -149,6 +157,19 @@ impl Redactor {
             }
         }
         out
+    }
+
+    /// A message a client sends: its Message-ID, which the replayer reads
+    /// the answers by, then filler of the length it had.
+    fn message(&mut self, literal: &str) -> String {
+        let id = literal
+            .split("\r\n")
+            .find_map(|line| line.strip_prefix("Message-ID: "))
+            .unwrap_or_default();
+        let id = self.id_field(id).unwrap_or_else(|| id.to_owned());
+        let head = format!("Message-ID: {id}\r\n\r\n");
+        let rest = literal.len().saturating_sub(head.len());
+        format!("{head}{}", fill(rest))
     }
 
     /// A tagged answer loses every opaque token as well, since a server

@@ -7,17 +7,19 @@
 //! deadline. Per store folder a SELECT, then the keyword STOREs, the
 //! label STOREs of a Gmail account, the moves and the destroys, each
 //! group one command set; a move a Gmail account makes into All Mail
-//! has its labels stored there afterwards. What the server took is then
-//! written to the rows as one state. A write that fails leaves its rows
-//! as they were; the next refresh reads what the server holds.
+//! has its labels stored there afterwards. The creates of a draft run
+//! ahead of all of it (`drafts`). What the server took is then written to
+//! the rows as one state. A write that fails leaves its rows as they were;
+//! the next refresh reads what the server holds.
 
+mod drafts;
 mod keywords;
 mod moves;
 mod plan;
 mod restore;
+mod trash;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Map, Value, json};
@@ -28,7 +30,7 @@ use crate::mailboxes::SyncError;
 use crate::runtime::folders::Round;
 use crate::runtime::{Connector, Link, Wire};
 use crate::session::{Moving, Session, SessionError, Writable};
-use crate::store::{EmailId, MailboxId, MailboxRow, SetWrite, SetWritten};
+use crate::store::{EmailId, KeywordRow, MailboxId, MailboxRow, SetWrite, SetWritten};
 use crate::sync::{Cache, blocking};
 
 /// One email a command names.
@@ -56,20 +58,23 @@ struct Folder {
     labels: Vec<moves::LabelGroup>,
     moves: Vec<moves::MoveGroup>,
     destroys: Vec<Member>,
+    /// The drafts of a Gmail store that leave for Trash.
+    trashes: Vec<Member>,
 }
 
 impl Folder {
     /// Whether the work moves mail or changes a Gmail label, which puts
     /// the mail elsewhere in a search.
     fn moves_mail(&self) -> bool {
-        !self.moves.is_empty() || !self.labels.is_empty()
+        !self.moves.is_empty() || !self.labels.is_empty() || !self.trashes.is_empty()
     }
 
     fn members(&self) -> impl Iterator<Item = &Member> {
         let keywords = self.keywords.iter().flat_map(|group| &group.members);
         let labels = self.labels.iter().flat_map(|group| &group.members);
         let moves = self.moves.iter().flat_map(|group| &group.members);
-        keywords.chain(labels).chain(moves).chain(&self.destroys)
+        let gone = self.destroys.iter().chain(&self.trashes);
+        keywords.chain(labels).chain(moves).chain(gone)
     }
 }
 
@@ -88,6 +93,8 @@ struct Work {
     /// The letters MYRIGHTS named per folder; a folder without them takes
     /// every write the server's commands allow.
     letters: HashMap<MailboxId, String>,
+    /// The rows the updates and the destroys of the ask name.
+    found: Vec<KeywordRow>,
     /// The updates of the ask, then its destroys.
     tallies: Vec<Tally>,
     /// What the server took, for the rows.
@@ -173,32 +180,49 @@ pub(super) async fn apply<C: Connector>(
     let Some((mut work, expected)) = plan::planned(cache, ask).await? else {
         return Ok(Outcome::StateMismatch);
     };
-    if !work.folders.is_empty() {
+    let mut drafted = drafts::planned(ask, &mut work);
+    if !work.folders.is_empty() || drafted.wait() {
         let until = *round
             .until
             .get_or_insert_with(|| Instant::now() + wire.deadline());
-        let left = until.saturating_duration_since(Instant::now());
         let moves = work.folders.values().any(Folder::moves_mail);
-        send(&mut wire, cache, &mut work, left).await;
+        send(&mut wire, cache, (&mut work, &mut drafted), until).await;
         if moves {
             link.search.forget();
         }
     }
     let Work {
         tallies,
-        stored,
+        mut stored,
         state,
         ..
     } = work;
-    let written = if stored.is_empty() {
+    let rows = drafted.rows();
+    let written = if stored.is_empty() && rows.is_empty() {
         None
     } else {
-        let (store, key) = (Arc::clone(&cache.store), cache.key.clone());
-        Some(blocking(move || store.write_set(&key, &stored)).await?)
+        let owned = cache.clone();
+        Some(
+            blocking(move || {
+                stored.drafts = drafts::sealed(rows, &owned)?;
+                owned.store.write_set(&owned.key, &stored)
+            })
+            .await?,
+        )
     };
-    let (old_state, new_state) = written
+    let (old_state, written_state) = written
         .as_ref()
         .map_or((state, state), |written| (written.before, written.after));
+    let wrote = written.as_ref().map_or(&[][..], |written| &written.drafts);
+    let (landed, passed) = drafted
+        .landed(&mut wire, cache, (round.until, wrote))
+        .await?;
+    for (creation_id, draft) in &landed {
+        round
+            .created
+            .insert(creation_id.clone(), draft.id.to_string());
+    }
+    let new_state = passed.unwrap_or(written_state);
     let (of_updates, of_destroys) = tallies.split_at(ask.updates.len());
     let updated = ask
         .updates
@@ -220,6 +244,7 @@ pub(super) async fn apply<C: Connector>(
     Ok(Outcome::Stored {
         old_state,
         new_state,
+        created: drafted.outcomes(&landed),
         updated,
         destroyed,
     })
@@ -268,19 +293,26 @@ fn beyond(
     Ok((!changed.is_empty()).then_some(changed))
 }
 
-/// Sends the work on the account's session within what is left of the
-/// deadline; with none of it left the session is not asked at all. A
-/// deadline that fires reads as a session that does not stand.
-async fn send<C: Connector>(wire: &mut Wire<C>, cache: &Cache, work: &mut Work, left: Duration) {
+/// Sends the creates and the work on the account's session within what
+/// is left of the deadline; with none of it left the session is not asked
+/// at all. A deadline that fires reads as a session that does not stand.
+async fn send<C: Connector>(
+    wire: &mut Wire<C>,
+    cache: &Cache,
+    (work, drafted): (&mut Work, &mut drafts::Drafts),
+    until: Instant,
+) {
+    let left: Duration = until.saturating_duration_since(Instant::now());
     if left.is_zero() {
         return;
     }
     let run = async {
-        let Ok((session, moving)) = wire.session_with(cache).await else {
+        let Ok((session, moving, appending)) = wire.session_with(cache).await else {
             return false;
         };
         work.moving = moving;
-        store(session, work).await
+        let on = (&mut *work, &mut *drafted);
+        drafts::sent(session, cache, on, (appending, until)).await && store(session, work).await
     };
     if !timeout(left, run).await.unwrap_or(false) {
         wire.drop_session();
@@ -318,7 +350,7 @@ async fn folder_stored<S: Session>(
     }
     if !work.moves_mail() {
         let moves = items.moves.iter().flat_map(|group| &group.members);
-        let moves: Vec<Member> = moves.cloned().collect();
+        let moves: Vec<Member> = moves.chain(&items.trashes).cloned().collect();
         work.settle(&moves, &SetError::Forbidden);
     }
     if !work.moving.uidplus {
@@ -338,6 +370,7 @@ async fn folder_stored<S: Session>(
         && moves::labeled(session, work, folder, items.labels).await
         && moves::moved(session, work, (folder, &writable), items.moves).await
         && moves::destroyed(session, work, (folder, &writable), &items.destroys).await
+        && trash::trashed(session, work, (folder, &items.trashes)).await
 }
 
 /// SELECT of a folder for its members' writes. `None` when the folder

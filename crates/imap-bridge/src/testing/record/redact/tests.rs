@@ -88,6 +88,25 @@ fn a_literal_of_a_command_is_redacted_and_its_marker_names_its_new_length() {
 }
 
 #[test]
+fn a_message_a_client_sends_keeps_its_message_id_alone() {
+    let message = "Message-ID: <d1@mail.example>\r\nFrom: Eric <eric@mail.example>\r\n\
+                   To: <mo@mail.example>\r\nSubject: Geheim\r\n\r\nDe tekst\r\n";
+    for command in ["APPEND \"Drafts\" (\\Draft)", "UID REPLACE 4 \"Drafts\""] {
+        let line = format!("A1 {command} {{{}+}}\r\n{message}", message.len());
+        let redacted = Redactor::default().client_line(&line);
+        for word in ["mail.example", "Eric", "Geheim", "De tekst"] {
+            assert!(!redacted.contains(word), "{redacted}");
+        }
+        let (head, literal) = redacted.split_once("\r\n").unwrap();
+        assert_eq!(head, format!("A1 {command} {{{}+}}", message.len()));
+        assert_eq!(literal.len(), message.len());
+        assert!(literal.starts_with("Message-ID: <"), "{literal}");
+        let read = Command::from_line(&redacted).unwrap();
+        assert_eq!(read.line(), redacted);
+    }
+}
+
+#[test]
 fn a_body_becomes_filler_of_its_length_and_a_mime_header_stays() {
     let mut redactor = Redactor::default();
     let line = Line(vec![

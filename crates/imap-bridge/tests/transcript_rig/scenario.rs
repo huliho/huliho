@@ -14,6 +14,7 @@
 //! of either.
 
 mod changing;
+mod drafts;
 mod folders;
 mod moving;
 mod quota;
@@ -87,6 +88,7 @@ impl Scenario {
         self.changes_seen().await;
         self.moves().await;
         self.folders().await;
+        self.drafts().await;
         if let Second::Account { editor, stores } = &mut self.second {
             gmail::clear(editor, stores).await;
             gmail::within(editor.logout()).await.unwrap();

@@ -26,10 +26,10 @@ use self::connect::{connect_tcp, greeting, handshake};
 use super::capability::{Tags, capabilities_of};
 use super::guard::Guarded;
 use super::{
-    Capabilities, FetchItems, FetchedMessage, FlagFetch, Flagged, ListReturn, Listing, MailboxName,
-    MoveAsk, Moved, PartAsk, PreviewAsk, PreviewBytes, QuotaRoot, Rights, SearchAsk, Selected,
-    Session, SessionError, StatusEntry, StatusItems, StoreAsk, Structure, Target, TlsMode,
-    UidRange, Writable, io_error, mailbox, quota, read, write,
+    AppendAsk, Appended, Appends, Capabilities, FetchItems, FetchedMessage, FlagFetch, Flagged,
+    ListReturn, Listing, MailboxName, MoveAsk, Moved, PartAsk, PreviewAsk, PreviewBytes, QuotaRoot,
+    Rights, SearchAsk, Selected, Session, SessionError, StatusEntry, StatusItems, StoreAsk,
+    Structure, Target, TlsMode, UidRange, Writable, append, io_error, mailbox, quota, read, write,
 };
 
 pub(super) type Stream = Guarded<TlsStream<TcpStream>>;
@@ -303,6 +303,22 @@ impl Session for ImapSession {
             State::SignedIn(mut session) => run(&mut session, "LOGOUT", self.step).await,
             State::Gone => Ok(()),
         }
+    }
+}
+
+impl Appends for ImapSession {
+    async fn append(&mut self, ask: &AppendAsk<'_>) -> Result<Option<Appended>, SessionError> {
+        let room = self.room();
+        append::append(&mut self.selection()?, ask, room).await
+    }
+
+    async fn replace(
+        &mut self,
+        uid: u32,
+        ask: &AppendAsk<'_>,
+    ) -> Result<Option<Appended>, SessionError> {
+        let room = self.room();
+        append::replace(&mut self.selection()?, (uid, ask), room).await
     }
 }
 

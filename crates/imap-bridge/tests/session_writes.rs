@@ -11,7 +11,8 @@
 mod session_rig;
 
 use huliho_imap_bridge::session::{
-    ImapSession, MoveAsk, Moved, Session, SessionError, StoreAsk, StoreItem,
+    AppendAsk, Appends, ImapSession, Literals, MoveAsk, Moved, Session, SessionError, StoreAsk,
+    StoreItem,
 };
 use huliho_imap_bridge::testing::imap::FakeImap;
 use huliho_imap_bridge::testing::mailboxes::{ALL_MAIL, TRASH};
@@ -55,6 +56,17 @@ fn to<'a>(uids: &'a [u32], target: &'a str) -> MoveAsk<'a> {
     MoveAsk { uids, target }
 }
 
+/// One small message for the folder of the test.
+fn message() -> AppendAsk<'static> {
+    AppendAsk {
+        mailbox: INBOX,
+        flags: &[],
+        message: b"Subject: x\r\n\r\nx\r\n",
+        literals: Literals::Plus,
+        until: None,
+    }
+}
+
 /// The UIDs a folder of the server holds, in order.
 fn uids_in(fake: &FakeImap, folder: &str) -> Vec<u32> {
     let folders = fake.script().mailboxes.folders();
@@ -64,7 +76,14 @@ fn uids_in(fake: &FakeImap, folder: &str) -> Vec<u32> {
 
 /// Every write command the server received, without its tag.
 fn written(fake: &FakeImap) -> Vec<String> {
-    let verbs = ["SELECT", "UID MOVE", "UID COPY", "UID STORE", "UID EXPUNGE"];
+    let verbs = [
+        "SELECT",
+        "UID MOVE",
+        "UID COPY",
+        "UID STORE",
+        "UID EXPUNGE",
+        "UID REPLACE",
+    ];
     fake.lines()
         .iter()
         .filter_map(|line| line.split_once(' ')?.1.split_once(' '))
@@ -195,6 +214,7 @@ async fn a_read_only_folder_takes_no_write_and_nothing_is_sent_rfc3501_6_3_1() {
         session.uid_move(&to(&[1], ARCHIVE)).await.err(),
         session.uid_copy(&to(&[1], ARCHIVE)).await.err(),
         session.uid_expunge(&[1]).await.err(),
+        session.replace(1, &message()).await.err(),
     ];
     for refusal in refusals {
         assert!(matches!(
@@ -208,6 +228,14 @@ async fn a_read_only_folder_takes_no_write_and_nothing_is_sent_rfc3501_6_3_1() {
     // A SELECT the server grants read-write opens the way again.
     session.select(ARCHIVE).await.unwrap();
     session.uid_store(&store).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_replace_of_no_message_sends_nothing_rfc8508_3_3() {
+    let (fake, mut session) = selected(dovecot(1), INBOX).await;
+    let refused = session.replace(0, &message()).await;
+    assert!(matches!(refused, Err(SessionError::Protocol(_))));
+    assert_eq!(written(&fake), ["SELECT \"INBOX\""]);
 }
 
 #[tokio::test]

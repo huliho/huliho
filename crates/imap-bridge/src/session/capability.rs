@@ -59,16 +59,43 @@ impl Capabilities {
     /// searches as Gmail does.
     #[must_use]
     pub fn searching(&self) -> Searching {
-        let literals = if self.has("LITERAL+") {
+        Searching {
+            literals: self.literals(),
+            gmail: self.has(crate::gmail::CAPABILITY),
+        }
+    }
+
+    /// How the server takes a message.
+    #[must_use]
+    pub fn appending(&self) -> Appending {
+        Appending {
+            literals: self.literals(),
+            replace: self.replace(),
+            limit: self.append_limit(),
+        }
+    }
+
+    /// Whether the server offers `UID REPLACE` (RFC 8508).
+    #[must_use]
+    pub fn replace(&self) -> bool {
+        self.has("REPLACE")
+    }
+
+    /// The largest message an APPEND takes where the capability line
+    /// names one (RFC 7889 section 3).
+    #[must_use]
+    pub fn append_limit(&self) -> Option<u64> {
+        self.iter()
+            .find_map(|name| name.strip_prefix("APPENDLIMIT=")?.parse().ok())
+    }
+
+    fn literals(&self) -> Literals {
+        if self.has("LITERAL+") {
             Literals::Plus
         } else if self.has("LITERAL-") {
             Literals::Minus
         } else {
             Literals::Synchronizing
-        };
-        Searching {
-            literals,
-            gmail: self.has(crate::gmail::CAPABILITY),
         }
     }
 
@@ -103,6 +130,17 @@ pub struct Searching {
     pub literals: Literals,
     /// X-GM-RAW and X-GM-LABELS are search keys there.
     pub gmail: bool,
+}
+
+/// What a draft needs to know of the server.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Appending {
+    /// Which literals the server reads without a continuation request.
+    pub literals: Literals,
+    /// `UID REPLACE` is a command there.
+    pub replace: bool,
+    /// The largest message an APPEND takes, where the server names one.
+    pub limit: Option<u64>,
 }
 
 /// The literals a server reads without a continuation request (RFC
@@ -263,6 +301,32 @@ mod tests {
         assert_eq!(literals(&["IMAP4rev1"]), Literals::Synchronizing);
         assert!(advertised(&["X-GM-EXT-1"]).searching().gmail);
         assert!(!advertised(&["LITERAL+"]).searching().gmail);
+    }
+
+    #[test]
+    fn a_server_names_how_it_takes_a_message_rfc8508_rfc7889_3() {
+        let dovecot = advertised(&["replace", "LITERAL+"]).appending();
+        assert_eq!(
+            dovecot,
+            Appending {
+                literals: Literals::Plus,
+                replace: true,
+                limit: None,
+            }
+        );
+        let gmail = advertised(&["APPENDLIMIT=35651584", "LITERAL-"]).appending();
+        assert_eq!(
+            gmail,
+            Appending {
+                literals: Literals::Minus,
+                replace: false,
+                limit: Some(35_651_584),
+            }
+        );
+        // The bare form names a limit per mailbox, which STATUS would give.
+        for names in [&["APPENDLIMIT"][..], &["APPENDLIMIT=many"]] {
+            assert_eq!(advertised(names).append_limit(), None);
+        }
     }
 
     #[test]

@@ -9,7 +9,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, AsyncWriteExt};
 
-use super::command::{Command, Reading, read as read_command};
+use super::command::{self, Command, Reading, read as read_command};
 use super::messages::{Conversation, search};
 use super::{
     Fake, GOOGLE_ERROR, Greeting, Lines, Listen, Mailboxes, Opening, PASSWORD, Phase, Protocol,
@@ -96,14 +96,20 @@ impl Script {
         conversation.search(&self.mailboxes, command, tag)
     }
 
-    /// The answer to EXAMINE, SELECT, NOOP or a UID command; one the
-    /// behavior never answers holds the connection.
+    /// The answer to EXAMINE, SELECT, NOOP, APPEND or a UID command; one
+    /// the behavior never answers holds the connection.
     async fn selected_answer(
         &self,
         conversation: &mut Conversation,
-        command: &str,
+        received: &Command,
         tag: &str,
     ) -> Option<String> {
+        let line = received.line();
+        let (_, command) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+        if command::is_message_command(command) {
+            let open = conversation.opened();
+            return self.mailboxes.message_answer(open, received, tag).await;
+        }
         if conversation.stalls(command, self.mailboxes.behavior) {
             std::future::pending::<()>().await;
         }
@@ -274,8 +280,8 @@ impl Protocol for Script {
                 "UID" if phase.is_tls() && command.starts_with("UID SEARCH ") => {
                     self.search(&mut conversation, &received, tag).await
                 }
-                "EXAMINE" | "SELECT" | "UID" | "NOOP" if phase.is_tls() => {
-                    self.selected_answer(&mut conversation, command, tag)
+                "EXAMINE" | "SELECT" | "UID" | "NOOP" | "APPEND" if phase.is_tls() => {
+                    self.selected_answer(&mut conversation, &received, tag)
                         .await?
                 }
                 _ => format!("{tag} BAD unknown command\r\n"),

@@ -6,7 +6,7 @@
 //! server lines, which nothing outside the session layer reaches
 //! otherwise.
 
-use super::{guard, quota, read, write};
+use super::{append, guard, quota, read, write};
 
 /// The lexer on the bytes whole and on the two chunks a cut makes; the
 /// first byte picks the cut.
@@ -20,12 +20,13 @@ pub fn lexer(bytes: &[u8]) {
 }
 
 /// One server line through the protocol parser into the LIST, STATUS,
-/// SELECT, FETCH, `COPYUID` and QUOTA readers. As on a session, the
-/// parser sees only what the guard admits.
+/// SELECT, FETCH, `COPYUID`, `APPENDUID` and QUOTA readers. As on a
+/// session, the parser sees only what the guard admits.
 pub fn line(bytes: &[u8]) {
     if guard::admits(bytes, 0) {
         read::line(bytes);
         write::line(bytes);
+        append::line_read(bytes);
         quota::line(bytes);
     }
 }

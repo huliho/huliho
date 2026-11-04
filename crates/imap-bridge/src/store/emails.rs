@@ -222,15 +222,15 @@ pub(super) fn holds(
 }
 
 /// What the store adds to the facts of one row.
-struct Written<'a> {
-    id: &'a EmailId,
-    folder: &'a MailboxId,
-    hash: Option<&'a [u8]>,
-    sealed: &'a [u8],
+pub(super) struct Written<'a> {
+    pub(super) id: &'a EmailId,
+    pub(super) folder: &'a MailboxId,
+    pub(super) hash: Option<&'a [u8]>,
+    pub(super) sealed: &'a [u8],
 }
 
 /// A new row in the thread its header names, with its one membership.
-fn insert(
+pub(super) fn insert(
     transaction: &Transaction<'_>,
     key: &AccountKey,
     facts: &EmailFacts,

@@ -394,3 +394,5 @@ fn a_thread_that_keeps_an_email_elsewhere_is_updated_when_a_folder_vanishes() {
     );
     assert_eq!(logged(&store, ObjectType::Email, 1).len(), 2);
 }
+
+mod draft;

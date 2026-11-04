@@ -43,7 +43,9 @@ pub use mailboxes::{
     Counts, MailboxChange, MailboxFacts, MailboxRow, MailboxSnapshot, MailboxesWritten, Pass,
     PassInputs, RoleOverride,
 };
-pub use moves::{GoneRow, LabelChange, MoveChange, SetWrite, SetWritten, Written};
+pub use moves::{
+    DraftRow, GoneRow, LabelChange, Landed, MoveChange, SetWrite, SetWritten, Written,
+};
 pub use personal::{Address, Personal, PreviewPart};
 pub use previews::Located;
 pub use progress::{Advance, Progress};

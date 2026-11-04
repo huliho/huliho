@@ -9,7 +9,9 @@
 //! BAD and noted for the test to read. A command's literals are read by
 //! their size, the replayer asking for each one that waits itself, so
 //! the continuation requests the live server sent for them are not
-//! played again.
+//! played again. A message command holds a fresh Message-ID and date, so
+//! it is compared up to its size marker and the id it recorded reads as
+//! the one it carries in every answer after it.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -34,6 +36,8 @@ const READING: Reading = Reading {
 pub struct Script {
     sessions: Arc<Mutex<VecDeque<Conversation>>>,
     mismatches: Arc<Mutex<Vec<String>>>,
+    /// Each Message-ID the recording holds with the one of this run.
+    stamps: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 /// The replayer as a server.
@@ -46,7 +50,36 @@ impl Script {
         Self {
             sessions: Arc::new(Mutex::new(transcript.sessions.into())),
             mismatches: Arc::default(),
+            stamps: Arc::default(),
         }
+    }
+
+    /// Whether the command is the recorded one: a message command up to
+    /// its size marker, with the Message-ID of this run noted.
+    fn matches(&self, recorded: &str, command: &str) -> bool {
+        if !command::is_message_command(command) {
+            return recorded == command;
+        }
+        if command::message_head(recorded) != command::message_head(command) {
+            return false;
+        }
+        if let (Some(from), Some(to)) =
+            (command::message_id(recorded), command::message_id(command))
+        {
+            self.stamps
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push((from.to_owned(), to.to_owned()));
+        }
+        true
+    }
+
+    /// A recorded answer as this run reads it.
+    fn stamped(&self, line: &Line) -> Line {
+        let stamps = self.stamps.lock().unwrap_or_else(PoisonError::into_inner);
+        stamps
+            .iter()
+            .fold(line.clone(), |line, (from, to)| line.replaced(from, to))
     }
 
     /// What did not go as recorded: a command off the script, a
@@ -129,7 +162,7 @@ impl Protocol for Script {
                 return None;
             };
             let (recorded_tag, recorded_command) = split_tag(recorded);
-            if command != recorded_command {
+            if !self.matches(recorded_command, command) {
                 self.note(format!("expected {recorded_command}, got {command}"));
                 let refusal = Line::text(&format!("{tag} BAD not in the transcript"));
                 write_lines(&mut writer, &[refusal]).await;
@@ -145,7 +178,7 @@ impl Protocol for Script {
                     asked -= usize::from(request);
                     !request
                 })
-                .map(|line| line.retagged(recorded_tag, tag))
+                .map(|line| self.stamped(&line.retagged(recorded_tag, tag)))
                 .collect();
             write_lines(&mut writer, &answers).await?;
             left -= 1;

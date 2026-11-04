@@ -18,6 +18,7 @@ use super::folder::Folder;
 use super::messages::Message;
 use crate::session::Literals;
 
+mod append;
 mod folders;
 mod gmail;
 mod listing;
@@ -59,6 +60,8 @@ pub enum Extension {
     Acl,
     /// The MYRIGHTS return option of LIST (RFC 8440).
     ListMyrights,
+    /// `UID REPLACE` (RFC 8508).
+    Replace,
 }
 
 impl Extension {
@@ -76,6 +79,7 @@ impl Extension {
             Self::Gmail => "X-GM-EXT-1",
             Self::Acl => "ACL RIGHTS=kxten",
             Self::ListMyrights => "LIST-MYRIGHTS",
+            Self::Replace => "REPLACE",
         }
     }
 
@@ -91,6 +95,7 @@ impl Extension {
             Self::Move,
             Self::Uidplus,
             Self::LiteralPlus,
+            Self::Replace,
         ]
         .into_iter()
         .collect()
@@ -137,6 +142,9 @@ pub struct Mailboxes {
     pub flat: Flat,
     /// How the server misbehaves on a selected mailbox.
     pub behavior: Behavior,
+    /// `APPENDLIMIT=n` on the capability line (RFC 7889); a larger message
+    /// answers NO with the `TOOBIG` code.
+    pub append_limit: Option<u64>,
     /// What a GETQUOTAROOT answers, shared with the test that edits it
     /// between passes.
     quota: Arc<Mutex<QuotaAnswer>>,
@@ -170,6 +178,7 @@ impl Mailboxes {
             chatter: false,
             flat: Flat::default(),
             behavior: Behavior::default(),
+            append_limit: None,
             quota: Arc::new(Mutex::new(QuotaAnswer::default())),
             searches: Arc::new(AtomicUsize::new(0)),
         }
@@ -351,11 +360,16 @@ impl Mailboxes {
 
     /// The capability words the extensions add.
     pub(super) fn capabilities(&self) -> String {
-        self.extensions
+        let named = self
+            .extensions
             .iter()
-            .map(|extension| extension.capability())
-            .collect::<Vec<_>>()
-            .join(" ")
+            .map(|extension| extension.capability());
+        let limit = self
+            .append_limit
+            .map(|limit| format!("APPENDLIMIT={limit}"));
+        let mut words: Vec<String> = named.map(str::to_owned).collect();
+        words.extend(limit);
+        words.join(" ")
     }
 }
 

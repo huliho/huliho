@@ -114,6 +114,23 @@ fn an_inline_image_counts_outside_a_related_body_only_rfc8621_4_1_4() {
 
 proptest! {
     #[test]
+    fn the_drafts_label_makes_a_gmail_row_a_draft_and_no_other_label_does_rfc8621_4_1_1(
+        names in prop::collection::vec("[A-Za-z]{1,8}", 0..4),
+        draft in any::<bool>(),
+    ) {
+        let mut labels: Vec<String> = names.iter().map(|name| format!("\\{name}x")).collect();
+        labels.extend(names);
+        if draft {
+            labels.push("\\Draft".to_owned());
+        }
+        let flags = ["\\Seen".to_owned()];
+        let keywords = mapping::labeled_keywords(&flags, Some(&labels));
+        prop_assert_eq!(keywords.contains_key("$draft"), draft);
+        prop_assert!(keywords.contains_key("$seen"));
+        prop_assert_eq!(mapping::labeled_keywords(&flags, None), mapping::keywords(&flags));
+    }
+
+    #[test]
     fn a_system_flag_maps_in_any_case_and_every_other_backslash_flag_drops_rfc8621_4_1_1(
         index in 0..SYSTEM.len(),
         mask in any::<u32>(),

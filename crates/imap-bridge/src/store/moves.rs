@@ -23,9 +23,11 @@ use super::keywords::{self, KeywordChange};
 use super::ledger::Ledger;
 use super::{AccountKey, EmailId, MailboxId, Store, StoreError};
 
+mod draft;
 mod gone;
 mod starred;
 
+pub use draft::{DraftRow, Landed};
 pub use gone::GoneRow;
 
 /// The label mailboxes a Gmail STORE gave to and took from the message
@@ -63,6 +65,8 @@ pub struct SetWrite {
     /// Whether the account is a Gmail account, where a row the write
     /// cannot follow waits for the pass instead of leaving.
     pub gmail: bool,
+    /// The drafts the server took under a UID it named.
+    pub drafts: Vec<DraftRow>,
     pub keywords: Vec<KeywordChange>,
     pub labels: Vec<LabelChange>,
     pub moves: Vec<MoveChange>,
@@ -77,7 +81,8 @@ impl SetWrite {
     /// Whether the server took nothing, so there is nothing to write.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.keywords.is_empty()
+        self.drafts.is_empty()
+            && self.keywords.is_empty()
             && self.labels.is_empty()
             && self.moves.is_empty()
             && self.gone.is_empty()
@@ -105,6 +110,8 @@ pub struct SetWritten {
     /// Every email a keyword, label or move change wrote, as it stands
     /// afterwards.
     pub emails: HashMap<EmailId, Written>,
+    /// The drafts that went in; one left out waits for a pass.
+    pub drafts: Vec<EmailId>,
 }
 
 impl Store {
@@ -127,6 +134,12 @@ impl Store {
                 parks: set.gmail,
             };
             let (mut landed, mut stale) = (Vec::new(), Vec::new());
+            let mut drafts = Vec::new();
+            for draft in &set.drafts {
+                if writing.draft(draft)? {
+                    drafts.push(draft.id.clone());
+                }
+            }
             for change in &set.keywords {
                 if keywords::apply(transaction, key, change, &mut writing.ledger)? {
                     writing.star(&change.id, &change.folder)?;
@@ -176,6 +189,7 @@ impl Store {
                 after,
                 stale,
                 emails,
+                drafts,
             })
         })
     }

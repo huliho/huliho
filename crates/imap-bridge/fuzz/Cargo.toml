@@ -30,6 +30,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "draft_object"
+path = "fuzz_targets/draft_object.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "headers"
 path = "fuzz_targets/headers.rs"
 test = false

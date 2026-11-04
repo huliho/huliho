@@ -3,11 +3,16 @@
 // Additional terms apply, see NOTICE.
 
 //! What the fuzz targets call: the readers of the bytes a body fetch
-//! brings back, which nothing outside the JMAP layer reaches otherwise.
+//! brings back and of a create object, which nothing outside the JMAP
+//! layer reaches otherwise.
+
+use serde_json::Value;
 
 use super::body::name;
+use super::email_set::create;
 use super::headers::{Form, HeaderAsk, value};
 use super::values::decode;
+use crate::message::{Blobs, Draft, Stamp, build};
 use crate::session::{Disposition, Leaf};
 
 /// The cap the fuzzed values are cut at, so a cut on a character border
@@ -55,4 +60,25 @@ pub fn body_bytes(bytes: &[u8]) {
         let _ = decode(&leaf, bytes, FUZZ_CAP, true);
         let _ = decode(&leaf, bytes, u32::MAX, false);
     }
+}
+
+/// The create object of a client through the reader and, where it reads,
+/// the builder; every blob it names reads as these bytes.
+pub fn draft_object(bytes: &[u8]) {
+    let Ok(object) = serde_json::from_slice::<Value>(bytes) else {
+        return;
+    };
+    let Ok(draft) = create::read(&object) else {
+        return;
+    };
+    let blobs = blobs_of(&draft, bytes);
+    let stamp = Stamp::now(&draft);
+    let _ = build(&draft, &stamp, &blobs);
+    let _ = draft.stamped(&stamp);
+    let _ = draft.has_attachment();
+}
+
+fn blobs_of(draft: &Draft, bytes: &[u8]) -> Blobs {
+    let ids = draft.blob_ids().into_iter();
+    ids.map(|id| (id.to_owned(), bytes.to_vec())).collect()
 }

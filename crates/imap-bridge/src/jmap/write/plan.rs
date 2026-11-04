@@ -9,10 +9,11 @@
 //! a label is added or removed on the store the row lies in, entering
 //! Spam or Trash is a move between the stores, after which the row
 //! carries that store alone, and leaving either is a move into All Mail
-//! with the labels of the patch stored there. A destroy on Gmail stays
-//! in Spam and Trash, since the account's own setting decides what an
-//! expunge does anywhere else. A write the letters MYRIGHTS named do not
-//! grant answers `forbidden` before anything is sent.
+//! with the labels of the patch stored there. A destroy on Gmail expunges
+//! in Spam and Trash alone and sends a draft from elsewhere to Trash, since
+//! the account's own setting decides what an expunge does anywhere else.
+//! A write the letters MYRIGHTS named do not grant answers `forbidden`
+//! before anything is sent.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
@@ -21,7 +22,7 @@ use super::super::query::SEEN;
 use super::super::set::{MailboxEdit, Patch, SetAsk, SetError};
 use super::keywords;
 use super::moves::{self, Relabel};
-use super::{Expected, Member, Tally, Work};
+use super::{Expected, Member, Tally, Work, trash};
 use crate::gmail::ALL_MAIL_ROLE;
 use crate::mailboxes::SyncError;
 use crate::mailboxes::rights::{self, Right};
@@ -100,6 +101,7 @@ pub(super) async fn planned(
         folders: std::collections::BTreeMap::new(),
         rows,
         letters,
+        found: Vec::new(),
         tallies: vec![Tally::default(); ask.updates.len() + ask.destroy.len()],
         stored: SetWrite {
             gmail: labeled,
@@ -123,6 +125,7 @@ pub(super) async fn planned(
             work.tallies[index].failed = Some(error);
         }
     }
+    work.found = found;
     Ok(Some((work, expected)))
 }
 
@@ -181,7 +184,7 @@ fn update(
 }
 
 /// One destroy into the work of its folder; on a Gmail account the row
-/// lies in Spam or Trash.
+/// lies in Spam or Trash, or is a draft that goes to Trash.
 fn destroy(
     work: &mut Work,
     index: usize,
@@ -193,32 +196,33 @@ fn destroy(
     if !may(work, &row.folder, Right::RemoveItems) {
         return Err(SetError::Forbidden);
     }
-    if labeled {
-        let role = work
-            .rows
-            .get(&row.folder)
-            .and_then(|folder| folder.facts.role.as_deref());
-        if !role.is_some_and(|role| DESTROYABLE_ROLES.contains(&role)) {
-            return Err(SetError::Forbidden);
-        }
+    let role = work
+        .rows
+        .get(&row.folder)
+        .and_then(|folder| folder.facts.role.as_deref());
+    let trash = labeled && !role.is_some_and(|role| DESTROYABLE_ROLES.contains(&role));
+    if trash && !trash::is_draft(row, &work.rows) {
+        return Err(SetError::Forbidden);
     }
     let member = Member {
         index,
         id: row.id.clone(),
         uid,
     };
-    work.folders
-        .entry(row.folder.clone())
-        .or_default()
-        .destroys
-        .push(member);
+    let folder = work.folders.entry(row.folder.clone()).or_default();
+    let group = if trash {
+        &mut folder.trashes
+    } else {
+        &mut folder.destroys
+    };
+    group.push(member);
     work.tallies[index].left = 1;
     Ok(())
 }
 
 /// Whether the letters of the folder grant the right (RFC 4314 section
 /// 4).
-fn may(work: &Work, folder: &MailboxId, right: Right) -> bool {
+pub(super) fn may(work: &Work, folder: &MailboxId, right: Right) -> bool {
     rights::allows(work.letters.get(folder).map(String::as_str), right)
 }
 

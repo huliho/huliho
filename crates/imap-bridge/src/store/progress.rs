@@ -31,6 +31,9 @@ pub enum Advance {
     /// `uid_next` has been asked for and the server answered `arrived`
     /// messages for the batch, which the count on record grows by.
     Up { uid_next: u32, arrived: u32 },
+    /// Rows read beside both, for a draft: nothing is said about how far
+    /// the folder stands, whatever a walk on another connection did.
+    Beside,
 }
 
 /// How far a folder stands: its first sync and, once that is done, the
@@ -103,6 +106,7 @@ pub(super) fn save(
             )?;
             return Ok(false);
         }
+        Advance::Beside => return Ok(false),
     };
     let was_done: Option<bool> = transaction
         .query_row(

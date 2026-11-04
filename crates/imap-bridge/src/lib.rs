@@ -10,6 +10,7 @@ mod dates;
 pub mod gmail;
 pub mod jmap;
 pub mod mailboxes;
+pub(crate) mod message;
 pub mod runtime;
 pub mod seal;
 pub mod session;

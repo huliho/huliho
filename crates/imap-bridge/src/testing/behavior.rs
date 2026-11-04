@@ -51,6 +51,8 @@ pub struct Behavior {
     pub copyuid: Option<&'static str>,
     /// What a UID MOVE, a UID COPY or a UID EXPUNGE comes to.
     pub moving: Storing,
+    /// What an APPEND or a `UID REPLACE` comes to once its literal came.
+    pub appending: Storing,
     /// The SELECT with this index on a connection opens its folder
     /// `[READ-ONLY]`, as a folder whose rights changed under the client
     /// does; a MOVE into the folder before that still lands.

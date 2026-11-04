@@ -110,7 +110,7 @@ impl Refreshing<'_> {
             .filter(|found| !mapping::is_deleted(&found.flags))
             .map(|found| FlagChange {
                 uid: found.uid,
-                keywords: mapping::keywords(&found.flags),
+                keywords: mapping::labeled_keywords(&found.flags, found.labels.as_deref()),
                 labels: found.labels.as_deref().map(mapping::labels),
             })
             .collect();
