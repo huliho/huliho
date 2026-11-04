@@ -379,7 +379,7 @@ async fn send(
 /// section 7.5) under the bounds of one answer, the count following the
 /// lines on the way. A tagged answer in its place, an OK included, ends
 /// the command as its [`refusal`].
-async fn continuation(
+pub(in crate::session) async fn continuation(
     selection: &mut Selection<'_>,
     tag: &str,
     bounds: Bounds,

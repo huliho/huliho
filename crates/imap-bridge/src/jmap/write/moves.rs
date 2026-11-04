@@ -303,27 +303,41 @@ pub(super) async fn destroyed<S: Session>(
     }
     for members in work.standing(members).chunks(MAX_STORE_UIDS) {
         let uids: Vec<u32> = members.iter().map(|member| member.uid).collect();
-        match session.uid_expunge(&uids).await {
-            Ok(()) => {
-                for member in members {
-                    work.done(member);
-                    work.stored.gone.push(GoneRow {
-                        id: member.id.clone(),
-                        folder: folder.clone(),
-                        uid: member.uid,
-                    });
-                }
-            }
-            Err(error) => {
-                let (ends, stands) = failure(&error);
-                work.settle(members, &ends);
-                if !stands {
-                    return false;
-                }
-            }
+        let result = session.uid_expunge(&uids).await;
+        if !removed(work, folder, members, result) {
+            return false;
         }
     }
     true
+}
+
+/// What came of taking one batch out of its folder: the rows leave as
+/// destroyed or the batch settles on the error. Whether the session still
+/// stands.
+pub(super) fn removed(
+    work: &mut Work,
+    folder: &MailboxId,
+    members: &[Member],
+    result: Result<(), SessionError>,
+) -> bool {
+    match result {
+        Ok(()) => {
+            for member in members {
+                work.done(member);
+                work.stored.gone.push(GoneRow {
+                    id: member.id.clone(),
+                    folder: folder.clone(),
+                    uid: member.uid,
+                });
+            }
+            true
+        }
+        Err(error) => {
+            let (ends, stands) = failure(&error);
+            work.settle(members, &ends);
+            stands
+        }
+    }
 }
 
 #[cfg(test)]

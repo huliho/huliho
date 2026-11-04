@@ -26,6 +26,10 @@ pub const LABEL: &str = "Project";
 pub const FOLDER: &str = "Huliho map \u{fc}";
 pub const FOLDER_RENAMED: &str = "Huliho map \u{f6}";
 
+/// The subject of the draft the first client saves, in the shape the
+/// redaction leaves as written.
+pub const DRAFT_SUBJECT: &str = "Message 77";
+
 /// The messages in the account when the suite starts.
 pub const SEEDED: u32 = 5;
 

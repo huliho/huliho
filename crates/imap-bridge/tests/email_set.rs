@@ -198,13 +198,13 @@ async fn if_in_state_is_honored_before_anything_is_sent_rfc8620_5_3() {
 }
 
 #[tokio::test]
-async fn a_create_is_forbidden_per_object_rfc8620_5_3() {
+async fn a_create_that_does_not_read_sends_nothing_rfc8620_5_3() {
     let set = synced().await;
     let answered = set
         .set(json!({ "create": { "k1": { "subject": "x" } } }))
         .await;
     assert_eq!(
-        answered["notCreated"]["k1"]["type"], "forbidden",
+        answered["notCreated"]["k1"]["type"], "invalidProperties",
         "{answered}"
     );
     assert_eq!(answered["oldState"], answered["newState"]);

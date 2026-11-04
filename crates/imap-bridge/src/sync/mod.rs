@@ -14,11 +14,13 @@ pub mod preview;
 pub mod refresh;
 #[cfg(test)]
 mod tests;
+mod walk;
 
 use std::sync::Arc;
 
 pub use cache::Cache;
 pub(crate) use cache::blocking;
+use walk::{Slice, Walk};
 
 use crate::gmail;
 use crate::mailboxes::SyncError;
@@ -51,33 +53,6 @@ pub enum Step {
     /// The folder vanished or was renumbered under the sync; nothing
     /// was written and the next mailbox pass decides.
     Stale,
-}
-
-/// Which way a sync walks the UIDs of its folder.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Walk {
-    /// The first sync, newest first, with the server's values of the
-    /// opening.
-    Down { synced: Synced },
-    /// The new mail of a folder that is done, oldest first, so every
-    /// batch moves the recorded UIDNEXT.
-    Up,
-}
-
-/// UIDs lowest first, so the range from the first to the last names
-/// them and nothing a batch before it took.
-struct Slice {
-    uids: Vec<u32>,
-    structure: bool,
-}
-
-impl Slice {
-    fn range(&self) -> Option<UidRange> {
-        Some(UidRange {
-            low: *self.uids.first()?,
-            high: *self.uids.last()?,
-        })
-    }
 }
 
 /// The sync of one folder between its opening and its last batch. It
@@ -187,6 +162,13 @@ impl FolderSync {
             uids
         };
         Ok(Some(sync))
+    }
+
+    /// The same UIDs read beside any walk, moving nothing on record.
+    #[must_use]
+    pub fn beside(mut self) -> Self {
+        self.walk = Walk::Beside;
+        self
     }
 
     /// Widens a walk upward to `through`. `false` when the gap is wider
@@ -330,7 +312,7 @@ impl FolderSync {
         }
         let from = self.remaining.len().saturating_sub(SYNC_BATCH);
         let mut uids = self.remaining.split_off(from);
-        if self.walk == Walk::Up {
+        if matches!(self.walk, Walk::Up | Walk::Beside) {
             uids.reverse();
         }
         Some(Slice {
@@ -358,7 +340,7 @@ impl FolderSync {
             };
             let (first, second) = match self.walk {
                 Walk::Down { .. } => (upper, slice),
-                Walk::Up => (slice, upper),
+                Walk::Up | Walk::Beside => (slice, upper),
             };
             self.narrowed.push(second);
             self.narrowed.push(first);
@@ -392,7 +374,8 @@ impl FolderSync {
                 uid_next: range.high.saturating_add(1),
                 arrived: u32::try_from(messages.len()).unwrap_or(u32::MAX),
             },
-            (Walk::Up, None) => return Ok(Step::Done),
+            (Walk::Beside, Some(_)) => Advance::Beside,
+            (Walk::Up | Walk::Beside, None) => return Ok(Step::Done),
         };
         let (cache, folder, uid_validity) = (cache.clone(), self.folder.clone(), self.uid_validity);
         let state = blocking(move || {

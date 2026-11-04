@@ -15,6 +15,7 @@ mod bodies;
 mod body;
 mod changes;
 mod email;
+mod email_set;
 #[cfg(feature = "test-support")]
 pub mod fuzzing;
 mod get;
@@ -57,7 +58,7 @@ pub use session::{
 pub use values::{MAX_BODY_VALUE_BYTES, MAX_BODY_WINDOWS};
 
 /// A Request object of one MiB at most, room for an `Email/set` over
-/// every object it may name and for one with a body once that exists.
+/// every object it may name or for a draft with its text.
 pub const MAX_SIZE_REQUEST: usize = 1024 * 1024;
 
 /// Requests in flight per account; the host's semaphore enforces it.

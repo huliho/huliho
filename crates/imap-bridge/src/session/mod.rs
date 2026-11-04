@@ -5,6 +5,7 @@
 //! The IMAP session layer: one narrow trait over the client library, so
 //! a swap costs one module. The causes below serve the SMTP check too.
 
+mod append;
 mod capability;
 mod error;
 #[cfg(feature = "test-support")]
@@ -25,7 +26,8 @@ use std::time::Duration;
 
 use tokio_rustls::rustls::ClientConfig;
 
-pub use capability::{Acl, Capabilities, Literals, Moving, Searching};
+pub use append::{AppendAsk, Appended, Appends};
+pub use capability::{Acl, Appending, Capabilities, Literals, Moving, Searching};
 pub use error::SessionError;
 pub(crate) use error::io_error;
 pub use guard::{MAX_NESTING, MAX_RESPONSE_BYTES, MAX_STRUCTURED_BYTES};
@@ -48,7 +50,7 @@ pub use write::{MAX_COMMAND_BYTES, label_bytes};
 
 /// The seam over the client library. Every step runs within the timeout
 /// the connection was opened with.
-pub trait Session: Sized + Send {
+pub trait Session: Appends + Sized + Send {
     /// Opens the connection with validated TLS and reads the greeting; a
     /// STARTTLS target upgrades before any credential is sent.
     ///
@@ -416,8 +418,7 @@ pub trait Session: Sized + Send {
     /// octets, past 64.
     fn quota_root(&mut self) -> impl Future<Output = Result<Vec<QuotaRoot>, SessionError>> + Send;
 
-    /// NOOP (RFC 3501 section 6.1.2): whether a connection kept from an
-    /// earlier use still answers.
+    /// NOOP (RFC 3501 section 6.1.2): whether a kept connection answers.
     ///
     /// # Errors
     ///

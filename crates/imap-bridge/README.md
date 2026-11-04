@@ -298,11 +298,39 @@ the session standing and the blob unavailable; any other failure costs
 the session as well. An error is the last thing a blob answers. The
 bridge hands bytes: the host decides their media type and disposition.
 
-`Email/set` (RFC 8621 section 4.6) writes keywords and mailboxes and
-destroys emails. An update patches `keywords/<keyword>` and
+`Email/set` (RFC 8621 section 4.6) creates drafts, writes keywords and
+mailboxes and destroys emails. A create names one mailbox and gives its
+body as `bodyStructure`, with a text part by `partId` from `bodyValues`
+and every other part by `blobId`. A text part declares `format` and
+`delsp` in its raw `header:Content-Type`. The bridge builds the message
+through mail-builder with a Message-ID at the domain of the sender and
+the date of the moment, resolves each blob on the conversation first and
+sends APPEND with the flags of the four system keywords, the message one
+literal in the mode the capability line names: without waiting under
+LITERAL+, under LITERAL- at 4096 bytes or less, after the continuation
+otherwise. Where `APPENDUID` names the UID the row lands at once with the
+headers the bridge wrote and its thread from the references. On a Gmail
+account, or without UIDPLUS, one pass before the answer lands it by the
+keyed hash of the Message-ID; while a store waits for its first sync that
+pass reads the newest UIDs of the store as well, which moves no progress.
+A call that creates one draft and destroys
+one email of that mailbox replaces it: one `UID REPLACE` where the server
+advertises it, else the APPEND first and the destroy only once it landed,
+so a failed save loses nothing. On a Gmail account a draft that goes
+leaves for Trash with `UID MOVE`. The new message has a new id and a new
+blob id. Before any command a body list beside the tree, a property the
+server sets, `partId` and `blobId` together, a `partId` outside
+`bodyValues`, CR, LF or NUL in a header value, an address or a part name
+and NUL in a body value answer `invalidProperties`, as do a mailbox the
+rows lack or several and a keyword outside the four; a mailbox without
+`i` answers `forbidden`, a blob the account does not hold `blobNotFound`
+with its id and a message past `MAX_MESSAGE_BYTES` or the server's
+APPENDLIMIT `tooLarge`. A NO after the literal answers `serverFail` with
+no row. No header, address, subject, part name or body is logged.
+
+An update patches `keywords/<keyword>` and
 `mailboxIds/<id>` with true to set an entry and null to take it off, or
-names the whole `keywords` or `mailboxIds` object. A create answers
-`forbidden` per object, an update of an email the same call destroys
+names the whole `keywords` or `mailboxIds` object. An update of an email the same call destroys answers
 `willDestroy`, any other property and any other value
 `invalidProperties` with the paths and a call over more than five
 hundred objects `requestTooLarge` (`jmap::MAX_OBJECTS_IN_SET`).
@@ -364,9 +392,10 @@ Trash carries no label, so an update that gives it one without taking
 it out answers `invalidProperties`, as does one that enters two
 stores, takes a message of All Mail out of All Mail without entering
 Spam or Trash or takes one out of Spam or Trash with no label to land
-on. A destroy stays in Spam and Trash and answers `forbidden`
-anywhere else, since the account's own setting decides what an expunge
-does there. A starred message of All Mail is a member of the
+on. A destroy expunges in Spam and Trash alone: a draft from elsewhere
+goes to Trash and any other message answers `forbidden`, since the
+account's own setting decides what an expunge does there. A starred
+message of All Mail is a member of the
 `\Flagged` label mailbox: setting `$flagged` makes the email a member
 and adding it to that mailbox sets `$flagged`, since Gmail keeps the
 flag and the label together.
@@ -623,7 +652,11 @@ switches for MYRIGHTS per folder and through LIST, with the letters a
 test names per folder. LITERAL+ and LITERAL- are switches too: the
 Dovecot shape carries LITERAL+, the Gmail mode LITERAL-. A literal the
 script does not read without its continuation request is
-read whole and answered BAD. Misbehavior is a switch as well:
+read whole and answered BAD. APPEND and `UID REPLACE` keep the message in
+the mailbox model, its header and its structure read from its own bytes,
+naming the UID in `APPENDUID` where UIDPLUS is on; `APPENDLIMIT` is a
+switch, and on a Gmail account an APPEND to a label lands the message in
+All Mail with `\Draft` shown as the label alone. Misbehavior is a switch as well:
 volunteered lines, a connection that drops, a MODSEQ item, a NO in raw
 UTF-8, messages that leave between two searches, the Gmail items
 volunteered unasked, a STORE or a move that is refused, answered BAD,
@@ -675,7 +708,9 @@ live server answered, under the client's own tag, the connection closes
 where the live one closed and a command the transcript does not hold is
 a mismatch the test reads. Both read a command's literals by their size,
 so one holding a line break stays one command and its markers survive
-the redaction. Gmail's transcript is
+the redaction. A message a client sends keeps its Message-ID alone in the
+transcript; the replayer compares such a command up to its size marker
+and reads the recorded id as the one of the run in every answer after it. Gmail's transcript is
 `tests/transcripts/gmail.json`, replayed by the scenario suite in
 `tests/gmail_transcript.rs` in every test run; the same suite runs
 against the scripted server's Gmail mode through the recorder and back

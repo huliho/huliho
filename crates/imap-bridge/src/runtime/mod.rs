@@ -12,6 +12,7 @@
 //! takes it one window at a time.
 
 mod bridge;
+pub(crate) mod drafts;
 pub(crate) mod folders;
 pub(crate) mod search;
 mod timing;
@@ -34,7 +35,7 @@ pub use timing::{
 
 use crate::gmail;
 use crate::mailboxes::SyncError;
-use crate::session::{Moving, Searching, Session, SessionError};
+use crate::session::{Appending, Moving, Searching, Session, SessionError};
 use crate::store::{AccountKey, MailboxId};
 use crate::sync::refresh::{Given, Refreshed, Refresher};
 use crate::sync::{Cache, NARROWING_BUDGET};
@@ -123,6 +124,8 @@ pub struct Wire<C: Connector> {
     moving: Moving,
     /// How the server takes the literals of a search, read with it.
     searching: Searching,
+    /// How the server takes a message, read with it.
+    appending: Appending,
     /// Whether the host's word that the account is a Gmail account holds
     /// on this server, read with it.
     gmail: bool,
@@ -219,13 +222,13 @@ impl<C: Connector> Link<C> {
             // The stream may hold the rest of an answer, so the session goes.
             Err(_elapsed) => Refreshed {
                 stands: false,
-                undone: false,
+                waiting: Vec::new(),
             },
         };
         if !refreshed.stands {
             wire.drop_session();
         }
-        if refreshed.undone {
+        if !refreshed.waiting.is_empty() {
             self.wake.notify_one();
         }
         Ok(())
@@ -247,6 +250,7 @@ impl<C: Connector> Wire<C> {
             condstore: false,
             moving: Moving::default(),
             searching: Searching::default(),
+            appending: Appending::default(),
             gmail: false,
             timing,
             refreshed: None,
@@ -279,6 +283,7 @@ impl<C: Connector> Wire<C> {
             self.condstore = capabilities.has("CONDSTORE");
             self.moving = capabilities.moving();
             self.searching = capabilities.searching();
+            self.appending = capabilities.appending();
             self.gmail = gmail::confirmed(cache.gmail, &capabilities);
             self.signed_in = Some(Instant::now());
             self.unpassed = true;
@@ -288,8 +293,8 @@ impl<C: Connector> Wire<C> {
         Ok(self.session.insert(session))
     }
 
-    /// The session as [`Wire::session`] answers it, with the commands
-    /// its server offers for moving mail.
+    /// The session as [`Wire::session`] answers it, with what its server
+    /// offers for moving mail and how it takes a message.
     ///
     /// # Errors
     ///
@@ -297,14 +302,14 @@ impl<C: Connector> Wire<C> {
     pub(crate) async fn session_with(
         &mut self,
         cache: &Cache,
-    ) -> Result<(&mut C::Session, Moving), ConnectError> {
+    ) -> Result<(&mut C::Session, Moving, Appending), ConnectError> {
         self.session(cache).await?;
-        let moving = self.moving;
+        let (moving, appending) = (self.moving, self.appending);
         let session = self
             .session
             .as_mut()
             .ok_or(ConnectError::Failed(SessionError::Closed))?;
-        Ok((session, moving))
+        Ok((session, moving, appending))
     }
 
     /// Drops the session after a failure, since its stream may hold

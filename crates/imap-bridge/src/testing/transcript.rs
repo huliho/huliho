@@ -189,6 +189,19 @@ impl Line {
         }
         Self(segments)
     }
+
+    /// The same line with one text put in place of another, every size
+    /// marker following its literal.
+    #[must_use]
+    pub fn replaced(&self, from: &str, to: &str) -> Self {
+        let segments = self.0.iter().map(|segment| match segment {
+            Segment::Text(text) => Segment::Text(text.replace(from, to)),
+            Segment::Literal { literal } => Segment::Literal {
+                literal: literal.replace(from, to),
+            },
+        });
+        Self(segments.collect())
+    }
 }
 
 /// The tag and the rest of a command line; a line without a space is

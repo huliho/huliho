@@ -22,6 +22,11 @@ const SYSTEM_KEYWORDS: [(&str, &str); 4] = [
     ("\\Draft", "$draft"),
 ];
 
+/// The keyword of a draft and the label Gmail gives one, in the bridge's
+/// spelling.
+const DRAFT_KEYWORD: &str = "$draft";
+const DRAFT_LABEL: &str = "\\Drafts";
+
 /// The bytes no keyword may hold next to controls, the space and
 /// everything past ASCII (RFC 8621 section 4.1.1).
 const KEYWORD_FORBIDDEN: &[u8] = b"(){]%*\"\\";
@@ -40,9 +45,10 @@ pub fn email(message: &FetchedMessage) -> Option<EmailFacts> {
     let headers = headers::parse(&message.header);
     let mut personal = headers.personal;
     personal.preview_part = message.structure.as_ref().and_then(preview::part);
+    let labels = message.gmail.as_ref().map(|items| items.labels.as_slice());
     Some(EmailFacts {
         uid: message.uid,
-        keywords: keywords(&message.flags),
+        keywords: labeled_keywords(&message.flags, labels),
         size: message.size,
         received_at: message.received_at,
         sent_at: headers.sent_at,
@@ -93,6 +99,22 @@ pub fn keywords(flags: &[String]) -> BTreeMap<String, bool> {
         .filter_map(|flag| keyword(flag))
         .map(|keyword| (keyword, true))
         .collect()
+}
+
+/// The keywords of a message with the labels Gmail gives it. Gmail shows
+/// `\Draft` in the Drafts folder alone, so in All Mail its label says a
+/// message is a draft (RFC 8621 section 4.1.1).
+#[must_use]
+pub fn labeled_keywords(flags: &[String], labels: Option<&[String]>) -> BTreeMap<String, bool> {
+    let mut found = keywords(flags);
+    let found_label = labels
+        .unwrap_or_default()
+        .iter()
+        .any(|label| gmail::canonical(label) == DRAFT_LABEL);
+    if found_label {
+        found.insert(DRAFT_KEYWORD.to_owned(), true);
+    }
+    found
 }
 
 fn keyword(flag: &str) -> Option<String> {

@@ -2,19 +2,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! `Email/set` (RFC 8620 section 5.3, RFC 8621 section 4.6): updates of
-//! `keywords` and `mailboxIds` and destroys. A call is read on the first
-//! pass over its request, what it asks is done on the server between two
-//! passes and the answer is rendered from what came of that on the next.
-//! A create is forbidden per object.
+//! `Email/set` (RFC 8620 section 5.3, RFC 8621 section 4.6): creates of a
+//! draft, updates of `keywords` and `mailboxIds` and destroys. A call is
+//! read on the first pass over its request, what it asks is done on the
+//! server between two passes and the answer is rendered from what came of
+//! that on the next.
 
 mod patch;
 
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
+use super::email_set::create;
 use super::{Context, MAX_OBJECTS_IN_SET, MethodError, arguments};
-use crate::runtime::folders::CreatedIds;
+use crate::message::Draft;
+use crate::runtime::folders::{CreatedIds, creation_id};
+use crate::store::{EmailId, ThreadId};
 
 #[cfg(test)]
 pub(super) use patch::patch as read_patch;
@@ -46,6 +49,10 @@ pub(super) enum SetError {
     TooManyMailboxes,
     /// The same call destroys the email.
     WillDestroy,
+    /// The blob ids of a create no part of the account answers to.
+    BlobNotFound(Vec<String>),
+    /// The message would pass what the bridge or the server takes.
+    TooLarge,
     ServerFail,
     ServerUnavailable,
 }
@@ -60,6 +67,8 @@ impl SetError {
             Self::TooManyKeywords => "tooManyKeywords",
             Self::TooManyMailboxes => "tooManyMailboxes",
             Self::WillDestroy => "willDestroy",
+            Self::BlobNotFound(_) => "blobNotFound",
+            Self::TooLarge => "tooLarge",
             Self::ServerFail => "serverFail",
             Self::ServerUnavailable => "serverUnavailable",
         };
@@ -67,8 +76,29 @@ impl SetError {
             Self::InvalidProperties(properties) => {
                 json!({ "type": kind, "properties": properties })
             }
+            Self::BlobNotFound(ids) => json!({ "type": kind, "notFound": ids }),
             _ => json!({ "type": kind }),
         }
+    }
+}
+
+/// What `created` answers for one draft (RFC 8621 section 4.6). The blob
+/// of a whole message goes by its email id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Created {
+    pub id: EmailId,
+    pub thread: ThreadId,
+    pub size: u32,
+}
+
+impl Created {
+    fn object(&self) -> Value {
+        json!({
+            "id": self.id,
+            "blobId": self.id,
+            "threadId": self.thread,
+            "size": self.size,
+        })
     }
 }
 
@@ -76,6 +106,8 @@ impl SetError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SetAsk {
     pub if_in_state: Option<String>,
+    /// The creates whose object reads, by creation id.
+    pub creates: Vec<(String, Draft)>,
     /// The updates whose patch reads, by email id as written.
     pub updates: Vec<(String, Patch)>,
     /// The emails to destroy, each once, in the order named.
@@ -98,8 +130,22 @@ impl SetAsk {
                 (id.clone(), patch)
             })
             .collect();
+        let drafts = self
+            .creates
+            .iter()
+            .map(|(id, draft)| {
+                let mut draft = draft.clone();
+                if let Some(mailbox) =
+                    creation_id(&draft.mailbox).and_then(|creation| created.get(creation))
+                {
+                    draft.mailbox.clone_from(mailbox);
+                }
+                (id.clone(), draft)
+            })
+            .collect();
         Self {
             if_in_state: self.if_in_state.clone(),
+            creates: drafts,
             updates,
             destroy: self.destroy.clone(),
         }
@@ -118,6 +164,8 @@ pub(super) enum Outcome {
     Stored {
         old_state: u64,
         new_state: u64,
+        /// Every create of the ask in its order.
+        created: Vec<(String, Result<Created, SetError>)>,
         /// Every update of the ask in its order.
         updated: Vec<(String, Result<Updated, SetError>)>,
         /// Every destroy of the ask in its order.
@@ -134,8 +182,23 @@ fn or_null(objects: Map<String, Value>) -> Value {
     }
 }
 
-/// `Email/set`: on the first pass the updates that read and the destroys
-/// are left for the request to do and the call answers
+/// The creates that read by creation id, beside the refusal of each other.
+fn read_creates(create: &Map<String, Value>) -> (Vec<(String, Draft)>, Map<String, Value>) {
+    let mut refused = Map::new();
+    let mut drafts = Vec::new();
+    for (id, object) in create {
+        match create::read(object) {
+            Ok(draft) => drafts.push((id.clone(), draft)),
+            Err(error) => {
+                refused.insert(id.clone(), error.object());
+            }
+        }
+    }
+    (drafts, refused)
+}
+
+/// `Email/set`: on the first pass the creates and the updates that read
+/// and the destroys are left for the request to do and the call answers
 /// `serverUnavailable`, which stands when nothing could be done at all;
 /// with the outcome at hand the call answers it. An update of an email
 /// the same call destroys is skipped (RFC 8620 section 5.3).
@@ -153,8 +216,7 @@ pub(super) fn email(
     }
     let mut seen = std::collections::HashSet::new();
     destroy.retain(|id| seen.insert(id.clone()));
-    let forbidden = SetError::Forbidden.object();
-    let not_created = create.keys().map(|id| (id.clone(), forbidden.clone()));
+    let (drafts, mut not_created) = read_creates(&create);
     let mut not_updated = Map::new();
     let mut patches = Vec::new();
     for (id, value) in &update {
@@ -170,10 +232,20 @@ pub(super) fn email(
             }
         }
     }
+    let mut not_destroyed = Map::new();
+    // A replace whose new message never read keeps the old one. The
+    // updates above are judged against the destroy as the request named it.
+    if create.len() == 1 && drafts.is_empty() && destroy.len() == 1 {
+        let held = destroy
+            .drain(..)
+            .map(|id| (id, SetError::ServerFail.object()));
+        not_destroyed.extend(held);
+    }
     let written = context.written.borrow();
     let Some(outcome) = *written else {
         *context.set_ask.borrow_mut() = Some(SetAsk {
             if_in_state: arguments.if_in_state,
+            creates: drafts,
             updates: patches,
             destroy,
         });
@@ -182,12 +254,20 @@ pub(super) fn email(
     let Outcome::Stored {
         old_state,
         new_state,
+        created: drafted,
         updated: results,
         destroyed: gone,
     } = outcome
     else {
         return Err(MethodError::StateMismatch);
     };
+    let mut created = Map::new();
+    for (id, result) in drafted {
+        match result {
+            Ok(draft) => created.insert(id.clone(), draft.object()),
+            Err(error) => not_created.insert(id.clone(), error.object()),
+        };
+    }
     let mut updated = Map::new();
     for (id, result) in results {
         match result {
@@ -199,7 +279,6 @@ pub(super) fn email(
         };
     }
     let mut destroyed = Vec::new();
-    let mut not_destroyed = Map::new();
     for (id, result) in gone {
         match result {
             Ok(()) => destroyed.push(Value::from(id.as_str())),
@@ -217,10 +296,10 @@ pub(super) fn email(
         ("accountId", Value::from(context.key.as_str())),
         ("oldState", Value::from(old_state.to_string())),
         ("newState", Value::from(new_state.to_string())),
-        ("created", Value::Null),
+        ("created", or_null(created)),
         ("updated", or_null(updated)),
         ("destroyed", destroyed),
-        ("notCreated", or_null(not_created.collect())),
+        ("notCreated", or_null(not_created)),
         ("notUpdated", or_null(not_updated)),
         ("notDestroyed", or_null(not_destroyed)),
     ];

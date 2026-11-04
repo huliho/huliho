@@ -100,6 +100,30 @@ impl Command {
     }
 }
 
+/// Whether the command puts a message in a mailbox.
+#[must_use]
+pub fn is_message_command(command: &str) -> bool {
+    command.starts_with("APPEND ") || command.starts_with("UID REPLACE ")
+}
+
+/// A message command up to its size marker: what stays the same from one
+/// run to the next, whose message holds a fresh Message-ID and date.
+#[must_use]
+pub fn message_head(command: &str) -> &str {
+    let line = command.split_once("\r\n").map_or(command, |(line, _)| line);
+    line.rsplit_once('{').map_or(line, |(head, _)| head)
+}
+
+/// The Message-ID a message command carries, its angle brackets kept.
+#[must_use]
+pub fn message_id(command: &str) -> Option<&str> {
+    let (_, message) = command.split_once("\r\n")?;
+    let found = message
+        .split("\r\n")
+        .find_map(|line| line.strip_prefix("Message-ID: "))?;
+    Some(found.trim())
+}
+
 /// One run of text of a command off the wire, its line break left out,
 /// with the size its marker names and whether that literal waits for the
 /// continuation request. `None` when the client left, sent bytes outside

@@ -22,7 +22,7 @@ use tokio_rustls::rustls::pki_types::ServerName;
 use tokio_rustls::rustls::{ClientConfig, RootCertStore};
 
 use super::Connection;
-use super::corpus::{Change, FOLDER, FOLDER_RENAMED, LABEL, MARKER, seed, seeds};
+use super::corpus::{Change, DRAFT_SUBJECT, FOLDER, FOLDER_RENAMED, LABEL, MARKER, seed, seeds};
 
 /// The variable that names the account.
 pub const ADDRESS: &str = "HULIHO_LIVE_GMAIL_ADDRESS";
@@ -206,10 +206,16 @@ pub async fn clear(editor: &mut Editor, stores: &Stores) {
     }
 }
 
-/// The UIDs in `store` that carry the marker; the store stays selected.
+/// The UIDs in `store` that carry the marker or the draft's subject, which
+/// a draft has in place of the marker; the store stays selected.
 async fn marked(editor: &mut Editor, store: &str) -> Vec<String> {
     within(editor.select(store)).await.unwrap();
-    let query = format!("HEADER {} {}", MARKER.0, MARKER.1);
+    let query = format!(
+        "OR HEADER {} {} HEADER Subject {}",
+        MARKER.0,
+        MARKER.1,
+        quoted(DRAFT_SUBJECT)
+    );
     let mut uids: Vec<u32> = within(editor.uid_search(&query))
         .await
         .unwrap()

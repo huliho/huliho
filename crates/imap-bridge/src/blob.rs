@@ -13,6 +13,7 @@ mod address;
 mod decode;
 #[cfg(feature = "test-support")]
 pub mod fuzzing;
+mod whole;
 
 use std::sync::{Arc, Weak};
 
@@ -23,6 +24,7 @@ use tokio::time::timeout;
 use address::Address;
 pub(crate) use address::part_blob_id;
 use decode::Decoder;
+pub(crate) use whole::whole;
 
 use crate::jmap::leaf_of;
 use crate::mailboxes::SyncError;
@@ -149,9 +151,9 @@ pub async fn open<C: Connector + 'static>(
 
 /// Why a turn ended without its window and whether the session still
 /// stands.
-struct Stop {
-    error: BlobError,
-    stands: bool,
+pub(crate) struct Stop {
+    pub(crate) error: BlobError,
+    pub(crate) stands: bool,
 }
 
 impl Stop {
@@ -253,6 +255,12 @@ impl Reader {
         part: Option<&str>,
     ) -> Result<(Vec<u8>, bool), BlobError> {
         let window = self.turn(link, part).await?;
+        self.took(window).await
+    }
+
+    /// One window off the wire: how far the read stands, then its content
+    /// decoded off the runtime and whether it ended the blob.
+    async fn took(&mut self, window: Vec<u8>) -> Result<(Vec<u8>, bool), BlobError> {
         let read = u32::try_from(window.len()).unwrap_or(u32::MAX);
         // RFC 3501 section 6.4.5: a fetch past the end is cut short.
         let last = read < BODY_WINDOW_BYTES;
@@ -303,18 +311,32 @@ impl Reader {
     }
 
     /// The folder examined afresh, since the conversation may have
-    /// selected another one in between; then the part found where one
-    /// is named and the window at the offset.
+    /// selected another one in between; then one window.
     async fn read<S: Session>(
         &mut self,
         session: &mut S,
         part: Option<&str>,
     ) -> Result<Vec<u8>, Stop> {
+        self.examined(session).await?;
+        self.window(session, part).await
+    }
+
+    async fn examined<S: Session>(&self, session: &mut S) -> Result<(), Stop> {
         let chosen = session.examine(&self.folder).await?;
         // Renumbered since the sync, the UID names another message.
         if Some(chosen.uid_validity) != self.uid_validity {
             return Err(Stop::kept(BlobError::Unavailable));
         }
+        Ok(())
+    }
+
+    /// The part found where one is named and the window at the offset, on
+    /// a session with the folder open.
+    async fn window<S: Session>(
+        &mut self,
+        session: &mut S,
+        part: Option<&str>,
+    ) -> Result<Vec<u8>, Stop> {
         if let Some(part_id) = part {
             self.find(session, part_id).await?;
         }

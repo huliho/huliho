@@ -229,6 +229,27 @@ async fn an_update_of_an_email_the_call_destroys_is_skipped_rfc8620_5_3() {
 }
 
 #[tokio::test]
+async fn an_update_of_an_email_a_refused_replace_holds_is_skipped_rfc8620_5_3() {
+    let set = synced(Extension::all()).await;
+    let answered = set
+        .set(json!({
+            "create": { "d": { "subject": "x" } },
+            "update": { &set.ids[&1]: { "keywords/$flagged": true } },
+            "destroy": [set.ids[&1]],
+        }))
+        .await;
+    assert_eq!(answered["notCreated"]["d"]["type"], "invalidProperties");
+    assert_eq!(refused(&set, &answered, 1), "willDestroy", "{answered}");
+    assert_eq!(
+        answered["notDestroyed"][&set.ids[&1]]["type"], "serverFail",
+        "{answered}"
+    );
+    assert_eq!(answered["destroyed"], Value::Null, "{answered}");
+    assert!(set.written().is_empty(), "{:?}", set.written());
+    assert_eq!(held(&set, INBOX), [1, 2, 3]);
+}
+
+#[tokio::test]
 async fn a_message_another_client_expunged_first_is_not_found_and_its_row_leaves() {
     let set = synced(Extension::all()).await;
     set.rig.fake.script().mailboxes.expunge_uid(INBOX, 1);

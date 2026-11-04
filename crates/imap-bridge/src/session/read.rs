@@ -32,7 +32,7 @@ pub(super) use flags::uid_flags;
 pub(super) use list::{list, lsub, status};
 pub(super) use preview::{sequence_set, uid_previews};
 pub(crate) use search::writable_day;
-pub(super) use search::{uid_list, uid_search};
+pub(super) use search::{continuation, uid_list, uid_search};
 pub(super) use select::{Access, Opened, open};
 pub use structure::MAX_TREE_BYTES;
 
