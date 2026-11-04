@@ -26,7 +26,7 @@ use thiserror::Error;
 use tokio::sync::Notify;
 use tokio::time::timeout;
 
-pub use bridge::{Bridge, Registration};
+pub use bridge::{Bridge, Host, Registration};
 pub use search::{SEARCH_CACHE_ENTRIES, SEARCH_CACHE_TTL};
 pub use timing::{
     CONVERSATION_DEADLINE, GMAIL_LIST_AGE, RECONNECT_PAUSE, REFRESH_INTERVAL, RETRY_INTERVAL,

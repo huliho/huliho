@@ -29,10 +29,18 @@ pub(super) enum ApiError {
     NotFound,
     LoginTaken,
     MissingCsrfHeader,
-    RateLimited { retry_after_ms: i64 },
+    RateLimited {
+        retry_after_ms: i64,
+    },
     ProviderNotConfigured,
-    StillStopped { cause: StopCause },
+    StillStopped {
+        cause: StopCause,
+    },
     TooLarge,
+    /// The bridge's store holds no upload it may evict for room.
+    OverQuota,
+    /// The request body went silent past the patience.
+    RequestTimeout,
     NotAnImage,
     UpstreamCredentials,
     UpstreamUnreachable,
@@ -58,6 +66,8 @@ impl ApiError {
             Self::ProviderNotConfigured => "provider_not_configured",
             Self::StillStopped { .. } => "still_stopped",
             Self::TooLarge => "too_large",
+            Self::OverQuota => "over_quota",
+            Self::RequestTimeout => "request_timeout",
             Self::NotAnImage => "not_an_image",
             Self::UpstreamCredentials => "upstream_credentials",
             Self::UpstreamUnreachable => "upstream_unreachable",
@@ -87,6 +97,9 @@ impl ApiError {
                 StatusCode::CONFLICT
             }
             Self::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+            // RFC 4918 section 11.5, the one status that names storage.
+            Self::OverQuota => StatusCode::INSUFFICIENT_STORAGE,
+            Self::RequestTimeout => StatusCode::REQUEST_TIMEOUT,
             Self::NotAnImage => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,

@@ -30,7 +30,7 @@ use crate::jmap::leaf_of;
 use crate::mailboxes::SyncError;
 use crate::runtime::{Connector, Link};
 use crate::session::{BODY_WINDOW_BYTES, PartAsk, PartWindow, Session, SessionError};
-use crate::store::StoreError;
+use crate::store::{StoreError, UploadId};
 use crate::sync::{Cache, blocking};
 
 /// The windows a blob stream reads ahead of whoever reads it: the last
@@ -104,6 +104,15 @@ impl Blob {
         step.transpose()
     }
 
+    /// A blob whose first bytes are in hand and whose rest, if any,
+    /// comes through the channel.
+    pub(crate) fn streamed(first: Vec<u8>, rest: Option<mpsc::Receiver<Step>>) -> Self {
+        Self {
+            first: Some(first).filter(|content| !content.is_empty()),
+            rest,
+        }
+    }
+
     /// A blob that answers what the channel carries, for a host that
     /// tests its own reader of a blob.
     #[cfg(feature = "test-support")]
@@ -119,7 +128,8 @@ impl Blob {
 /// Opens a blob of the account: its first window read, the rest read
 /// ahead of the caller on a task of its own, `BLOB_BUFFER_WINDOWS` at
 /// most. `limit` bounds the octets read from the server; a blob the
-/// server states larger is refused before a window is read.
+/// server states larger is refused before a window is read. An upload's
+/// id opens the upload from the store, never the server.
 ///
 /// # Errors
 ///
@@ -133,6 +143,9 @@ pub async fn open<C: Connector + 'static>(
     blob_id: &str,
     limit: u64,
 ) -> Result<Blob, BlobError> {
+    if let Some(upload) = UploadId::parse(blob_id) {
+        return cache.uploads.open(&cache.key, &upload, limit).await;
+    }
     let address = Address::parse(blob_id).ok_or(BlobError::NotFound)?;
     let mut reader = Reader::placed(cache, &address, limit).await?;
     let (first, last) = reader.chunk(link, address.part.as_deref()).await?;
@@ -143,10 +156,7 @@ pub async fn open<C: Connector + 'static>(
         tokio::spawn(stream(reader, Arc::downgrade(link), sender));
         Some(receiver)
     };
-    Ok(Blob {
-        first: Some(first).filter(|content| !content.is_empty()),
-        rest,
-    })
+    Ok(Blob::streamed(first, rest))
 }
 
 /// Why a turn ended without its window and whether the session still

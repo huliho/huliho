@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! The bridge as the host runs it: one store, one sealer, one connector
-//! and, per account, the conversation a request takes and the task
-//! that syncs its folders.
+//! The bridge as the host runs it: one store, one sealer, one connector,
+//! one store of uploads and, per account, the conversation a request
+//! takes and the task that syncs its folders.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, MutexGuard, Once, PoisonError};
 
 use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
@@ -19,6 +20,16 @@ use crate::jmap::{self, RequestError};
 use crate::seal::Sealer;
 use crate::store::{AccountKey, Store};
 use crate::sync::Cache;
+use crate::upload::{UploadError, Uploads, Writing};
+
+/// What the host hands the bridge beside its connector: the store it
+/// opened with the schema present, its sealer and the directory the
+/// uploads live under.
+pub struct Host {
+    pub store: Arc<Store>,
+    pub sealer: Arc<dyn Sealer>,
+    pub uploads: PathBuf,
+}
 
 /// What the host says about an account it hands to the bridge.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,11 +47,14 @@ pub struct Registration {
 pub struct Bridge<C: Connector> {
     store: Arc<Store>,
     sealer: Arc<dyn Sealer>,
+    uploads: Arc<Uploads>,
     connector: Arc<C>,
     timing: Timing,
     /// The accounts whose header sync runs at once, process wide.
     syncing: Arc<Semaphore>,
     accounts: Mutex<HashMap<AccountKey, Entry<C>>>,
+    /// Whether the sweep of the uploads runs.
+    sweeping: Once,
 }
 
 struct Entry<C: Connector> {
@@ -69,28 +83,29 @@ impl<C: Connector> Account<C> {
 }
 
 impl<C: Connector + 'static> Bridge<C> {
-    /// A bridge over a store the host opened with the schema present,
-    /// on the runtime's clocks.
+    /// A bridge over what the host hands it, on the runtime's clocks.
     #[must_use]
-    pub fn open(store: Arc<Store>, connector: C, sealer: Arc<dyn Sealer>) -> Self {
-        Self::with_timing(store, connector, sealer, Timing::default())
+    pub fn open(host: Host, connector: C) -> Self {
+        Self::with_timing(host, connector, Timing::default())
     }
 
     /// A bridge on the given clocks.
     #[must_use]
-    pub fn with_timing(
-        store: Arc<Store>,
-        connector: C,
-        sealer: Arc<dyn Sealer>,
-        timing: Timing,
-    ) -> Self {
+    pub fn with_timing(host: Host, connector: C, timing: Timing) -> Self {
+        let Host {
+            store,
+            sealer,
+            uploads,
+        } = host;
         Self {
+            uploads: Arc::new(Uploads::new(uploads, Arc::clone(&sealer))),
             store,
             sealer,
             connector: Arc::new(connector),
             timing,
             syncing: Arc::new(Semaphore::new(SYNC_PARALLELISM)),
             accounts: Mutex::new(HashMap::new()),
+            sweeping: Once::new(),
         }
     }
 
@@ -100,6 +115,16 @@ impl<C: Connector + 'static> Bridge<C> {
         &self.store
     }
 
+    /// Starts an upload of the account into the store; the account's
+    /// server is not asked.
+    ///
+    /// # Errors
+    ///
+    /// As [`Uploads::begin`].
+    pub async fn upload(&self, key: &AccountKey, media_type: &str) -> Result<Writing, UploadError> {
+        self.uploads.begin(key, media_type).await
+    }
+
     /// Starts the account's runtime when it is not running: a task that
     /// syncs every store folder whose first sync is not done and keeps
     /// the conversation. An account that runs is left as it is.
@@ -107,8 +132,12 @@ impl<C: Connector + 'static> Bridge<C> {
         self.account(registration);
     }
 
-    /// Starts every account the host lists, at startup.
+    /// Starts every account the host lists at startup; the first call
+    /// also starts the sweep of the uploads.
     pub fn resume(&self, registrations: impl IntoIterator<Item = Registration>) {
+        self.sweeping.call_once(|| {
+            tokio::spawn(Arc::clone(&self.uploads).sweep_periodically());
+        });
         for registration in registrations {
             self.start(&registration);
         }
@@ -145,9 +174,9 @@ impl<C: Connector + 'static> Bridge<C> {
     }
 
     /// Stops the account's runtime: its task ends, a blob still on its
-    /// way breaks off and the store writes nothing more for the key, so
-    /// the host can delete the rows in the transaction that removes the
-    /// account.
+    /// way breaks off, its uploads leave and the store writes nothing
+    /// more for the key, so the host can delete the rows in the
+    /// transaction that removes the account.
     pub async fn forget(&self, key: &AccountKey) {
         let entry = self.accounts().remove(key);
         self.store.forget(key);
@@ -155,6 +184,7 @@ impl<C: Connector + 'static> Bridge<C> {
             entry.task.abort();
             let _ended = entry.task.await;
         }
+        self.uploads.forget(key).await;
     }
 
     fn account(&self, registration: &Registration) -> Arc<Account<C>> {
@@ -171,6 +201,7 @@ impl<C: Connector + 'static> Bridge<C> {
                 sealer: Arc::clone(&self.sealer),
                 key: registration.key.clone(),
                 gmail: registration.gmail,
+                uploads: Arc::clone(&self.uploads),
             },
             session_state: registration.session_state.clone(),
             link: Arc::new(Link::with_timing(connector, self.timing)),

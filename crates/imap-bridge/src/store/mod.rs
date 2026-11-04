@@ -37,7 +37,7 @@ pub use emails::{Batch, EmailFacts, EmailRow, EmailSnapshot};
 pub use folders::{REMATCH_LIMIT, Standing};
 pub use gmail::GmailFacts;
 pub(crate) use ids::ID_LENGTH;
-pub use ids::{AccountKey, EmailId, MailboxId, ThreadId};
+pub use ids::{AccountKey, EmailId, MailboxId, ThreadId, UploadId};
 pub use keywords::{KeywordChange, KeywordRow};
 pub use mailboxes::{
     Counts, MailboxChange, MailboxFacts, MailboxRow, MailboxSnapshot, MailboxesWritten, Pass,

@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use huliho_imap_bridge::jmap::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY};
-use huliho_imap_bridge::runtime::{Bridge, ConnectError, Connector, Registration, Timing};
+use huliho_imap_bridge::runtime::{Bridge, ConnectError, Connector, Host, Registration, Timing};
 use huliho_imap_bridge::session::{ImapSession, TlsMode};
 use huliho_imap_bridge::store::{AccountKey, MIGRATIONS, MailboxRow, Progress, Standing, Store};
 use huliho_imap_bridge::testing::imap::{FakeImap, HOST, Script};
@@ -158,8 +158,12 @@ impl<C: Connector + 'static> Process<C> {
     /// Opens the file as a process does at its start and starts the account.
     pub fn start(volume: &Volume, connector: C, gmail: bool, timing: Timing) -> Self {
         let store = Arc::new(Store::new(Connection::open(&volume.path).unwrap()));
-        let sealer = Arc::new(TestSealer::default());
-        let bridge = Bridge::with_timing(store, connector, sealer, timing);
+        let host = Host {
+            store,
+            sealer: Arc::new(TestSealer::default()),
+            uploads: volume.path.with_extension("uploads"),
+        };
+        let bridge = Bridge::with_timing(host, connector, timing);
         let registration = Registration {
             key: AccountKey::new(ACCOUNT),
             gmail,

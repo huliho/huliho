@@ -10,6 +10,7 @@ use serde_json::{Map, Value};
 
 use super::{JMAP_REQUEST_LIMIT, MAX_CONCURRENT_REQUESTS};
 use crate::ids::AccountId;
+use crate::mail::upload::{MAX_CONCURRENT_UPLOADS, UPLOAD_LIMIT};
 
 /// The core capability every JMAP server carries (RFC 8620 section 2).
 pub(crate) const CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
@@ -26,23 +27,31 @@ const QUOTA_CAPABILITY: &str = "urn:ietf:params:jmap:quota";
 const CARRIED: [&str; 3] = [CORE_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY];
 
 /// The core limits the proxy enforces itself; the browser learns the
-/// proxy's values where the upstream's are higher.
-const ENFORCED: [(&str, usize); 2] = [
-    ("maxSizeRequest", JMAP_REQUEST_LIMIT),
-    ("maxConcurrentRequests", MAX_CONCURRENT_REQUESTS),
-];
+/// proxy's values where the upstream's are higher, since the object
+/// describes the server the browser talks to.
+fn enforced() -> [(&'static str, u64); 4] {
+    let wide = |value: usize| u64::try_from(value).unwrap_or(u64::MAX);
+    [
+        ("maxSizeRequest", wide(JMAP_REQUEST_LIMIT)),
+        ("maxConcurrentRequests", wide(MAX_CONCURRENT_REQUESTS)),
+        ("maxSizeUpload", UPLOAD_LIMIT),
+        ("maxConcurrentUpload", wide(MAX_CONCURRENT_UPLOADS)),
+    ]
+}
 
 /// What the upstream session object named before the rewrite: its API
-/// endpoint and, when it has one, its download template.
+/// endpoint and, when it has them, its download and upload templates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Named {
-    pub api_url: String,
-    pub download_url: Option<String>,
+    pub api: String,
+    pub download: Option<String>,
+    pub upload: Option<String>,
 }
 
 /// The four URLs of an account's endpoint on this instance, relative to
-/// it, by the name the session object gives each: `apiUrl` and
-/// `downloadUrl` here, the other two on the routes later features add.
+/// it, by the name the session object gives each: `apiUrl`,
+/// `downloadUrl` and `uploadUrl` here, `eventSourceUrl` on the route a
+/// later feature adds.
 pub(crate) fn urls(account_id: &AccountId) -> [(&'static str, String); 4] {
     let id = account_id.as_str();
     [
@@ -64,11 +73,9 @@ pub(crate) fn urls(account_id: &AccountId) -> [(&'static str, String); 4] {
 /// Rewrites `session` for the browser and answers what the upstream
 /// named; `None` when the object names no API endpoint.
 pub(super) fn rewrite(session: &mut Map<String, Value>, account_id: &AccountId) -> Option<Named> {
-    let api_url = session.get("apiUrl")?.as_str()?.to_owned();
-    let download_url = session
-        .get("downloadUrl")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
+    let api = session.get("apiUrl")?.as_str()?.to_owned();
+    let named = |name: &str| session.get(name).and_then(Value::as_str).map(str::to_owned);
+    let (download, upload) = (named("downloadUrl"), named("uploadUrl"));
     for (name, url) in urls(account_id) {
         session.insert(name.to_owned(), Value::String(url));
     }
@@ -84,8 +91,9 @@ pub(super) fn rewrite(session: &mut Map<String, Value>, account_id: &AccountId) 
         }
     }
     Some(Named {
-        api_url,
-        download_url,
+        api,
+        download,
+        upload,
     })
 }
 
@@ -103,11 +111,8 @@ fn clamp_limits(core: Option<&mut Value>) {
     let Some(core) = core.and_then(Value::as_object_mut) else {
         return;
     };
-    for (name, limit) in ENFORCED {
-        let upstream = core
-            .get(name)
-            .and_then(Value::as_u64)
-            .and_then(|value| usize::try_from(value).ok());
+    for (name, limit) in enforced() {
+        let upstream = core.get(name).and_then(Value::as_u64);
         if upstream.is_none_or(|value| value > limit) {
             core.insert(name.to_owned(), Value::from(limit));
         }
@@ -121,6 +126,8 @@ mod tests {
     const UPSTREAM: &str = r#"{
         "capabilities": {
             "urn:ietf:params:jmap:core": {
+                "maxSizeUpload": 1073741824,
+                "maxConcurrentUpload": 5,
                 "maxSizeRequest": 10000000,
                 "maxConcurrentRequests": 8,
                 "maxObjectsInGet": 500,
@@ -181,12 +188,16 @@ mod tests {
     #[test]
     fn the_four_urls_point_at_the_proxy_and_the_upstream_ones_come_back() {
         let (session, named) = rewritten();
-        assert_eq!(named.api_url, "https://api.example.test/jmap/api");
+        assert_eq!(named.api, "https://api.example.test/jmap/api");
         assert_eq!(
-            named.download_url.as_deref(),
+            named.download.as_deref(),
             Some(
                 "https://api.example.test/jmap/download/{accountId}/{blobId}/{name}?accept={type}"
             )
+        );
+        assert_eq!(
+            named.upload.as_deref(),
+            Some("https://api.example.test/jmap/upload/{accountId}/")
         );
         assert_eq!(session["apiUrl"], "/api/jmap/a1");
         assert_eq!(
@@ -234,6 +245,9 @@ mod tests {
         let core = &session["capabilities"][CORE_CAPABILITY];
         assert_eq!(core["maxSizeRequest"], JMAP_REQUEST_LIMIT);
         assert_eq!(core["maxConcurrentRequests"], MAX_CONCURRENT_REQUESTS);
+        // Cyrus advertises 1 GiB and five; the route carries 64 MiB and two.
+        assert_eq!(core["maxSizeUpload"], UPLOAD_LIMIT);
+        assert_eq!(core["maxConcurrentUpload"], MAX_CONCURRENT_UPLOADS);
         assert_eq!(core["maxObjectsInGet"], 500);
         assert_eq!(
             core["collationAlgorithms"],
@@ -263,7 +277,7 @@ mod tests {
         )
         .unwrap();
         let named = rewrite(&mut lean, &account()).unwrap();
-        assert_eq!(named.download_url, None);
+        assert_eq!(named.download, None);
         assert_eq!(
             lean["downloadUrl"],
             "/api/jmap/a1/download/{accountId}/{blobId}/{name}?type={type}"

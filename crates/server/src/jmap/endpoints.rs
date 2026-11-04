@@ -3,9 +3,9 @@
 // Additional terms apply, see NOTICE.
 
 //! What the proxy keeps per account between requests: the cap on the
-//! requests in flight (the native path and the bridge alike), the cap
-//! on the downloads in flight and what the upstream session object
-//! named.
+//! requests in flight (the native path and the bridge alike), the caps
+//! on the downloads and the uploads in flight and what the upstream
+//! session object named.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -16,6 +16,7 @@ use url::Url;
 use super::MAX_CONCURRENT_REQUESTS;
 use crate::ids::AccountId;
 use crate::mail::download::MAX_CONCURRENT_DOWNLOADS;
+use crate::mail::upload::MAX_CONCURRENT_UPLOADS;
 
 /// What the proxy keeps per account.
 #[derive(Default)]
@@ -24,17 +25,21 @@ pub struct Endpoints {
 }
 
 /// What the upstream session object named, checked and remembered: the
-/// API endpoint and the download template as the upstream wrote it.
+/// API endpoint, the download and the upload templates as the upstream
+/// wrote them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct UpstreamUrls {
-    pub api_url: Url,
-    pub download_url: Option<String>,
+    pub api: Url,
+    pub download: Option<String>,
+    pub upload: Option<String>,
 }
 
 struct Endpoint {
     requests: Arc<Semaphore>,
     /// Beside the request cap, so a long download starves no request.
     downloads: Arc<Semaphore>,
+    /// Beside the other two, so an upload starves no request or download.
+    uploads: Arc<Semaphore>,
     urls: Option<UpstreamUrls>,
 }
 
@@ -43,6 +48,7 @@ impl Default for Endpoint {
         Self {
             requests: Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS)),
             downloads: Arc::new(Semaphore::new(MAX_CONCURRENT_DOWNLOADS)),
+            uploads: Arc::new(Semaphore::new(MAX_CONCURRENT_UPLOADS)),
             urls: None,
         }
     }
@@ -65,6 +71,13 @@ impl Endpoints {
     pub fn downloads(&self, account_id: &AccountId) -> Arc<Semaphore> {
         let mut memory = self.memory();
         Arc::clone(&memory.entry(account_id.clone()).or_default().downloads)
+    }
+
+    /// The account's upload lane, which a caller waits on for a permit.
+    #[must_use]
+    pub fn uploads(&self, account_id: &AccountId) -> Arc<Semaphore> {
+        let mut memory = self.memory();
+        Arc::clone(&memory.entry(account_id.clone()).or_default().uploads)
     }
 
     /// Drops what the proxy remembers of an account once its row left.
@@ -91,10 +104,11 @@ impl Endpoints {
 mod tests {
     use super::*;
 
-    fn named(api_url: &str) -> UpstreamUrls {
+    fn named(api: &str) -> UpstreamUrls {
         UpstreamUrls {
-            api_url: api_url.parse().unwrap(),
-            download_url: Some("https://api.example.test/jmap/download/{blobId}".to_owned()),
+            api: api.parse().unwrap(),
+            download: Some("https://api.example.test/jmap/download/{blobId}".to_owned()),
+            upload: Some("https://api.example.test/jmap/upload/{accountId}/".to_owned()),
         }
     }
 
@@ -127,6 +141,22 @@ mod tests {
         assert!(endpoints.enter(&alpha).is_some());
         drop(held);
         assert!(Arc::ptr_eq(&lane, &endpoints.downloads(&alpha)));
+    }
+
+    #[test]
+    fn the_upload_lane_holds_two_beside_the_other_caps() {
+        let endpoints = Endpoints::default();
+        let alpha = AccountId::from("alpha".to_owned());
+        let lane = endpoints.uploads(&alpha);
+        assert_eq!(lane.available_permits(), MAX_CONCURRENT_UPLOADS);
+        let held: Vec<_> = (0..MAX_CONCURRENT_UPLOADS)
+            .map(|_| lane.clone().try_acquire_owned().unwrap())
+            .collect();
+        assert!(lane.clone().try_acquire_owned().is_err());
+        assert!(endpoints.enter(&alpha).is_some());
+        assert!(endpoints.downloads(&alpha).try_acquire_owned().is_ok());
+        drop(held);
+        assert!(Arc::ptr_eq(&lane, &endpoints.uploads(&alpha)));
     }
 
     #[test]

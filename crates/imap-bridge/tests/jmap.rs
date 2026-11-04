@@ -77,6 +77,9 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
     assert_eq!(core["maxObjectsInGet"], 500);
     assert_eq!(core["maxObjectsInSet"], 500);
     assert_eq!(core["collationAlgorithms"], json!(["i;unicode-casemap"]));
+    // The upload store's own: 25 MiB per upload, two at once.
+    assert_eq!(core["maxSizeUpload"], 26_214_400);
+    assert_eq!(core["maxConcurrentUpload"], 2);
     assert_eq!(session["capabilities"][MAIL_CAPABILITY], json!({}));
     let mail = &session["accounts"][ACCOUNT]["accountCapabilities"][MAIL_CAPABILITY];
     assert_eq!(
@@ -91,6 +94,7 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
         ]
     );
     assert_eq!(mail["maxMailboxesPerEmail"], 1);
+    assert_eq!(mail["maxSizeAttachmentsPerEmail"], 26_214_400);
     assert_eq!(mail["maxMailboxDepth"], Value::Null);
     assert_eq!(mail["maxSizeMailboxName"], 255);
     assert_eq!(mail["mayCreateTopLevelMailbox"], true);

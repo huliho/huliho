@@ -6,7 +6,9 @@ security headers on every response, request-scoped tracing and a
 graceful shutdown on SIGTERM.
 
 All persistent state lives in an embedded database inside one data
-directory, created on first start and migrated on every start. The
+directory, created on first start and migrated on every start. Beside
+the database the bridge keeps the uploads no draft has taken yet in
+`uploads/`, sealed, for a day at most: state that can be rebuilt. The
 schema covers organizations, users with fixed roles and a display
 name, connected accounts, server-side sessions with a device record
 and the address of their last use, an append-only domain event log
@@ -93,8 +95,8 @@ at a time.
 Mail itself moves through one JMAP endpoint per account. `GET
 /api/jmap/{id}/session` answers the account's session object as the
 browser may see it: its URLs point at the proxy, its capabilities are
-cut to core, mail and quota and its two request limits are at most the
-proxy's own.
+cut to core, mail and quota and its request and upload limits are at
+most the proxy's own.
 `POST /api/jmap/{id}` forwards a Request object to the API endpoint
 that session object named, with the account's credential added on the
 way and the answer handed back as the server sent it, with one
@@ -159,6 +161,32 @@ bridge is asked, so the wait for the account's conversation counts; the
 first window answers within the bridge's own deadline for a turn of
 sixty seconds and every chunk after it within the twenty seconds of
 the route.
+`POST /api/jmap/{id}/upload/{accountId}` is the route the rewritten
+`uploadUrl` names (RFC 8620 section 6.1). Its `Content-Type` must
+parse as a media type within 255 bytes; none reads as
+`application/octet-stream` and any other value answers
+`invalid_request`. The route streams the body and never holds it
+whole: 64 MiB at most on a native account, 25 MiB on a bridge account.
+A declared length past that answers `too_large` before a byte is read;
+a body that runs past it breaks off with the same word. A body that
+stays silent for twenty seconds or runs past ten minutes in all
+answers `request_timeout` (408); one that breaks off answers
+`invalid_request`. Two uploads stream at once per account beside the
+request cap and the download lanes; a third waits for a lane for twenty
+seconds before it answers 429. For a native account the route expands
+the `uploadUrl` template the upstream session object named with the
+account id, checks the result like the API endpoint and streams the
+body to it with the account's credential, never following a redirect.
+A success whose answer names the account, a blob id, a type and a size
+passes back as it came with 200. The upstream's 413 answers
+`too_large`, its 429 `rate_limited`, its 401 `upstream_credentials`
+after the gate saw it, a server error `upstream_failed` and anything
+else `upstream_unsupported`. For an IMAP account the bridge seals the
+body into its upload store in `uploads/` beside the database; past the
+account's quota it evicts the oldest uploads first and where nothing is
+left it answers `over_quota` (507). The answer names the account, the
+upload's blob id, the declared type and the size; the download route
+serves that blob id like any other.
 `GET /api/remote-image?url=` fetches an image a message links, on the
 reader's behalf and with nothing of theirs on the request. The URL
 stays within 2048 bytes, carries no user information and names a host

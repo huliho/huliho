@@ -6,8 +6,8 @@
 //! own in tree order on one conversation, a Gmail account holds two, a
 //! folder that fails every time is given up after the bound, a batch
 //! past the deadline costs its session alone, an idle conversation is
-//! logged out and a forgotten account takes no write and breaks off the
-//! blob it was streaming.
+//! logged out, a forgotten account takes no write and breaks off the
+//! blob it was streaming; resuming sweeps the uploads.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use huliho_imap_bridge::blob::{BLOB_BUFFER_WINDOWS, BlobError};
 use huliho_imap_bridge::jmap::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY};
-use huliho_imap_bridge::runtime::{Bridge, FOLDER_FAILURE_BOUND, Registration, Timing};
+use huliho_imap_bridge::runtime::{Bridge, FOLDER_FAILURE_BOUND, Host, Registration, Timing};
 use huliho_imap_bridge::session::{BODY_WINDOW_BYTES, TlsMode};
 use huliho_imap_bridge::store::{AccountKey, MailboxFacts, Store, StoreError};
 use huliho_imap_bridge::sync::SYNC_BATCH;
@@ -25,6 +25,7 @@ use huliho_imap_bridge::testing::{
     Behavior, Counting, Extension, Folder, Mailboxes, Message, TestConnector,
 };
 use serde_json::{Value, json};
+use tempfile::TempDir;
 use tokio::time::sleep;
 
 const ACCOUNT: &str = "a1";
@@ -86,6 +87,8 @@ struct Rig {
     fake: FakeImap,
     connects: Arc<AtomicUsize>,
     registration: Registration,
+    /// The root of the bridge's uploads.
+    uploads: TempDir,
 }
 
 impl Rig {
@@ -99,12 +102,13 @@ impl Rig {
         let scripted =
             TestConnector::scripted(fake.trusting(), fake.target(HOST, TlsMode::Implicit), STEP);
         let (connector, connects) = Counting::new(scripted);
-        let bridge = Bridge::with_timing(
-            Arc::new(Store::in_memory().unwrap()),
-            connector,
-            Arc::new(TestSealer::default()),
-            timing,
-        );
+        let uploads = tempfile::tempdir().unwrap();
+        let host = Host {
+            store: Arc::new(Store::in_memory().unwrap()),
+            sealer: Arc::new(TestSealer::default()),
+            uploads: uploads.path().to_owned(),
+        };
+        let bridge = Bridge::with_timing(host, connector, timing);
         let registration = Registration {
             key: AccountKey::new(ACCOUNT),
             gmail,
@@ -116,6 +120,7 @@ impl Rig {
             fake,
             connects,
             registration,
+            uploads,
         }
     }
 
@@ -322,6 +327,31 @@ async fn an_idle_conversation_is_logged_out_after_its_bound_and_a_request_connec
         .await;
     assert!(answer["newState"].is_string(), "{answer}");
     assert_eq!(rig.connects.load(Ordering::SeqCst), before + 1);
+}
+
+#[tokio::test]
+async fn resume_starts_the_sweep_of_the_uploads_and_forget_takes_the_accounts_along() {
+    let rig = Rig::start(shaped(), false, quick()).await;
+    let mut writing = rig.bridge.upload(&key(), "image/png").await.unwrap();
+    writing.push(b"the lunch table").await.unwrap();
+    let upload = writing.finish().await.unwrap();
+    let dir = rig.uploads.path().join(ACCOUNT);
+    let sidecar = dir.join(format!("{}.json", upload.id));
+    let mut aged: Value = serde_json::from_slice(&std::fs::read(&sidecar).unwrap()).unwrap();
+    aged["createdAt"] = json!(0);
+    std::fs::write(&sidecar, aged.to_string()).unwrap();
+    rig.bridge.resume([]);
+    let mut looks = 0;
+    while sidecar.exists() && looks < LOOKS {
+        sleep(LOOK).await;
+        looks += 1;
+    }
+    assert!(!sidecar.exists());
+    let mut writing = rig.bridge.upload(&key(), "image/png").await.unwrap();
+    writing.push(b"the lunch table").await.unwrap();
+    writing.finish().await.unwrap();
+    rig.bridge.forget(&key()).await;
+    assert!(!dir.exists());
 }
 
 #[tokio::test]

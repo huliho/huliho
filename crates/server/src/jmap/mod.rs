@@ -11,6 +11,7 @@ mod download;
 mod endpoints;
 mod request;
 mod session;
+mod upload;
 
 use std::sync::Arc;
 
@@ -24,6 +25,7 @@ pub use download::{BlobAsk, BlobError, expand};
 pub use endpoints::Endpoints;
 pub(crate) use request::{Wants, inspect};
 pub(crate) use session::urls;
+pub use upload::{ForwardError, UploadAsk};
 
 use crate::accounts::{self, Account, AccountSettings, Credential};
 use crate::discovery::Address;
@@ -198,10 +200,11 @@ impl Proxy {
         let named = session::rewrite(&mut object, &stored.account_id)
             .ok_or_else(|| unsupported("the session object names no API endpoint"))?;
         let urls = endpoints::UpstreamUrls {
-            api_url: self
-                .checked_endpoint(&stored.session_url, &named.api_url)
+            api: self
+                .checked_endpoint(&stored.session_url, &named.api)
                 .await?,
-            download_url: named.download_url,
+            download: named.download,
+            upload: named.upload,
         };
         self.endpoints.remember(&stored.account_id, urls.clone());
         let session =
@@ -267,7 +270,7 @@ impl Proxy {
         let credential = self
             .live_credential(scope, stored.credential.clone())
             .await?;
-        let api_url = self.upstream_urls(stored, &credential).await?.api_url;
+        let api_url = self.upstream_urls(stored, &credential).await?.api;
         let request = self
             .wiring
             .upstream

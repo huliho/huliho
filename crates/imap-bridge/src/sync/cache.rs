@@ -9,8 +9,10 @@ use std::sync::Arc;
 use crate::mailboxes::SyncError;
 use crate::seal::Sealer;
 use crate::store::{AccountKey, Store, StoreError};
+use crate::upload::Uploads;
 
-/// Where a sync writes: the store, the host's sealer and the account.
+/// Where a sync writes: the store, the host's sealer and the account,
+/// beside the store of uploads a draft may name.
 #[derive(Clone)]
 pub struct Cache {
     pub store: Arc<Store>,
@@ -19,6 +21,7 @@ pub struct Cache {
     /// The host's word that the account is a Gmail account; it holds
     /// once the server advertises `X-GM-EXT-1`.
     pub gmail: bool,
+    pub uploads: Arc<Uploads>,
 }
 
 /// Runs a store call off the runtime.

@@ -18,6 +18,7 @@ use super::{
 use crate::runtime::Registration;
 use crate::session::MAX_MAILBOX_NAME_BYTES;
 use crate::store::{Store, StoreError};
+use crate::upload::{MAX_ATTACHMENTS_BYTES, MAX_CONCURRENT_UPLOADS};
 
 /// The core capability (RFC 8620 section 2).
 pub const CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
@@ -37,19 +38,12 @@ pub const HULIHO_CAPABILITY: &str = "https://huliho.com/jmap";
 /// capability on the account.
 const QUOTA_STATE_MARK: &str = "-quota";
 
-/// No upload route exists, so uploads read as zero.
-const MAX_SIZE_UPLOAD: u32 = 0;
-const MAX_CONCURRENT_UPLOAD: u32 = 0;
-
 /// The one collation RFC 8620 section 2 requires of every server.
 const COLLATION: &str = "i;unicode-casemap";
 
 /// One folder per email outside Gmail, where a copy is a second email;
 /// on Gmail a message sits under any number of labels.
 const MAX_MAILBOXES_PER_EMAIL: u32 = 1;
-
-/// No submission exists, so attachments read as zero.
-const MAX_SIZE_ATTACHMENTS_PER_EMAIL: u32 = 0;
 
 /// The one sort the account advertises for `Email/query`.
 const EMAIL_QUERY_SORT_OPTIONS: [&str; 1] = ["receivedAt"];
@@ -161,10 +155,12 @@ pub(crate) fn session_state(host: &str, quota: bool) -> String {
     }
 }
 
+/// The upload limits are the store's own (RFC 8620 section 2): what one
+/// upload may weigh and how many the host's lanes carry at once.
 fn core_capability() -> Value {
     json!({
-        "maxSizeUpload": MAX_SIZE_UPLOAD,
-        "maxConcurrentUpload": MAX_CONCURRENT_UPLOAD,
+        "maxSizeUpload": MAX_ATTACHMENTS_BYTES,
+        "maxConcurrentUpload": MAX_CONCURRENT_UPLOADS,
         "maxSizeRequest": MAX_SIZE_REQUEST,
         "maxConcurrentRequests": MAX_CONCURRENT_REQUESTS,
         "maxCallsInRequest": MAX_CALLS_IN_REQUEST,
@@ -181,7 +177,7 @@ fn mail_capability(gmail: bool) -> Value {
         "maxMailboxesPerEmail": per_email,
         "maxMailboxDepth": null,
         "maxSizeMailboxName": MAX_MAILBOX_NAME_BYTES,
-        "maxSizeAttachmentsPerEmail": MAX_SIZE_ATTACHMENTS_PER_EMAIL,
+        "maxSizeAttachmentsPerEmail": MAX_ATTACHMENTS_BYTES,
         "emailQuerySortOptions": EMAIL_QUERY_SORT_OPTIONS,
         "mayCreateTopLevelMailbox": true,
     })

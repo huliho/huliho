@@ -157,9 +157,11 @@ answers as it stands, while a body ask and a write answer
 `serverUnavailable`. A search runs on a connection of its own, which
 the link keeps beside the conversation.
 
-`runtime::Bridge` runs the accounts the host registers: one store, one
-sealer and one connector for all of them and, per account, the
-conversation requests take and a task that syncs every store folder
+`runtime::Bridge` runs the accounts the host registers. The host hands
+it a `runtime::Host` (the store, the sealer and the root of the
+uploads) beside its connector. All accounts share these; per account
+the bridge keeps the conversation requests take and a task that syncs
+every store folder
 whose first sync is not done, in tree order. The task takes one batch
 per turn on the conversation and hands it back, so a request gets in
 between, selects the folder afresh before every batch and puts one
@@ -297,6 +299,31 @@ breaks off. A NO on a fetch and a folder whose UIDVALIDITY moved leave
 the session standing and the blob unavailable; any other failure costs
 the session as well. An error is the last thing a blob answers. The
 bridge hands bytes: the host decides their media type and disposition.
+An upload's id opens the upload from the store of uploads instead, one
+block at a time ahead of the reader; the server is never asked.
+
+`upload::Uploads` keeps what a client sends before a draft names it
+(RFC 8620 section 6): a directory per account under the root the host
+hands the bridge, named by the account key, which must hold only ASCII
+letters, digits, hyphens and underscores. One upload is its bytes under
+`u` before UUID text (`store::UploadId`) and a sidecar `<id>.json` with
+the type, the size and the arrival. The bytes are cut into blocks of
+`UPLOAD_BLOCK_BYTES` (1 MiB); each is sealed through the host's
+`Sealer` with the account, the upload, its index and whether it closes
+the upload, then written behind its sealed length. A block that fails
+to open, a block of the wrong length or a byte after the closing block
+makes the upload not found. An upload is written as `<id>.part` and
+renamed on its last byte. One upload holds `MAX_ATTACHMENTS_BYTES` (25
+MiB) at most. An account holds `UPLOAD_QUOTA_BYTES` (256 MiB) on disk
+and `MAX_UPLOADS_PER_ACCOUNT` (1,024) uploads; past either the oldest
+go first. Where nothing is left to evict, the upload is refused. An
+upload lives `UPLOAD_TTL` (a day). From `Bridge::resume` on, a sweep
+removes what lived longer and what a write left behind, at once and
+every `UPLOAD_SWEEP_INTERVAL` (an hour). `Bridge::upload` begins an
+upload of an account; `Bridge::forget` removes the account's directory.
+The session object advertises `maxSizeUpload` and
+`maxSizeAttachmentsPerEmail` as 25 MiB and `maxConcurrentUpload` as
+`MAX_CONCURRENT_UPLOADS` (2), the host's lanes.
 
 `Email/set` (RFC 8621 section 4.6) creates drafts, writes keywords and
 mailboxes and destroys emails. A create names one mailbox and gives its
@@ -324,7 +351,8 @@ server sets, `partId` and `blobId` together, a `partId` outside
 and NUL in a body value answer `invalidProperties`, as do a mailbox the
 rows lack or several and a keyword outside the four; a mailbox without
 `i` answers `forbidden`, a blob the account does not hold `blobNotFound`
-with its id and a message past `MAX_MESSAGE_BYTES` or the server's
+with its id (a part's `blobId` may name an upload of the account, read
+whole from the store) and a message past `MAX_MESSAGE_BYTES` or the server's
 APPENDLIMIT `tooLarge`. A NO after the literal answers `serverFail` with
 no row. No header, address, subject, part name or body is logged.
 
@@ -604,7 +632,8 @@ property `syncedEmails` and is followed only when a request names it.
 The account lists the quota capability where the server advertises
 QUOTA. The host supplies the URLs. `Sealer` is the trait behind which
 the host keeps its cryptography for the personal fields of an email
-row; the sync and `jmap::handle` reach it through `sync::Cache`.
+row and the blocks of an upload; the sync and `jmap::handle` reach it
+through `sync::Cache`, which also holds the store of uploads.
 
 The quota the last pass read stays in memory per account: no table
 holds it. Its state is a counter behind a mark drawn when the store

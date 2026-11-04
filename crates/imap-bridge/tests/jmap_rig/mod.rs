@@ -63,6 +63,7 @@ impl Rig {
                 sealer: Arc::new(TestSealer::default()),
                 key: key(),
                 gmail: false,
+                uploads: huliho_imap_bridge::testing::uploads(),
             },
             link: Link::with_interval(connector, Duration::ZERO),
             fake,

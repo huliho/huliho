@@ -107,6 +107,7 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error>> {
         endpoints: Arc::new(Endpoints::default()),
         sanitizer: Arc::new(Sanitizer::new(config.public_url.as_ref())),
         bridge_store,
+        uploads: config.storage.path.join(bridge::UPLOADS_DIRECTORY),
         bridge: Arc::new(OnceLock::new()),
     };
     let probe_interval =

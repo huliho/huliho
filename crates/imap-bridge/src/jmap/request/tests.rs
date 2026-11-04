@@ -37,6 +37,7 @@ fn cache() -> Cache {
         sealer: Arc::new(TestSealer::default()),
         key: AccountKey::new("a1"),
         gmail: false,
+        uploads: crate::testing::uploads(),
     }
 }
 

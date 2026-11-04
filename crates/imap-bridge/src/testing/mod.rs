@@ -38,6 +38,7 @@ use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs
 use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
 
 use crate::session::{Target, TlsMode};
+use crate::upload::Uploads;
 use crate::verify::Credential;
 
 pub use behavior::{Behavior, ParentDelete, Renaming, Storing};
@@ -82,6 +83,14 @@ pub fn token(token: &str) -> Credential {
         username: USER.to_owned(),
         token: token.to_owned(),
     }
+}
+
+/// A store of uploads for a test that names none: its root is a fresh
+/// name in the system's temporary directory, made only by an upload.
+#[must_use]
+pub fn uploads() -> Arc<Uploads> {
+    let root = std::env::temp_dir().join(format!("huliho-uploads-{}", uuid::Uuid::new_v4()));
+    Arc::new(Uploads::new(root, Arc::new(seal::TestSealer::default())))
 }
 
 /// Whether a plaintext listener offers STARTTLS.

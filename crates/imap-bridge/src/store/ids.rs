@@ -100,6 +100,23 @@ id_type!(
     't'
 );
 
+id_type!(
+    /// Identifies an upload; its letter tells it apart from a part's blob.
+    UploadId,
+    'u'
+);
+
+impl UploadId {
+    /// An id as the store makes it: the letter, then lowercase hyphenated
+    /// `UUIDv4` text. Anything else names no upload and never a path.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        let uuid = text.strip_prefix('u')?;
+        let parsed = Uuid::try_parse(uuid).ok()?;
+        (parsed.hyphenated().to_string() == uuid).then(|| Self(text.to_owned()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,6 +131,7 @@ mod tests {
             (MailboxId::generate().to_string(), 'm'),
             (EmailId::generate().to_string(), 'e'),
             (ThreadId::generate().to_string(), 't'),
+            (UploadId::generate().to_string(), 'u'),
         ] {
             assert_eq!(id.chars().next(), Some(letter), "{id}");
             assert_eq!(id.len(), ID_LENGTH, "{id}");
@@ -128,5 +146,26 @@ mod tests {
         let json = serde_json::to_string(&first).unwrap();
         assert_eq!(json, format!("\"{first}\""));
         assert_eq!(serde_json::from_str::<MailboxId>(&json).unwrap(), first);
+    }
+
+    #[test]
+    fn an_upload_id_parses_only_in_the_form_the_store_makes() {
+        let made = UploadId::generate();
+        assert_eq!(UploadId::parse(made.as_str()), Some(made.clone()));
+        let email = EmailId::generate();
+        let upper = format!("u{}", made.as_str()[1..].to_uppercase());
+        let simple = format!("u{}", Uuid::new_v4().simple());
+        for refused in [
+            email.as_str(),
+            &upper,
+            &simple,
+            "u../../huliho.db",
+            "u",
+            "",
+            &format!("{made}.json"),
+            &format!("{made}-1"),
+        ] {
+            assert_eq!(UploadId::parse(refused), None, "{refused}");
+        }
     }
 }

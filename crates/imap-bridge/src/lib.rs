@@ -19,5 +19,6 @@ pub mod store;
 pub mod sync;
 #[cfg(feature = "test-support")]
 pub mod testing;
+pub mod upload;
 pub mod utf7;
 pub mod verify;

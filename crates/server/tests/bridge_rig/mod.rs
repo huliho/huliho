@@ -65,6 +65,8 @@ pub struct Instance {
     _ca_file: NamedTempFile,
     /// The data directory of an instance on disk.
     _dir: Option<TempDir>,
+    /// The bridge's uploads, which `api.uploads` names.
+    _uploads: TempDir,
 }
 
 impl Instance {
@@ -106,9 +108,11 @@ impl Instance {
         };
         let (_, other) = identity::create_personal_user(&store, OTHER_LOGIN).unwrap();
         auth::set_password(&store, &other.id, LOGIN_PASSWORD).unwrap();
+        let uploads = tempfile::tempdir().unwrap();
         let api = ApiState {
             upstream: Arc::new(Upstream::with_dns(&config, Arc::new(dns)).unwrap()),
             gate: Gate::with_window(Arc::clone(&store), window),
+            uploads: uploads.path().to_owned(),
             ..api_state(Arc::clone(&store))
         };
         let router = router_with(api.clone());
@@ -119,6 +123,7 @@ impl Instance {
             fake,
             _ca_file: ca_file,
             _dir: dir,
+            _uploads: uploads,
         }
     }
 

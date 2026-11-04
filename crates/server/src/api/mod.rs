@@ -19,10 +19,12 @@ mod reconnect;
 mod remote_image;
 mod sender_policies;
 mod sessions;
+mod upload;
 mod users;
 
 use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU32;
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -100,6 +102,8 @@ pub struct ApiState {
     /// The bridge's own connection to the database, opened with the
     /// store.
     pub bridge_store: Arc<huliho_imap_bridge::store::Store>,
+    /// Where the bridge keeps its uploads, in the data volume.
+    pub uploads: PathBuf,
     /// The in-process bridge, wired on first use from the state as it
     /// stands then, so its runtime shares the gate, the keys and the
     /// resolver of the routes.
@@ -179,6 +183,8 @@ pub fn router(state: ApiState) -> Router {
             "/jmap/{id}/download/{account_id}/{blob_id}/{name}",
             get(download::download),
         )
+        // The route reads its body as a stream and counts it itself.
+        .route("/jmap/{id}/upload/{account_id}", post(upload::upload))
         .route("/remote-image", get(remote_image::fetch))
         .route("/preferences", get(preferences::list_preferences))
         .route("/preferences/{key}", put(preferences::set_preference))
