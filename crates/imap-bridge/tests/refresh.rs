@@ -123,7 +123,7 @@ fn relinked(rig: Rig, interval: Duration) -> Rig {
     let target = rig.fake.target(HOST, TlsMode::Implicit);
     let connector = TestConnector::scripted(rig.fake.trusting(), target, STEP);
     Rig {
-        link: Link::with_interval(connector, interval),
+        link: std::sync::Arc::new(Link::with_interval(connector, interval)),
         ..rig
     }
 }
@@ -337,7 +337,7 @@ async fn a_connection_the_connector_refuses_fails_no_call() {
     let synced = rig.cache.store.state(&rig.cache.key).unwrap();
     let ids = rig.created(0);
     let down = Rig {
-        link: Link::new(TestConnector::Refusing),
+        link: std::sync::Arc::new(Link::new(TestConnector::Refusing)),
         ..rig
     };
     let answer = changes(&down, "Email", synced).await;

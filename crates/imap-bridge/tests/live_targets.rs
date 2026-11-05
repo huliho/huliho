@@ -11,6 +11,7 @@
 mod live_rig;
 
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use huliho_imap_bridge::mailboxes::sync;
 use huliho_imap_bridge::runtime::Link;
@@ -73,7 +74,7 @@ async fn clear(wire: &str) {
     }
 }
 
-async fn changes_since(cache: &Cache, link: &Link<TestConnector>, since: &str) -> Value {
+async fn changes_since(cache: &Cache, link: &Arc<Link<TestConnector>>, since: &str) -> Value {
     let call = json!([
         "Mailbox/changes",
         { "accountId": cache.key.as_str(), "sinceState": since },

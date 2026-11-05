@@ -10,10 +10,8 @@ mod sync_rig;
 
 use std::collections::{BTreeSet, HashMap};
 
-use huliho_imap_bridge::jmap::{MAIL_CAPABILITY, Urls, session_object};
-use huliho_imap_bridge::runtime::Registration;
 use huliho_imap_bridge::session::{FetchItems, FlagFetch, Session, UidRange};
-use huliho_imap_bridge::store::{AccountKey, ChangeKind, MailboxRow, ObjectType};
+use huliho_imap_bridge::store::{ChangeKind, MailboxRow, ObjectType};
 use huliho_imap_bridge::sync::Step;
 use huliho_imap_bridge::testing::mailboxes::{ALL_MAIL, SPAM, TRASH};
 use huliho_imap_bridge::testing::{Extension, Mailboxes, Message};
@@ -407,24 +405,4 @@ async fn one_row_per_x_gm_msgid_even_when_a_folder_answers_two_uids_under_it() {
     // A batch writes its messages by UID, so the lower one keeps the id.
     assert_eq!(emails(&rig, &created, &["size"]).await[0]["size"], 1001);
     assert_eq!(mailbox(&rig, INBOX).await["totalEmails"], 1);
-}
-
-#[tokio::test]
-async fn the_session_object_says_no_limit_on_mailboxes_per_email_for_a_gmail_account() {
-    let rig = start_gmail(Mailboxes::gmail(Vec::new())).await;
-    let urls = Urls {
-        api: "/api/jmap/a1".to_owned(),
-        download: "/api/jmap/a1/download".to_owned(),
-        upload: "/api/jmap/a1/upload".to_owned(),
-        event_source: "/api/jmap/a1/events".to_owned(),
-    };
-    let registration = Registration {
-        key: AccountKey::new(rig.cache.key.as_str()),
-        gmail: true,
-        session_state: "s1".to_owned(),
-    };
-    let bytes = session_object(&registration, "s@example.test", &urls, &rig.cache.store).unwrap();
-    let session: Value = serde_json::from_slice(&bytes).unwrap();
-    let mail = &session["accounts"][ACCOUNT]["accountCapabilities"][MAIL_CAPABILITY];
-    assert_eq!(mail["maxMailboxesPerEmail"], Value::Null);
 }

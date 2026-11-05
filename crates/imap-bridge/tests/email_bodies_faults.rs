@@ -12,6 +12,7 @@ mod stable_ids;
 mod sync_rig;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use bodies_rig::{
@@ -309,7 +310,7 @@ async fn a_message_the_server_does_not_hold_is_not_found_and_a_server_out_of_rea
     assert_eq!(answer["list"], json!([]));
     assert_eq!(answer["notFound"], json!([by_name["e7"]]));
     let refusing = Rig {
-        link: Link::with_interval(TestConnector::Refusing, Duration::ZERO),
+        link: Arc::new(Link::with_interval(TestConnector::Refusing, Duration::ZERO)),
         ..rig
     };
     let answer = get(&refusing, ask(&[&by_name["e1"]], &BODY, CLIENT_CAP)).await;

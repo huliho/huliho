@@ -7,9 +7,9 @@
 //! from the store. A `/changes` call refreshes the account first when a
 //! refresh is due; an `Email/get` that asks for previews the rows lack
 //! or for bodies fetches them and answers again, with every call after
-//! it; an `Email/set` and a `Mailbox/set` write to the server the same
-//! way and an `Email/query` with a text or a sender has the server
-//! searched.
+//! it; an `Email/set`, a `Mailbox/set` and an `EmailSubmission/set`
+//! write to the server the same way and an `Email/query` with a text or
+//! a sender has the server searched.
 
 mod bodies;
 mod body;
@@ -20,6 +20,7 @@ mod email_set;
 pub mod fuzzing;
 mod get;
 mod headers;
+mod identity;
 mod mailbox;
 mod mailbox_set;
 mod previews;
@@ -29,6 +30,7 @@ mod references;
 mod request;
 mod session;
 mod set;
+mod submission;
 mod thread;
 mod values;
 mod write;
@@ -53,7 +55,8 @@ pub use previews::PREVIEW_BATCH;
 pub use query::QUERY_LIMIT;
 pub use request::handle;
 pub use session::{
-    CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY, Urls, session_object,
+    CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY, SUBMISSION_CAPABILITY,
+    Urls, session_object,
 };
 pub use values::{MAX_BODY_VALUE_BYTES, MAX_BODY_WINDOWS};
 
@@ -142,10 +145,11 @@ struct Response {
 
 /// The capabilities the bridge carries, in the order [`Using`] keeps
 /// them.
-const CARRIED: [&str; 4] = [
+const CARRIED: [&str; 5] = [
     CORE_CAPABILITY,
     MAIL_CAPABILITY,
     QUOTA_CAPABILITY,
+    SUBMISSION_CAPABILITY,
     HULIHO_CAPABILITY,
 ];
 
@@ -180,6 +184,8 @@ pub(crate) struct Context<'a> {
     store: &'a Store,
     sealer: &'a dyn Sealer,
     key: &'a AccountKey,
+    /// The address of the account's one identity.
+    address: &'a str,
     using: Using,
     budget: references::Budget,
     /// The mailbox the last query ranged over.
@@ -208,6 +214,13 @@ pub(crate) struct Context<'a> {
     search_ask: RefCell<Option<Plan>>,
     /// What the search found, set for the call on a later pass.
     searched: RefCell<Option<&'a Result<Hits, Failure>>>,
+    /// What an `EmailSubmission/set` wants sent, noted on the first pass.
+    submit_ask: RefCell<Option<submission::SubmitAsk>>,
+    /// What came of that, set for the call on a later pass.
+    submitted: RefCell<Option<&'a submission::Submitted>>,
+    /// The answer a call leaves to stand right after its own: the
+    /// implicit `Email/set` of a submission (RFC 8621 section 7.5).
+    trailer: RefCell<Option<Map<String, Value>>>,
 }
 
 impl Context<'_> {
@@ -302,6 +315,7 @@ fn dispatch(
 ) -> Result<Map<String, Value>, MethodError> {
     let mail = context.using.has(MAIL_CAPABILITY);
     let quota = context.using.has(QUOTA_CAPABILITY);
+    let submission = context.using.has(SUBMISSION_CAPABILITY);
     match name {
         "Core/echo" if context.using.has(CORE_CAPABILITY) => Ok(arguments.clone()),
         "Mailbox/get" if mail => mailbox::get(context, arguments),
@@ -315,6 +329,12 @@ fn dispatch(
         "Thread/changes" if mail => changes::thread(context, arguments),
         "Quota/get" if quota => quota::get(context, arguments),
         "Quota/changes" if quota => quota::changes(context, arguments),
+        "Identity/get" if submission => identity::get(context, arguments),
+        "Identity/changes" if submission => identity::changes(context, arguments),
+        "Identity/set" if submission => identity::set(context, arguments),
+        "EmailSubmission/get" if submission => submission::get(context, arguments),
+        "EmailSubmission/changes" if submission => submission::changes(context, arguments),
+        "EmailSubmission/set" if submission => submission::set(context, arguments),
         _ => Err(MethodError::UnknownMethod),
     }
 }
@@ -329,14 +349,22 @@ pub(crate) fn arguments<T: DeserializeOwned>(
     })
 }
 
+/// An answer built as a JSON value, as the object it is.
+fn object_of(value: Value) -> Map<String, Value> {
+    match value {
+        Value::Object(map) => map,
+        _ => Map::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn using_reads_the_four_capabilities_and_refuses_a_fifth_rfc8620_3_6_1() {
-        let four = using(&CARRIED.map(str::to_owned)).unwrap();
-        assert!(CARRIED.iter().all(|capability| four.has(capability)));
+    fn using_reads_the_five_capabilities_and_refuses_another_rfc8620_3_6_1() {
+        let five = using(&CARRIED.map(str::to_owned)).unwrap();
+        assert!(CARRIED.iter().all(|capability| five.has(capability)));
         let mail = using(&[MAIL_CAPABILITY.to_owned()]).unwrap();
         assert!(mail.has(MAIL_CAPABILITY) && !mail.has(QUOTA_CAPABILITY));
         assert_eq!(using(&[]).unwrap(), Using::default());

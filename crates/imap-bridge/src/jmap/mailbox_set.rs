@@ -15,6 +15,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use super::mailbox::{object, properties};
+use super::set::or_null;
 use super::{Context, HULIHO_CAPABILITY, MAX_OBJECTS_IN_SET, MethodError, arguments};
 use crate::runtime::folders::{Ask, Create, Nullable, Outcome, Refusal, Update};
 use crate::store::MailboxSnapshot;
@@ -144,15 +145,6 @@ fn update(id: &str, patch: &Value) -> Result<Update, Vec<String>> {
 
 fn invalid(properties: &[String]) -> Value {
     json!({ "type": "invalidProperties", "properties": properties })
-}
-
-/// A map of objects by id, null when it holds none (RFC 8620 section 5.3).
-fn or_null(objects: Map<String, Value>) -> Value {
-    if objects.is_empty() {
-        Value::Null
-    } else {
-        Value::Object(objects)
-    }
 }
 
 /// `Mailbox/set`: on the first pass the objects that read are left for

@@ -35,6 +35,8 @@ pub struct Host {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Registration {
     pub key: AccountKey,
+    /// The account's address, which its one identity sends from.
+    pub address: String,
     /// The host's word that the account is a Gmail account; it holds
     /// once the server advertises the extension.
     pub gmail: bool,
@@ -200,6 +202,7 @@ impl<C: Connector + 'static> Bridge<C> {
                 store: Arc::clone(&self.store),
                 sealer: Arc::clone(&self.sealer),
                 key: registration.key.clone(),
+                address: registration.address.clone(),
                 gmail: registration.gmail,
                 uploads: Arc::clone(&self.uploads),
             },

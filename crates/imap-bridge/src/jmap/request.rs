@@ -5,21 +5,26 @@
 //! One Request object run against an account: every call in order off
 //! the runtime, a refresh ahead of a `/changes` call and a later pass
 //! over the calls from the first `Email/get` whose previews or bodies
-//! were fetched in between, the first `Email/set` or `Mailbox/set` whose
-//! writes were done there or the first `Email/query` the server was
-//! searched for.
+//! were fetched in between, the first `Email/set`, `Mailbox/set` or
+//! `EmailSubmission/set` whose writes were done there or the first
+//! `Email/query` the server was searched for.
 
+mod handing;
 #[cfg(test)]
 mod tests;
 
 use std::cell::RefCell;
+use std::sync::Arc;
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 use tokio::time::Instant;
+
+use handing::{hand, left, trailed};
 
 use super::bodies::{self, Bodies, BodyAsk};
 use super::previews::{self, PREVIEW_BATCH};
 use super::set::{Outcome, SetAsk};
+use super::submission::{SubmitAsk, Submitted, sending};
 use super::values::MAX_BODY_WINDOWS;
 use super::{
     Context, Invocation, MAIL_CAPABILITY, MAX_CALLS_IN_REQUEST, MAX_SIZE_REQUEST, QUOTA_CAPABILITY,
@@ -75,9 +80,9 @@ struct Carried {
 ///
 /// Returns [`RequestError`] when the request cannot run at all; a
 /// method that fails answers inside the Response object instead.
-pub async fn handle<C: Connector>(
+pub async fn handle<C: Connector + 'static>(
     cache: &Cache,
-    link: &Link<C>,
+    link: &Arc<Link<C>>,
     body: &[u8],
     session_state: &str,
 ) -> Result<Vec<u8>, RequestError> {
@@ -120,6 +125,7 @@ pub async fn handle<C: Connector>(
         brought.extend(reruns);
         let again = Again {
             responses: answered.responses,
+            trailers: answered.trailers,
             first,
             brought,
         };
@@ -127,7 +133,7 @@ pub async fn handle<C: Connector>(
     }
     let quota = cache.store.quota(&cache.key).advertised;
     let response = Response {
-        method_responses: answered.responses,
+        method_responses: trailed(answered.responses, &answered.trailers, &calls),
         created_ids: request.created_ids.is_some().then_some(carried.created),
         session_state: session::session_state(session_state, quota),
     };
@@ -143,6 +149,7 @@ enum Need {
     Write(SetAsk),
     Folders(Ask),
     Search(Plan),
+    Submit(SubmitAsk),
 }
 
 /// What the request brought one call between two passes.
@@ -153,6 +160,7 @@ enum Brought {
     Written(Outcome),
     Folders(folders::Outcome),
     Searched(Result<Hits, Failure>),
+    Submitted(Submitted),
 }
 
 /// The calls to run again, by index, with what was brought for each.
@@ -177,9 +185,9 @@ fn bring(reruns: &mut Reruns, index: usize, brought: Brought) {
 /// write of this round is left for the pass after it, where its call
 /// notes it again; a write sees the creation ids of the writes before
 /// it alone.
-async fn fetched<C: Connector>(
+async fn fetched<C: Connector + 'static>(
     cache: &Cache,
-    link: &Link<C>,
+    link: &Arc<Link<C>>,
     needs: Vec<(usize, Need)>,
     carried: &mut Carried,
 ) -> Result<Reruns, RequestError> {
@@ -196,7 +204,7 @@ async fn fetched<C: Connector>(
         created,
     };
     for (index, need) in needs {
-        let write = matches!(need, Need::Write(_) | Need::Folders(_));
+        let write = matches!(need, Need::Write(_) | Need::Folders(_) | Need::Submit(_));
         let in_row = write && row == Some(index);
         row = in_row.then_some(index + 1);
         if write && !in_row {
@@ -221,6 +229,10 @@ async fn fetched<C: Connector>(
             },
             Need::Folders(ask) => match folders::apply(cache, link, &ask, &mut round).await {
                 Ok(outcome) => bring(&mut reruns, index, Brought::Folders(outcome)),
+                Err(error) => sync_failed(error)?,
+            },
+            Need::Submit(ask) => match submitted(cache, link, ask, &mut round).await {
+                Ok(outcome) => bring(&mut reruns, index, Brought::Submitted(outcome)),
                 Err(error) => sync_failed(error)?,
             },
         }
@@ -254,9 +266,38 @@ async fn fetched<C: Connector>(
     Ok(reruns)
 }
 
+/// The send on a task of its own, which the request awaits but does not
+/// own: a request that goes away while the message is with the server
+/// still lets it finish, record and file.
+async fn submitted<C: Connector + 'static>(
+    cache: &Cache,
+    link: &Arc<Link<C>>,
+    ask: SubmitAsk,
+    round: &mut Round<'_>,
+) -> Result<Submitted, SyncError> {
+    let (cache, link) = (cache.clone(), Arc::clone(link));
+    let mut created = round.created.clone();
+    let task = tokio::spawn(async move {
+        let outcome = {
+            let mut own = Round {
+                until: None,
+                created: &mut created,
+            };
+            sending::apply(&cache, &link, &ask, &mut own).await
+        };
+        (outcome, created)
+    });
+    let (outcome, created) = task.await.map_err(|_join| SyncError::Task)?;
+    round.created.extend(created);
+    outcome
+}
+
 /// What one pass over the calls produced.
 struct Answered {
     responses: Vec<Invocation>,
+    /// Per call that left one, the answer that stands right after its
+    /// own.
+    trailers: Vec<(usize, Map<String, Value>)>,
     viewed: Option<MailboxId>,
     /// Per call that asked, what it left to fetch or store.
     needs: Vec<(usize, Need)>,
@@ -264,10 +305,11 @@ struct Answered {
     brought: Reruns,
 }
 
-/// A later pass: the responses so far, the first call to run again and
-/// what was brought for every call that asked so far.
+/// A later pass: the responses and trailers so far, the first call to
+/// run again and what was brought for every call that asked so far.
 struct Again {
     responses: Vec<Invocation>,
+    trailers: Vec<(usize, Map<String, Value>)>,
     first: usize,
     brought: Reruns,
 }
@@ -297,6 +339,7 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
         store: &cache.store,
         sealer: cache.sealer.as_ref(),
         key: &cache.key,
+        address: &cache.address,
         using,
         budget: references::Budget::full(),
         viewed: RefCell::new(None),
@@ -309,10 +352,23 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
         folders_done: RefCell::new(None),
         search_ask: RefCell::new(None),
         searched: RefCell::new(None),
+        submit_ask: RefCell::new(None),
+        submitted: RefCell::new(None),
+        trailer: RefCell::new(None),
     };
-    let (mut responses, first, brought) = match again {
-        Some(again) => (again.responses, Some(again.first), again.brought),
-        None => (Vec::with_capacity(calls.len()), None, Vec::new()),
+    let (mut responses, mut trailers, first, brought) = match again {
+        Some(again) => (
+            again.responses,
+            again.trailers,
+            Some(again.first),
+            again.brought,
+        ),
+        None => (
+            Vec::with_capacity(calls.len()),
+            Vec::new(),
+            None,
+            Vec::new(),
+        ),
     };
     let mut needs = Vec::new();
     for (index, call) in calls.iter().enumerate() {
@@ -321,44 +377,15 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
         }
         let had = brought.iter().find(|(found, _)| *found == index);
         let had = had.map(|(_, brought)| brought);
-        *context.bodies.borrow_mut() = match had {
-            Some(Brought::Bodies(bodies)) => Some(bodies),
-            _ => None,
-        };
-        *context.written.borrow_mut() = match had {
-            Some(Brought::Written(outcome)) => Some(outcome),
-            _ => None,
-        };
-        *context.folders_done.borrow_mut() = match had {
-            Some(Brought::Folders(outcome)) => Some(outcome),
-            _ => None,
-        };
-        *context.searched.borrow_mut() = match had {
-            Some(Brought::Searched(found)) => Some(found),
-            _ => None,
-        };
+        hand(&context, had);
         let response = run(&context, call, &responses[..index]);
-        let previews = std::mem::take(&mut *context.missing_previews.borrow_mut());
-        let ask = context.body_ask.borrow_mut().take();
-        let set = context.set_ask.borrow_mut().take();
-        let folder = context.folder_ask.borrow_mut().take();
-        let search = context.search_ask.borrow_mut().take();
+        trailers.retain(|(found, _)| *found != index);
+        if let Some(trailer) = context.trailer.borrow_mut().take() {
+            trailers.push((index, trailer));
+        }
+        let left = left(&context);
         if had.is_none() {
-            if !previews.is_empty() {
-                needs.push((index, Need::Previews(previews)));
-            }
-            if let Some(ask) = ask {
-                needs.push((index, Need::Bodies(ask)));
-            }
-            if let Some(ask) = set {
-                needs.push((index, Need::Write(ask)));
-            }
-            if let Some(ask) = folder {
-                needs.push((index, Need::Folders(ask)));
-            }
-            if let Some(plan) = search {
-                needs.push((index, Need::Search(plan)));
-            }
+            needs.extend(left.into_iter().map(|need| (index, need)));
         }
         if first.is_some() {
             responses[index] = response;
@@ -370,6 +397,7 @@ fn answer(cache: &Cache, using: Using, calls: &[Invocation], again: Option<Again
     drop(context);
     Answered {
         responses,
+        trailers,
         viewed,
         needs,
         brought,

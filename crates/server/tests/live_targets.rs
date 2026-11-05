@@ -46,6 +46,7 @@ const SUBMISSION_PORT: u16 = 31587;
 const CORE: &str = "urn:ietf:params:jmap:core";
 const MAIL: &str = "urn:ietf:params:jmap:mail";
 const QUOTA: &str = "urn:ietf:params:jmap:quota";
+const SUBMISSION: &str = "urn:ietf:params:jmap:submission";
 
 const MAIL_ADDRESS: &str = "sanne@huliho.test";
 const MAIL_PASSWORD: &str = "password";
@@ -372,14 +373,14 @@ async fn the_proxy_answers_the_cyrus_session_object_and_one_query_round_trip() {
         .keys()
         .map(String::as_str)
         .collect();
-    assert_eq!(primary, [MAIL], "{session}");
+    assert_eq!(primary, [MAIL, SUBMISSION], "{session}");
     let carried: Vec<&str> = session["capabilities"]
         .as_object()
         .unwrap()
         .keys()
         .map(String::as_str)
         .collect();
-    assert_eq!(carried, [CORE, MAIL, QUOTA], "{session}");
+    assert_eq!(carried, [CORE, MAIL, QUOTA, SUBMISSION], "{session}");
     let core = &session["capabilities"][CORE];
     assert!(core["maxSizeRequest"].as_u64().unwrap() <= u64::try_from(JMAP_REQUEST_LIMIT).unwrap());
     assert!(

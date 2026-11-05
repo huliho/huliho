@@ -3,13 +3,15 @@
 // Additional terms apply, see NOTICE.
 
 //! The recorder: a server on a loopback port that hands one
-//! conversation on to a live server and writes both sides down. When the
+//! conversation on to a live server and writes both sides down; the SMTP
+//! recorder in `smtp` writes the sends into the same recording. When the
 //! recording is done it comes back with every personal value replaced
 //! and checked, or not at all.
 
 pub mod fixed;
 pub mod redact;
 pub mod scan;
+pub mod smtp;
 
 use std::sync::{Arc, MutexGuard, PoisonError};
 
@@ -22,13 +24,14 @@ use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::pki_types::ServerName;
 
 use super::command;
-use super::transcript::{self, Shared, Transcript};
+use super::transcript::{self, Shared, Transcript, Wire};
 use super::{Fake, Lines, Listen, Phase, Protocol, record};
 use crate::session::{STEP_TIMEOUT, Target, TlsMode};
 
 /// The live server a recording talks to: where it is and what trust it
 /// is checked against. TLS from the first byte; a STARTTLS target is not
 /// recorded.
+#[derive(Clone)]
 pub struct Upstream {
     pub target: Target,
     pub tls: Arc<ClientConfig>,
@@ -56,9 +59,16 @@ impl Script {
         }
     }
 
-    /// The recording with every personal value replaced, once the scan
-    /// finds nothing left; the findings otherwise, so a leak never
-    /// reaches disk.
+    /// The SMTP recorder in front of the live submission server, writing
+    /// its sends into this recording.
+    #[must_use]
+    pub fn smtp(&self, upstream: Upstream) -> smtp::Script {
+        smtp::Script::new(upstream, Arc::clone(&self.transcript))
+    }
+
+    /// The recording with every personal value replaced, the sends
+    /// included, once the scan finds nothing left; the findings
+    /// otherwise, so a leak never reaches disk.
     ///
     /// # Errors
     ///
@@ -110,7 +120,7 @@ async fn relay<S: AsyncRead + AsyncWrite + Unpin + Send>(
     stream: S,
 ) -> Option<()> {
     let upstream = connect(&script.upstream).await?;
-    let session = script.transcript().start_session();
+    let session = script.transcript().start_session(Wire::Imap);
     let (client_read, mut client_write) = tokio::io::split(stream);
     let (server_read, mut server_write) = tokio::io::split(upstream);
     let mut client_read = BufReader::new(client_read);
@@ -118,14 +128,14 @@ async fn relay<S: AsyncRead + AsyncWrite + Unpin + Send>(
     let commands = async {
         while let Some((text, mut marker)) = command::text_run(&mut client_read).await {
             let mut line = text.clone();
-            script.transcript().client(session, text);
+            script.transcript().client(Wire::Imap, session, text);
             passed(&mut server_write, &line).await?;
             while let Some((size, _)) = marker {
                 let literal = command::literal(&mut client_read, size).await?;
                 let (text, next) = command::text_run(&mut client_read).await?;
                 let more = format!("{literal}{text}");
                 let noted = format!("\r\n{more}");
-                script.transcript().client_more(session, &noted);
+                script.transcript().client_more(Wire::Imap, session, &noted);
                 passed(&mut server_write, &more).await?;
                 line.push_str(&noted);
                 marker = next;
@@ -136,7 +146,9 @@ async fn relay<S: AsyncRead + AsyncWrite + Unpin + Send>(
     };
     let answers = async {
         while let Some(line) = transcript::read_line(&mut server_read).await {
-            script.transcript().server(session, line.clone());
+            script
+                .transcript()
+                .server(Wire::Imap, session, line.clone());
             client_write.write_all(&line.bytes()).await.ok()?;
             client_write.flush().await.ok()?;
         }

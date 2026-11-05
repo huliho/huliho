@@ -106,6 +106,12 @@ id_type!(
     'u'
 );
 
+id_type!(
+    /// Identifies a submission this process sent.
+    SubmissionId,
+    's'
+);
+
 impl UploadId {
     /// An id as the store makes it: the letter, then lowercase hyphenated
     /// `UUIDv4` text. Anything else names no upload and never a path.
@@ -132,6 +138,7 @@ mod tests {
             (EmailId::generate().to_string(), 'e'),
             (ThreadId::generate().to_string(), 't'),
             (UploadId::generate().to_string(), 'u'),
+            (SubmissionId::generate().to_string(), 's'),
         ] {
             assert_eq!(id.chars().next(), Some(letter), "{id}");
             assert_eq!(id.len(), ID_LENGTH, "{id}");

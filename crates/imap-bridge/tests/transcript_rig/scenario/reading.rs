@@ -42,16 +42,17 @@ impl Scenario {
         assert_eq!(attachments[0]["blobId"], format!("{id}-2"));
     }
 
-    /// The attachment and the whole message come as blobs.
+    /// The attachment and the whole message come as blobs; behind a
+    /// transcript the whole message keeps its header over filler.
     pub(super) async fn download(&mut self) {
         let id = self.ids[&ATTACHED].clone();
         let attachment = self.suite.blob(&format!("{id}-2")).await;
         self.expect_bytes(&attachment, ATTACHMENT);
         let whole = self.suite.blob(&id).await;
+        assert!(whole.contains(&seed(ATTACHED).message_id()), "{whole}");
         if self.suite.is_replay() {
-            assert_eq!(whole, fill(whole.len()));
-        } else {
-            assert!(whole.contains(&seed(ATTACHED).message_id()), "{whole}");
+            let (_, body) = whole.split_once("\r\n\r\n").unwrap();
+            assert_eq!(body, fill(body.len()));
         }
     }
 

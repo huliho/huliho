@@ -4,7 +4,10 @@
 
 //! The fixed shapes a redacted transcript is made of and how a value is
 //! found in a run of text: the redaction writes these shapes, a corpus
-//! is written in them and the scan admits nothing else.
+//! is written in them and the scan admits nothing else. The shapes of an
+//! SMTP conversation live in `smtp`.
+
+pub mod smtp;
 
 /// The domain every fixed address and message id sits under (RFC 2606).
 pub const FIXED_DOMAIN: &str = "example.test";
@@ -80,17 +83,20 @@ pub enum Section {
     Header,
     /// The text of the message or of one part.
     Body,
+    /// The message from its first byte: its header block, then its body.
+    Whole,
     /// Anything else, a mailbox name for one.
     Other,
 }
 
-/// The section a run of text introduces.
+/// The section a run of text introduces. A whole message fetched from
+/// an origin past its first byte is body alone.
 #[must_use]
 pub fn section(text_before: &str) -> Section {
     let Some((_, spec)) = text_before.rsplit_once("BODY[") else {
         return Section::Other;
     };
-    let Some((inside, _)) = spec.split_once(']') else {
+    let Some((inside, after)) = spec.split_once(']') else {
         return Section::Other;
     };
     let word = inside.rsplit_once('.').map_or(inside, |(_, last)| last);
@@ -100,6 +106,17 @@ pub fn section(text_before: &str) -> Section {
             .is_some_and(|start| start.eq_ignore_ascii_case("HEADER"))
     {
         return Section::Header;
+    }
+    if inside.is_empty() {
+        let origin = after
+            .strip_prefix('<')
+            .and_then(|rest| rest.split_once('>'))
+            .map_or(0, |(digits, _)| digits.parse().unwrap_or(1));
+        return if origin == 0 {
+            Section::Whole
+        } else {
+            Section::Body
+        };
     }
     if inside.eq_ignore_ascii_case("TEXT")
         || inside
@@ -343,6 +360,9 @@ mod tests {
         assert_eq!(section("BODY[1.2]<0> "), Section::Body);
         assert_eq!(section("BODY[HEADER.FIELDS (SUBJECT)] "), Section::Header);
         assert_eq!(section("BODY[2.MIME]<0> "), Section::Header);
+        assert_eq!(section("BODY[] "), Section::Whole);
+        assert_eq!(section("BODY[]<0> "), Section::Whole);
+        assert_eq!(section("BODY[]<4096> "), Section::Body);
         assert_eq!(section("* LIST () \"/\" "), Section::Other);
         assert_eq!(
             section("UID 3 BODY[1.MIME]<0> x BODY[1]<0> "),

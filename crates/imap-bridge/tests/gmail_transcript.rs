@@ -3,9 +3,10 @@
 // Additional terms apply, see NOTICE.
 
 //! The Gmail scenario suite in its three runs: against the checked-in
-//! transcript in every test run, against the scripted server's Gmail
-//! mode through the recorder and back through the replayer, and against
-//! the live account when the environment names one.
+//! transcript in every test run, against the scripted servers' Gmail
+//! mode through the recorders and back through the replayers, and
+//! against the live account when the environment names one. The send of
+//! the suite is asserted on the transcript as well.
 
 mod transcript_rig;
 
@@ -15,9 +16,12 @@ use std::time::Duration;
 use huliho_imap_bridge::session::TlsMode;
 use huliho_imap_bridge::sync::preview::PREVIEW_PLAIN_FETCH_BYTES;
 use huliho_imap_bridge::testing::imap::{FakeImap, HOST, Script};
-use huliho_imap_bridge::testing::record::fixed::{Section, section};
+use huliho_imap_bridge::testing::record::Upstream;
+use huliho_imap_bridge::testing::record::fixed::smtp::{EHLO_NAME, fixed_auth};
+use huliho_imap_bridge::testing::record::fixed::{RECORDED_USER, Section, fill, section};
+use huliho_imap_bridge::testing::smtp::{self, FakeSmtp};
 use huliho_imap_bridge::testing::transcript::Segment;
-use huliho_imap_bridge::testing::{Mailboxes, PASSWORD, Transcript, USER};
+use huliho_imap_bridge::testing::{ADDRESS, Mailboxes, PASSWORD, Transcript, USER};
 use transcript_rig::corpus::{LABEL, Seed, seeds};
 use transcript_rig::gmail::{self, Account, Stores};
 use transcript_rig::scenario::{Scenario, Second};
@@ -107,6 +111,60 @@ fn expunges_in_spam_and_trash_alone(transcript: &Transcript) {
     );
 }
 
+/// The one send of the suite as the transcript holds it: EHLO and AUTH
+/// in their fixed shapes, the envelope from the recorded user to itself,
+/// the message as its Message-ID over filler, then QUIT; beside it the
+/// draft's move into the Trash store.
+fn the_send_as_recorded(transcript: &Transcript) {
+    assert_eq!(transcript.smtp.len(), 1, "one send");
+    let commands: Vec<&str> = transcript.smtp[0]
+        .exchanges
+        .iter()
+        .filter_map(|exchange| exchange.client.as_deref())
+        .collect();
+    let (head, message, tail) = match commands.as_slice() {
+        [ehlo, auth, from, to, data, message, quit] => {
+            ([*ehlo, *auth, *from, *to, *data], *message, *quit)
+        }
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        head,
+        [
+            format!("EHLO {EHLO_NAME}"),
+            fixed_auth(),
+            format!("MAIL FROM:<{RECORDED_USER}>"),
+            format!("RCPT TO:<{RECORDED_USER}>"),
+            "DATA".to_owned(),
+        ]
+    );
+    let (id, body) = message.split_once("\r\n\r\n").unwrap();
+    assert!(id.starts_with("Message-ID: <"), "{id}");
+    assert_eq!(body, fill(body.len()));
+    assert_eq!(tail, "QUIT");
+    let trash = store_named(transcript, "\\Trash").expect("the account lists a Trash store");
+    let trash_moves = transcript
+        .sessions
+        .iter()
+        .flat_map(|session| session.exchanges.iter())
+        .filter_map(|exchange| exchange.client.as_deref())
+        .filter(|line| line.contains(" UID MOVE ") && last_quoted(line).as_ref() == Some(&trash))
+        .count();
+    assert!(trash_moves > 0, "the drafts went to Trash with UID MOVE");
+}
+
+/// The wire name of the store listed under that attribute.
+fn store_named(transcript: &Transcript, attribute: &str) -> Option<String> {
+    transcript
+        .sessions
+        .iter()
+        .flat_map(|session| session.exchanges.iter())
+        .flat_map(|exchange| exchange.server.iter())
+        .map(text_of)
+        .find(|text| text.starts_with("* LIST (") && text.contains(attribute))
+        .and_then(|text| last_quoted(&text))
+}
+
 /// The length of every body text the transcript holds.
 fn body_lengths(transcript: &Transcript) -> Vec<usize> {
     let mut lengths = Vec::new();
@@ -130,9 +188,10 @@ fn body_lengths(transcript: &Transcript) -> Vec<usize> {
     lengths
 }
 
-/// The suite against the scripted server through the recorder, then the
-/// same suite against what was recorded: the recorder, the redaction and
-/// the replayer prove themselves without any live account.
+/// The suite against the scripted servers through the recorders, then
+/// the same suite against what was recorded: the recorders, the
+/// redaction and the replayers prove themselves without any live
+/// account.
 #[tokio::test]
 async fn the_suite_recorded_off_the_scripted_server_replays_the_same_way() {
     let directory = tempfile::tempdir().unwrap();
@@ -143,11 +202,19 @@ async fn the_suite_recorded_off_the_scripted_server_replays_the_same_way() {
         ..Script::tls()
     })
     .await;
+    let submission = FakeSmtp::start(smtp::Script::tls()).await;
     let connection = Connection {
-        tls: fake.trusting(),
-        target: fake.target(HOST, TlsMode::Implicit),
+        imap: Upstream {
+            tls: fake.trusting(),
+            target: fake.target(HOST, TlsMode::Implicit),
+        },
+        smtp: Upstream {
+            tls: submission.trusting(),
+            target: submission.target(smtp::HOST, TlsMode::Implicit),
+        },
         user: USER.to_owned(),
         password: PASSWORD.to_owned(),
+        address: ADDRESS.to_owned(),
         step: STEP,
     };
     let recorded = Suite::against(connection, Some(path.clone())).await;
@@ -168,6 +235,7 @@ async fn the_suite_recorded_off_the_scripted_server_replays_the_same_way() {
         "the previews were fetched"
     );
     expunges_in_spam_and_trash_alone(&transcript);
+    the_send_as_recorded(&transcript);
     let replayed = Suite::replaying(transcript, STEP).await;
     Scenario::new(replayed, Second::Nobody).run().await;
 }
@@ -184,6 +252,7 @@ async fn the_gmail_transcript_replays_the_scenario_suite() {
         assert!(length <= asked, "a body of {length} bytes passes the ask");
     }
     expunges_in_spam_and_trash_alone(&transcript);
+    the_send_as_recorded(&transcript);
     let replayed = Suite::replaying(transcript, STEP).await;
     Scenario::new(replayed, Second::Nobody).run().await;
 }

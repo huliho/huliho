@@ -31,6 +31,7 @@ pub fn cache(store: &Arc<Store>) -> Cache {
         sealer: Arc::new(TestSealer::default()),
         key: key(),
         gmail: false,
+        address: huliho_imap_bridge::testing::ADDRESS.to_owned(),
         uploads: huliho_imap_bridge::testing::uploads(),
     }
 }

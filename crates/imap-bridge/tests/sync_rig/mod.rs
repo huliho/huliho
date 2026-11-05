@@ -37,7 +37,7 @@ pub const ACCOUNT: &str = "a1";
 pub struct Rig {
     pub cache: Cache,
     pub fake: FakeImap,
-    pub link: Link<TestConnector>,
+    pub link: Arc<Link<TestConnector>>,
 }
 
 /// An INBOX holding this mail behind every extension.
@@ -69,10 +69,11 @@ impl Rig {
                 sealer: Arc::new(TestSealer::default()),
                 key: AccountKey::new(ACCOUNT),
                 gmail: false,
+                address: huliho_imap_bridge::testing::ADDRESS.to_owned(),
                 uploads: huliho_imap_bridge::testing::uploads(),
             },
             fake,
-            link: Link::with_interval(connector, Duration::ZERO),
+            link: Arc::new(Link::with_interval(connector, Duration::ZERO)),
         }
     }
 

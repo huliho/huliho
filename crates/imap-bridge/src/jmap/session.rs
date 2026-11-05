@@ -3,8 +3,8 @@
 // Additional terms apply, see NOTICE.
 
 //! The session object of one bridge account (RFC 8620 section 2): the
-//! core, mail and quota capabilities with the bridge's limits, the
-//! vendor capability and the state the host derived.
+//! core, mail, quota and submission capabilities with the bridge's
+//! limits, the vendor capability and the state the host derived.
 
 use std::collections::BTreeMap;
 
@@ -28,6 +28,13 @@ pub const MAIL_CAPABILITY: &str = "urn:ietf:params:jmap:mail";
 
 /// The quota capability (RFC 9425 section 2.1).
 pub const QUOTA_CAPABILITY: &str = "urn:ietf:params:jmap:quota";
+
+/// The submission capability (RFC 8621 section 1.3.2).
+pub const SUBMISSION_CAPABILITY: &str = "urn:ietf:params:jmap:submission";
+
+/// A send goes at once: the bridge holds nothing back (RFC 8621 section
+/// 1.3.2).
+const MAX_DELAYED_SEND: u64 = 0;
 
 /// The vendor capability (RFC 8620 section 1.8) on the product domain;
 /// it carries the Mailbox property `syncedEmails`.
@@ -84,8 +91,9 @@ struct AccountObject {
 /// The session object for one account as JSON: writable, since
 /// `Email/set` takes keywords, the vendor capability on the account and
 /// the quota capability where the server advertises QUOTA, the state the
-/// host derived with that word on it. No row is read, so the object
-/// never moves with the cache.
+/// host derived with that word on it, the account's address as its name
+/// and the username. No row is read, so the object never moves with the
+/// cache.
 ///
 /// # Errors
 ///
@@ -93,14 +101,15 @@ struct AccountObject {
 /// encoded.
 pub fn session_object(
     registration: &Registration,
-    address: &str,
     urls: &Urls,
     store: &Store,
 ) -> Result<Vec<u8>, StoreError> {
     let key = &registration.key;
+    let address = registration.address.as_str();
     let quota = store.quota(key).advertised;
     let mut account_capabilities: BTreeMap<&'static str, Value> = [
         (MAIL_CAPABILITY, mail_capability(registration.gmail)),
+        (SUBMISSION_CAPABILITY, submission_capability()),
         (HULIHO_CAPABILITY, Value::Object(Map::new())),
     ]
     .into_iter()
@@ -108,13 +117,15 @@ pub fn session_object(
     if quota {
         account_capabilities.insert(QUOTA_CAPABILITY, Value::Object(Map::new()));
     }
-    // RFC 8621 section 1.3.1 and RFC 9425 section 2.1: at session level
-    // both are empty objects; the bridge answers the quota methods for
-    // every account, each account says whether it has a quota.
+    // RFC 8621 sections 1.3.1 and 1.3.2 and RFC 9425 section 2.1: at
+    // session level the three are empty objects; the bridge answers the
+    // quota methods for every account, each account says whether it has
+    // a quota.
     let capabilities: BTreeMap<&'static str, Value> = [
         (CORE_CAPABILITY, core_capability()),
         (MAIL_CAPABILITY, Value::Object(Map::new())),
         (QUOTA_CAPABILITY, Value::Object(Map::new())),
+        (SUBMISSION_CAPABILITY, Value::Object(Map::new())),
         (HULIHO_CAPABILITY, Value::Object(Map::new())),
     ]
     .into_iter()
@@ -130,6 +141,7 @@ pub fn session_object(
         accounts: [(key.as_str(), account)].into_iter().collect(),
         primary_accounts: [
             (MAIL_CAPABILITY, key.as_str()),
+            (SUBMISSION_CAPABILITY, key.as_str()),
             (HULIHO_CAPABILITY, key.as_str()),
         ]
         .into_iter()
@@ -167,6 +179,15 @@ fn core_capability() -> Value {
         "maxObjectsInGet": MAX_OBJECTS_IN_GET,
         "maxObjectsInSet": MAX_OBJECTS_IN_SET,
         "collationAlgorithms": [COLLATION],
+    })
+}
+
+/// What an account says of its sends (RFC 8621 section 1.3.2): none is
+/// held back and no SMTP extension is offered.
+fn submission_capability() -> Value {
+    json!({
+        "maxDelayedSend": MAX_DELAYED_SEND,
+        "submissionExtensions": {},
     })
 }
 

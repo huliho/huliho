@@ -13,7 +13,7 @@ use huliho_imap_bridge::testing::mailboxes::{ALL_MAIL, SPAM, TRASH};
 use serde_json::{Value, json};
 
 use super::super::ACCOUNT;
-use super::super::corpus::{self, DELIVERED, LABEL, LONG};
+use super::super::corpus::{self, DELIVERED, LABEL, LONG, seed};
 use super::super::gmail::{self, SETTLE, Stores};
 use super::{LOOKS, Scenario, Second};
 
@@ -29,13 +29,36 @@ const INBOX_LABEL: &str = "\\Inbox";
 
 /// One of the three stores.
 #[derive(Debug, Clone, Copy)]
-enum Store {
+pub(super) enum Store {
     AllMail,
     Spam,
     Trash,
 }
 
+/// A store and, where one is named, a label inside it.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Spot<'a> {
+    store: Store,
+    label: Option<&'a str>,
+}
+
 impl Store {
+    /// The store with no label asked.
+    pub(super) fn alone(self) -> Spot<'static> {
+        Spot {
+            store: self,
+            label: None,
+        }
+    }
+
+    /// The store under that label.
+    fn under(self, label: &str) -> Spot<'_> {
+        Spot {
+            store: self,
+            label: Some(label),
+        }
+    }
+
     /// Its name in the scripted server's model.
     fn modeled(self) -> &'static str {
         match self {
@@ -83,26 +106,34 @@ impl Scenario {
         ids
     }
 
-    /// Whether the second client finds the message in the store, under
-    /// the label when one is named, as `present` says; asked again until
-    /// it does or the looks run out. Where nobody plays it holds.
-    async fn second_finds(
+    /// Whether the second client finds the seeded message at the spot, as
+    /// `present` says.
+    async fn second_finds(&mut self, number: u32, spot: Spot<'_>, present: bool) -> bool {
+        let message_id = seed(number).message_id();
+        self.second_finds_id(&message_id, spot, present).await
+    }
+
+    /// Whether the second client finds the message with that Message-ID
+    /// at the spot, as `present` says; asked again until it does or the
+    /// looks run out. Where nobody plays it holds.
+    pub(super) async fn second_finds_id(
         &mut self,
-        number: u32,
-        (store, label): (Store, Option<&str>),
+        message_id: &str,
+        spot: Spot<'_>,
         present: bool,
     ) -> bool {
+        let Spot { store, label } = spot;
         for _ in 0..LOOKS {
             let found = match &mut self.second {
                 Second::Nobody => return true,
                 Second::Model(mailboxes) => {
-                    corpus::located(mailboxes, number).is_some_and(|(folder, labels)| {
+                    corpus::located(mailboxes, message_id).is_some_and(|(folder, labels)| {
                         folder == store.modeled()
                             && label.is_none_or(|label| labels.iter().any(|held| held == label))
                     })
                 }
                 Second::Account { editor, stores } => {
-                    gmail::holds(editor, store.live(stores), number, label).await
+                    gmail::holds(editor, store.live(stores), message_id, label).await
                 }
             };
             if found == present {
@@ -122,11 +153,11 @@ impl Scenario {
         self.set_one(ARCHIVED, Self::moving(&inbox, &archive)).await;
         assert_eq!(self.mailboxes_of(ARCHIVED).await, [archive]);
         assert!(
-            self.second_finds(ARCHIVED, (Store::AllMail, Some(INBOX_LABEL)), false)
+            self.second_finds(ARCHIVED, Store::AllMail.under(INBOX_LABEL), false)
                 .await
         );
         assert!(
-            self.second_finds(ARCHIVED, (Store::AllMail, None), true)
+            self.second_finds(ARCHIVED, Store::AllMail.alone(), true)
                 .await
         );
     }
@@ -142,7 +173,7 @@ impl Scenario {
         expected.sort();
         assert_eq!(self.mailboxes_of(LABELED).await, expected);
         assert!(
-            self.second_finds(LABELED, (Store::AllMail, Some(LABEL)), true)
+            self.second_finds(LABELED, Store::AllMail.under(LABEL), true)
                 .await
         );
     }
@@ -156,7 +187,7 @@ impl Scenario {
         expected.sort();
         assert_eq!(self.mailboxes_of(RESTORED).await, expected);
         assert!(
-            self.second_finds(RESTORED, (Store::AllMail, Some(INBOX_LABEL)), true)
+            self.second_finds(RESTORED, Store::AllMail.under(INBOX_LABEL), true)
                 .await
         );
     }
@@ -168,7 +199,7 @@ impl Scenario {
         patch["keywords/$junk"] = json!(true);
         self.set_one(JUNKED, patch).await;
         assert_eq!(self.mailboxes_of(JUNKED).await, [junk]);
-        assert!(self.second_finds(JUNKED, (Store::Spam, None), true).await);
+        assert!(self.second_finds(JUNKED, Store::Spam.alone(), true).await);
     }
 
     /// Delete is a move into the Trash store.
@@ -177,7 +208,7 @@ impl Scenario {
         self.set_one(TRASHED, Self::moving(&self.role_id("inbox"), &trash))
             .await;
         assert_eq!(self.mailboxes_of(TRASHED).await, [trash]);
-        assert!(self.second_finds(TRASHED, (Store::Trash, None), true).await);
+        assert!(self.second_finds(TRASHED, Store::Trash.alone(), true).await);
     }
 
     /// Delete forever destroys the message in Trash.
@@ -187,7 +218,7 @@ impl Scenario {
         let answered = self.call("Email/set", arguments).await;
         assert_eq!(answered["destroyed"], json!([&id]), "{answered}");
         assert!(
-            self.second_finds(TRASHED, (Store::Trash, None), false)
+            self.second_finds(TRASHED, Store::Trash.alone(), false)
                 .await
         );
     }

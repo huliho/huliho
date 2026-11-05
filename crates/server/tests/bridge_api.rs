@@ -21,7 +21,7 @@ use answers::answer;
 use axum::http::{Method, StatusCode};
 use bridge_rig::{ADDRESS, Instance, mailboxes, using};
 use huliho_imap_bridge::jmap::{
-    CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY,
+    CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY, SUBMISSION_CAPABILITY,
 };
 use huliho_imap_bridge::runtime::{ConnectError, Connector};
 use huliho_imap_bridge::store::AccountKey;
@@ -162,12 +162,13 @@ async fn the_session_object_of_a_bridge_account_carries_its_capabilities_and_its
         CORE_CAPABILITY,
         MAIL_CAPABILITY,
         QUOTA_CAPABILITY,
+        SUBMISSION_CAPABILITY,
     ];
     assert_eq!(keys(&session["capabilities"]), all);
     // No pass has read the server yet, so the account shows no quota.
     assert_eq!(
         keys(&session["accounts"][&id]["accountCapabilities"]),
-        [HULIHO_CAPABILITY, MAIL_CAPABILITY]
+        [HULIHO_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY]
     );
     assert_eq!(session["primaryAccounts"][MAIL_CAPABILITY], id);
     assert_eq!(session["accounts"][&id]["isReadOnly"], false);

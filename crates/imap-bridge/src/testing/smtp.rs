@@ -3,7 +3,11 @@
 // Additional terms apply, see NOTICE.
 
 //! The SMTP script: EHLO, STARTTLS, AUTH with PLAIN, LOGIN and XOAUTH2,
-//! QUIT.
+//! MAIL, RCPT, RSET, DATA with the refusal the script names, QUIT. A
+//! message that came through DATA is recorded as one line after
+//! `MESSAGE`, its dots unstuffed.
+
+use std::fmt::Write as _;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -25,8 +29,30 @@ const REJECTED: &str = "535 5.7.8 authentication credentials invalid\r\n";
 const ASK_USERNAME: &str = "334 VXNlcm5hbWU6\r\n";
 const ASK_PASSWORD: &str = "334 UGFzc3dvcmQ6\r\n";
 
+/// What a line of the recorded message starts with.
+pub const MESSAGE: &str = "MESSAGE ";
+
 /// The SMTP submission server of the tests.
 pub type FakeSmtp = Fake<Script>;
+
+/// The one refusal a script answers with (RFC 5321 section 4.2, RFC 3463).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refusal {
+    /// Every command goes through.
+    None,
+    /// MAIL FROM is refused for good.
+    Sender,
+    /// MAIL FROM is to be tried later.
+    Later,
+    /// RCPT TO is refused for good for an address holding the text.
+    Recipient(&'static str),
+    /// RCPT TO past this many accepted ones is 452 with 4.5.3.
+    TooMany(usize),
+    /// The message after DATA is too big for the system.
+    TooLarge,
+    /// The message after DATA is refused for good.
+    Rejected,
+}
 
 /// How the SMTP server behaves.
 #[derive(Debug, Clone, Copy)]
@@ -45,11 +71,14 @@ pub struct Script {
     pub accepts: bool,
     /// The one user the server signs in.
     pub user: &'static str,
+    /// The SIZE the EHLO answer names once TLS is on; 0 names none.
+    pub size: usize,
+    pub refusal: Refusal,
 }
 
 impl Script {
     /// TLS from the first byte, a 220 greeting, every mechanism, every
-    /// command answered, the fixture user signed in.
+    /// command answered, the fixture user signed in, every message taken.
     #[must_use]
     pub fn tls() -> Self {
         Self {
@@ -59,6 +88,37 @@ impl Script {
             mechanisms: MECHANISMS,
             accepts: true,
             user: USER,
+            size: 0,
+            refusal: Refusal::None,
+        }
+    }
+
+    /// The reply to MAIL FROM.
+    fn mail(self) -> &'static str {
+        match self.refusal {
+            Refusal::Sender => "550 5.7.1 sender refused\r\n",
+            Refusal::Later => "451 4.3.0 try again later\r\n",
+            _ => "250 2.1.0 sender ok\r\n",
+        }
+    }
+
+    /// The reply to RCPT TO, with how many were accepted before it.
+    fn rcpt(self, argument: &str, accepted: usize) -> &'static str {
+        match self.refusal {
+            Refusal::Recipient(marker) if argument.contains(marker) => {
+                "550 5.1.1 no such mailbox\r\n"
+            }
+            Refusal::TooMany(most) if accepted >= most => "452 4.5.3 too many recipients\r\n",
+            _ => "250 2.1.5 recipient ok\r\n",
+        }
+    }
+
+    /// The reply after the message.
+    fn delivered(self) -> &'static str {
+        match self.refusal {
+            Refusal::TooLarge => "552 5.3.4 message too big\r\n",
+            Refusal::Rejected => "550 5.7.1 message refused\r\n",
+            _ => "250 2.0.0 queued\r\n",
         }
     }
 
@@ -82,6 +142,9 @@ impl Script {
             answer.push_str("250-AUTH ");
             answer.push_str(self.mechanisms);
             answer.push_str("\r\n");
+        }
+        if phase.is_tls() && self.size > 0 {
+            let _ = write!(answer, "250-SIZE {}\r\n", self.size);
         }
         answer.push_str("250 PIPELINING\r\n");
         answer
@@ -131,12 +194,32 @@ impl Protocol for Script {
         stream: S,
     ) -> Option<S> {
         let (mut reader, mut writer) = open(self.opening(), phase, stream).await?;
+        let mut accepted = 0;
         loop {
             let line = read_line(&mut reader).await?;
             record(lines, phase, &line);
             let (verb, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
             let reply = match verb.to_ascii_uppercase().as_str() {
                 "EHLO" => self.ehlo(phase),
+                "MAIL" | "RCPT" | "DATA" if !phase.is_tls() => {
+                    "530 5.7.0 STARTTLS first\r\n".to_owned()
+                }
+                "MAIL" => self.mail().to_owned(),
+                "RCPT" => {
+                    let reply = self.rcpt(argument, accepted);
+                    accepted += usize::from(reply.starts_with('2'));
+                    reply.to_owned()
+                }
+                "RSET" => {
+                    accepted = 0;
+                    "250 2.0.0 reset\r\n".to_owned()
+                }
+                "DATA" => {
+                    writer.write_all(b"354 end with a dot\r\n").await.ok()?;
+                    let message = message(&mut reader).await?;
+                    record(lines, phase, &format!("{MESSAGE}{message}"));
+                    self.delivered().to_owned()
+                }
                 "STARTTLS" if phase == Phase::Plain(Starttls::Offered) => {
                     writer.write_all(b"220 2.0.0 begin TLS\r\n").await.ok()?;
                     return Some(reader.into_inner().unsplit(writer));
@@ -162,6 +245,19 @@ impl Protocol for Script {
     }
 }
 // jscpd:ignore-end
+
+/// The lines up to the one dot, each leading dot taken off (RFC 5321
+/// section 4.5.2), joined by CRLF; `None` when the client left first.
+pub(super) async fn message<R: AsyncBufRead + Unpin>(reader: &mut R) -> Option<String> {
+    let mut lines = Vec::new();
+    loop {
+        let line = read_line(reader).await?;
+        if line == "." {
+            return Some(lines.join("\r\n"));
+        }
+        lines.push(line.strip_prefix('.').map_or(line.clone(), str::to_owned));
+    }
+}
 
 /// One AUTH exchange on an encrypted connection.
 struct Exchange<'a, R, W> {

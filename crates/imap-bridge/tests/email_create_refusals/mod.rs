@@ -8,6 +8,7 @@
 //! that waits on such a create stays undone, so a failed save loses no
 //! draft.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use huliho_imap_bridge::runtime::{Link, Timing};
@@ -125,7 +126,7 @@ fn short(mut set: Set) -> Set {
         deadline: SHORT_DEADLINE,
         ..Timing::default()
     };
-    set.rig.link = Link::with_timing(connector, timing);
+    set.rig.link = Arc::new(Link::with_timing(connector, timing));
     set
 }
 
@@ -230,7 +231,7 @@ async fn rig_over(mut set: Set, mailboxes: huliho_imap_bridge::testing::Mailboxe
         fake.target(HOST, TlsMode::Implicit),
         Duration::from_secs(2),
     );
-    set.rig.link = Link::with_interval(connector, Duration::ZERO);
+    set.rig.link = Arc::new(Link::with_interval(connector, Duration::ZERO));
     set.rig.fake = fake;
     set
 }

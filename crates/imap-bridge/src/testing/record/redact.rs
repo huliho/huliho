@@ -7,8 +7,10 @@
 //! one wherever it recurs; a body text becomes filler of its length and
 //! the greeting loses its words. A message a client sends keeps its
 //! Message-ID alone. A value that already has a fixed shape stays, so a
-//! corpus written in these shapes reads back as written.
+//! corpus written in these shapes reads back as written. The sends of a
+//! recording pass after its IMAP connections, by the rules in `smtp`.
 
+mod smtp;
 #[cfg(test)]
 mod tests;
 
@@ -69,13 +71,17 @@ pub struct Redactor {
 #[must_use]
 pub fn redact(recorded: &Transcript) -> Transcript {
     let mut redactor = Redactor::default();
-    Transcript {
-        sessions: recorded
-            .sessions
-            .iter()
-            .map(|conversation| redactor.conversation(conversation))
-            .collect(),
-    }
+    let sessions = recorded
+        .sessions
+        .iter()
+        .map(|conversation| redactor.conversation(conversation))
+        .collect();
+    let smtp = recorded
+        .smtp
+        .iter()
+        .map(|conversation| redactor.smtp_conversation(conversation))
+        .collect();
+    Transcript { sessions, smtp }
 }
 
 impl Redactor {
@@ -205,8 +211,19 @@ impl Redactor {
                 self.text(&rewritten)
             }
             Section::Body => fill(literal.len()),
+            Section::Whole => self.whole(literal),
             Section::Other => self.text(literal),
         }
+    }
+
+    /// A message fetched whole: its header block redacted as a header,
+    /// its body filler of its length.
+    fn whole(&mut self, literal: &str) -> String {
+        let Some((header, body)) = literal.split_once("\r\n\r\n") else {
+            return fill(literal.len());
+        };
+        let rewritten = self.header(header);
+        format!("{}\r\n\r\n{}", self.text(&rewritten), fill(body.len()))
     }
 
     fn header(&mut self, block: &str) -> String {

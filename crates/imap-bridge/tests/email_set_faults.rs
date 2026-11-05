@@ -13,6 +13,7 @@
 mod set_rig;
 mod sync_rig;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use huliho_imap_bridge::runtime::{Link, Timing};
@@ -270,7 +271,7 @@ async fn stalling() -> Set {
         deadline: SHORT_DEADLINE,
         ..Timing::default()
     };
-    set.rig.link = Link::with_timing(connector, timing);
+    set.rig.link = Arc::new(Link::with_timing(connector, timing));
     set
 }
 
@@ -336,7 +337,7 @@ async fn a_select_the_bridge_cannot_read_is_a_server_failure_and_costs_the_sessi
 #[tokio::test]
 async fn a_host_out_of_reach_answers_per_update_and_the_cache_keeps_answering() {
     let mut set = storing(Storing::Stores).await;
-    set.rig.link = Link::new(TestConnector::Refusing);
+    set.rig.link = Arc::new(Link::new(TestConnector::Refusing));
     let before = set.state();
     let answered = mark_both(&set).await;
     for uid in [1, 2] {

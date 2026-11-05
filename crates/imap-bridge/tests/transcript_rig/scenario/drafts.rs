@@ -13,11 +13,29 @@ use super::super::ACCOUNT;
 use super::super::corpus::DRAFT_SUBJECT;
 use super::Scenario;
 
+/// The object of a draft in that mailbox from one address to another,
+/// under the fixed subject.
+pub(super) fn draft(mailbox: &str, from: &str, to: &str) -> Value {
+    json!({
+        "mailboxIds": { (mailbox): true },
+        "keywords": { "$draft": true, "$seen": true },
+        "from": [{ "email": from }],
+        "to": [{ "email": to }],
+        "subject": DRAFT_SUBJECT,
+        "bodyStructure": { "partId": "t", "type": "text/plain" },
+        "bodyValues": { "t": { "value": "Body of the draft.\n" } },
+    })
+}
+
 impl Scenario {
     /// Every draft step in order.
     pub(super) async fn drafts(&mut self) {
         let mailbox = self.suite.by_role("drafts").id.to_string();
-        let first = self.saved(&mailbox, None).await;
+        let (from, to) = (
+            format!("sanne@{FIXED_DOMAIN}"),
+            format!("mo@{FIXED_DOMAIN}"),
+        );
+        let first = self.saved(draft(&mailbox, &from, &to), None).await;
         let shown = self
             .emails(
                 std::slice::from_ref(&first),
@@ -29,7 +47,7 @@ impl Scenario {
         assert_eq!(shown["keywords"]["$draft"], true, "{shown}");
         let members = Self::mailbox_ids(&shown);
         assert!(members.contains(&mailbox), "{shown}");
-        let second = self.saved(&mailbox, Some(&first)).await;
+        let second = self.saved(draft(&mailbox, &from, &to), Some(&first)).await;
         assert_ne!(first, second);
         let gone = json!({ "accountId": ACCOUNT, "ids": [&first], "properties": ["id"] });
         let gone = self.call("Email/get", gone).await;
@@ -39,19 +57,9 @@ impl Scenario {
         assert_eq!(destroyed["destroyed"], json!([second]), "{destroyed}");
     }
 
-    /// One save through `Email/set`, replacing an earlier one where named.
-    /// The id it answers.
-    async fn saved(&self, mailbox: &str, old: Option<&str>) -> String {
-        let address = format!("sanne@{FIXED_DOMAIN}");
-        let draft = json!({
-            "mailboxIds": { (mailbox): true },
-            "keywords": { "$draft": true, "$seen": true },
-            "from": [{ "email": address }],
-            "to": [{ "email": format!("mo@{FIXED_DOMAIN}") }],
-            "subject": DRAFT_SUBJECT,
-            "bodyStructure": { "partId": "t", "type": "text/plain" },
-            "bodyValues": { "t": { "value": "Body of the draft.\n" } },
-        });
+    /// One save of the draft object through `Email/set`, replacing an
+    /// earlier one where named. The id it answers.
+    pub(super) async fn saved(&self, draft: Value, old: Option<&str>) -> String {
         let mut arguments = json!({ "accountId": ACCOUNT, "create": { "d": draft } });
         if let Some(old) = old {
             arguments["destroy"] = json!([old]);

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! A recorded IMAP conversation: every connection, every command and
-//! what the server said back. A literal is a segment of its own, so a
-//! line can be rewritten and sent again with its size markers right.
+//! A recorded conversation: every connection, every command and what the
+//! server said back, the IMAP connections apart from the SMTP ones of
+//! each send. A literal is a segment of its own, so a line can be
+//! rewritten and sent again with its size markers right.
 
 use std::sync::{Mutex, PoisonError};
 
@@ -24,6 +25,17 @@ const UNREADABLE_BYTE: char = '?';
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transcript {
     pub sessions: Vec<Conversation>,
+    /// The submission connections; left out of the JSON while there are
+    /// none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub smtp: Vec<Conversation>,
+}
+
+/// Which server a connection was held with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wire {
+    Imap,
+    Smtp,
 }
 
 /// One connection: the greeting and everything after it.
@@ -59,28 +71,37 @@ pub enum Segment {
 pub type Shared = std::sync::Arc<Mutex<Transcript>>;
 
 impl Transcript {
-    /// Opens a connection's record; the index names it from then on.
-    pub fn start_session(&mut self) -> usize {
-        self.sessions.push(Conversation::default());
-        self.sessions.len() - 1
+    fn connections(&mut self, wire: Wire) -> &mut Vec<Conversation> {
+        match wire {
+            Wire::Imap => &mut self.sessions,
+            Wire::Smtp => &mut self.smtp,
+        }
+    }
+
+    /// Opens a connection's record on that wire; the index names it from
+    /// then on.
+    pub fn start_session(&mut self, wire: Wire) -> usize {
+        let connections = self.connections(wire);
+        connections.push(Conversation::default());
+        connections.len() - 1
     }
 
     /// Notes a command the client sent on that connection.
-    pub fn client(&mut self, session: usize, line: String) {
+    pub fn client(&mut self, wire: Wire, session: usize, line: String) {
         let exchange = Exchange {
             client: Some(line),
             server: Vec::new(),
         };
-        if let Some(conversation) = self.sessions.get_mut(session) {
+        if let Some(conversation) = self.connections(wire).get_mut(session) {
             conversation.exchanges.push(exchange);
         }
     }
 
     /// Adds the rest of a command to the one noted last on that
     /// connection: a literal and the text after it.
-    pub fn client_more(&mut self, session: usize, more: &str) {
+    pub fn client_more(&mut self, wire: Wire, session: usize, more: &str) {
         let client = self
-            .sessions
+            .connections(wire)
             .get_mut(session)
             .and_then(|conversation| conversation.exchanges.last_mut())
             .and_then(|exchange| exchange.client.as_mut());
@@ -91,8 +112,8 @@ impl Transcript {
 
     /// Notes a line the server sent on that connection, under the last
     /// command or as the greeting.
-    pub fn server(&mut self, session: usize, line: Line) {
-        let Some(conversation) = self.sessions.get_mut(session) else {
+    pub fn server(&mut self, wire: Wire, session: usize, line: Line) {
+        let Some(conversation) = self.connections(wire).get_mut(session) else {
             return;
         };
         if conversation.exchanges.is_empty() {
@@ -380,17 +401,30 @@ mod tests {
     #[test]
     fn a_transcript_round_trips_through_json_with_the_greeting_apart() {
         let mut transcript = Transcript::default();
-        let session = transcript.start_session();
-        transcript.server(session, Line::text("* OK ready"));
-        transcript.client(session, "A1 CAPABILITY".to_owned());
-        transcript.server(session, Line::text("* CAPABILITY IMAP4rev1"));
-        transcript.server(session, Line::text("A1 OK done"));
+        let session = transcript.start_session(Wire::Imap);
+        transcript.server(Wire::Imap, session, Line::text("* OK ready"));
+        transcript.client(Wire::Imap, session, "A1 CAPABILITY".to_owned());
+        transcript.server(Wire::Imap, session, Line::text("* CAPABILITY IMAP4rev1"));
+        transcript.server(Wire::Imap, session, Line::text("A1 OK done"));
         let exchanges = &transcript.sessions[0].exchanges;
         assert_eq!(exchanges.len(), 2);
         assert_eq!(exchanges[0].command(), None);
         assert_eq!(exchanges[1].command(), Some("CAPABILITY"));
         let json = transcript.to_json();
         assert!(json.ends_with('\n'));
+        assert!(!json.contains("\"smtp\""));
+        assert_eq!(Transcript::from_json(&json).unwrap(), transcript);
+        let send = transcript.start_session(Wire::Smtp);
+        transcript.server(Wire::Smtp, send, Line::text("220 ready"));
+        transcript.client(Wire::Smtp, send, "QUIT".to_owned());
+        transcript.server(Wire::Smtp, send, Line::text("221 2.0.0 ready"));
+        assert_eq!(transcript.sessions.len(), 1);
+        assert_eq!(
+            transcript.smtp[0].exchanges[1].client.as_deref(),
+            Some("QUIT")
+        );
+        let json = transcript.to_json();
+        assert!(json.contains("\"smtp\""));
         assert_eq!(Transcript::from_json(&json).unwrap(), transcript);
     }
 }

@@ -35,6 +35,7 @@ use tower::ServiceExt;
 const CORE: &str = "urn:ietf:params:jmap:core";
 const MAIL: &str = "urn:ietf:params:jmap:mail";
 const QUOTA: &str = "urn:ietf:params:jmap:quota";
+const SUBMISSION: &str = "urn:ietf:params:jmap:submission";
 
 /// A body well over the 16 KiB of the other API routes and well under
 /// the proxy's own limit.
@@ -198,12 +199,15 @@ async fn the_session_object_comes_back_rewritten_and_filtered() {
         session["eventSourceUrl"],
         format!("/api/jmap/{id}/events?types={{types}}&closeafter={{closeafter}}&ping={{ping}}")
     );
-    // The quota capability passes through where the upstream has it.
-    assert_eq!(keys(&session["capabilities"]), [CORE, MAIL, QUOTA]);
+    // The quota and submission capabilities pass through where the
+    // upstream has them.
     assert_eq!(
-        keys(&session["accounts"][UPSTREAM_ACCOUNT]["accountCapabilities"]),
-        [CORE, MAIL, QUOTA]
+        keys(&session["capabilities"]),
+        [CORE, MAIL, QUOTA, SUBMISSION]
     );
+    let account = &session["accounts"][UPSTREAM_ACCOUNT]["accountCapabilities"];
+    assert_eq!(keys(account), [CORE, MAIL, QUOTA, SUBMISSION]);
+    assert_eq!(account[SUBMISSION]["maxDelayedSend"], 0);
     assert_eq!(keys(&session["primaryAccounts"]), [MAIL]);
     let core = &session["capabilities"][CORE];
     assert_eq!(core["maxSizeRequest"], JMAP_REQUEST_LIMIT);
@@ -243,6 +247,30 @@ async fn a_request_is_forwarded_with_the_credential_and_the_answer_comes_back() 
     let lines = instance.upstream.lines();
     assert_eq!(lines.len(), 3, "{lines:?}");
     assert!(lines[2].contains("/jmap/api"), "{lines:?}");
+}
+
+#[tokio::test]
+async fn the_identity_and_submission_calls_reach_the_upstream_untouched_rfc8621_7() {
+    let instance = instance().await;
+    let id = instance.add_account(password());
+    let cookie = instance.sign_in().await;
+    let calls = json!([
+        ["Identity/get", { "accountId": UPSTREAM_ACCOUNT, "ids": null }, "i"],
+        ["EmailSubmission/set", {
+            "accountId": UPSTREAM_ACCOUNT,
+            "create": { "s": { "identityId": "id1", "emailId": "e1", "envelope": null } },
+            "onSuccessUpdateEmail": { "#s": { "mailboxIds/d": null, "keywords/$draft": null } },
+        }, "s"],
+    ]);
+    let body = json!({ "using": [CORE, MAIL, SUBMISSION], "methodCalls": calls });
+    let (status, answer) = instance.request(&cookie, &id, &body).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    for (index, call) in calls.as_array().unwrap().iter().enumerate() {
+        let echoed = &answer["methodResponses"][index];
+        assert_eq!(echoed[0], call[0]);
+        assert_eq!(echoed[1]["echoed"], call[1]);
+        assert_eq!(echoed[2], call[2]);
+    }
 }
 
 #[tokio::test]

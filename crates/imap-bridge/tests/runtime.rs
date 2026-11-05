@@ -111,6 +111,7 @@ impl Rig {
         let bridge = Bridge::with_timing(host, connector, timing);
         let registration = Registration {
             key: AccountKey::new(ACCOUNT),
+            address: huliho_imap_bridge::testing::ADDRESS.to_owned(),
             gmail,
             session_state: SESSION_STATE.to_owned(),
         };

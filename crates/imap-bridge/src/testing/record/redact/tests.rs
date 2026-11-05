@@ -131,6 +131,38 @@ fn a_body_becomes_filler_of_its_length_and_a_mime_header_stays() {
 }
 
 #[test]
+fn a_message_fetched_whole_keeps_its_header_redacted_over_filler() {
+    let mut redactor = Redactor::default();
+    let message = "From: Eric <eric@gmail.com>\r\nSubject: Lunch\r\nMessage-ID: <d1@example.test>\r\n\r\nDear Eric, see you at 3.\r\n";
+    let line = Line(vec![
+        Segment::Text("* 2 FETCH (UID 4 BODY[]<0> ".to_owned()),
+        Segment::Literal {
+            literal: message.to_owned(),
+        },
+        Segment::Text(")".to_owned()),
+    ]);
+    let redacted = redactor.server_line(&line);
+    let body = fill("Dear Eric, see you at 3.\r\n".len());
+    assert_eq!(
+        literal_of(&redacted),
+        format!(
+            "From: user1@example.test\r\nSubject: Message 1000\r\nMessage-ID: <d1@example.test>\r\n\r\n{body}"
+        )
+    );
+    let later = Line(vec![
+        Segment::Text("* 2 FETCH (UID 4 BODY[]<4096> ".to_owned()),
+        Segment::Literal {
+            literal: message.to_owned(),
+        },
+        Segment::Text(")".to_owned()),
+    ]);
+    assert_eq!(
+        literal_of(&redactor.server_line(&later)),
+        fill(message.len())
+    );
+}
+
+#[test]
 fn a_tagged_answer_loses_its_token_and_untagged_data_keeps_its_long_words() {
     let mut redactor = Redactor::default();
     let tagged = Line::text("C1 OK Thats all she wrote! 5b1f17b1804b1-49fbbf104a9mb2431653045e9");

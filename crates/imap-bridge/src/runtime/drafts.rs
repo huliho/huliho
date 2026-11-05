@@ -9,6 +9,7 @@
 //! can hold, one pass before the answer lands the row by the Message-ID
 //! the bridge wrote.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use tokio::time::{Instant, timeout};
@@ -49,6 +50,7 @@ pub(crate) struct Stopped {
 }
 
 /// A message ready for the wire and what its row holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Built {
     pub message: Vec<u8>,
     pub flags: Vec<String>,
@@ -56,10 +58,10 @@ pub(crate) struct Built {
 }
 
 /// What a row of the draft holds before the host seals it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Unsealed {
     pub id: EmailId,
-    keywords: std::collections::BTreeMap<String, bool>,
+    keywords: BTreeMap<String, bool>,
     size: u32,
     date: i64,
     has_attachment: bool,
@@ -69,7 +71,40 @@ pub(crate) struct Unsealed {
     named: Vec<Vec<u8>>,
 }
 
+/// What the row of a copy holds otherwise than the message's: the
+/// keywords the copy is stored with, its size and the moment of the send.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CopyFacts {
+    pub keywords: BTreeMap<String, bool>,
+    pub size: u32,
+    pub date: i64,
+}
+
 impl Unsealed {
+    /// The row of a copy of a stored message under an id of its own: the
+    /// fields the message's row holds, with the facts of the copy. It
+    /// lands by the Message-ID it keeps.
+    pub(crate) fn copied(
+        personal: Personal,
+        has_attachment: bool,
+        facts: CopyFacts,
+        sealer: &dyn Sealer,
+    ) -> Self {
+        let first = personal.message_id.as_deref().and_then(<[String]>::first);
+        let hash = first.map_or_else(Vec::new, |id| sealer.keyed_hash(id.as_bytes()));
+        let named = named_hashes(&personal, sealer);
+        Self {
+            id: EmailId::generate(),
+            keywords: facts.keywords,
+            size: facts.size,
+            date: facts.date,
+            has_attachment,
+            personal,
+            hash,
+            named,
+        }
+    }
+
     /// The row of the draft under what `APPENDUID` named.
     ///
     /// # Errors
@@ -207,13 +242,7 @@ fn assembled(
         return Err(Failure::TooLarge);
     }
     let personal = draft.stamped(&stamp);
-    let mut named: Vec<Vec<u8>> = Vec::new();
-    for id in personal.named_ids() {
-        let id_hash = sealer.keyed_hash(id.as_bytes());
-        if !named.contains(&id_hash) {
-            named.push(id_hash);
-        }
-    }
+    let named = named_hashes(&personal, sealer);
     Ok(Built {
         message,
         flags: draft.flags(),
@@ -228,6 +257,19 @@ fn assembled(
             named,
         },
     })
+}
+
+/// The keyed hash of every message id the header names, each once, which
+/// a row threads by.
+fn named_hashes(personal: &Personal, sealer: &dyn Sealer) -> Vec<Vec<u8>> {
+    let mut named: Vec<Vec<u8>> = Vec::new();
+    for id in personal.named_ids() {
+        let id_hash = sealer.keyed_hash(id.as_bytes());
+        if !named.contains(&id_hash) {
+            named.push(id_hash);
+        }
+    }
+    named
 }
 
 /// One pass of the account within what is left of the deadline, so the
@@ -326,85 +368,4 @@ async fn newest_of<S: Session>(
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    use super::*;
-    use crate::message::{Content, Part};
-    use crate::seal::{Block, SealError};
-
-    /// The bytes of the blob of the test and the parts that name it.
-    const BLOB_BYTES: usize = 10;
-    const LEAVES: usize = 3;
-
-    /// A host that counts the hashes a message asks for.
-    #[derive(Default)]
-    struct Counting(AtomicUsize);
-
-    impl Sealer for Counting {
-        fn seal(&self, _: &AccountKey, _: &EmailId, plain: &[u8]) -> Result<Vec<u8>, SealError> {
-            Ok(plain.to_vec())
-        }
-
-        fn open(&self, _: &AccountKey, _: &EmailId, sealed: &[u8]) -> Option<Vec<u8>> {
-            Some(sealed.to_vec())
-        }
-
-        fn seal_block(
-            &self,
-            _: &AccountKey,
-            _: Block<'_>,
-            plain: &[u8],
-        ) -> Result<Vec<u8>, SealError> {
-            Ok(plain.to_vec())
-        }
-
-        fn open_block(&self, _: &AccountKey, _: Block<'_>, sealed: &[u8]) -> Option<Vec<u8>> {
-            Some(sealed.to_vec())
-        }
-
-        fn keyed_hash(&self, message_id: &[u8]) -> Vec<u8> {
-            self.0.fetch_add(1, Ordering::Relaxed);
-            message_id.to_vec()
-        }
-    }
-
-    fn part(content: Content, media_type: &str) -> Part {
-        Part {
-            media_type: media_type.to_owned(),
-            parameters: Vec::new(),
-            name: None,
-            disposition: None,
-            cid: None,
-            content,
-        }
-    }
-
-    #[test]
-    fn a_message_answers_to_the_lower_of_the_two_bounds_rfc7889_3() {
-        let most = u64::try_from(MAX_MESSAGE_BYTES).unwrap();
-        assert_eq!(bound(None), most);
-        assert_eq!(bound(Some(most - 1)), most - 1);
-        assert_eq!(bound(Some(most + 1)), most);
-    }
-
-    #[test]
-    fn a_tree_past_the_limit_is_never_assembled_though_its_blob_is_read_once() {
-        let leaf = part(Content::Blob("e1".to_owned()), "image/png");
-        let draft = Draft {
-            mailbox: "m1".to_owned(),
-            keywords: Vec::new(),
-            personal: Personal::default(),
-            body: part(Content::Parts(vec![leaf; LEAVES]), "multipart/mixed"),
-        };
-        let blobs: Blobs = [("e1".to_owned(), vec![0; BLOB_BYTES])].into();
-        let sealer = Counting::default();
-        let weighed = u64::try_from(LEAVES * BLOB_BYTES).unwrap();
-        let refused = assembled(&draft, &blobs, &sealer, weighed - 1);
-        assert!(matches!(refused, Err(Failure::TooLarge)));
-        assert_eq!(sealer.0.load(Ordering::Relaxed), 0);
-        let most = u64::try_from(MAX_MESSAGE_BYTES).unwrap();
-        assert!(assembled(&draft, &blobs, &sealer, most).is_ok());
-        assert!(sealer.0.load(Ordering::Relaxed) > 0);
-    }
-}
+mod tests;

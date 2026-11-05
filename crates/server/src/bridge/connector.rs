@@ -5,7 +5,8 @@
 //! Where the bridge's connections come from: the row read instance
 //! wide, the token refreshed under the account's lock, the host resolved
 //! through the pinned resolver and the sign-in as the credential check
-//! does it, every outcome reported to the gate.
+//! does it. Every IMAP outcome is reported to the gate; a send's SMTP
+//! connection reports nothing, since the gate watches the IMAP host.
 
 use std::sync::Arc;
 
@@ -13,6 +14,7 @@ use huliho_imap_bridge::runtime::{ConnectError, Connector};
 use huliho_imap_bridge::session::{
     ImapSession, STEP_TIMEOUT, Session, SessionError, Target, TlsMode as BridgeTls,
 };
+use huliho_imap_bridge::smtp::{self, Submission};
 use huliho_imap_bridge::store::AccountKey;
 use huliho_imap_bridge::verify::Credential as BridgeCredential;
 use tokio::time::timeout;
@@ -36,6 +38,8 @@ struct Stored {
     scope: Scope,
     username: String,
     endpoint: Endpoint,
+    /// The SMTP endpoint a send signs in on.
+    submission: Endpoint,
     credential: Credential,
 }
 
@@ -65,7 +69,11 @@ impl HostConnector {
             if accounts::get(&store, &scope)?.stopped_cause.is_some() {
                 return Ok(None);
             }
-            let AccountSettings::Imap { username, imap, .. } = accounts::settings(&store, &scope)?
+            let AccountSettings::Imap {
+                username,
+                imap,
+                smtp,
+            } = accounts::settings(&store, &scope)?
             else {
                 return Ok(None);
             };
@@ -74,6 +82,7 @@ impl HostConnector {
                 scope,
                 username,
                 endpoint: imap,
+                submission: smtp,
                 credential,
             }))
         })
@@ -91,33 +100,44 @@ impl HostConnector {
         }
     }
 
-    /// One sign-in: a live token, the pinned addresses, the connection
-    /// and LOGIN or XOAUTH2 as the credential asks.
-    async fn sign_in(&self, stored: &Stored) -> Result<ImapSession, Failure> {
+    /// A live token in the bridge's form.
+    async fn credential(&self, stored: &Stored) -> Result<BridgeCredential, Failure> {
         let credential = self
             .wiring
             .live_credential(&stored.scope, stored.credential.clone())
             .await
             .map_err(|error| Failure::attempt(&error))?;
-        let credential = probe::bridge_credential(&stored.username, &credential)
-            .map_err(|error| Failure::attempt(&error.into()))?;
+        probe::bridge_credential(&stored.username, &credential)
+            .map_err(|error| Failure::attempt(&error.into()))
+    }
+
+    /// The endpoint's pinned addresses with the name its certificate
+    /// carries.
+    async fn target(&self, endpoint: &Endpoint) -> Result<Target, Failure> {
         let addresses = self
             .wiring
             .upstream
-            .resolve(&stored.endpoint.host, stored.endpoint.port)
+            .resolve(&endpoint.host, endpoint.port)
             .await
             .map_err(|_| Failure {
                 error: SessionError::NoAddress,
                 fault: Fault::Connection,
             })?;
-        let target = Target {
-            host: stored.endpoint.host.clone(),
+        Ok(Target {
+            host: endpoint.host.clone(),
             addresses,
-            tls: match stored.endpoint.tls {
+            tls: match endpoint.tls {
                 TlsMode::Implicit => BridgeTls::Implicit,
                 TlsMode::Starttls => BridgeTls::Starttls,
             },
-        };
+        })
+    }
+
+    /// One sign-in: a live token, the pinned addresses, the connection
+    /// and LOGIN or XOAUTH2 as the credential asks.
+    async fn sign_in(&self, stored: &Stored) -> Result<ImapSession, Failure> {
+        let credential = self.credential(stored).await?;
+        let target = self.target(&stored.endpoint).await?;
         let mut session = ImapSession::connect(self.wiring.upstream.tls(), &target, STEP_TIMEOUT)
             .await
             .map_err(Failure::session)?;
@@ -131,6 +151,17 @@ impl HostConnector {
         }
         .map_err(Failure::session)?;
         Ok(session)
+    }
+
+    /// The SMTP sign-in of one send, as the credential check signs in.
+    async fn submit_in(&self, stored: &Stored) -> Result<Submission, SessionError> {
+        let credential = self.credential(stored).await.map_err(|it| it.error)?;
+        let target = self
+            .target(&stored.submission)
+            .await
+            .map_err(|it| it.error)?;
+        let tls = self.wiring.upstream.tls();
+        smtp::submission(tls, &target, &credential, STEP_TIMEOUT).await
     }
 }
 
@@ -160,6 +191,18 @@ impl Connector for HostConnector {
             tracing::warn!(account = key.as_str(), %error, "the gate could not record the sign-in");
         }
         outcome.map_err(|failure| ConnectError::Failed(failure.error))
+    }
+
+    async fn submission(&self, key: &AccountKey) -> Result<Submission, ConnectError> {
+        let account_id = AccountId::from(key.as_str().to_owned());
+        let Some(stored) = self.read(&account_id).await else {
+            return Err(ConnectError::Held);
+        };
+        let _held = self.wiring.gate.hold(&account_id).await;
+        match timeout(ATTEMPT_TIMEOUT, self.submit_in(&stored)).await {
+            Ok(outcome) => Ok(outcome?),
+            Err(_elapsed) => Err(SessionError::Timeout.into()),
+        }
     }
 }
 

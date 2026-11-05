@@ -12,8 +12,14 @@ mod draft_rig;
 mod email_create_first_sync;
 mod email_create_gmail;
 mod email_create_refusals;
+mod email_create_send;
+mod email_create_send_dropped;
+mod email_create_send_headers;
+mod email_create_send_ids;
+mod email_create_send_refusals;
 mod email_create_uploads;
 mod email_create_wire;
+mod send_rig;
 mod set_rig;
 mod sync_rig;
 

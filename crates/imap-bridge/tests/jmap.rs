@@ -9,10 +9,10 @@ mod jmap_rig;
 
 use huliho_imap_bridge::jmap::{
     CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, MAX_CALLS_IN_REQUEST, MAX_OBJECTS_IN_GET,
-    MAX_SIZE_REQUEST, QUOTA_CAPABILITY, RequestError, Urls, session_object,
+    MAX_SIZE_REQUEST, QUOTA_CAPABILITY, RequestError, SUBMISSION_CAPABILITY, Urls, session_object,
 };
 use huliho_imap_bridge::runtime::Registration;
-use huliho_imap_bridge::store::AccountKey;
+use huliho_imap_bridge::store::{AccountKey, Store};
 use jmap_rig::{ACCOUNT, Rig, SESSION_STATE, error_type, first, mailbox_get};
 use serde_json::{Value, json};
 
@@ -22,6 +22,7 @@ const ADDRESS: &str = "sanne@example.test";
 fn registration() -> Registration {
     Registration {
         key: AccountKey::new(ACCOUNT),
+        address: ADDRESS.to_owned(),
         gmail: false,
         session_state: SESSION_STATE.to_owned(),
     }
@@ -51,7 +52,7 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
     let rig = Rig::start().await;
     rig.edit();
     assert_eq!(rig.pass().await, 2);
-    let bytes = session_object(&registration(), ADDRESS, &urls(), &rig.store).unwrap();
+    let bytes = session_object(&registration(), &urls(), &rig.store).unwrap();
     let session: Value = serde_json::from_slice(&bytes).unwrap();
     // The state is the host's; the counter of the cache stands at 2.
     assert_eq!(session["state"], SESSION_STATE);
@@ -66,10 +67,12 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
             HULIHO_CAPABILITY,
             CORE_CAPABILITY,
             MAIL_CAPABILITY,
-            QUOTA_CAPABILITY
+            QUOTA_CAPABILITY,
+            SUBMISSION_CAPABILITY
         ]
     );
     assert_eq!(session["capabilities"][QUOTA_CAPABILITY], json!({}));
+    assert_eq!(session["capabilities"][SUBMISSION_CAPABILITY], json!({}));
     let core = &session["capabilities"][CORE_CAPABILITY];
     assert_eq!(core["maxSizeRequest"], 1_048_576);
     assert_eq!(core["maxConcurrentRequests"], 4);
@@ -106,10 +109,29 @@ async fn the_session_object_carries_the_limits_and_all_six_mail_properties_rfc86
     );
     assert_eq!(
         keys(&account["accountCapabilities"]),
-        [HULIHO_CAPABILITY, MAIL_CAPABILITY]
+        [HULIHO_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY]
+    );
+    // RFC 8621 section 1.3.2: nothing is held back and no extension is
+    // offered.
+    assert_eq!(
+        account["accountCapabilities"][SUBMISSION_CAPABILITY],
+        json!({ "maxDelayedSend": 0, "submissionExtensions": {} })
     );
     assert_eq!(session["primaryAccounts"][MAIL_CAPABILITY], ACCOUNT);
+    assert_eq!(session["primaryAccounts"][SUBMISSION_CAPABILITY], ACCOUNT);
     assert_eq!(session["primaryAccounts"][HULIHO_CAPABILITY], ACCOUNT);
+}
+
+#[test]
+fn the_session_object_says_no_limit_on_mailboxes_per_email_for_a_gmail_account() {
+    let gmail = Registration {
+        gmail: true,
+        ..registration()
+    };
+    let bytes = session_object(&gmail, &urls(), &Store::in_memory().unwrap()).unwrap();
+    let session: Value = serde_json::from_slice(&bytes).unwrap();
+    let mail = &session["accounts"][ACCOUNT]["accountCapabilities"][MAIL_CAPABILITY];
+    assert_eq!(mail["maxMailboxesPerEmail"], Value::Null);
 }
 
 #[tokio::test]

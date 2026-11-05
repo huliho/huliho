@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
-//! The SMTP submission check at add time: connect, sign in, quit. The
-//! credential the IMAP check accepted must work here too, so a mailbox
-//! that refuses SMTP AUTH is caught before anything is stored.
+//! SMTP submission (RFC 6409): the check at add time, which connects,
+//! signs in and quits, so a mailbox that refuses SMTP AUTH is caught
+//! before anything is stored, and the connection a send signs in on.
+
+mod send;
 
 use std::io;
 use std::net::SocketAddr;
@@ -17,8 +19,11 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_rustls::TlsConnector;
+use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::pki_types::InvalidDnsNameError;
+
+pub use send::{DATA_TIMEOUT, SendError, Submission};
 
 use crate::session::{SessionError, Target, TlsMode, io_error};
 use crate::verify::{Credential, VerifyError};
@@ -41,6 +46,9 @@ trait Wire: AsyncRead + AsyncWrite + Unpin {}
 
 impl<T: AsyncRead + AsyncWrite + Unpin> Wire for T {}
 
+/// The client on a connection with TLS on.
+type Client = SmtpClient<TlsStream<TcpStream>>;
+
 /// Connects, signs in and quits. Nothing in the error carries the
 /// credential.
 ///
@@ -55,6 +63,47 @@ pub async fn verify(
     credential: &Credential,
     step_timeout: Duration,
 ) -> Result<(), VerifyError> {
+    let (mut client, offered) = opened(tls, target, step_timeout).await?;
+    let outcome = signed_in(&mut client, credential, offered).await;
+    // The outcome above is the answer; a QUIT that fails changes nothing.
+    let _ended = client.quit().await;
+    outcome
+}
+
+/// A connection signed in for one send, as the check signs in. Nothing
+/// in the error carries the credential; the server's refusal of it is
+/// `CredentialRejected`.
+///
+/// # Errors
+///
+/// Returns why no connection was signed in.
+pub async fn submission(
+    tls: Arc<ClientConfig>,
+    target: &Target,
+    credential: &Credential,
+    step_timeout: Duration,
+) -> Result<Submission, SessionError> {
+    let (mut client, offered) = opened(tls, target, step_timeout).await?;
+    let size = offered.size;
+    let Err(refused) = signed_in(&mut client, credential, offered).await else {
+        return Ok(Submission::new(client, size));
+    };
+    let _ended = client.quit().await;
+    Err(match refused {
+        VerifyError::CredentialRejected => SessionError::CredentialRejected,
+        VerifyError::AuthUnavailable => SessionError::AuthUnavailable,
+        VerifyError::Unreachable(error)
+        | VerifyError::Insecure(error)
+        | VerifyError::Unsupported(error) => error,
+    })
+}
+
+/// The connection with TLS on and the EHLO answer the sign-in reads.
+async fn opened(
+    tls: Arc<ClientConfig>,
+    target: &Target,
+    step_timeout: Duration,
+) -> Result<(Client, EhloResponse<String>), SessionError> {
     let connector = TlsConnector::from(tls);
     let ehlo_host = ehlo_host();
     let tcp = connect(&target.addresses, step_timeout).await?;
@@ -74,29 +123,33 @@ pub async fn verify(
                 .await?
                 .has_capability(EXT_START_TLS)
             {
-                return Err(SessionError::StarttlsAbsent.into());
+                return Err(SessionError::StarttlsAbsent);
             }
             match plain.start_tls(&connector, &target.host).await {
                 Ok(client) => client,
                 Err(ClientError::UnexpectedReply(_)) => {
-                    return Err(SessionError::StarttlsRefused.into());
+                    return Err(SessionError::StarttlsRefused);
                 }
-                Err(error) => return Err(session_error(error).into()),
+                Err(error) => return Err(session_error(error)),
             }
         }
     };
-    let mut offered = ehlo(&mut client, &ehlo_host).await?;
-    // Only the mechanisms this credential can answer; a server offering
-    // none of them sees no credential.
+    let offered = ehlo(&mut client, &ehlo_host).await?;
+    Ok((client, offered))
+}
+
+/// AUTH with the mechanisms this credential can answer; a server
+/// offering none of them sees no credential.
+async fn signed_in(
+    client: &mut Client,
+    credential: &Credential,
+    mut offered: EhloResponse<String>,
+) -> Result<(), VerifyError> {
     offered.auth_mechanisms &= mechanisms(credential);
-    let outcome = if offered.auth_mechanisms == 0 {
-        Err(VerifyError::AuthUnavailable)
-    } else {
-        sign_in(&mut client, credential, &offered).await
-    };
-    // The outcome above is the answer; a QUIT that fails changes nothing.
-    let _ended = client.quit().await;
-    outcome
+    if offered.auth_mechanisms == 0 {
+        return Err(VerifyError::AuthUnavailable);
+    }
+    sign_in(client, credential, &offered).await
 }
 
 /// The addresses in order; the last failure is the answer when none

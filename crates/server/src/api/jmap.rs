@@ -86,8 +86,7 @@ pub(super) async fn session(
             let bridge = state.bridge();
             bridge.start(&registration);
             let urls = bridge::urls(&account_id);
-            session_object(&registration, &account.address, &urls, bridge.store())
-                .map_err(internal)?
+            session_object(&registration, &urls, bridge.store()).map_err(internal)?
         }
     };
     Ok(json(body))
