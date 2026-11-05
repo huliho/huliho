@@ -15,3 +15,7 @@ reason = "zod 3 sits under chromium-bidi in the lighthouse 12 of Lighthouse CI, 
 [[IgnoredVulns]]
 id = "GHSA-g3hv-75wg-m249"
 reason = "minimatch 3.1.5 sits under glob 7 in the rimraf of chrome-launcher in Lighthouse CI 0.15.1, its newest release; the 3 line has no optimizationLevel preprocessing, which is the code the advisory names; glob 7 reads the RegExp entries of Minimatch#set that the fixed 11 line replaced; every newer minimatch is held on that fixed line"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0441"
+reason = "pin-utils 0.1.1 sits under async-imap 0.11.3, which uses only its unsafe_pinned projection macro; async-imap 0.12.0 still depends on it; the advisory marks the crate unmaintained, names no flaw and lists no patched release"

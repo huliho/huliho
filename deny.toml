@@ -28,6 +28,9 @@ unused-allowed-license = "allow"
 
 [advisories]
 yanked = "deny"
+ignore = [
+  { id = "RUSTSEC-2026-0441", reason = "pin-utils 0.1.1 sits under async-imap 0.11.3, which uses only its unsafe_pinned projection macro; async-imap 0.12.0 still depends on it; the advisory marks the crate unmaintained, names no flaw and lists no patched release" },
+]
 
 [bans]
 multiple-versions = "warn"
