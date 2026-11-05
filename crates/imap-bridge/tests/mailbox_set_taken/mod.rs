@@ -15,6 +15,7 @@ use std::time::Duration;
 use huliho_imap_bridge::jmap::{CORE_CAPABILITY, MAIL_CAPABILITY, handle};
 use huliho_imap_bridge::runtime::{ConnectError, Connector, Link};
 use huliho_imap_bridge::session::{ImapSession, TlsMode};
+use huliho_imap_bridge::smtp::Submission;
 use huliho_imap_bridge::store::AccountKey;
 use huliho_imap_bridge::testing::imap::HOST;
 use huliho_imap_bridge::testing::{Folder, Mailboxes, Message, Renaming, TestConnector};
@@ -215,6 +216,10 @@ impl Connector for SignsInOnce {
         }
         self.server.connect(key).await
     }
+
+    async fn submission(&self, key: &AccountKey) -> Result<Submission, ConnectError> {
+        self.server.submission(key).await
+    }
 }
 
 /// No pass could run, so the rows know nothing new and the answer stays.
@@ -231,7 +236,7 @@ async fn a_refusal_no_pass_could_follow_stays_server_fail() {
         server,
         used: Arc::new(AtomicBool::new(false)),
     };
-    let link = Link::with_interval(connector, Duration::ZERO);
+    let link = Arc::new(Link::with_interval(connector, Duration::ZERO));
     let arguments = json!({ "accountId": ACCOUNT, "create": { "k": { "name": "Taken" } } });
     let body = json!({
         "using": [CORE_CAPABILITY, MAIL_CAPABILITY],

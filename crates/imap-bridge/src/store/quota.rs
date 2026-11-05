@@ -8,11 +8,9 @@
 //! behind a mark drawn when the store opens, so a state from before a
 //! restart is one this store never issued.
 
-use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard, PoisonError};
-
 use uuid::Uuid;
 
+use super::memory::InMemory;
 use super::{AccountKey, Store};
 use crate::session::{QuotaRoot, Usage};
 
@@ -46,37 +44,14 @@ pub struct QuotaSnapshot {
 }
 
 /// The readings of every account and the mark of this store.
-pub(super) struct Quotas {
-    mark: String,
-    accounts: Mutex<HashMap<AccountKey, Kept>>,
-}
+pub(super) type Quotas = InMemory<Kept>;
 
+/// The last reading of one account.
 #[derive(Debug, Default)]
-struct Kept {
+pub(super) struct Kept {
     advertised: bool,
     counter: u64,
     rows: Vec<QuotaRow>,
-}
-
-impl Quotas {
-    pub(super) fn new() -> Self {
-        Self {
-            mark: Uuid::new_v4().simple().to_string(),
-            accounts: Mutex::new(HashMap::new()),
-        }
-    }
-
-    fn lock(&self) -> MutexGuard<'_, HashMap<AccountKey, Kept>> {
-        self.accounts.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    pub(super) fn forget(&self, key: &AccountKey) {
-        self.lock().remove(key);
-    }
-
-    fn state(&self, counter: u64) -> String {
-        format!("{}-{counter}", self.mark)
-    }
 }
 
 impl Store {

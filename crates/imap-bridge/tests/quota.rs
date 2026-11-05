@@ -41,7 +41,7 @@ const HOST_STATE: &str = "host-state";
 /// request reaches the server through, refreshing on every `/changes`.
 struct Rig {
     cache: Cache,
-    link: Link<TestConnector>,
+    link: Arc<Link<TestConnector>>,
     fake: FakeImap,
 }
 
@@ -64,9 +64,10 @@ impl Rig {
                 sealer,
                 key,
                 gmail: false,
+                address: huliho_imap_bridge::testing::ADDRESS.to_owned(),
                 uploads: huliho_imap_bridge::testing::uploads(),
             },
-            link: Link::with_interval(connector, Duration::ZERO),
+            link: Arc::new(Link::with_interval(connector, Duration::ZERO)),
             fake,
         }
     }
@@ -142,6 +143,7 @@ async fn get(rig: &Rig) -> Value {
 fn session(rig: &Rig) -> Value {
     let registration = Registration {
         key: AccountKey::new(ACCOUNT),
+        address: huliho_imap_bridge::testing::ADDRESS.to_owned(),
         gmail: false,
         session_state: HOST_STATE.to_owned(),
     };
@@ -151,7 +153,7 @@ fn session(rig: &Rig) -> Value {
         upload: "/api/jmap/a1/upload".to_owned(),
         event_source: "/api/jmap/a1/events".to_owned(),
     };
-    let bytes = session_object(&registration, "sanne@example.test", &urls, &rig.cache.store);
+    let bytes = session_object(&registration, &urls, &rig.cache.store);
     serde_json::from_slice(&bytes.unwrap()).unwrap()
 }
 

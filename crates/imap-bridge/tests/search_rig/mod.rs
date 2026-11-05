@@ -7,6 +7,7 @@
 //! sends, each answer read back as UIDs, which the size of a scripted
 //! message names; every command the server received.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use huliho_imap_bridge::runtime::{Link, Timing};
@@ -158,7 +159,7 @@ pub async fn synced(mailboxes: Mailboxes, gmail: bool, timing: Timing) -> Rig {
     let fake = &rig.fake;
     let connector =
         TestConnector::scripted(fake.trusting(), fake.target(HOST, TlsMode::Implicit), STEP);
-    rig.link = Link::with_timing(connector, timing);
+    rig.link = Arc::new(Link::with_timing(connector, timing));
     rig
 }
 

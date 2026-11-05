@@ -13,6 +13,7 @@
 mod live_rig;
 
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use huliho_imap_bridge::mailboxes::{SyncError, sync};
 use huliho_imap_bridge::runtime::Link;
@@ -105,7 +106,7 @@ fn created_since(cache: &Cache, state: u64) -> Vec<String> {
 }
 
 /// `syncedEmails` and `totalEmails` of the inbox.
-async fn inbox_counts(cache: &Cache, link: &Link<TestConnector>) -> (u64, u64) {
+async fn inbox_counts(cache: &Cache, link: &Arc<Link<TestConnector>>) -> (u64, u64) {
     let inbox = mailbox_list(cache, link)
         .await
         .into_iter()
@@ -252,7 +253,7 @@ async fn flag(editor: &mut Editor, number: usize, flag: &str) {
 }
 
 /// `Email/changes` since a state.
-async fn email_changes(cache: &Cache, link: &Link<TestConnector>, since: &Value) -> Value {
+async fn email_changes(cache: &Cache, link: &Arc<Link<TestConnector>>, since: &Value) -> Value {
     let call = json!([
         "Email/changes",
         { "accountId": cache.key.as_str(), "sinceState": since },
@@ -262,7 +263,7 @@ async fn email_changes(cache: &Cache, link: &Link<TestConnector>, since: &Value)
 }
 
 /// The newest `WINDOW` emails of a folder with the total.
-async fn window_of(cache: &Cache, link: &Link<TestConnector>, folder: &Value) -> Value {
+async fn window_of(cache: &Cache, link: &Arc<Link<TestConnector>>, folder: &Value) -> Value {
     let query = json!([
         "Email/query",
         {
@@ -279,7 +280,7 @@ async fn window_of(cache: &Cache, link: &Link<TestConnector>, folder: &Value) ->
 /// The named properties of these emails.
 async fn properties(
     cache: &Cache,
-    link: &Link<TestConnector>,
+    link: &Arc<Link<TestConnector>>,
     ids: &Value,
     names: &[&str],
 ) -> Value {

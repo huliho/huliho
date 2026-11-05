@@ -14,6 +14,7 @@
 
 mod live_rig;
 
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_imap::imap_proto::{MailboxDatum, NameAttribute, Response, Status};
@@ -316,7 +317,7 @@ async fn cyrus_names_the_rights_per_mailbox_and_through_list_as_a_second_client_
 }
 
 /// `Mailbox/set` on the conversation of the link.
-async fn set_on(cache: &Cache, link: &Link<TestConnector>, mut arguments: Value) -> Value {
+async fn set_on(cache: &Cache, link: &Arc<Link<TestConnector>>, mut arguments: Value) -> Value {
     arguments["accountId"] = json!(cache.key.as_str());
     answer(cache, link, &json!(["Mailbox/set", arguments, "c1"])).await
 }

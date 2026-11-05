@@ -14,6 +14,7 @@
 mod live_rig;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use huliho_imap_bridge::mailboxes::sync;
 use huliho_imap_bridge::runtime::Link;
@@ -125,7 +126,7 @@ async fn unseen(editor: &mut Editor, folder: &str, number: u32) -> bool {
 /// the ids it answers.
 struct Bridge {
     cache: Cache,
-    link: Link<TestConnector>,
+    link: Arc<Link<TestConnector>>,
     roles: HashMap<String, String>,
     ids: HashMap<u32, String>,
 }
@@ -207,7 +208,7 @@ impl Bridge {
 
 /// The ids of every mailbox by role, the folder of the user's by its
 /// name; each one but `Locked` lets mail in and out, since Dovecot moves.
-async fn roles(cache: &Cache, link: &Link<TestConnector>) -> HashMap<String, String> {
+async fn roles(cache: &Cache, link: &Arc<Link<TestConnector>>) -> HashMap<String, String> {
     let mut roles = HashMap::new();
     for mailbox in mailbox_list(cache, link).await {
         let free = mailbox["name"] != LOCKED;

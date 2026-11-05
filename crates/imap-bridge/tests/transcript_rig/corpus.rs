@@ -213,10 +213,10 @@ pub enum Change {
     DeleteForever(u32),
 }
 
-/// The folder the model holds the message with that number in, with its
-/// labels there.
-pub fn located(mailboxes: &Mailboxes, number: u32) -> Option<(String, Vec<String>)> {
-    let message_id = format!("Message-ID: {}\r\n", seed(number).message_id());
+/// The folder the model holds the message with that Message-ID in, with
+/// its labels there.
+pub fn located(mailboxes: &Mailboxes, message_id: &str) -> Option<(String, Vec<String>)> {
+    let message_id = format!("Message-ID: {message_id}\r\n");
     mailboxes.folders().into_iter().find_map(|folder| {
         let message = folder
             .mail

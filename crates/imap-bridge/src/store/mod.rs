@@ -13,6 +13,7 @@ mod ids;
 mod keywords;
 mod ledger;
 mod mailboxes;
+mod memory;
 mod moves;
 mod personal;
 mod previews;
@@ -21,6 +22,7 @@ mod query;
 mod quota;
 mod refresh;
 mod search;
+mod submissions;
 mod threads;
 
 use std::collections::{HashMap, HashSet};
@@ -37,7 +39,7 @@ pub use emails::{Batch, EmailFacts, EmailRow, EmailSnapshot};
 pub use folders::{REMATCH_LIMIT, Standing};
 pub use gmail::GmailFacts;
 pub(crate) use ids::ID_LENGTH;
-pub use ids::{AccountKey, EmailId, MailboxId, ThreadId, UploadId};
+pub use ids::{AccountKey, EmailId, MailboxId, SubmissionId, ThreadId, UploadId};
 pub use keywords::{KeywordChange, KeywordRow};
 pub use mailboxes::{
     Counts, MailboxChange, MailboxFacts, MailboxRow, MailboxSnapshot, MailboxesWritten, Pass,
@@ -53,6 +55,7 @@ pub use query::{Queried, Query, Start, Window};
 pub use quota::{QuotaRow, QuotaSnapshot, Resource};
 pub use refresh::{FlagChange, Synced};
 pub use search::{FolderHits, Search};
+pub use submissions::{RECENT_SUBMISSIONS, SubmissionRow, SubmissionSnapshot};
 pub use threads::ThreadSnapshot;
 
 /// The schema, one entry per migration; the host's migration list
@@ -110,6 +113,9 @@ pub struct Store {
     /// The quota of each account as the last mailbox pass read it. Its
     /// lock is never held together with another lock of the store.
     quotas: quota::Quotas,
+    /// The submissions this process sent per account. Its lock is never
+    /// held together with another lock of the store.
+    submissions: submissions::Submissions,
 }
 
 impl Store {
@@ -121,6 +127,7 @@ impl Store {
             forgotten: Mutex::new(HashSet::new()),
             moving: Mutex::new(HashMap::new()),
             quotas: quota::Quotas::new(),
+            submissions: submissions::Submissions::new(),
         }
     }
 
@@ -153,6 +160,7 @@ impl Store {
             .insert(key.clone());
         self.moving_lock().remove(key);
         self.quotas.forget(key);
+        self.submissions.forget(key);
     }
 
     fn is_forgotten(&self, key: &AccountKey) -> bool {

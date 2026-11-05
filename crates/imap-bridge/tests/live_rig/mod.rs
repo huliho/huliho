@@ -137,18 +137,19 @@ pub fn cache(key: &str) -> Cache {
         sealer: Arc::new(TestSealer::default()),
         key: AccountKey::new(key),
         gmail: false,
+        address: huliho_imap_bridge::testing::ADDRESS.to_owned(),
         uploads: huliho_imap_bridge::testing::uploads(),
     }
 }
 
 /// A link to the compose Dovecot that refreshes on every `/changes`
 /// call.
-pub fn link() -> Link<TestConnector> {
+pub fn link() -> Arc<Link<TestConnector>> {
     link_on(IMAPS_PORT)
 }
 
 /// The same on another IMAPS port, as [`bridge_session_on`] has it.
-pub fn link_on(port: u16) -> Link<TestConnector> {
+pub fn link_on(port: u16) -> Arc<Link<TestConnector>> {
     let connector = TestConnector::Server {
         tls: tls(true),
         target: dovecot(port, TlsMode::Implicit),
@@ -156,11 +157,11 @@ pub fn link_on(port: u16) -> Link<TestConnector> {
         user: USER.to_owned(),
         password: PASSWORD.to_owned(),
     };
-    Link::with_interval(connector, std::time::Duration::ZERO)
+    Arc::new(Link::with_interval(connector, std::time::Duration::ZERO))
 }
 
 /// The arguments of the first response to one call.
-pub async fn answer(cache: &Cache, link: &Link<TestConnector>, call: &Value) -> Value {
+pub async fn answer(cache: &Cache, link: &Arc<Link<TestConnector>>, call: &Value) -> Value {
     let using = [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY];
     let body = json!({ "using": using, "methodCalls": [call] });
     let bytes = handle(cache, link, &serde_json::to_vec(&body).unwrap(), "live")
@@ -170,7 +171,7 @@ pub async fn answer(cache: &Cache, link: &Link<TestConnector>, call: &Value) -> 
     response["methodResponses"][0][1].clone()
 }
 
-pub async fn mailbox_list(cache: &Cache, link: &Link<TestConnector>) -> Vec<Value> {
+pub async fn mailbox_list(cache: &Cache, link: &Arc<Link<TestConnector>>) -> Vec<Value> {
     let key = cache.key.as_str();
     let call = json!(["Mailbox/get", { "accountId": key, "ids": null }, "c1"]);
     answer(cache, link, &call).await["list"]

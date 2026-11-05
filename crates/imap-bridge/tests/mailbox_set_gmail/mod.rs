@@ -8,6 +8,7 @@
 //! conversation old enough is logged out and signs in afresh before a
 //! pass, since Gmail fixes a connection's folders when it signs in.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use huliho_imap_bridge::jmap::{CORE_CAPABILITY, MAIL_CAPABILITY, handle};
@@ -142,7 +143,7 @@ async fn verbs_after_two_refreshes(
         list_age,
         ..Timing::default()
     };
-    let link = Link::with_timing(connector, timing);
+    let link = Arc::new(Link::with_timing(connector, timing));
     let body = json!({
         "using": [CORE_CAPABILITY, MAIL_CAPABILITY],
         "methodCalls": [["Mailbox/changes", { "accountId": ACCOUNT, "sinceState": "0" }, "c1"]],

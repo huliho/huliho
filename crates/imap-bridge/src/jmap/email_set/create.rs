@@ -59,7 +59,8 @@ const PART_PROPERTIES: [&str; 10] = [
 
 /// The keywords a create may store: the four system flags, since
 /// PERMANENTFLAGS is unknown before a SELECT.
-const STORABLE_KEYWORDS: [&str; 4] = ["$seen", "$flagged", "$answered", "$draft"];
+pub(in crate::jmap) const STORABLE_KEYWORDS: [&str; 4] =
+    ["$seen", "$flagged", "$answered", "$draft"];
 
 const CHARSET: &str = "charset";
 

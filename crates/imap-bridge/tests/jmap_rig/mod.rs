@@ -39,7 +39,7 @@ pub struct Rig {
     /// The store the pass fills.
     pub store: Arc<Store>,
     pub cache: Cache,
-    link: Link<TestConnector>,
+    link: Arc<Link<TestConnector>>,
     fake: FakeImap,
     mailboxes: Mailboxes,
 }
@@ -63,9 +63,10 @@ impl Rig {
                 sealer: Arc::new(TestSealer::default()),
                 key: key(),
                 gmail: false,
+                address: huliho_imap_bridge::testing::ADDRESS.to_owned(),
                 uploads: huliho_imap_bridge::testing::uploads(),
             },
-            link: Link::with_interval(connector, Duration::ZERO),
+            link: Arc::new(Link::with_interval(connector, Duration::ZERO)),
             fake,
             mailboxes,
         };

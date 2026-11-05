@@ -4,9 +4,9 @@
 
 //! The runtime of the bridge: where connections come from, the one
 //! conversation an account keeps between requests, the connection its
-//! searches run on and the task that syncs its folders in the
-//! background. The host hands out connections; the bridge never sees a
-//! credential and never resolves a host. A request takes the
+//! searches run on, the one each send opens and the task that syncs its
+//! folders in the background. The host hands out connections; the bridge
+//! never sees a credential and never resolves a host. A request takes the
 //! conversation only for a refresh, a preview fetch, a body fetch or an
 //! `Email/set`, so one that reads the cache never waits on IMAP; a blob
 //! takes it one window at a time.
@@ -15,6 +15,7 @@ mod bridge;
 pub(crate) mod drafts;
 pub(crate) mod folders;
 pub(crate) mod search;
+pub(crate) mod submission;
 mod timing;
 mod worker;
 
@@ -36,6 +37,7 @@ pub use timing::{
 use crate::gmail;
 use crate::mailboxes::SyncError;
 use crate::session::{Appending, Moving, Searching, Session, SessionError};
+use crate::smtp::Submission;
 use crate::store::{AccountKey, MailboxId};
 use crate::sync::refresh::{Given, Refreshed, Refresher};
 use crate::sync::{Cache, NARROWING_BUDGET};
@@ -84,6 +86,19 @@ pub trait Connector: Send + Sync {
         &self,
         key: &AccountKey,
     ) -> impl Future<Output = Result<Self::Session, ConnectError>> + Send;
+
+    /// A connection to the account's submission server, signed in for
+    /// one send. Its outcome counts for nothing at the account's gate,
+    /// which watches the IMAP host.
+    ///
+    /// # Errors
+    ///
+    /// Returns why no connection could be opened; a refused credential
+    /// is `CredentialRejected`.
+    fn submission(
+        &self,
+        key: &AccountKey,
+    ) -> impl Future<Output = Result<Submission, ConnectError>> + Send;
 }
 
 /// A shared connector connects like the one it wraps, so two
@@ -97,6 +112,13 @@ impl<C: Connector> Connector for Arc<C> {
     ) -> impl Future<Output = Result<Self::Session, ConnectError>> + Send {
         C::connect(self, key)
     }
+
+    fn submission(
+        &self,
+        key: &AccountKey,
+    ) -> impl Future<Output = Result<Submission, ConnectError>> + Send {
+        C::submission(self, key)
+    }
 }
 
 /// What the requests of one account share: the conversation behind a
@@ -105,8 +127,9 @@ impl<C: Connector> Connector for Arc<C> {
 pub struct Link<C: Connector> {
     pub(crate) wire: tokio::sync::Mutex<Wire<C>>,
     /// On the heap, since a connection more would double the size of
-    /// every future that holds a link.
+    /// every future that holds a link; the sends for the same reason.
     pub(crate) search: Box<search::Searches<C>>,
+    pub(crate) sends: Box<submission::Sends<C>>,
     viewed: Mutex<Option<MailboxId>>,
     /// Rings when a refresh finds a store folder whose first sync is not
     /// done, so the account's task picks it up.
@@ -156,11 +179,12 @@ impl<C: Connector + Clone> Link<C> {
         )
     }
 
-    /// A link on the given clocks; the searches connect through a copy
-    /// of the connector.
+    /// A link on the given clocks; the searches and the sends connect
+    /// through a copy of the connector each.
     pub fn with_timing(connector: C, timing: Timing) -> Self {
         Self {
             wire: tokio::sync::Mutex::new(Wire::new(connector.clone(), timing)),
+            sends: Box::new(submission::Sends::new(connector.clone())),
             search: Box::new(search::Searches::new(connector, timing)),
             viewed: Mutex::new(None),
             wake: Notify::new(),

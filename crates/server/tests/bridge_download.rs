@@ -10,6 +10,7 @@
 mod answers;
 mod blob_answers;
 mod bridge_rig;
+mod bridge_send;
 mod bridge_upload;
 mod common;
 mod fake_dns;

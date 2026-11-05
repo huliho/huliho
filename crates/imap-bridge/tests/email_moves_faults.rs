@@ -11,6 +11,7 @@
 mod set_rig;
 mod sync_rig;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use huliho_imap_bridge::runtime::{Link, Timing};
@@ -176,7 +177,7 @@ async fn a_deleted_store_that_never_answers_ends_at_the_deadline() {
         deadline: SHORT_DEADLINE,
         ..Timing::default()
     };
-    set.rig.link = Link::with_timing(connector, timing);
+    set.rig.link = Arc::new(Link::with_timing(connector, timing));
     let before = set.state();
     let destroyed = set.set(json!({ "destroy": [set.ids[&1]] })).await;
     let refusal = &destroyed["notDestroyed"][&set.ids[&1]]["type"];
@@ -251,7 +252,7 @@ async fn the_letters_refuse_a_move_a_destroy_and_a_keyword_with_nothing_sent_rfc
 #[tokio::test]
 async fn a_host_out_of_reach_answers_per_object_and_writes_nothing() {
     let mut set = over(Behavior::default(), true).await;
-    set.rig.link = Link::new(TestConnector::Refusing);
+    set.rig.link = Arc::new(Link::new(TestConnector::Refusing));
     let before = set.state();
     let answered = archive_both(&set).await;
     assert_eq!(

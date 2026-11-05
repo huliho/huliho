@@ -22,9 +22,18 @@ pub(crate) const MAIL_CAPABILITY: &str = "urn:ietf:params:jmap:mail";
 /// methods pass through the API endpoint like every other.
 const QUOTA_CAPABILITY: &str = "urn:ietf:params:jmap:quota";
 
+/// The capability of an account that sends (RFC 8621 section 1.3.2); the
+/// `Identity` and `EmailSubmission` methods pass through like every other.
+const SUBMISSION_CAPABILITY: &str = "urn:ietf:params:jmap:submission";
+
 /// The capabilities the proxy carries; every other one leaves the
 /// session object, so no upstream host name reaches the browser.
-const CARRIED: [&str; 3] = [CORE_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY];
+const CARRIED: [&str; 4] = [
+    CORE_CAPABILITY,
+    MAIL_CAPABILITY,
+    QUOTA_CAPABILITY,
+    SUBMISSION_CAPABILITY,
+];
 
 /// The core limits the proxy enforces itself; the browser learns the
 /// proxy's values where the upstream's are higher, since the object
@@ -135,6 +144,7 @@ mod tests {
             },
             "urn:ietf:params:jmap:mail": {},
             "urn:ietf:params:jmap:quota": {},
+            "urn:ietf:params:jmap:submission": {},
             "urn:ietf:params:jmap:websocket": {
                 "url": "wss://api.example.test/jmap/ws",
                 "supportsPush": true
@@ -149,6 +159,10 @@ mod tests {
                     "urn:ietf:params:jmap:core": {},
                     "urn:ietf:params:jmap:mail": {"maxMailboxDepth": null},
                     "urn:ietf:params:jmap:quota": {},
+                    "urn:ietf:params:jmap:submission": {
+                        "maxDelayedSend": 44236800,
+                        "submissionExtensions": {"FUTURERELEASE": []}
+                    },
                     "urn:ietf:params:jmap:websocket": {}
                 }
             }
@@ -156,6 +170,7 @@ mod tests {
         "primaryAccounts": {
             "urn:ietf:params:jmap:mail": "u1",
             "urn:ietf:params:jmap:quota": "u1",
+            "urn:ietf:params:jmap:submission": "u1",
             "urn:ietf:params:jmap:websocket": "u1"
         },
         "username": "sanne@example.test",
@@ -224,7 +239,7 @@ mod tests {
         );
         assert_eq!(
             keys(&session["primaryAccounts"]),
-            [MAIL_CAPABILITY, QUOTA_CAPABILITY]
+            [MAIL_CAPABILITY, QUOTA_CAPABILITY, SUBMISSION_CAPABILITY]
         );
         assert_eq!(
             session["accounts"]["u1"]["accountCapabilities"][MAIL_CAPABILITY],
@@ -233,6 +248,14 @@ mod tests {
         assert_eq!(
             session["accounts"]["u1"]["accountCapabilities"][QUOTA_CAPABILITY],
             serde_json::json!({})
+        );
+        // RFC 8621 section 1.3.2: the account's own values pass as given.
+        assert_eq!(
+            session["accounts"]["u1"]["accountCapabilities"][SUBMISSION_CAPABILITY],
+            serde_json::json!({
+                "maxDelayedSend": 44_236_800,
+                "submissionExtensions": {"FUTURERELEASE": []}
+            })
         );
         let text = serde_json::to_string(&session).unwrap();
         assert!(!text.contains("websocket"), "{text}");

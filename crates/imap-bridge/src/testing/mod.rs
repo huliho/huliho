@@ -42,19 +42,23 @@ use crate::upload::Uploads;
 use crate::verify::Credential;
 
 pub use behavior::{Behavior, ParentDelete, Renaming, Storing};
-pub use connector::{Counting, TestConnector};
+pub use connector::{Counting, Submitting, TestConnector};
 pub use folder::{Folder, MyRights};
 pub use imap::FakeImap;
 pub use mailboxes::{Extension, Flat, Mailboxes};
 pub use messages::Message;
 pub use parts::Part;
 pub use record::Recorder;
+pub use record::smtp::SmtpRecorder;
 pub use replay::Replayer;
+pub use replay::smtp::SmtpReplayer;
 pub use smtp::FakeSmtp;
 pub use transcript::Transcript;
 
 /// The user every script signs in.
 pub const USER: &str = "sanne";
+/// The address of the fixture account, which its one identity sends from.
+pub const ADDRESS: &str = "sanne@example.test";
 /// The password every script accepts.
 pub const PASSWORD: &str = "correct horse";
 /// The OAuth token every script accepts.

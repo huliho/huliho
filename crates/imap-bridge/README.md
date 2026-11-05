@@ -8,7 +8,8 @@ The first piece is the credential check at add time. `verify` connects
 to an IMAP server, signs in with a password or an OAuth token, reads the
 capabilities and logs out; `smtp::verify` does the same against the
 submission server with EHLO and AUTH, so a mailbox that refuses SMTP
-AUTH is caught before anything is stored. Both connections use TLS from
+AUTH is caught before anything is stored. `smtp::submission` signs in
+the same way and keeps the connection for one send. All three connections use TLS from
 the first byte or upgrade with STARTTLS before any credential is sent;
 a server that does not offer STARTTLS is refused, never spoken to in
 plaintext. A NO carrying the RFC 5530 `UNAVAILABLE` code means the
@@ -145,8 +146,10 @@ mailbox pass of a Gmail account signs its conversation in afresh once
 it is five minutes old (`runtime::GMAIL_LIST_AGE`).
 
 The connection comes from the host through the `runtime::Connector`
-trait: `connect(key)` answers a signed-in session or a typed failure,
-so the bridge never sees a credential and never resolves a host.
+trait: `connect(key)` answers a signed-in session or a typed failure
+and `submission(key)` a connection signed in on the account's
+submission server for one send, so the bridge never sees a credential
+and never resolves a host.
 `runtime::Link` keeps one conversation per account between requests
 behind a lock, checks a kept session with NOOP before it is used again
 and drops it after a failure. Only a refresh, a preview fetch, a body
@@ -176,8 +179,8 @@ next round. Two accounts sync at once process wide
 conversation for its sync. A conversation or a search connection
 nobody used for five minutes (`runtime::SESSION_IDLE_CLOSE`) is logged
 out and opened again on the next request. The host hands every account
-a `runtime::Registration`: its key, whether it is a Gmail account and
-the state its session object shows, which the host derives from what
+a `runtime::Registration`: its key, its address, whether it is a Gmail
+account and the state its session object shows, which the host derives from what
 the object is built from, so the state never moves with the cache; the
 bridge marks it while the server advertises QUOTA. `forget` stops an
 account's task, breaks off a blob still on its way and refuses every
@@ -355,6 +358,41 @@ with its id (a part's `blobId` may name an upload of the account, read
 whole from the store) and a message past `MAX_MESSAGE_BYTES` or the server's
 APPENDLIMIT `tooLarge`. A NO after the literal answers `serverFail` with
 no row. No header, address, subject, part name or body is logged.
+
+Under `urn:ietf:params:jmap:submission` (RFC 8621 sections 6 and 7) the
+account has one identity, its address with an empty name, which
+`Identity/set` cannot change. `EmailSubmission/set` reads a create
+against the rows first: another identity, an email the account lacks,
+an envelope from another sender, one with a parameter and one without
+a recipient are refused before anything connects. Between two passes
+the message is fetched whole and its From must be the identity's
+address; its recipients are those of To, Cc and Bcc once each or the
+ones among those that an envelope the call named lists; an address
+outside them answers `invalidRecipients` with no SMTP connection
+made. The copy for the wire leaves
+every Bcc and Resent-Bcc field behind and carries the moment of the send as its Date;
+it goes over one SMTP connection from `Connector::submission`, one send
+of an account at a time: MAIL FROM, one RCPT TO per address with every
+reply read, DATA under `smtp::DATA_TIMEOUT` (ten minutes), QUIT. Every
+reply maps to a set error and the server's words never travel: a
+recipient refused for good is collected and the transaction reset with
+no DATA (`invalidRecipients`), 452 with 4.5.3 answers
+`tooManyRecipients`, 552 or a SIZE the message passes `tooLarge`, a
+refused sender `forbiddenMailFrom`, a refused credential
+`forbiddenToSend`, a server out of reach or a reply to try later
+`serverUnavailable`, anything else `serverFail`. Once the message went,
+the implicit `Email/set` of `onSuccessUpdateEmail` and
+`onSuccessDestroyEmail` runs; whenever either argument is given its
+answer follows the call under its id, empty where nothing went out; a
+failure of the store after the send answers for that email alone while
+the submission's `created` stands. A patch that files the email from
+one of its mailboxes into another
+appends the copy with its Bcc kept to the new one under the keywords
+the patch leaves, then destroys the email once the copy landed; on
+Gmail, which files its own copy, the email goes to Trash. The last
+`store::RECENT_SUBMISSIONS` (32) per account stay in memory for
+`EmailSubmission/get`; every submission is final, so an update answers
+`cannotUnsend`.
 
 An update patches `keywords/<keyword>` and
 `mailboxIds/<id>` with true to set an entry and null to take it off, or
@@ -626,7 +664,8 @@ in UTF-8 `unsupportedFilter`; any other filter or sort answers
 resolve under a budget of one MiB per request, measured as the memory
 a copy of the resolved values takes; a reference past it answers
 `invalidResultReference`. `jmap::session_object` renders the session
-object with the core, mail and quota capabilities and the vendor
+object with the core, mail, quota and submission capabilities (the last
+with `maxDelayedSend` 0) beside the vendor
 capability `https://huliho.com/jmap`, which carries the Mailbox
 property `syncedEmails` and is followed only when a request names it.
 The account lists the quota capability where the server advertises

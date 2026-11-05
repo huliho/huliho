@@ -15,6 +15,7 @@ use std::time::Duration;
 use huliho_imap_bridge::jmap::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY};
 use huliho_imap_bridge::runtime::{Bridge, ConnectError, Connector, Host, Registration, Timing};
 use huliho_imap_bridge::session::{ImapSession, TlsMode};
+use huliho_imap_bridge::smtp::Submission;
 use huliho_imap_bridge::store::{AccountKey, MIGRATIONS, MailboxRow, Progress, Standing, Store};
 use huliho_imap_bridge::testing::imap::{FakeImap, HOST, Script};
 use huliho_imap_bridge::testing::seal::TestSealer;
@@ -146,6 +147,10 @@ impl Connector for Gate {
         }
         self.then.connect(key).await
     }
+
+    async fn submission(&self, key: &AccountKey) -> Result<Submission, ConnectError> {
+        self.then.submission(key).await
+    }
 }
 
 /// One process of the bridge over the volume, its account started.
@@ -166,6 +171,7 @@ impl<C: Connector + 'static> Process<C> {
         let bridge = Bridge::with_timing(host, connector, timing);
         let registration = Registration {
             key: AccountKey::new(ACCOUNT),
+            address: huliho_imap_bridge::testing::ADDRESS.to_owned(),
             gmail,
             session_state: "host-state".to_owned(),
         };

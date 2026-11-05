@@ -3,8 +3,8 @@
 // Additional terms apply, see NOTICE.
 
 //! Fixtures for the bridge routes: an instance over the scripted IMAP
-//! server, an IMAP account of the fixture user and the requests a test
-//! sends through the router.
+//! server and the scripted SMTP server beside it, an IMAP account of the
+//! fixture user on both and the requests a test sends through the router.
 
 use std::io::Write;
 use std::net::SocketAddr;
@@ -17,6 +17,7 @@ use axum::http::{Method, StatusCode, header};
 use huliho_imap_bridge::jmap::{CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY};
 use huliho_imap_bridge::store::AccountKey;
 use huliho_imap_bridge::testing::imap::{FakeImap, HOST, Script};
+use huliho_imap_bridge::testing::smtp::{self, FakeSmtp};
 use huliho_imap_bridge::testing::{Mailboxes, USER};
 use huliho_server::accounts::{
     self, AccountSettings, Credential, Endpoint, NewAccount, Provider, TlsMode,
@@ -62,6 +63,8 @@ pub struct Instance {
     pub store: Arc<Store>,
     pub api: ApiState,
     pub fake: FakeImap,
+    /// The submission server every account sends through.
+    smtp: FakeSmtp,
     _ca_file: NamedTempFile,
     /// The data directory of an instance on disk.
     _dir: Option<TempDir>,
@@ -73,7 +76,12 @@ impl Instance {
     /// Over the given mailbox model on a store in memory, the gate
     /// counting per `window`.
     pub async fn start(mailboxes: Mailboxes, window: Duration) -> Self {
-        Self::build(mailboxes, window, store_with_account(), None).await
+        Self::sending(mailboxes, window, smtp::Script::tls()).await
+    }
+
+    /// The same with the submission server on the given script.
+    pub async fn sending(mailboxes: Mailboxes, window: Duration, script: smtp::Script) -> Self {
+        Self::build((mailboxes, script), window, store_with_account(), None).await
     }
 
     /// On a file-backed store in a directory of its own, the one
@@ -81,11 +89,12 @@ impl Instance {
     pub async fn on_disk(mailboxes: Mailboxes) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let store = with_owner(Store::open(dir.path()).unwrap());
-        Self::build(mailboxes, RUN_WINDOW, store, Some(dir)).await
+        let servers = (mailboxes, smtp::Script::tls());
+        Self::build(servers, RUN_WINDOW, store, Some(dir)).await
     }
 
     async fn build(
-        mailboxes: Mailboxes,
+        (mailboxes, script): (Mailboxes, smtp::Script),
         window: Duration,
         store: Arc<Store>,
         dir: Option<TempDir>,
@@ -95,12 +104,15 @@ impl Instance {
             ..Script::tls()
         })
         .await;
+        let smtp = FakeSmtp::start(script).await;
         let mut dns = FakeDns::default();
         // Port 0 leaves the port to the account's own endpoint.
         let loopback = SocketAddr::new(fake.address.ip(), 0);
         dns.addresses.insert(HOST.to_owned(), vec![loopback]);
+        dns.addresses.insert(smtp::HOST.to_owned(), vec![loopback]);
         let mut ca_file = NamedTempFile::new().unwrap();
         ca_file.write_all(fake.ca_pem().as_bytes()).unwrap();
+        ca_file.write_all(smtp.ca_pem().as_bytes()).unwrap();
         let config = UpstreamConfig {
             allow_private_networks: vec!["127.0.0.0/8".parse().unwrap()],
             additional_ca_file: Some(ca_file.path().to_owned()),
@@ -121,6 +133,7 @@ impl Instance {
             store,
             api,
             fake,
+            smtp,
             _ca_file: ca_file,
             _dir: dir,
             _uploads: uploads,
@@ -133,11 +146,17 @@ impl Instance {
         self.add_account_at(self.fake.address.port(), password)
     }
 
-    /// An IMAP account whose server sits on `port` of the fake's host.
+    /// An IMAP account whose server sits on `port` of the fake's host,
+    /// sending through the scripted submission server.
     pub fn add_account_at(&self, port: u16, password: &str) -> String {
-        let endpoint = Endpoint {
+        let imap = Endpoint {
             host: HOST.to_owned(),
             port,
+            tls: TlsMode::Implicit,
+        };
+        let smtp = Endpoint {
+            host: smtp::HOST.to_owned(),
+            port: self.smtp.address.port(),
             tls: TlsMode::Implicit,
         };
         let new = NewAccount {
@@ -146,8 +165,8 @@ impl Instance {
             provider: Provider::Generic,
             settings: AccountSettings::Imap {
                 username: USER.to_owned(),
-                imap: endpoint.clone(),
-                smtp: endpoint,
+                imap,
+                smtp,
             },
             credential: Credential::Password {
                 password: password.to_owned(),

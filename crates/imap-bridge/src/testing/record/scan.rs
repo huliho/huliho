@@ -7,7 +7,10 @@
 //! Anything else is a finding, and a transcript with one is not checked
 //! in. A LOGIN line is judged whole and never quoted; an AUTHENTICATE
 //! line is a finding whatever follows it, since no fixed shape exists
-//! for one.
+//! for one. The sends of a transcript are scanned by the rules in
+//! `smtp`.
+
+mod smtp;
 
 use super::fixed::{
     GREETING, ID_FIELDS, MAX_RENUMBERED_ID, Piece, RECORDED_USER, SUBJECT_FIELD, Section,
@@ -16,7 +19,7 @@ use super::fixed::{
 };
 use crate::testing::PASSWORD;
 use crate::testing::mailboxes::quote;
-use crate::testing::transcript::{Line, Segment, Transcript, split_tag};
+use crate::testing::transcript::{Line, Segment, Transcript, Wire, split_tag};
 
 /// The octets of a dotted address (RFC 791).
 const IPV4_PARTS: usize = 4;
@@ -24,6 +27,7 @@ const IPV4_MAX_OCTET: u32 = 255;
 
 /// Where a finding sits.
 struct Place {
+    wire: Wire,
     session: usize,
     exchange: usize,
 }
@@ -34,7 +38,11 @@ pub fn scan(transcript: &Transcript) -> Vec<String> {
     let mut findings = Vec::new();
     for (session, conversation) in transcript.sessions.iter().enumerate() {
         for (exchange, recorded) in conversation.exchanges.iter().enumerate() {
-            let place = Place { session, exchange };
+            let place = Place {
+                wire: Wire::Imap,
+                session,
+                exchange,
+            };
             if let Some(line) = recorded.client.as_deref() {
                 client_line(&place, line, &mut findings);
             }
@@ -47,12 +55,19 @@ pub fn scan(transcript: &Transcript) -> Vec<String> {
             }
         }
     }
+    for (session, conversation) in transcript.smtp.iter().enumerate() {
+        smtp::conversation(session, conversation, &mut findings);
+    }
     findings
 }
 
 fn note(place: &Place, findings: &mut Vec<String>, what: &str) {
+    let wire = match place.wire {
+        Wire::Imap => "",
+        Wire::Smtp => "smtp ",
+    };
     findings.push(format!(
-        "session {} exchange {}: {what}",
+        "{wire}session {} exchange {}: {what}",
         place.session, place.exchange
     ));
 }
@@ -106,6 +121,14 @@ fn server_line(place: &Place, line: &Line, findings: &mut Vec<String>) {
                 }
                 Section::Body => {
                     if *literal != fill(literal.len()) {
+                        note(place, findings, "a body text is not the filler");
+                    }
+                }
+                Section::Whole => {
+                    let (head, body) = literal.split_once("\r\n\r\n").unwrap_or((literal, ""));
+                    header(place, head, findings);
+                    text(place, head, findings);
+                    if body != fill(body.len()) {
                         note(place, findings, "a body text is not the filler");
                     }
                 }
@@ -199,6 +222,7 @@ mod tests {
                     },
                 ],
             }],
+            smtp: Vec::new(),
         }
     }
 

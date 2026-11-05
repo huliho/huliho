@@ -9,19 +9,20 @@
 //! server offers it, else the APPEND first and the destroy of the old one
 //! only once the new one landed, so a draft is never lost to a failed
 //! save. On a Gmail account the old draft goes to Trash, since an expunge
-//! outside Spam and Trash is the account's own setting.
+//! outside Spam and Trash is the account's own setting. A message built
+//! already goes the same way as it stands, as the Sent copy of a send
+//! does; the destroy beside it waits on it wherever its email lies.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::time::Instant;
 
-use super::super::set::{Created, SetAsk, SetError};
+use super::super::set::{Created, SetAsk, SetError, Source};
 use super::plan::may;
 use super::{Member, Work, failure};
 use crate::mailboxes::SyncError;
 use crate::mailboxes::rights::Right;
-use crate::message::Draft;
 use crate::runtime::drafts::{self, Failure, Stopped, Unsealed};
 use crate::runtime::{Connector, Wire};
 use crate::session::{AppendAsk, Appended, Appending, Session};
@@ -31,7 +32,7 @@ use crate::sync::{Cache, blocking};
 /// One create while the work runs.
 struct Item {
     creation_id: String,
-    draft: Draft,
+    source: Source,
     /// Where it goes, once the rows admit it.
     target: Option<Target>,
     /// How it ended where it did not reach the server.
@@ -181,14 +182,14 @@ pub(super) fn planned(ask: &SetAsk, work: &mut Work) -> Drafts {
     let items: Vec<Item> = ask
         .creates
         .iter()
-        .map(|(creation_id, draft)| {
-            let (target, failed) = match target(draft, work) {
+        .map(|(creation_id, source)| {
+            let (target, failed) = match target(source, work) {
                 Ok(target) => (Some(target), None),
                 Err(error) => (None, Some(error)),
             };
             Item {
                 creation_id: creation_id.clone(),
-                draft: draft.clone(),
+                source: source.clone(),
                 target,
                 failed,
                 placed: None,
@@ -202,9 +203,9 @@ pub(super) fn planned(ask: &SetAsk, work: &mut Work) -> Drafts {
     Drafts { items, pair }
 }
 
-fn target(draft: &Draft, work: &Work) -> Result<Target, SetError> {
+fn target(source: &Source, work: &Work) -> Result<Target, SetError> {
     let invalid = || SetError::InvalidProperties(vec!["mailboxIds".to_owned()]);
-    let mailbox = MailboxId::from(draft.mailbox.clone());
+    let mailbox = MailboxId::from(source.mailbox().to_owned());
     let row = work.rows.get(&mailbox).ok_or_else(invalid)?;
     if !row.facts.selectable {
         return Err(invalid());
@@ -216,9 +217,10 @@ fn target(draft: &Draft, work: &Work) -> Result<Target, SetError> {
     Ok(Target { mailbox, wire_name })
 }
 
-/// The tally of the destroy that waits on the one create of the ask.
+/// The tally of the destroy that waits on the one create of the ask: one
+/// of an email in the draft's mailbox, or any one beside a copy.
 fn pair_of(ask: &SetAsk, work: &Work) -> Option<usize> {
-    let ([(_, draft)], [destroyed]) = (ask.creates.as_slice(), ask.destroy.as_slice()) else {
+    let ([(_, source)], [destroyed]) = (ask.creates.as_slice(), ask.destroy.as_slice()) else {
         return None;
     };
     let index = ask.updates.len();
@@ -226,10 +228,11 @@ fn pair_of(ask: &SetAsk, work: &Work) -> Option<usize> {
         .found
         .iter()
         .find(|row| row.id.as_str() == destroyed.as_str())?;
-    let member = row
-        .mailboxes
-        .iter()
-        .any(|mailbox| mailbox.as_str() == draft.mailbox);
+    let member = matches!(source, Source::Copy(_))
+        || row
+            .mailboxes
+            .iter()
+            .any(|mailbox| mailbox.as_str() == source.mailbox());
     (member && work.tallies[index].failed.is_none()).then_some(index)
 }
 
@@ -246,7 +249,11 @@ pub(super) async fn sent<S: Session>(
         let Some(target) = &item.target else {
             continue;
         };
-        let built = match drafts::built(session, cache, &item.draft, appending.limit).await {
+        let built = match &item.source {
+            Source::Copy(copied) => Ok(copied.built.clone()),
+            Source::Draft(draft) => drafts::built(session, cache, draft, appending.limit).await,
+        };
+        let built = match built {
             Ok(built) => built,
             Err(Stopped { failure, stands }) => {
                 let error = set_error(failure);
@@ -266,9 +273,11 @@ pub(super) async fn sent<S: Session>(
             until: Some(until),
         };
         // A row on Gmail needs the ids a pass reads, which a `UID REPLACE`
-        // in Spam or Trash would skip.
+        // in Spam or Trash would skip. A copy goes to another mailbox than
+        // the email it waits on, so it never rides one.
+        let draft = matches!(item.source, Source::Draft(_));
         let old = pair
-            .filter(|_| appending.replace && !work.gmail())
+            .filter(|_| draft && appending.replace && !work.gmail())
             .and_then(|index| old_draft(work, index));
         let result = match &old {
             Some((folder, member)) => replaced(session, work, (folder, member), &ask).await,

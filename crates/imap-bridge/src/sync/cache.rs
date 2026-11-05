@@ -18,6 +18,8 @@ pub struct Cache {
     pub store: Arc<Store>,
     pub sealer: Arc<dyn Sealer>,
     pub key: AccountKey,
+    /// The account's address, which its one identity sends from.
+    pub address: String,
     /// The host's word that the account is a Gmail account; it holds
     /// once the server advertises `X-GM-EXT-1`.
     pub gmail: bool,

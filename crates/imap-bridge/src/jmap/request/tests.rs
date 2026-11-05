@@ -37,6 +37,7 @@ fn cache() -> Cache {
         sealer: Arc::new(TestSealer::default()),
         key: AccountKey::new("a1"),
         gmail: false,
+        address: crate::testing::ADDRESS.to_owned(),
         uploads: crate::testing::uploads(),
     }
 }
@@ -44,7 +45,7 @@ fn cache() -> Cache {
 async fn responses(cache: &Cache, calls: &[Value]) -> Vec<Invocation> {
     let body = json!({ "using": [CORE_CAPABILITY], "methodCalls": calls });
     let body = serde_json::to_vec(&body).unwrap();
-    let link = Link::new(TestConnector::Refusing);
+    let link = Arc::new(Link::new(TestConnector::Refusing));
     let answer = handle(cache, &link, &body, "s1").await.unwrap();
     let mut answer: Value = serde_json::from_slice(&answer).unwrap();
     assert_eq!(answer["sessionState"], "s1");

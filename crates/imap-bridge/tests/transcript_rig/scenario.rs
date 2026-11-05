@@ -8,10 +8,10 @@
 //! seeded mail, the searches, a message
 //! opened with its body and its blobs and marked read, then what a
 //! second client changes: a delivery, a flag, a label, a move to Spam
-//! and a deletion; then the moves of the first client and a label it
-//! creates, renames and deletes. Every assertion
-//! holds against the live account, the scripted server and a transcript
-//! of either.
+//! and a deletion; then the moves of the first client, a label it
+//! creates, renames and deletes, its drafts and one message it sends.
+//! Every assertion holds against the live account, the scripted server
+//! and a transcript of either.
 
 mod changing;
 mod drafts;
@@ -20,6 +20,7 @@ mod moving;
 mod quota;
 mod reading;
 mod searching;
+mod sending;
 
 use std::collections::HashMap;
 
@@ -89,6 +90,7 @@ impl Scenario {
         self.moves().await;
         self.folders().await;
         self.drafts().await;
+        self.sends().await;
         if let Second::Account { editor, stores } = &mut self.second {
             gmail::clear(editor, stores).await;
             gmail::within(editor.logout()).await.unwrap();

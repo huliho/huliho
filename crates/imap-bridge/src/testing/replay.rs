@@ -11,7 +11,10 @@
 //! the continuation requests the live server sent for them are not
 //! played again. A message command holds a fresh Message-ID and date, so
 //! it is compared up to its size marker and the id it recorded reads as
-//! the one it carries in every answer after it.
+//! the one it carries in every answer after it. The SMTP replayer in
+//! `smtp` serves the sends of a transcript the same way.
+
+pub mod smtp;
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -19,7 +22,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 
 use super::command::{self, Continuation, Reading};
-use super::transcript::{Conversation, Line, Transcript, split_tag};
+use super::transcript::{Conversation, Exchange, Line, Transcript, split_tag};
 use super::{Fake, Lines, Listen, Phase, Protocol, record};
 use crate::session::Literals;
 
@@ -30,56 +33,20 @@ const READING: Reading = Reading {
     continuation: Continuation::Asks,
 };
 
-/// The script of the replayer: the connections still to play and what
-/// did not go as recorded.
+/// The connections still to play and what did not go as recorded, which
+/// both replayers keep.
 #[derive(Clone)]
-pub struct Script {
+pub struct Playback {
     sessions: Arc<Mutex<VecDeque<Conversation>>>,
     mismatches: Arc<Mutex<Vec<String>>>,
-    /// Each Message-ID the recording holds with the one of this run.
-    stamps: Arc<Mutex<Vec<(String, String)>>>,
 }
 
-/// The replayer as a server.
-pub type Replayer = Fake<Script>;
-
-impl Script {
-    /// A replayer over the transcript, its connections in order.
-    #[must_use]
-    pub fn new(transcript: Transcript) -> Self {
+impl Playback {
+    fn new(conversations: Vec<Conversation>) -> Self {
         Self {
-            sessions: Arc::new(Mutex::new(transcript.sessions.into())),
+            sessions: Arc::new(Mutex::new(conversations.into())),
             mismatches: Arc::default(),
-            stamps: Arc::default(),
         }
-    }
-
-    /// Whether the command is the recorded one: a message command up to
-    /// its size marker, with the Message-ID of this run noted.
-    fn matches(&self, recorded: &str, command: &str) -> bool {
-        if !command::is_message_command(command) {
-            return recorded == command;
-        }
-        if command::message_head(recorded) != command::message_head(command) {
-            return false;
-        }
-        if let (Some(from), Some(to)) =
-            (command::message_id(recorded), command::message_id(command))
-        {
-            self.stamps
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push((from.to_owned(), to.to_owned()));
-        }
-        true
-    }
-
-    /// A recorded answer as this run reads it.
-    fn stamped(&self, line: &Line) -> Line {
-        let stamps = self.stamps.lock().unwrap_or_else(PoisonError::into_inner);
-        stamps
-            .iter()
-            .fold(line.clone(), |line, (from, to)| line.replaced(from, to))
     }
 
     /// What did not go as recorded: a command off the script, a
@@ -116,6 +83,90 @@ impl Script {
             .unwrap_or_else(PoisonError::into_inner)
             .pop_front()
     }
+
+    /// The exchanges of the next recorded connection once its greeting
+    /// is written; `None`, with the reason noted, past the last one or
+    /// for a recording that opens with a command.
+    async fn opened<W: AsyncWrite + Unpin>(&self, writer: &mut W) -> Option<Exchanges> {
+        let Some(conversation) = self.next_session() else {
+            self.note("a connection past the last recorded one".to_owned());
+            return None;
+        };
+        let mut exchanges = conversation.exchanges.into_iter();
+        let greeting = exchanges.next()?;
+        if greeting.client.is_some() {
+            self.note("the recording opens with a command instead of the greeting".to_owned());
+            return None;
+        }
+        write_lines(writer, &greeting.server).await?;
+        Some(exchanges)
+    }
+}
+
+/// The exchanges of one connection after its greeting, in order.
+type Exchanges = std::vec::IntoIter<Exchange>;
+
+/// The script of the replayer: the connections still to play and what
+/// did not go as recorded.
+#[derive(Clone)]
+pub struct Script {
+    playback: Playback,
+    /// Each Message-ID the recording holds with the one of this run.
+    stamps: Arc<Mutex<Vec<(String, String)>>>,
+}
+
+/// The replayer as a server.
+pub type Replayer = Fake<Script>;
+
+impl Script {
+    /// A replayer over the transcript, its connections in order.
+    #[must_use]
+    pub fn new(transcript: Transcript) -> Self {
+        Self {
+            playback: Playback::new(transcript.sessions),
+            stamps: Arc::default(),
+        }
+    }
+
+    /// What did not go as recorded; empty after a faithful replay.
+    #[must_use]
+    pub fn mismatches(&self) -> Vec<String> {
+        self.playback.mismatches()
+    }
+
+    /// The recorded connections nobody opened yet.
+    #[must_use]
+    pub fn unplayed(&self) -> usize {
+        self.playback.unplayed()
+    }
+
+    /// Whether the command is the recorded one: a message command up to
+    /// its size marker, with the Message-ID of this run noted.
+    fn matches(&self, recorded: &str, command: &str) -> bool {
+        if !command::is_message_command(command) {
+            return recorded == command;
+        }
+        if command::message_head(recorded) != command::message_head(command) {
+            return false;
+        }
+        if let (Some(from), Some(to)) =
+            (command::message_id(recorded), command::message_id(command))
+        {
+            self.stamps
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push((from.to_owned(), to.to_owned()));
+        }
+        true
+    }
+
+    /// A recorded answer as this run reads it.
+    fn stamped(&self, line: &Line) -> Line {
+        let stamps = self.stamps.lock().unwrap_or_else(PoisonError::into_inner);
+        stamps
+            .iter()
+            .fold(line.clone(), |line, (from, to)| line.replaced(from, to))
+    }
 }
 
 // The same trait as the recorder, so the listener and the signature read
@@ -135,35 +186,28 @@ impl Protocol for Script {
         stream: S,
     ) -> Option<S> {
         // jscpd:ignore-end
-        let Some(conversation) = self.next_session() else {
-            self.note("a connection past the last recorded one".to_owned());
-            return None;
-        };
         let (reader, mut writer) = tokio::io::split(stream);
         let mut reader = BufReader::new(reader);
-        let mut exchanges = conversation.exchanges.into_iter();
-        let greeting = exchanges.next()?;
-        if greeting.client.is_some() {
-            self.note("the recording opens with a command instead of the greeting".to_owned());
-            return None;
-        }
-        write_lines(&mut writer, &greeting.server).await?;
+        let exchanges = self.playback.opened(&mut writer).await?;
         let mut left = exchanges.len();
         for expected in exchanges {
             let seen = |line: &str| record(lines, phase, line);
             let Some(read) = command::read(&mut reader, &mut writer, READING, seen).await else {
-                self.note(format!("the client left with exchanges unplayed: {left}"));
+                self.playback
+                    .note(format!("the client left with exchanges unplayed: {left}"));
                 return None;
             };
             let line = read.line();
             let (tag, command) = split_tag(&line);
             let Some(recorded) = expected.client.as_deref() else {
-                self.note("an exchange without a command".to_owned());
+                self.playback
+                    .note("an exchange without a command".to_owned());
                 return None;
             };
             let (recorded_tag, recorded_command) = split_tag(recorded);
             if !self.matches(recorded_command, command) {
-                self.note(format!("expected {recorded_command}, got {command}"));
+                self.playback
+                    .note(format!("expected {recorded_command}, got {command}"));
                 let refusal = Line::text(&format!("{tag} BAD not in the transcript"));
                 write_lines(&mut writer, &[refusal]).await;
                 return None;
@@ -232,6 +276,7 @@ mod tests {
                     },
                 ],
             }],
+            smtp: Vec::new(),
         }
     }
 

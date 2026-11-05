@@ -63,6 +63,7 @@ pub fn open_with_timing(state: &ApiState, timing: Timing) -> ServerBridge {
 pub fn registration(account: &Account) -> Registration {
     Registration {
         key: key_of(&account.id),
+        address: account.address.clone(),
         gmail: account.provider == Provider::Gmail,
         session_state: session_state(account),
     }

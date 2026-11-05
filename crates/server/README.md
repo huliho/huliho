@@ -81,7 +81,9 @@ Once an account is connected, every attempt on it passes through one
 gate. A rejected credential stops the account at once and the row says
 so with the cause `credentials`; refused, timed-out or TLS-failed
 connections in five separate ten-second windows stop it with the cause
-`connection`; failures inside one window count once. The stop
+`connection`; failures inside one window count once. The SMTP
+connection a send of an IMAP account opens counts for nothing there,
+since the gate watches the IMAP host. The stop
 lives on the row, so a restart does not resume retrying by itself. A
 probe checks every account stopped on connection at startup and then
 at the configured interval and resumes it when the server answers
@@ -95,8 +97,8 @@ at a time.
 Mail itself moves through one JMAP endpoint per account. `GET
 /api/jmap/{id}/session` answers the account's session object as the
 browser may see it: its URLs point at the proxy, its capabilities are
-cut to core, mail and quota and its request and upload limits are at
-most the proxy's own.
+cut to core, mail, quota and submission and its request and upload
+limits are at most the proxy's own.
 `POST /api/jmap/{id}` forwards a Request object to the API endpoint
 that session object named, with the account's credential added on the
 way and the answer handed back as the server sent it, with one

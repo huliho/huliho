@@ -16,10 +16,10 @@ use serde_json::{Map, Value, json};
 use super::email_set::create;
 use super::{Context, MAX_OBJECTS_IN_SET, MethodError, arguments};
 use crate::message::Draft;
+use crate::runtime::drafts::Built;
 use crate::runtime::folders::{CreatedIds, creation_id};
-use crate::store::{EmailId, ThreadId};
+use crate::store::{AccountKey, EmailId, ThreadId};
 
-#[cfg(test)]
 pub(super) use patch::patch as read_patch;
 pub(super) use patch::{Edit, MAX_UPDATE_KEYWORD_BYTES, MailboxEdit, Patch};
 
@@ -58,7 +58,7 @@ pub(super) enum SetError {
 }
 
 impl SetError {
-    fn object(&self) -> Value {
+    pub(super) fn object(&self) -> Value {
         let kind = match self {
             Self::Forbidden => "forbidden",
             Self::NotFound => "notFound",
@@ -102,12 +102,39 @@ impl Created {
     }
 }
 
+/// What a create writes: a draft built from its object, or a message
+/// built already that goes as it stands, as the Sent copy of a send does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Source {
+    Draft(Draft),
+    Copy(Copied),
+}
+
+/// A message that goes into a mailbox as it stands. The destroy of the
+/// call waits on it wherever that email lies, so the copy and the
+/// original are never both lost.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Copied {
+    pub mailbox: String,
+    pub built: Built,
+}
+
+impl Source {
+    /// The one mailbox it goes to, an id or a creation id after `#`.
+    pub(super) fn mailbox(&self) -> &str {
+        match self {
+            Self::Draft(draft) => &draft.mailbox,
+            Self::Copy(copied) => &copied.mailbox,
+        }
+    }
+}
+
 /// What one call wants done.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SetAsk {
     pub if_in_state: Option<String>,
     /// The creates whose object reads, by creation id.
-    pub creates: Vec<(String, Draft)>,
+    pub creates: Vec<(String, Source)>,
     /// The updates whose patch reads, by email id as written.
     pub updates: Vec<(String, Patch)>,
     /// The emails to destroy, each once, in the order named.
@@ -133,14 +160,15 @@ impl SetAsk {
         let drafts = self
             .creates
             .iter()
-            .map(|(id, draft)| {
-                let mut draft = draft.clone();
-                if let Some(mailbox) =
-                    creation_id(&draft.mailbox).and_then(|creation| created.get(creation))
+            .map(|(id, source)| {
+                let mut source = source.clone();
+                if let Source::Draft(draft) = &mut source
+                    && let Some(mailbox) =
+                        creation_id(&draft.mailbox).and_then(|creation| created.get(creation))
                 {
                     draft.mailbox.clone_from(mailbox);
                 }
-                (id.clone(), draft)
+                (id.clone(), source)
             })
             .collect();
         Self {
@@ -174,7 +202,7 @@ pub(super) enum Outcome {
 }
 
 /// A map of objects by id, null when it holds none (RFC 8620 section 5.3).
-fn or_null(objects: Map<String, Value>) -> Value {
+pub(super) fn or_null(objects: Map<String, Value>) -> Value {
     if objects.is_empty() {
         Value::Null
     } else {
@@ -183,12 +211,12 @@ fn or_null(objects: Map<String, Value>) -> Value {
 }
 
 /// The creates that read by creation id, beside the refusal of each other.
-fn read_creates(create: &Map<String, Value>) -> (Vec<(String, Draft)>, Map<String, Value>) {
+fn read_creates(create: &Map<String, Value>) -> (Vec<(String, Source)>, Map<String, Value>) {
     let mut refused = Map::new();
     let mut drafts = Vec::new();
     for (id, object) in create {
         match create::read(object) {
-            Ok(draft) => drafts.push((id.clone(), draft)),
+            Ok(draft) => drafts.push((id.clone(), Source::Draft(draft))),
             Err(error) => {
                 refused.insert(id.clone(), error.object());
             }
@@ -216,7 +244,7 @@ pub(super) fn email(
     }
     let mut seen = std::collections::HashSet::new();
     destroy.retain(|id| seen.insert(id.clone()));
-    let (drafts, mut not_created) = read_creates(&create);
+    let (drafts, not_created) = read_creates(&create);
     let mut not_updated = Map::new();
     let mut patches = Vec::new();
     for (id, value) in &update {
@@ -261,52 +289,87 @@ pub(super) fn email(
     else {
         return Err(MethodError::StateMismatch);
     };
-    let mut created = Map::new();
+    let mut lists = Lists {
+        not_created,
+        not_updated,
+        not_destroyed,
+        ..Lists::default()
+    };
     for (id, result) in drafted {
         match result {
-            Ok(draft) => created.insert(id.clone(), draft.object()),
-            Err(error) => not_created.insert(id.clone(), error.object()),
+            Ok(draft) => lists.created.insert(id.clone(), draft.object()),
+            Err(error) => lists.not_created.insert(id.clone(), error.object()),
         };
     }
-    let mut updated = Map::new();
     for (id, result) in results {
+        lists.updated_as(id, result);
+    }
+    for (id, result) in gone {
+        lists.destroyed_as(id, result);
+    }
+    Ok(answer(context.key, (*old_state, *new_state), lists))
+}
+
+/// The lists of a `/set` answer (RFC 8620 section 5.3).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(super) struct Lists {
+    pub created: Map<String, Value>,
+    pub updated: Map<String, Value>,
+    pub destroyed: Vec<Value>,
+    pub not_created: Map<String, Value>,
+    pub not_updated: Map<String, Value>,
+    pub not_destroyed: Map<String, Value>,
+}
+
+impl Lists {
+    /// One update as it ended.
+    pub(super) fn updated_as(&mut self, id: &str, result: &Result<Updated, SetError>) {
         match result {
-            Ok(changed) => updated.insert(
-                id.clone(),
+            Ok(changed) => self.updated.insert(
+                id.to_owned(),
                 changed.clone().map_or(Value::Null, Value::Object),
             ),
-            Err(error) => not_updated.insert(id.clone(), error.object()),
+            Err(error) => self.not_updated.insert(id.to_owned(), error.object()),
         };
     }
-    let mut destroyed = Vec::new();
-    for (id, result) in gone {
+
+    /// One destroy as it ended.
+    pub(super) fn destroyed_as(&mut self, id: &str, result: &Result<(), SetError>) {
         match result {
-            Ok(()) => destroyed.push(Value::from(id.as_str())),
+            Ok(()) => self.destroyed.push(Value::from(id)),
             Err(error) => {
-                not_destroyed.insert(id.clone(), error.object());
+                self.not_destroyed.insert(id.to_owned(), error.object());
             }
         }
     }
-    let destroyed = if destroyed.is_empty() {
+}
+
+/// An `Email/set` answer of the account between the two states.
+pub(super) fn answer(
+    key: &AccountKey,
+    (old_state, new_state): (u64, u64),
+    lists: Lists,
+) -> Map<String, Value> {
+    let destroyed = if lists.destroyed.is_empty() {
         Value::Null
     } else {
-        Value::Array(destroyed)
+        Value::Array(lists.destroyed)
     };
     let answer = [
-        ("accountId", Value::from(context.key.as_str())),
+        ("accountId", Value::from(key.as_str())),
         ("oldState", Value::from(old_state.to_string())),
         ("newState", Value::from(new_state.to_string())),
-        ("created", or_null(created)),
-        ("updated", or_null(updated)),
+        ("created", or_null(lists.created)),
+        ("updated", or_null(lists.updated)),
         ("destroyed", destroyed),
-        ("notCreated", or_null(not_created)),
-        ("notUpdated", or_null(not_updated)),
-        ("notDestroyed", or_null(not_destroyed)),
+        ("notCreated", or_null(lists.not_created)),
+        ("notUpdated", or_null(lists.not_updated)),
+        ("notDestroyed", or_null(lists.not_destroyed)),
     ];
-    Ok(answer
+    answer
         .into_iter()
         .map(|(name, value)| (name.to_owned(), value))
-        .collect())
+        .collect()
 }
 
 #[cfg(test)]

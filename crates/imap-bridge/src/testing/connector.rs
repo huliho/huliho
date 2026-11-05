@@ -4,8 +4,11 @@
 
 //! A connector for the tests: it signs a user in on a server with
 //! LOGIN, refuses every connection as a server that is down does or
-//! holds the account back as a host does for a stopped account.
+//! holds the account back as a host does for a stopped account. One that
+//! names no submission server holds every send back; `Submitting` names
+//! one.
 
+use std::future::Future;
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -16,7 +19,9 @@ use tokio_rustls::rustls::ClientConfig;
 use super::{PASSWORD, USER};
 use crate::runtime::{ConnectError, Connector};
 use crate::session::{ImapSession, Session, SessionError, Target};
+use crate::smtp::{self, Submission};
 use crate::store::AccountKey;
+use crate::verify::Credential;
 
 /// Where the connector connects and how it signs in.
 #[derive(Clone)]
@@ -72,6 +77,44 @@ impl Connector for TestConnector {
             }
         }
     }
+
+    fn submission(
+        &self,
+        _key: &AccountKey,
+    ) -> impl Future<Output = Result<Submission, ConnectError>> + Send {
+        std::future::ready(Err(ConnectError::Held))
+    }
+}
+
+/// A connector that signs in on a submission server beside the sessions
+/// of the one it wraps, as the user that one signs in or as the fixture
+/// user where it names none.
+#[derive(Clone)]
+pub struct Submitting {
+    pub inner: TestConnector,
+    pub tls: Arc<ClientConfig>,
+    pub smtp: Target,
+    pub step: Duration,
+}
+
+impl Connector for Submitting {
+    type Session = ImapSession;
+
+    async fn connect(&self, key: &AccountKey) -> Result<ImapSession, ConnectError> {
+        self.inner.connect(key).await
+    }
+
+    async fn submission(&self, _key: &AccountKey) -> Result<Submission, ConnectError> {
+        let (username, password) = match &self.inner {
+            TestConnector::Server { user, password, .. } => (user.clone(), password.clone()),
+            TestConnector::Refusing | TestConnector::Holding => {
+                (USER.to_owned(), PASSWORD.to_owned())
+            }
+        };
+        let credential = Credential::Password { username, password };
+        let tls = Arc::clone(&self.tls);
+        Ok(smtp::submission(tls, &self.smtp, &credential, self.step).await?)
+    }
 }
 
 /// A connector that counts how often it was asked for a session, so a
@@ -103,5 +146,9 @@ impl Connector for Counting {
     async fn connect(&self, key: &AccountKey) -> Result<ImapSession, ConnectError> {
         self.connects.fetch_add(1, Ordering::SeqCst);
         self.inner.connect(key).await
+    }
+
+    async fn submission(&self, key: &AccountKey) -> Result<Submission, ConnectError> {
+        self.inner.submission(key).await
     }
 }

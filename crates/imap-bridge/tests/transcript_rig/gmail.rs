@@ -3,8 +3,8 @@
 // Additional terms apply, see NOTICE.
 
 //! The live Gmail test account: named by the environment, reached over
-//! the public roots and edited on a connection of its own, as a second
-//! client would.
+//! the public roots on IMAP and on SMTP and edited on a connection of
+//! its own, as a second client would.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,6 +13,7 @@ use std::time::Duration;
 use huliho_imap_bridge::session::{
     ImapSession, ListReturn, STEP_TIMEOUT, Session, Target, TlsMode,
 };
+use huliho_imap_bridge::testing::record::Upstream;
 use huliho_imap_bridge::utf7;
 use tokio::net::TcpStream;
 use tokio::time::{sleep, timeout};
@@ -35,6 +36,10 @@ pub const RECORD: &str = "HULIHO_RECORD_TRANSCRIPT";
 
 const HOST: &str = "imap.gmail.com";
 const PORT: u16 = 993;
+
+/// The submission server, TLS from the first byte.
+const SMTP_HOST: &str = "smtp.gmail.com";
+const SMTP_PORT: u16 = 465;
 
 /// Gmail settles an edit made on one connection before another sees it;
 /// this is the wait after the edit and between two looks for it.
@@ -82,21 +87,15 @@ impl Account {
         std::env::var_os(RECORD).map(PathBuf::from)
     }
 
-    /// How the bridge reaches the account.
+    /// How the bridge reaches the account; its one identity sends from
+    /// the account's address.
     pub async fn connection(&self) -> Connection {
-        let addresses = tokio::net::lookup_host((HOST, PORT))
-            .await
-            .unwrap()
-            .collect();
         Connection {
-            tls: roots(),
-            target: Target {
-                host: HOST.to_owned(),
-                addresses,
-                tls: TlsMode::Implicit,
-            },
+            imap: resolved(HOST, PORT).await,
+            smtp: resolved(SMTP_HOST, SMTP_PORT).await,
             user: self.address.clone(),
             password: self.password.clone(),
+            address: self.address.clone(),
             step: STEP_TIMEOUT,
         }
     }
@@ -114,6 +113,22 @@ impl Account {
             .await
             .map_err(|(error, _client)| error)
             .unwrap()
+    }
+}
+
+/// A Gmail server under the public roots, its addresses looked up.
+async fn resolved(host: &str, port: u16) -> Upstream {
+    let addresses = tokio::net::lookup_host((host, port))
+        .await
+        .unwrap()
+        .collect();
+    Upstream {
+        tls: roots(),
+        target: Target {
+            host: host.to_owned(),
+            addresses,
+            tls: TlsMode::Implicit,
+        },
     }
 }
 
@@ -149,8 +164,8 @@ impl Stores {
     /// bridge's own that no recorder sees.
     pub async fn discover(connection: &Connection) -> Self {
         let mut session = ImapSession::connect(
-            Arc::clone(&connection.tls),
-            &connection.target,
+            Arc::clone(&connection.imap.tls),
+            &connection.imap.target,
             connection.step,
         )
         .await
@@ -252,14 +267,19 @@ async fn uid_of(editor: &mut Editor, number: u32) -> u32 {
     uids.into_iter().next().unwrap()
 }
 
-/// Whether the second client finds the message with that number in the
-/// store, under the label when one is named.
-pub async fn holds(editor: &mut Editor, store: &str, number: u32, label: Option<&str>) -> bool {
+/// Whether the second client finds the message with that Message-ID in
+/// the store, under the label when one is named.
+pub async fn holds(
+    editor: &mut Editor,
+    store: &str,
+    message_id: &str,
+    label: Option<&str>,
+) -> bool {
     within(editor.select(store)).await.unwrap();
     let label = label.map_or_else(String::new, |label| {
         format!("X-GM-LABELS {} ", quoted(label))
     });
-    let query = format!("{label}HEADER Message-ID {}", seed(number).message_id());
+    let query = format!("{label}HEADER Message-ID {message_id}");
     !within(editor.uid_search(&query)).await.unwrap().is_empty()
 }
 
