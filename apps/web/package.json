@@ -33,7 +33,7 @@
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
     "@babel/core": "^8.0.0",
-    "@inlang/paraglide-js": "^2.25.0",
+    "@inlang/paraglide-js": "^3.0.0",
     "@lhci/cli": "0.15.1",
     "@playwright/test": "^1.64.1",
     "@rolldown/plugin-babel": "^0.3.0",
