@@ -9,6 +9,8 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 
+use async_imap::types::Flag;
+use futures_util::TryStreamExt;
 use huliho_imap_bridge::session::STEP_TIMEOUT;
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, ServerName};
@@ -21,8 +23,8 @@ use tokio_rustls::client::TlsStream;
 use super::corpus::{MARKER, Seed};
 use super::{HOST, MAIL_ADDRESS, MAIL_PASSWORD, Target, dev_ca};
 
-/// The folder the corpus lives in.
-const INBOX: &str = "INBOX";
+/// The wire name of the inbox, where the corpus lives.
+pub(super) const INBOX: &str = "INBOX";
 
 pub type Editor = async_imap::Session<TlsStream<TcpStream>>;
 
@@ -49,8 +51,13 @@ pub async fn within<T>(step: impl Future<Output = T>) -> T {
         .expect("the target answers within the step timeout")
 }
 
-/// The second connection to the target, signed in.
+/// The second connection to the target, signed in as the fixture user.
 pub async fn editor(target: Target) -> Editor {
+    editor_as(target, MAIL_ADDRESS).await
+}
+
+/// The second connection to the target, signed in as that user.
+pub async fn editor_as(target: Target, address: &str) -> Editor {
     let tcp = within(TcpStream::connect((HOST, target.imaps_port())))
         .await
         .unwrap();
@@ -60,7 +67,7 @@ pub async fn editor(target: Target) -> Editor {
         .unwrap();
     let mut client = async_imap::Client::new(stream);
     within(client.read_response()).await.unwrap().unwrap();
-    within(client.login(MAIL_ADDRESS, MAIL_PASSWORD))
+    within(client.login(address, MAIL_PASSWORD))
         .await
         .map_err(|(error, _client)| error)
         .unwrap()
@@ -92,16 +99,22 @@ fn sequence_set(mut uids: Vec<u32>) -> String {
     set
 }
 
-/// Expunges every corpus message the target holds, so the inbox is left
-/// as it was found; the inbox stays selected.
-pub async fn clear(editor: &mut Editor) {
-    within(editor.select(INBOX)).await.unwrap();
-    let query = format!("HEADER {} {}", MARKER.0, MARKER.1);
-    let uids: Vec<u32> = within(editor.uid_search(&query))
+/// The UIDs of the mailbox of that wire name a search finds, in order;
+/// the mailbox stays selected.
+async fn found(editor: &mut Editor, mailbox: &str, query: &str) -> Vec<u32> {
+    within(editor.select(mailbox)).await.unwrap();
+    let mut uids: Vec<u32> = within(editor.uid_search(query))
         .await
         .unwrap()
         .into_iter()
         .collect();
+    uids.sort_unstable();
+    uids
+}
+
+/// Expunges the messages under these UIDs of the selected mailbox (RFC
+/// 4315 section 2.1).
+async fn expunged(editor: &mut Editor, uids: Vec<u32>) {
     if uids.is_empty() {
         return;
     }
@@ -112,6 +125,14 @@ pub async fn clear(editor: &mut Editor) {
     within(editor.run_command_and_check_ok(&format!("UID EXPUNGE {set}")))
         .await
         .unwrap();
+}
+
+/// Expunges every corpus message the target holds, so the inbox is left
+/// as it was found; the inbox stays selected.
+pub async fn clear(editor: &mut Editor) {
+    let query = format!("HEADER {} {}", MARKER.0, MARKER.1);
+    let uids = found(editor, INBOX, &query).await;
+    expunged(editor, uids).await;
 }
 
 /// Appends to the mailbox of that wire name as a non-synchronizing
@@ -168,13 +189,51 @@ pub async fn flag(editor: &mut Editor, number: u32, flag: &str) {
         .unwrap();
 }
 
-/// Expunges the corpus message (RFC 4315 section 2.1).
+/// Expunges the corpus message.
 pub async fn expunge(editor: &mut Editor, number: u32) {
     let uid = uid_of(editor, number).await;
-    within(editor.run_command_and_check_ok(&format!("UID STORE {uid} +FLAGS.SILENT (\\Deleted)")))
-        .await
-        .unwrap();
-    within(editor.run_command_and_check_ok(&format!("UID EXPUNGE {uid}")))
-        .await
-        .unwrap();
+    expunged(editor, vec![uid]).await;
+}
+
+/// The UIDs of the mailbox of that wire name whose subject holds the
+/// word, which is ASCII; the mailbox stays selected.
+pub async fn with_subject(editor: &mut Editor, mailbox: &str, word: &str) -> Vec<u32> {
+    found(editor, mailbox, &format!("SUBJECT \"{word}\"")).await
+}
+
+/// A message of the selected mailbox as another client reads it.
+pub struct Fetched {
+    pub raw: Vec<u8>,
+    pub draft: bool,
+    pub seen: bool,
+}
+
+/// The whole message under that UID with its flags, read without
+/// marking it seen.
+pub async fn fetched(editor: &mut Editor, uid: u32) -> Fetched {
+    let fetches: Vec<_> = within(async {
+        let stream = editor
+            .uid_fetch(uid.to_string(), "(FLAGS BODY.PEEK[])")
+            .await?;
+        stream.try_collect().await
+    })
+    .await
+    .unwrap();
+    let fetch = fetches
+        .iter()
+        .find(|fetch| fetch.body().is_some())
+        .unwrap_or_else(|| panic!("no message under {uid}"));
+    let has = |wanted: &Flag<'_>| fetch.flags().any(|flag| flag == *wanted);
+    Fetched {
+        raw: fetch.body().unwrap().to_vec(),
+        draft: has(&Flag::Draft),
+        seen: has(&Flag::Seen),
+    }
+}
+
+/// Expunges every message of the mailbox whose subject holds the word,
+/// so a run leaves the mailbox as it found it.
+pub async fn expunge_subject(editor: &mut Editor, mailbox: &str, word: &str) {
+    let uids = with_subject(editor, mailbox, word).await;
+    expunged(editor, uids).await;
 }

@@ -1278,6 +1278,7 @@ dependencies = [
  "icu_properties",
  "infer",
  "ipnet",
+ "mail-parser",
  "mime",
  "oauth2",
  "percent-encoding",

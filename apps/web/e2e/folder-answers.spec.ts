@@ -14,6 +14,7 @@ import { isRecord } from "./mail-folder-rules";
 import type { Row } from "./mail-folder-rules";
 import { FOLDER_MAILBOXES, mockMail } from "./mail-mocks";
 import type { MailOptions, MockedMail } from "./mail-mocks";
+import { MAX_UPLOAD_BYTES } from "./mail-sends";
 
 const INBOX = "mb-inbox";
 const ARCHIVE = "mb-archive";
@@ -215,6 +216,7 @@ test("the session names the mail limits and the top level follows them", async (
   expect(at(account["accountCapabilities"], "urn:ietf:params:jmap:mail")).toEqual({
     maxSizeMailboxName: 255,
     mayCreateTopLevelMailbox: false,
+    maxSizeAttachmentsPerEmail: MAX_UPLOAD_BYTES,
   });
   const answer = await set(page, {
     create: {

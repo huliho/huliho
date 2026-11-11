@@ -8,13 +8,17 @@
 //! connection that edits the mailbox is `second`; the steps of a
 //! message that is opened are `reading`; an account that holds the
 //! latency corpus is `synced`; the searches of that corpus are
-//! `searching`; the folder cycle through `Mailbox/set` is `folders`.
+//! `searching`; the folder cycle through `Mailbox/set` is `folders`; the
+//! draft cycle through `Email/set` is `drafts`; the round trip through
+//! the compose Postfix is `sending`.
 
 pub mod corpus;
+pub mod drafts;
 pub mod folders;
 pub mod reading;
 pub mod searching;
 mod second;
+pub mod sending;
 mod synced;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -36,7 +40,10 @@ use huliho_server::upstream::Upstream;
 use serde_json::{Value, json};
 use tokio::time::sleep;
 
-pub use second::{Editor, append, clear, editor, expunge, flag, seed, seed_rich, seen, within};
+pub use second::{
+    Editor, Fetched, append, clear, editor, editor_as, expunge, expunge_subject, fetched, flag,
+    seed, seed_rich, seen, with_subject, within,
+};
 pub use synced::{Synced, leave};
 
 use crate::answers::answer;
@@ -87,6 +94,10 @@ pub const LOOKS: usize = 30;
 /// How many looks after a failed round the bridge tries again.
 const RETRY_LOOKS: u32 = 5;
 
+/// Enough of a mailbox to find what a step filed among what else is
+/// there; the bridge answers at most this many ids.
+pub const LISTING: usize = 200;
+
 /// The compose targets: Cyrus over JMAP, the same Cyrus over IMAPS, the
 /// Dovecot with a search index and the Dovecot without one, the last
 /// three through the bridge.
@@ -127,6 +138,11 @@ impl Target {
     /// The body `POST /api/accounts` takes for the fixture user's
     /// account on the target.
     pub fn body(self) -> Value {
+        self.body_of(MAIL_ADDRESS)
+    }
+
+    /// The same body for another user of the target.
+    pub fn body_of(self, address: &str) -> Value {
         let target = match self {
             Self::Cyrus => json!({
                 "kind": "jmap",
@@ -134,13 +150,13 @@ impl Target {
             }),
             Self::CyrusBridge | Self::Dovecot | Self::DovecotPlain => json!({
                 "kind": "imap",
-                "username": MAIL_ADDRESS,
+                "username": address,
                 "imap": { "host": HOST, "port": self.imaps_port(), "tls": "implicit" },
                 "smtp": { "host": HOST, "port": self.submission_port(), "tls": "starttls" },
             }),
         };
         json!({
-            "address": MAIL_ADDRESS,
+            "address": address,
             "provider": "generic",
             "target": target,
             "credential": { "kind": "password", "password": MAIL_PASSWORD },

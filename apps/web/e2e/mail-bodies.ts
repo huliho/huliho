@@ -134,7 +134,7 @@ const REPLY_TEXT = [
 
 const FLOWED_TYPE = " text/plain; charset=utf-8; format=flowed";
 
-function part(type: string, facts: Partial<CorpusPart> = {}): CorpusPart {
+export function part(type: string, facts: Partial<CorpusPart> = {}): CorpusPart {
   return {
     partId: null,
     blobId: null,

@@ -60,6 +60,7 @@ base64 = "0.23.1"
 html5ever = "0.40.1"
 http-body-util = "0.1.5"
 huliho-imap-bridge = { version = "0.0.0", path = "../imap-bridge", features = ["test-support"] }
+mail-parser = { version = "0.11.9", default-features = false, features = ["full_encoding"] }
 proptest = "1.11.0"
 rcgen = "0.14.10"
 tempfile = "3.27.0"
