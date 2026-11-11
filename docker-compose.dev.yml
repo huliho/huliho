@@ -1,7 +1,8 @@
 # Local mail targets: Cyrus IMAP as the JMAP server and two Dovecots for
-# the IMAP bridge, one with a search index and one without. The certs
-# service writes one throwaway CA plus a server certificate for Cyrus and
-# one for both Dovecots and copies the CA to data/dev-certs/ca.pem.
+# the IMAP bridge, one with a search index and one without, plus a
+# Postfix that carries mail between Cyrus and Dovecot. The certs service
+# writes one throwaway CA plus a server certificate for Cyrus and one for
+# both Dovecots and copies the CA to data/dev-certs/ca.pem.
 #
 #   docker compose -f docker-compose.dev.yml up -d --build
 #
@@ -13,22 +14,31 @@
 #
 # Cyrus: JMAP over TLS on 8443, IMAPS on 9993, the user sanne@huliho.test
 # with the password "password" and a storage quota of 1 GiB. Xapian
-# indexes its mail and a rolling squatter keeps the index current.
+# indexes its mail and a rolling squatter keeps the index current. It
+# sends through Postfix and takes mail from it over LMTP.
 #
 # Dovecot: IMAP with STARTTLS on 31143, IMAPS on 31993, submission on
 # 31587, ManageSieve on 34190 and LMTP on 31024, any user with the
-# password "password" and a quota of 1 GiB and 10000 messages. FTS
-# flatcurve indexes its mail as it arrives; a search first indexes what
-# it finds unindexed. Its learn hook writes "spam" or "ham" with the
-# Message-ID of every message copied or moved into Junk or moved out of it
-# to /tmp/learned inside the container; a move from Junk to Trash writes
-# nothing. Its access control lists leave the user every right on its
-# folders but Locked, which takes mail in and lets none out.
+# password "password" and a quota of 1 GiB and 10000 messages. Its
+# submission relays through Postfix, which delivers to it over plain
+# LMTP inside the compose network. FTS flatcurve indexes its mail as it
+# arrives; a search first indexes what it finds unindexed. Its learn
+# hook writes "spam" or "ham" with the Message-ID of every message
+# copied or moved into Junk or moved out of it to /tmp/learned inside
+# the container; a move from Junk to Trash writes nothing. Its access
+# control lists leave the user every right on its folders but Locked,
+# which takes mail in and lets none out.
 #
 # dovecot-plain: the same image without a search index, a quota, the
 # learn hook or access control lists, so a search reads every message.
 # IMAP with STARTTLS on 31243, IMAPS on 32093 and submission on 31687,
-# each 100 above Dovecot's, with a mail volume of its own.
+# each 100 above Dovecot's, with a mail volume of its own. Its
+# submission relays through Postfix as well; no mail is routed to it.
+#
+# Postfix: SMTP on 25 inside the compose network alone, no port on the
+# host and no sign-in. It takes mail for huliho.test and refuses any
+# other domain: sanne@huliho.test goes to Cyrus, every other user of the
+# domain to Dovecot.
 
 configs:
   certs-init:
@@ -73,6 +83,9 @@ configs:
       tls_server_cert: /certs/cyrus.pem
       tls_server_key: /certs/cyrus-key.pem
       tls_versions: tls1_2 tls1_3
+      # A JMAP submission goes to Postfix over plain SMTP without a sign-in.
+      smtp_backend: host
+      smtp_host: postfix:25/noauth
 
   cyrus.conf:
     content: |
@@ -84,6 +97,10 @@ configs:
         imap cmd="imapd" listen="127.0.0.1:143" prefork=0
         imaps cmd="imapd -s" listen="993" prefork=0
         https cmd="httpd -s" listen="443" prefork=0
+        # LMTP for Postfix inside the compose network, which speaks no LMTP
+        # AUTH, so a connection is taken as signed in. The image's
+        # /etc/services names no lmtp, hence the number.
+        lmtp cmd="lmtpd -a" listen="24" prefork=0
       }
       DAEMON {
         squatter cmd="squatter -R"
@@ -122,11 +139,31 @@ configs:
 
   dovecot-submission.conf:
     content: |
-      # AUTH on the submission port needs a relay named. With the
-      # capabilities fixed here the relay is first reached at MAIL FROM,
-      # which the credential check never sends.
-      submission_relay_host = 127.0.0.1
-      submission_backend_capabilities = 8BITMIME PIPELINING SIZE
+      # Submission relays every message through Postfix.
+      submission_relay_host = postfix
+      submission_relay_port = 25
+
+  dovecot-lmtp.conf:
+    content: |
+      # Plain LMTP for Postfix inside the compose network, beside the
+      # image's lmtps listener, so Postfix needs no TLS wrapper and no CA.
+      service lmtp {
+        inet_listener lmtp {
+          port = 24
+        }
+      }
+
+  postfix-entrypoint:
+    content: |
+      set -eu
+      # Mail for huliho.test alone, any other domain refused: sanne to
+      # Cyrus, every other user to Dovecot, both over LMTP.
+      postconf -e 'myhostname = postfix.huliho.test' 'mydestination =' 'relay_domains = huliho.test'
+      postconf -e 'smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination'
+      postconf -e 'transport_maps = inline:{ sanne@huliho.test=lmtp:[cyrus]:24, huliho.test=lmtp:[dovecot]:24 }'
+      # A message as large as Dovecot's submission and the bridge take, 40 MiB.
+      postconf -e 'message_size_limit = 41943040' 'inet_protocols = ipv4' 'maillog_file = /dev/stdout'
+      exec postfix start-fg
 
   dovecot-mailboxes.conf:
     content: |
@@ -314,6 +351,9 @@ services:
     depends_on:
       certs:
         condition: service_completed_successfully
+      # An httpd process keeps what it reads from the relay's EHLO.
+      postfix:
+        condition: service_healthy
 
   dovecot:
     image: dovecot/dovecot:2.4.5
@@ -353,6 +393,9 @@ services:
       - source: dovecot-learn
         target: /etc/dovecot/learn/learn
         mode: 0555
+      - source: dovecot-lmtp.conf
+        target: /etc/dovecot/conf.d/lmtp.conf
+        mode: 0444
     volumes:
       - dev-certs:/certs:ro
       - dovecot-mail:/srv/vmail
@@ -393,6 +436,26 @@ services:
     depends_on:
       certs:
         condition: service_completed_successfully
+
+  postfix:
+    build:
+      dockerfile_inline: |
+        FROM debian:trixie-slim
+        RUN apt-get update \
+         && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends postfix \
+         && rm -rf /var/lib/apt/lists/*
+    entrypoint: ["sh", "/postfix-entrypoint"]
+    configs:
+      - source: postfix-entrypoint
+        target: /postfix-entrypoint
+        mode: 0444
+    # Healthy once the master process runs, which holds the listener on
+    # 25. Cyrus starts after that and `up --wait` returns when Dovecot's
+    # submission can relay.
+    healthcheck:
+      test: ["CMD", "postfix", "status"]
+      start_period: 30s
+      start_interval: 1s
 
 volumes:
   dev-certs:

@@ -69,7 +69,7 @@ async fn body(live: &Live, mail: &Mail, id: &str) -> Value {
 }
 
 /// The part of the email's attachments under that name.
-fn attachment<'a>(email: &'a Value, name: &str) -> &'a Value {
+pub(super) fn attachment<'a>(email: &'a Value, name: &str) -> &'a Value {
     let attachments = email["attachments"].as_array().unwrap();
     let found = attachments.iter().find(|part| part["name"] == name);
     found.unwrap_or_else(|| panic!("no attachment named {name}: {email}"))

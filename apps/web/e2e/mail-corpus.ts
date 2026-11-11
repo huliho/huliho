@@ -20,6 +20,8 @@ const STEP_MS = 23 * 60_000;
 // Threads come in these sizes, in turn.
 const THREAD_SIZES = [1, 3, 1, 2, 1, 4, 1, 1, 2, 1];
 const UPSTREAM = "u1";
+// The address of the account behind the mocked proxy.
+export const ACCOUNT_ADDRESS = "mira@example.com";
 // Every seventh message carries a flag and every fifth an attachment,
 // each at its own place in the run.
 const SEVENTH = 7;
@@ -82,6 +84,8 @@ export interface CorpusEmail {
   receivedAt: string;
   seen: boolean;
   flagged: boolean;
+  // Whether it is a draft the client saved.
+  draft?: boolean;
   attachment: boolean;
   from: { name: string; email: string };
   subject: string;
@@ -311,6 +315,7 @@ export function emailObject(message: CorpusEmail): Record<string, unknown> {
     keywords: {
       ...(message.seen ? { $seen: true } : {}),
       ...(message.flagged ? { $flagged: true } : {}),
+      ...(message.draft === true ? { $draft: true } : {}),
     },
     size: 2048,
     receivedAt: message.receivedAt,
@@ -319,7 +324,7 @@ export function emailObject(message: CorpusEmail): Record<string, unknown> {
     references: null,
     sender: null,
     from: [message.from],
-    to: [{ name: "Mira", email: "mira@example.com" }],
+    to: [{ name: "Mira", email: ACCOUNT_ADDRESS }],
     cc: null,
     bcc: null,
     replyTo: null,

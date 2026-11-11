@@ -10,8 +10,9 @@
 //! search bound on Cyrus and on Dovecot, the searches of the Dovecot
 //! without an index ending inside the deadline, the folder cycle on
 //! Cyrus natively and over IMAPS and on both Dovecots, the refusals of
-//! Dovecot's narrowed folder and one Gmail account through the same
-//! routes when the environment names it.
+//! Dovecot's narrowed folder, the draft cycle and the round trip through
+//! the compose Postfix in `live_compose` and one Gmail account through
+//! the same routes when the environment names it.
 
 #![cfg(feature = "live-targets")]
 
@@ -19,6 +20,7 @@ mod answers;
 mod blob_answers;
 mod common;
 mod fake_dns;
+mod live_compose;
 mod live_rig;
 mod signin;
 
@@ -27,8 +29,8 @@ use std::time::{Duration, Instant};
 
 use live_rig::corpus::THREAD_SIZE;
 use live_rig::{
-    Editor, LIST_PROPERTIES, Live, MEASURED_WINDOWS, Mail, Synced, Target, Window, clear, editor,
-    expunge, flag, folders, leave, listed, number_of, reading, searching, seed,
+    Editor, LIST_PROPERTIES, LISTING, Live, MEASURED_WINDOWS, Mail, Synced, Target, Window, clear,
+    editor, expunge, flag, folders, leave, listed, number_of, reading, searching, seed,
 };
 use serde_json::{Value, json};
 
@@ -41,10 +43,6 @@ const OPENED: u32 = SCENARIO_CORPUS + 2;
 
 /// The inbox window the suite asks for.
 const WINDOW: usize = 5;
-
-/// Enough of the inbox to find the corpus among what else is there; the
-/// bridge answers at most this many ids.
-const LISTING: usize = 200;
 
 /// How long the first sync of the scenario corpus may take.
 const SCENARIO_PATIENCE: Duration = Duration::from_secs(60);

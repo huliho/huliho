@@ -4,18 +4,22 @@
 
 // The JMAP methods the cache calls, answered from a corpus: the query
 // of a mailbox window or a search with its anchor and collapse, the gets
-// by id or by reference with the body of a message, the writes, the
-// changes since a state, the mailboxes with their writes and the quotas.
+// by id or by reference with the body of a message, the writes with the
+// drafts they create, the changes since a state, the mailboxes with
+// their writes, the quotas, the identity and the submissions.
 
 import { bodyOf, bodyPropertiesOf } from "./mail-bodies";
 import { UPSTREAM, emailObject } from "./mail-corpus";
 import type { Corpus, CorpusEmail } from "./mail-corpus";
+import { emailSetWithCreates, savedFields } from "./mail-drafts";
 import { mailboxSet } from "./mail-folders";
 import { isSearch, searchIds } from "./mail-search";
-import { emailSet } from "./mail-writes";
+import { MAX_UPLOAD_BYTES, emailSubmissionSet, identityGet } from "./mail-sends";
 
 type Args = Record<string, unknown>;
 export type Invocation = [string, Args, string];
+// One response of a method, its call id added by the request.
+type Response = [string, Args];
 
 // One change the server logged, in the order they happened.
 interface Change {
@@ -65,6 +69,21 @@ export interface MailServer {
   nextMailbox: number;
   // The account's quotas, null for an account without the capability.
   quotas: Record<string, unknown>[] | null;
+  // How many emails Email/set created, which numbers the next id.
+  nextEmail: number;
+  // The header fields each created email was given, by its id.
+  saved: Map<string, Args>;
+  // The type and size of every file the upload route took, by blob id.
+  uploads: Map<string, { type: string; size: number }>;
+  // The most bytes one upload takes; a larger body answers 413.
+  uploadLimit: number;
+  // Every submission that went out, in order.
+  submissions: Args[];
+  // The SetError type every submission answers in place of its send.
+  sendError: string | null;
+  // Whether a request that sends waits until released, and the ones waiting.
+  holdSends: boolean;
+  heldSends: (() => void)[];
 }
 
 export function serverFor(
@@ -93,6 +112,14 @@ export function serverFor(
     topLevel: true,
     nextMailbox: 0,
     quotas,
+    nextEmail: 0,
+    saved: new Map(),
+    uploads: new Map(),
+    uploadLimit: MAX_UPLOAD_BYTES,
+    submissions: [],
+    sendError: null,
+    holdSends: false,
+    heldSends: [],
   };
 }
 
@@ -211,10 +238,10 @@ function picked(object: Record<string, unknown>, properties: unknown): Record<st
   return Object.fromEntries(["id", ...properties].map((name) => [name, fields.get(name)]));
 }
 
-// The Email object with its body properties where the request asks for
-// values.
+// The Email object, a saved draft with the header fields it was given,
+// and its body properties where the request asks for values.
 function served(server: MailServer, message: CorpusEmail, args: Args): Record<string, unknown> {
-  const object = emailObject(message);
+  const object = { ...emailObject(message), ...savedFields(server, message.id) };
   if (args["fetchHTMLBodyValues"] !== true && args["fetchTextBodyValues"] !== true) {
     return object;
   }
@@ -391,43 +418,58 @@ function quotaChanges(server: MailServer, args: Args): Args {
   };
 }
 
-type Method = (server: MailServer, args: Args, prior: Map<string, Args>) => Args;
+// What the calls of one request share: the answers so far by call id
+// and the ids each creation id of the request names (RFC 8620 section 5.3).
+interface Context {
+  prior: Map<string, Args>;
+  made: Map<string, string>;
+}
+
+// A method answers once, or with the responses of the implicit call
+// it runs after itself (RFC 8621 section 7.5).
+type Method = (server: MailServer, args: Args, context: Context) => Args | Response[];
 
 const METHODS = new Map<string, Method>([
-  ["Mailbox/get", mailboxGet],
+  ["Mailbox/get", (server, args, { prior }) => mailboxGet(server, args, prior)],
   ["Mailbox/set", mailboxSet],
   ["Mailbox/changes", (server, args) => changes(server, "Mailbox", args)],
-  ["Email/get", emailGet],
-  ["Email/set", emailSet],
+  ["Email/get", (server, args, { prior }) => emailGet(server, args, prior)],
+  ["Email/set", (server, args, { made }) => emailSetWithCreates(server, args, made)],
   ["Email/query", emailQuery],
   ["Email/changes", (server, args) => changes(server, "Email", args)],
-  ["Thread/get", threadGet],
+  ["Thread/get", (server, args, { prior }) => threadGet(server, args, prior)],
   ["Thread/changes", (server, args) => changes(server, "Thread", args)],
   ["Quota/get", quotaGet],
   ["Quota/changes", quotaChanges],
+  ["Identity/get", identityGet],
+  ["EmailSubmission/set", (server, args, { made }) => emailSubmissionSet(server, args, made)],
 ]);
 
-function dispatch(server: MailServer, call: Invocation, prior: Map<string, Args>): Args {
+function dispatch(server: MailServer, call: Invocation, context: Context): Response[] {
   const [name, args] = call;
   const method = METHODS.get(name);
   if (method === undefined) {
     throw new Error("unknownMethod");
   }
-  return method(server, args, prior);
+  const answered = method(server, args, context);
+  return Array.isArray(answered) ? answered : [[name, answered]];
 }
 
-// The method responses of one request, in order; a call that fails
-// answers the error type the failure names.
+// The method responses of one request, in order, each under its call's
+// id; a call that fails answers the error type the failure names.
 export function answerCalls(server: MailServer, calls: readonly Invocation[]): Invocation[] {
-  const prior = new Map<string, Args>();
-  return calls.map((call) => {
-    const [name, , id] = call;
+  const context: Context = { prior: new Map(), made: new Map() };
+  return calls.flatMap((call): Invocation[] => {
+    const id = call[2];
     try {
-      const answer = dispatch(server, call, prior);
-      prior.set(id, answer);
-      return [name, answer, id];
+      const responses = dispatch(server, call, context);
+      const [first] = responses;
+      if (first !== undefined) {
+        context.prior.set(id, first[1]);
+      }
+      return responses.map(([name, answer]) => [name, answer, id]);
     } catch (error) {
-      return ["error", { type: error instanceof Error ? error.message : "serverFail" }, id];
+      return [["error", { type: error instanceof Error ? error.message : "serverFail" }, id]];
     }
   });
 }

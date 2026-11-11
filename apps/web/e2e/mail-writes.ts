@@ -20,6 +20,7 @@ const MAILBOXES = "mailboxIds/";
 const KNOWN_KEYWORDS = new Map<string, (message: CorpusEmail, on: boolean) => CorpusEmail>([
   ["$seen", (message, on) => ({ ...message, seen: on })],
   ["$flagged", (message, on) => ({ ...message, flagged: on })],
+  ["$draft", (message, on) => ({ ...message, draft: on })],
   ["$junk", (message) => message],
   ["$notjunk", (message) => message],
 ]);
@@ -165,6 +166,20 @@ function updated(server: MailServer, id: string, patch: unknown): string | null 
   return null;
 }
 
+// A new message enters its mailbox at its place and joins its thread,
+// both logged, the mailbox counted again.
+export function fileEmail(server: MailServer, message: CorpusEmail): void {
+  const members = server.corpus.threads.get(message.threadId) ?? [];
+  server.corpus.emails.set(message.id, message);
+  server.corpus.threads.set(message.threadId, [...members, message.id]);
+  relisted(server, message.mailboxId, message.id, true);
+  const sequence = server.changes.length + 1;
+  server.changes.push({ sequence, type: "Email", id: message.id, kind: "created" });
+  const threadKind = members.length === 0 ? "created" : "updated";
+  server.changes.push({ sequence, type: "Thread", id: message.threadId, kind: threadKind });
+  recount(server, message.mailboxId);
+}
+
 // The message leaves its mailbox and its thread, the thread with its
 // last, both logged.
 export function removeEmail(server: MailServer, message: CorpusEmail): void {
@@ -205,8 +220,15 @@ function refusals(outcomes: [string, string | null][]): Record<string, { type: s
   );
 }
 
+// Email/set as a client sends it: kept among the sets, then applied.
 export function emailSet(server: MailServer, args: Args): Args {
   server.sets.push(args);
+  return applyEmailSet(server, args);
+}
+
+// The updates and the destroys of an Email/set, in that order; the
+// server's own implicit sets run here without being kept.
+export function applyEmailSet(server: MailServer, args: Args): Args {
   const oldState = stateOf(server);
   const updates = isRecord(args["update"]) ? Object.entries(args["update"]) : [];
   const outcomes = updates.map(([id, patch]): [string, string | null] => [
