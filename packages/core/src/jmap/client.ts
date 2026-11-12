@@ -10,6 +10,7 @@ import {
   HULIHO_CAPABILITY,
   MAIL_CAPABILITY,
   QUOTA_CAPABILITY,
+  SUBMISSION_CAPABILITY,
   coreLimitsSchema,
   problemSchema,
   responseSchema,
@@ -24,6 +25,8 @@ const JMAP_ROUTE = "/api/jmap";
 const NAME_BYTES_DEFAULT = 255;
 
 const nameBytesSchema = z.int().check(z.positive());
+
+const octetsSchema = z.int().check(z.nonnegative());
 
 // The problem type of a request past one of the server's limits
 // (RFC 8620 section 3.6.1).
@@ -90,6 +93,15 @@ export interface MailboxLimits {
   maxSizeMailboxName: number;
 }
 
+// What the account takes of files (RFC 8620 section 2 and RFC 8621
+// section 1.3.1): the largest one, how many go up at once and what the
+// attachments of one email may weigh together, null where it names none.
+export interface UploadLimits {
+  maxSizeUpload: number;
+  maxConcurrentUpload: number;
+  maxSizeAttachmentsPerEmail: number | null;
+}
+
 // What the client keeps of the session object.
 export interface JmapSession {
   // The upstream account the mail capability names; every call carries it.
@@ -97,6 +109,15 @@ export interface JmapSession {
   apiUrl: string;
   // The template a blob's URL is made from (RFC 8620 section 6.2).
   downloadUrl: string;
+  // The template a file is uploaded to (RFC 8620 section 6.1).
+  uploadUrl: string;
+  uploadLimits: UploadLimits;
+  // True when the account sends: the identity and submission methods
+  // answer (RFC 8621 section 1.3.2).
+  submission: boolean;
+  // True where the server writes a text part's flowed parameters with its
+  // charset: the servers that name the vendor capability.
+  flowedText: boolean;
   // True for an account that takes no write.
   readOnly: boolean;
   // The capabilities every request opts into (RFC 8620 section 3.3).
@@ -182,40 +203,71 @@ function sessionOf(object: SessionObject): JmapSession {
   }
   const capabilities = new Map(Object.entries(object.capabilities));
   const vendor = capabilities.has(HULIHO_CAPABILITY);
-  const core = coreLimitsSchema.parse(capabilities.get(CORE_CAPABILITY));
+  const core = capabilities.get(CORE_CAPABILITY);
+  const limits = coreLimitsSchema.parse(core);
   const account = new Map(Object.entries(object.accounts)).get(accountId);
-  const spoken = [HULIHO_CAPABILITY, QUOTA_CAPABILITY].filter((name) => capabilities.has(name));
-  const mail = new Map(Object.entries(account?.accountCapabilities ?? {})).get(MAIL_CAPABILITY);
+  const named = new Map(Object.entries(account?.accountCapabilities ?? {}));
+  const spoken = [HULIHO_CAPABILITY, QUOTA_CAPABILITY, SUBMISSION_CAPABILITY].filter((name) =>
+    capabilities.has(name),
+  );
+  const both = (name: string): boolean => capabilities.has(name) && named.has(name);
   return {
     accountId,
     apiUrl: object.apiUrl,
     downloadUrl: object.downloadUrl,
+    uploadUrl: object.uploadUrl,
+    uploadLimits: uploadLimitsOf(fieldsOf(core), fieldsOf(named.get(MAIL_CAPABILITY))),
+    submission: both(SUBMISSION_CAPABILITY),
+    flowedText: vendor,
     // An account the object does not describe takes no write.
     readOnly: account?.isReadOnly ?? true,
     using: [CORE_CAPABILITY, MAIL_CAPABILITY, ...spoken],
     firstSync: vendor,
-    quota:
-      capabilities.has(QUOTA_CAPABILITY) &&
-      Object.hasOwn(account?.accountCapabilities ?? {}, QUOTA_CAPABILITY),
-    maxCallsInRequest: core.maxCallsInRequest,
-    maxObjectsInGet: core.maxObjectsInGet,
-    maxObjectsInSet: core.maxObjectsInSet,
-    mailboxLimits: mailboxLimitsOf(mail),
+    quota: both(QUOTA_CAPABILITY),
+    maxCallsInRequest: limits.maxCallsInRequest,
+    maxObjectsInGet: limits.maxObjectsInGet,
+    maxObjectsInSet: limits.maxObjectsInSet,
+    mailboxLimits: mailboxLimitsOf(fieldsOf(named.get(MAIL_CAPABILITY))),
     state: object.state,
   };
+}
+
+// The fields of a capability object, none for anything else.
+function fieldsOf(capability: unknown): Map<string, unknown> {
+  return new Map(
+    typeof capability === "object" && capability !== null ? Object.entries(capability) : [],
+  );
 }
 
 // The folder limits of the account's mail capability, each field read on
 // its own: one that is absent or fails reads as no create at the top and
 // NAME_BYTES_DEFAULT, as a null name size does.
-function mailboxLimitsOf(mail: unknown): MailboxLimits {
-  const fields = new Map<string, unknown>(
-    typeof mail === "object" && mail !== null ? Object.entries(mail) : [],
-  );
+function mailboxLimitsOf(fields: ReadonlyMap<string, unknown>): MailboxLimits {
   const bytes = nameBytesSchema.safeParse(fields.get("maxSizeMailboxName"));
   return {
     mayCreateTopLevelMailbox: fields.get("mayCreateTopLevelMailbox") === true,
     maxSizeMailboxName: bytes.success ? bytes.data : NAME_BYTES_DEFAULT,
+  };
+}
+
+// One field as a count of octets, null where it is absent or fails.
+function octets(fields: ReadonlyMap<string, unknown>, name: string): number | null {
+  const read = octetsSchema.safeParse(fields.get(name));
+  return read.success ? read.data : null;
+}
+
+// The file limits of the core capability and the account's mail
+// capability, each field read on its own. An upload limit that is
+// absent or fails reads as 0, so no file goes up; an attachment total
+// reads as none.
+function uploadLimitsOf(
+  core: ReadonlyMap<string, unknown>,
+  mail: ReadonlyMap<string, unknown>,
+): UploadLimits {
+  return {
+    maxSizeUpload: octets(core, "maxSizeUpload") ?? 0,
+    maxConcurrentUpload: octets(core, "maxConcurrentUpload") ?? 0,
+    maxSizeAttachmentsPerEmail: octets(mail, "maxSizeAttachmentsPerEmail"),
   };
 }
 

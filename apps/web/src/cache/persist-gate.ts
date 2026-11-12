@@ -20,6 +20,8 @@ export function heldUntil(store: MailStore, gate: Promise<unknown>): MailStore {
     body: (accountId, emailId) => store.body(accountId, emailId),
     bodySizes: () => store.bodySizes(),
     pending: (accountId) => store.pending(accountId),
+    draft: (accountId, id) => store.draft(accountId, id),
+    drafts: (accountId) => store.drafts(accountId),
     quota: (accountId) => store.quota(accountId),
     commit: async (accountId, batch) => {
       await gate;

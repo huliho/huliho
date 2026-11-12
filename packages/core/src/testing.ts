@@ -3,5 +3,15 @@
 // Additional terms apply, see NOTICE.
 
 // The JMAP server the cache tests run against, for the adapters' tests.
-export { ACCOUNT, FakeJmap, UPSTREAM, at, email, json, mailbox, quota } from "./cache/fake-jmap";
+export {
+  ACCOUNT,
+  FakeJmap,
+  UPSTREAM,
+  at,
+  draftContent,
+  email,
+  json,
+  mailbox,
+  quota,
+} from "./cache/fake-jmap";
 export type { FakeBody } from "./cache/fake-jmap";

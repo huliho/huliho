@@ -22,8 +22,9 @@ objects whose method calls it sends in one round trip. `MailStore` is
 the contract a store implements (mailboxes, email headers, threads with
 the state of every member, the pages of each list, the searches it holds
 in memory alone, message bodies, the changes the server has not
-acknowledged, the account's quotas and one state per object type, plus
-the senders its headers name), written in batches that land whole;
+acknowledged, the drafts, the account's quotas and one state per object
+type, plus the senders its headers name), written in batches that land
+whole;
 `MemoryMailStore` is the one that keeps everything in memory. On top of
 both, `syncMailboxes`
 brings the mailbox tree up to date, `queryWindow` serves a page of a
@@ -92,6 +93,31 @@ an email or the changes to several with the release or the drop of a
 held destroy, the folder jobs and the quota, every read answered from
 the cache. A store that keeps rows on
 disk checks them against the row schemas when they come back.
+
+It keeps the drafts too. A draft's row is the working copy of the
+account's draft on the server. `saveDraft` writes the composer's change
+into it; `writeDraft` sends it as one `Email/set` that creates the new
+copy in Drafts and destroys the old one, after which the row names its
+files by the parts of the new copy. `queueDraft` holds a send for
+`SEND_UNDO_MS` and `undoSend` takes it back inside that window.
+`drainDrafts` sends what waited past it as an `EmailSubmission/set`
+that files the draft in Sent: one draft at a time, a send whose answer
+was lost read from the server first, the parent of a reply or a forward
+marked as answered or forwarded. A refusal turns the row back into a
+draft with its cause. `discardDraft` destroys a draft, `readIdentity`
+reads the identity a draft goes out as and `uploadFile` sends a file to
+the account's upload route with its progress.
+
+The compose helpers build what a draft carries. `createObject` writes
+the create with its `bodyStructure`, the text part in format=flowed
+where the server keeps the parameters, else one line per paragraph.
+`writeFlowed` writes that text (RFC 3676) from the lines
+`documentLines` reads out of the composer's document. The quote
+builders turn the parent's body into a reply's or a forward's quote.
+`replyHeaders`, `answerSubject` and `replyRecipients` give what a reply
+answers. `tokenize` reads a pasted list of addresses and `readMailto` a
+`mailto:` link; `guardrailOf` and `refusalOf` say what holds a send
+back.
 
 It reads what a message says about itself as well. `unflow` joins the
 soft line breaks of a flowed text part (RFC 3676) and `quotedLines`

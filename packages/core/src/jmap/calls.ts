@@ -51,6 +51,21 @@ export interface Reference {
 // section 5.3).
 export type PatchObject = Record<string, unknown>;
 
+// One send: the identity it goes out as and the email, an id or a
+// creation id of the request (RFC 8621 section 7).
+interface SubmissionCreate {
+  identityId: string;
+  emailId: string;
+}
+
+// The submissions to create by creation id and the change the server
+// makes to each email once its submission went out, keyed by `#` and
+// the submission's creation id (RFC 8621 section 7.5).
+interface Submissions {
+  create: Record<string, SubmissionCreate>;
+  onSuccessUpdateEmail: Record<string, PatchObject>;
+}
+
 // Where the ids of a query window start (RFC 8620 section 5.5).
 export type Start = { position: number } | { anchor: string; anchorOffset: number };
 
@@ -93,6 +108,12 @@ export interface Calls {
     },
     id: string,
   ): MethodCall;
+  // The tree of one email with each part's blob and type (RFC 8621
+  // section 4.2), no value asked.
+  structure(emailId: string, id: string): MethodCall;
+  // Every identity the account sends as (RFC 8621 section 6.1).
+  identityGet(id: string): MethodCall;
+  submissionSet(submissions: Submissions, id: string): MethodCall;
 }
 
 export function callsFor(accountId: string): Calls {
@@ -146,6 +167,31 @@ export function callsFor(accountId: string): Calls {
         ...(destroy === undefined ? {} : { destroy }),
         ...(onDestroyRemoveEmails === undefined ? {} : { onDestroyRemoveEmails }),
       },
+      id,
+    }),
+    ...sendingCalls(accountId),
+  };
+}
+
+// The calls a draft and its send ask besides the reads and the writes.
+function sendingCalls(
+  accountId: string,
+): Pick<Calls, "structure" | "identityGet" | "submissionSet"> {
+  return {
+    structure: (emailId, id) => ({
+      name: "Email/get",
+      arguments: {
+        accountId,
+        ids: [emailId],
+        properties: ["bodyStructure"],
+        bodyProperties: ["blobId", "type", "subParts"],
+      },
+      id,
+    }),
+    identityGet: (id) => ({ name: "Identity/get", arguments: { accountId, ids: null }, id }),
+    submissionSet: ({ create, onSuccessUpdateEmail }, id) => ({
+      name: "EmailSubmission/set",
+      arguments: { accountId, create, onSuccessUpdateEmail },
       id,
     }),
   };

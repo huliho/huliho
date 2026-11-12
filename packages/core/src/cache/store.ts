@@ -3,9 +3,11 @@
 // Additional terms apply, see NOTICE.
 
 import type { Authentication } from "../auth-results";
+import type { Recipient } from "../compose/addresses";
+import type { DocumentNode } from "../compose/document";
 import type { EmailBodyPart, EmailBodyValue } from "../jmap/body";
 import type { ObjectType } from "../jmap/calls";
-import type { EmailHeader, Mailbox, Thread } from "../jmap/schemas";
+import type { EmailHeader, Identity, Mailbox, Thread } from "../jmap/schemas";
 import type { HeldQuota } from "./quota";
 
 // The keywords and mailboxes of one email of a thread, so a list row
@@ -127,8 +129,75 @@ export interface PendingRow {
   lease?: string;
 }
 
+// A file a draft carries by its blob: an attachment, or an inline part
+// whose `cid` the HTML names (RFC 2392).
+export interface DraftAttachment {
+  blobId: string;
+  name: string | null;
+  type: string;
+  size: number;
+  cid: string | null;
+  disposition: "attachment" | "inline";
+}
+
+// Why a draft did not go to the server: the save or the send was
+// refused with this SetError type, the addresses an `invalidRecipients`
+// names beside it (RFC 8621 section 7.5).
+export interface DraftFailure {
+  stage: "save" | "send";
+  type: string;
+  recipients: string[];
+}
+
+// What the composer writes of a draft: what it answers, its words and
+// files, the document with its two renderings (the HTML part and the
+// text part as format=flowed writes it) and the identity it goes out as.
+export interface DraftContent {
+  kind: "new" | "reply" | "forward";
+  // The email a reply answers or a forward carries.
+  parentId: string | null;
+  mode: "rich" | "plain";
+  document: DocumentNode;
+  html: string;
+  text: string;
+  to: Recipient[];
+  cc: Recipient[];
+  bcc: Recipient[];
+  subject: string;
+  identity: Identity;
+  inReplyTo: string[];
+  references: string[];
+  attachments: DraftAttachment[];
+}
+
+// Where a draft stands: written by the composer, held for its undo
+// window or with its submission on the way.
+export type DraftState = "draft" | "queued" | "sending";
+
+// A draft as the store keeps it: the working copy of the server's draft
+// with the write it waits for. The server's copy is the truth; each
+// change counts up `revision` and a write records the revision it carried.
+export interface DraftRow extends DraftContent {
+  // The row's own id, which the composer makes.
+  id: string;
+  // The server's email and thread once a write landed.
+  serverId: string | null;
+  threadId: string | null;
+  // The blob of each file in the server's copy by the blob the composer
+  // named it with, so a write never leans on an upload past its life.
+  parts: Record<string, string>;
+  state: DraftState;
+  // When a queued draft goes out.
+  sendAfter: number | null;
+  changedAt: number;
+  revision: number;
+  savedRevision: number | null;
+  savedAt: number | null;
+  failure: DraftFailure | null;
+}
+
 export type StoreArea =
-  "mailboxes" | "emails" | "threads" | "queries" | "searches" | "bodies" | "pending";
+  "mailboxes" | "emails" | "threads" | "queries" | "searches" | "bodies" | "pending" | "drafts";
 
 // One atomic write: the areas that empty first, then what leaves, then
 // what lands, then the states.
@@ -142,6 +211,7 @@ export interface Batch {
   bodies?: { put?: readonly EmailBody[]; remove?: readonly string[] };
   // A pending row leaves by its sequence number.
   pending?: { put?: readonly PendingRow[]; remove?: readonly number[] };
+  drafts?: { put?: readonly DraftRow[]; remove?: readonly string[] };
   states?: Partial<Record<ObjectType, string | null>>;
   // The account's quotas as the server last answered them; null forgets them.
   quota?: HeldQuota | null;
@@ -166,6 +236,8 @@ export interface MailStore {
   bodySizes(): Promise<BodySize[]>;
   // The unacknowledged changes of the account, oldest first.
   pending(accountId: string): Promise<PendingRow[]>;
+  draft(accountId: string, id: string): Promise<DraftRow | null>;
+  drafts(accountId: string): Promise<DraftRow[]>;
   quota(accountId: string): Promise<HeldQuota | null>;
   commit(accountId: string, batch: Batch): Promise<void>;
 }

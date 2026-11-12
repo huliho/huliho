@@ -8,7 +8,17 @@ import { ACCOUNT, FakeJmap, UPSTREAM, json, mailbox } from "../cache/fake-jmap";
 import { z } from "../schema";
 import { answer, outcome } from "./calls";
 import { JmapClient, JmapError, MethodFailure } from "./client";
-import { CORE_CAPABILITY, HULIHO_CAPABILITY, MAIL_CAPABILITY, QUOTA_CAPABILITY } from "./schemas";
+import {
+  CORE_CAPABILITY,
+  HULIHO_CAPABILITY,
+  MAIL_CAPABILITY,
+  QUOTA_CAPABILITY,
+  SUBMISSION_CAPABILITY,
+} from "./schemas";
+
+// The fake's upload limit and lanes, as the bridge gives them.
+const UPLOAD_LIMIT = 25 * 1024 * 1024;
+const UPLOAD_LANES = 2;
 
 const listSchema = z.object({ list: z.array(z.unknown()) });
 
@@ -33,8 +43,16 @@ test("the session comes from the account's route and names the upstream account,
     accountId: UPSTREAM,
     apiUrl: "/api/jmap/acc-1",
     downloadUrl: "/api/jmap/acc-1/download/{accountId}/{blobId}/{name}?type={type}",
+    uploadUrl: "/api/jmap/acc-1/upload/{accountId}",
+    uploadLimits: {
+      maxSizeUpload: UPLOAD_LIMIT,
+      maxConcurrentUpload: UPLOAD_LANES,
+      maxSizeAttachmentsPerEmail: UPLOAD_LIMIT,
+    },
+    submission: true,
+    flowedText: true,
     readOnly: false,
-    using: [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY],
+    using: [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY, SUBMISSION_CAPABILITY],
     firstSync: true,
     quota: false,
     maxCallsInRequest: 16,
@@ -97,10 +115,64 @@ test("a read-only account takes no write and neither does one the session leaves
 test("a native account without the vendor capability opts into core and mail alone", async () => {
   const server = serve();
   server.vendor = false;
+  server.submission = false;
   const session = await new JmapClient(ACCOUNT).session();
   expect(session.using).toEqual([CORE_CAPABILITY, MAIL_CAPABILITY]);
   expect(session.firstSync).toBe(false);
+  expect(session.flowedText).toBe(false);
+  expect(session.submission).toBe(false);
 });
+
+test("an account sends where the server and the account both name submission (RFC 8621 section 1.3.2)", async () => {
+  const server = serve();
+  const object = server.session();
+  const account = { isReadOnly: false, accountCapabilities: { [MAIL_CAPABILITY]: {} } };
+  server.queue.push(json(200, { ...object, accounts: { [UPSTREAM]: account } }));
+  const unnamed = await new JmapClient(ACCOUNT).session();
+  expect(unnamed.submission).toBe(false);
+  expect(unnamed.using).toContain(SUBMISSION_CAPABILITY);
+});
+
+test.each([
+  [
+    "no field",
+    {},
+    {},
+    { maxSizeUpload: 0, maxConcurrentUpload: 0, maxSizeAttachmentsPerEmail: null },
+  ],
+  [
+    "fields of the wrong kind",
+    { maxSizeUpload: "1", maxConcurrentUpload: -1 },
+    { maxSizeAttachmentsPerEmail: 1.5 },
+    { maxSizeUpload: 0, maxConcurrentUpload: 0, maxSizeAttachmentsPerEmail: null },
+  ],
+  [
+    "every field",
+    { maxSizeUpload: 10, maxConcurrentUpload: 3 },
+    { maxSizeAttachmentsPerEmail: 20 },
+    { maxSizeUpload: 10, maxConcurrentUpload: 3, maxSizeAttachmentsPerEmail: 20 },
+  ],
+])(
+  "the file limits with %s read each field on its own (RFC 8620 section 2)",
+  async (_, core, mail, limits) => {
+    const server = serve();
+    const object = server.session();
+    const capabilities = {
+      [CORE_CAPABILITY]: {
+        maxCallsInRequest: 16,
+        maxObjectsInGet: 500,
+        maxObjectsInSet: 500,
+        ...core,
+      },
+      [MAIL_CAPABILITY]: {},
+    };
+    const accounts = {
+      [UPSTREAM]: { isReadOnly: false, accountCapabilities: { [MAIL_CAPABILITY]: mail } },
+    };
+    server.queue.push(json(200, { ...object, capabilities, accounts }));
+    expect((await new JmapClient(ACCOUNT).session()).uploadLimits).toEqual(limits);
+  },
+);
 
 test("a server that names quota is spoken to with it, and the account answers quota where it lists the capability (RFC 9425 section 2.1)", async () => {
   const server = serve();
@@ -111,6 +183,7 @@ test("a server that names quota is spoken to with it, and the account answers qu
     MAIL_CAPABILITY,
     HULIHO_CAPABILITY,
     QUOTA_CAPABILITY,
+    SUBMISSION_CAPABILITY,
   ]);
   expect(session.quota).toBe(true);
   server.quotaAccount = false;
@@ -143,7 +216,7 @@ test("a request posts the calls to the endpoint as JSON with the header and answ
   expect(posted?.headers.get("content-type")).toBe("application/json");
   expect(posted?.headers.get("x-requested-with")).toBe("huliho");
   expect(posted?.body).toEqual({
-    using: [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY],
+    using: [CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY, SUBMISSION_CAPABILITY],
     methodCalls: [
       ["Mailbox/get", { accountId: UPSTREAM, ids: null }, "a"],
       ["Mailbox/get", { accountId: UPSTREAM, ids: null }, "b"],
