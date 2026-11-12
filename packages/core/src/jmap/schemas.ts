@@ -13,6 +13,10 @@ export const MAIL_CAPABILITY = "urn:ietf:params:jmap:mail";
 // The quota capability (RFC 9425 section 2.1).
 export const QUOTA_CAPABILITY = "urn:ietf:params:jmap:quota";
 
+// The submission capability, which the identity and the send methods
+// ride (RFC 8621 section 1.3.2).
+export const SUBMISSION_CAPABILITY = "urn:ietf:params:jmap:submission";
+
 // The vendor capability a bridge account advertises; it carries the
 // Mailbox property syncedEmails.
 export const HULIHO_CAPABILITY = "https://huliho.com/jmap";
@@ -73,6 +77,14 @@ const downloadUrlSchema = z.string().check(
   z.refine((template) => DOWNLOAD_VARIABLES.every((variable) => template.includes(variable))),
 );
 
+// The one variable an upload template carries (RFC 8620 section 2).
+const UPLOAD_VARIABLE = "{accountId}";
+
+const uploadUrlSchema = z.string().check(
+  z.regex(SAME_ORIGIN_PATH),
+  z.refine((template) => template.includes(UPLOAD_VARIABLE)),
+);
+
 // An account without its capabilities reads as one that has none beyond
 // what the session names.
 const accountSchema = z.object({
@@ -86,6 +98,7 @@ export const sessionObjectSchema = z.object({
   primaryAccounts: z.record(z.string(), idSchema),
   apiUrl: z.string().check(z.regex(SAME_ORIGIN_PATH)),
   downloadUrl: downloadUrlSchema,
+  uploadUrl: uploadUrlSchema,
   state: z.string(),
 });
 
@@ -184,10 +197,12 @@ export const queryAnswerSchema = z.object({
 });
 
 // Why one object of a /set was not written (RFC 8620 section 5.3);
-// `invalidProperties` names the properties at fault.
+// `invalidProperties` names the properties at fault and a submission's
+// `invalidRecipients` the addresses (RFC 8621 section 7.5).
 const setErrorSchema = z.object({
   type: z.string(),
   properties: z.optional(z.array(z.string())),
+  invalidRecipients: z.optional(z.array(z.string())),
 });
 
 // The answer of a /set that updates and destroys (RFC 8620 section 5.3);
@@ -208,6 +223,41 @@ export const mailboxSetAnswerSchema = z.extend(setAnswerSchema, {
   notCreated: z.nullish(z.record(z.string(), setErrorSchema)),
 });
 
+// The answer of an Email/set that creates, by creation id with what the
+// server set (RFC 8621 section 4.6).
+export const emailSetAnswerSchema = z.extend(setAnswerSchema, {
+  created: z.nullish(
+    z.record(
+      z.string(),
+      z.object({ id: idSchema, blobId: z.string(), threadId: idSchema, size: countSchema }),
+    ),
+  ),
+  notCreated: z.nullish(z.record(z.string(), setErrorSchema)),
+});
+
+// The answer of an EmailSubmission/set; a submission's other properties
+// are read nowhere (RFC 8621 section 7.5).
+export const submissionSetAnswerSchema = z.object({
+  newState: z.string(),
+  created: z.nullish(z.record(z.string(), z.object({ id: idSchema }))),
+  notCreated: z.nullish(z.record(z.string(), setErrorSchema)),
+});
+
+// One identity the account may send as (RFC 8621 section 6).
+export const identitySchema = z.object({
+  id: idSchema,
+  name: z.string(),
+  email: z.string(),
+});
+
+// What the upload route answers for one file (RFC 8620 section 6.1).
+export const uploadAnswerSchema = z.object({
+  accountId: idSchema,
+  blobId: idSchema,
+  type: z.string(),
+  size: countSchema,
+});
+
 // The problem details of a request that was not run (RFC 8620 section 3.6.1).
 export const problemSchema = z.object({ type: z.string(), limit: z.optional(z.string()) });
 
@@ -219,3 +269,6 @@ export type Thread = z.infer<typeof threadSchema>;
 export type Invocation = z.infer<typeof invocationSchema>;
 export type ChangesAnswer = z.infer<typeof changesAnswerSchema>;
 export type MailboxSetAnswer = z.infer<typeof mailboxSetAnswerSchema>;
+export type EmailSetAnswer = z.infer<typeof emailSetAnswerSchema>;
+export type Identity = z.infer<typeof identitySchema>;
+export type UploadAnswer = z.infer<typeof uploadAnswerSchema>;

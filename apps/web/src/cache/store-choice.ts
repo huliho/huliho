@@ -6,6 +6,7 @@ import { MemoryMailStore } from "@huliho/core";
 import type {
   Batch,
   BodySize,
+  DraftRow,
   EmailBody,
   EmailHeader,
   HeldQuota,
@@ -110,6 +111,14 @@ export class ChosenStore implements WorkerStore {
 
   pending(accountId: string): Promise<PendingRow[]> {
     return this.store.then((store) => store.pending(accountId));
+  }
+
+  draft(accountId: string, id: string): Promise<DraftRow | null> {
+    return this.store.then((store) => store.draft(accountId, id));
+  }
+
+  drafts(accountId: string): Promise<DraftRow[]> {
+    return this.store.then((store) => store.drafts(accountId));
   }
 
   quota(accountId: string): Promise<HeldQuota | null> {

@@ -40,6 +40,15 @@ function expanded(value: string): string {
   );
 }
 
+// A template of the session object with its variables filled in (RFC
+// 6570 level 1); a variable without a value stays as written.
+export function filledTemplate(template: string, values: ReadonlyMap<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (variable, name: string) => {
+    const value = values.get(name);
+    return value === undefined ? variable : expanded(value);
+  });
+}
+
 // The URL of one blob: the template with its variables filled in.
 export function downloadUrl(source: DownloadSource, blob: BlobRequest): string {
   const values = new Map([
@@ -48,8 +57,5 @@ export function downloadUrl(source: DownloadSource, blob: BlobRequest): string {
     ["name", blob.name],
     ["type", blob.type],
   ]);
-  return source.template.replace(/\{(\w+)\}/g, (variable, name: string) => {
-    const value = values.get(name);
-    return value === undefined ? variable : expanded(value);
-  });
+  return filledTemplate(source.template, values);
 }

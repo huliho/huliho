@@ -3,6 +3,7 @@
 // Additional terms apply, see NOTICE.
 
 import {
+  draftRowSchema,
   emailBodySchema,
   emailHeaderSchema,
   heldQuotaSchema,
@@ -15,6 +16,7 @@ import {
 import type {
   Batch,
   BodySize,
+  DraftRow,
   EmailBody,
   EmailHeader,
   HeldQuota,
@@ -72,6 +74,7 @@ export class MailDatabase extends Dexie {
   declare readonly meta: Stored<unknown>;
   declare readonly emailBodies: Table<StoredBody, [string, string]>;
   declare readonly pendingChanges: Table<StoredPending, [string, number]>;
+  declare readonly drafts: Stored<DraftRow>;
 
   // The options name an IndexedDB other than the global one, for a test.
   constructor(name = DATABASE_NAME, options?: DexieOptions) {
@@ -88,6 +91,8 @@ export class MailDatabase extends Dexie {
       emailBodies: `${KEYS}, ${BODY_ORDER}`,
       pendingChanges: "[accountId+seq], accountId",
     });
+    // The third adds the drafts and touches nothing else.
+    this.version(3).stores({ drafts: KEYS });
   }
 }
 
@@ -248,6 +253,16 @@ export class DexieMailStore implements MailStore {
     return rows.flatMap((held) => checked("pendingChanges", held.row, pendingRowSchema));
   }
 
+  async draft(accountId: string, id: string): Promise<DraftRow | null> {
+    const row = await this.db.drafts.get([accountId, id]);
+    return parsed("drafts", [row], draftRowSchema).get(id) ?? null;
+  }
+
+  async drafts(accountId: string): Promise<DraftRow[]> {
+    const rows = await this.db.drafts.where("accountId").equals(accountId).toArray();
+    return [...parsed("drafts", rows, draftRowSchema).values()];
+  }
+
   async quota(accountId: string): Promise<HeldQuota | null> {
     const held = await this.db.meta.get([accountId, QUOTA_KEY]);
     return held === undefined ? null : (checked("meta", held.row, heldQuotaSchema)[0] ?? null);
@@ -268,6 +283,7 @@ export class DexieMailStore implements MailStore {
       await apply(db.queryCache, accountId, batch.queries);
       await this.applyBodies(accountId, batch.bodies);
       await this.applyPending(accountId, batch.pending);
+      await apply(db.drafts, accountId, batch.drafts);
       await Promise.all(
         Object.entries(batch.states ?? {}).map(([type, state]) =>
           state === null
@@ -393,6 +409,8 @@ export class DexieMailStore implements MailStore {
         return this.db.queryCache;
       case "bodies":
         return this.db.emailBodies;
+      case "drafts":
+        return this.db.drafts;
       default:
         return this.db.pendingChanges;
     }

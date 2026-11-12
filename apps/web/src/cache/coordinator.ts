@@ -56,6 +56,7 @@ const EVERY_AREA = [
   "searches",
   "bodies",
   "pending",
+  "drafts",
 ] as const;
 
 export interface Dependencies {

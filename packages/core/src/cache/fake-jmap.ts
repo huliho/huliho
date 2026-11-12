@@ -3,25 +3,29 @@
 // Additional terms apply, see NOTICE.
 
 import type { EmailHeader, Mailbox } from "../jmap/schemas";
-import {
-  CORE_CAPABILITY,
-  HULIHO_CAPABILITY,
-  MAIL_CAPABILITY,
-  QUOTA_CAPABILITY,
-} from "../jmap/schemas";
+import { HULIHO_CAPABILITY, QUOTA_CAPABILITY, SUBMISSION_CAPABILITY } from "../jmap/schemas";
 import { z } from "../schema";
 import { FakeMethods } from "./fake-methods";
 import type { Change, Kind, Type } from "./fake-methods";
 import { asksSearch } from "./fake-search";
-import { ACCOUNT, MethodError, UPSTREAM } from "./fake-wire";
+import { IDENTITY } from "./fake-sends";
+import { knownCapabilities, sessionOf } from "./fake-session";
+import { uploadRequestOf } from "./fake-uploads";
+import type { UploadReply, UploadSeen } from "./fake-uploads";
+import { ACCOUNT, MethodError } from "./fake-wire";
 import type { Args, Invocation } from "./fake-wire";
 import { passesProxy, recountMailboxes } from "./fake-writes";
 import type { FakeBody } from "./fake-writes";
 import type { Quota } from "./quota";
 
+export { DRAFT_FILE, draftContent } from "./fake-drafts";
 export { quota } from "./fake-quota";
+export type { UploadReply } from "./fake-uploads";
 export { ACCOUNT, UPSTREAM } from "./fake-wire";
 export type { FakeBody } from "./fake-writes";
+
+// The largest file the fake takes, as the bridge takes it.
+const UPLOAD_LIMIT = 25 * 1024 * 1024;
 
 const JSON_TYPE = "application/json";
 const PROBLEM_TYPE = "application/problem+json";
@@ -84,6 +88,15 @@ export function mailbox(id: string, role: string | null = null): Mailbox {
     isSubscribed: true,
     syncedEmails: 0,
   };
+}
+
+// A server holding one mailbox of each role, named by its role.
+export function withRoles(roles: readonly string[]): FakeJmap {
+  const server = new FakeJmap();
+  for (const role of roles) {
+    server.putMailbox(mailbox(role, role));
+  }
+  return server;
 }
 
 interface EmailFacts {
@@ -179,6 +192,32 @@ export class FakeJmap {
   folderRefusal: string | null = null;
   // The mailboxes Mailbox/set created, for the next new id.
   nextMailbox = 0;
+  // How many emails Email/set created, for the next new id; the tree each
+  // one was created with.
+  nextEmail = 0;
+  readonly structures = new Map<string, Args>();
+  // Whether the account sends: the identity and submission methods answer.
+  submission = true;
+  // The identities Identity/get answers, in its order.
+  identities: (typeof IDENTITY)[] = [IDENTITY];
+  // The SetError every create of an Email/set answers, null for none.
+  createRefusal: Args | null = null;
+  // The SetError every submission answers, or the method error the whole
+  // EmailSubmission/set answers, null for none.
+  sendRefusal: Args | null = null;
+  sendMethodError: string | null = null;
+  readonly submissions: Args[] = [];
+  // The files the upload route took by blob id, the largest it takes, the
+  // answers scripted for the next uploads and every upload it saw; held
+  // uploads wait for releaseUploads.
+  readonly uploads = new Map<string, { type: string; size: number }>();
+  uploadLimit = UPLOAD_LIMIT;
+  readonly uploadReplies: UploadReply[] = [];
+  readonly uploaded: UploadSeen[] = [];
+  holdUploads = false;
+  readonly heldUploads: (() => void)[] = [];
+  // What a test puts in the global's place of XMLHttpRequest.
+  readonly UploadRequest = uploadRequestOf(this);
   private readonly held: (() => void)[] = [];
 
   readonly fetch: typeof fetch = (input, init) => {
@@ -198,6 +237,14 @@ export class FakeJmap {
   releaseSearches(): void {
     this.holdSearches = false;
     for (const go of this.held.splice(0)) {
+      go();
+    }
+  }
+
+  // Answers every held upload and holds no more.
+  releaseUploads(): void {
+    this.holdUploads = false;
+    for (const go of this.heldUploads.splice(0)) {
       go();
     }
   }
@@ -335,41 +382,7 @@ export class FakeJmap {
 
   // The session object as the proxy serves it for the account.
   session(): Args {
-    const core = {
-      maxSizeUpload: 0,
-      maxConcurrentUpload: 0,
-      maxSizeRequest: 1_048_576,
-      maxConcurrentRequests: 4,
-      maxCallsInRequest: this.maxCallsInRequest,
-      maxObjectsInGet: this.maxObjectsInGet,
-      maxObjectsInSet: this.maxObjectsInSet,
-      collationAlgorithms: ["i;unicode-casemap"],
-    };
-    const vendor = this.vendor ? { [HULIHO_CAPABILITY]: {} } : {};
-    const quota = this.quota ? { [QUOTA_CAPABILITY]: {} } : {};
-    const accountQuota = this.quotaAccount ? quota : {};
-    const mail = {
-      mayCreateTopLevelMailbox: this.topLevel,
-      maxSizeMailboxName: this.maxSizeMailboxName,
-    };
-    return {
-      capabilities: { [CORE_CAPABILITY]: core, [MAIL_CAPABILITY]: {}, ...vendor, ...quota },
-      accounts: {
-        [UPSTREAM]: {
-          name: "sanne@example.test",
-          isPersonal: true,
-          isReadOnly: this.readOnly,
-          accountCapabilities: { [MAIL_CAPABILITY]: mail, ...vendor, ...accountQuota },
-        },
-      },
-      primaryAccounts: { [MAIL_CAPABILITY]: UPSTREAM },
-      username: "sanne@example.test",
-      apiUrl: `/api/jmap/${ACCOUNT}`,
-      downloadUrl: `/api/jmap/${ACCOUNT}/download/{accountId}/{blobId}/{name}?type={type}`,
-      uploadUrl: `/api/jmap/${ACCOUNT}/upload/{accountId}`,
-      eventSourceUrl: `/api/jmap/${ACCOUNT}/events?types={types}&closeafter={closeafter}&ping={ping}`,
-      state: this.sessionState,
-    };
+    return sessionOf(this);
   }
 
   // One Request object: the capabilities checked, every call run in
@@ -380,10 +393,7 @@ export class FakeJmap {
       return json(400, { type: "urn:ietf:params:jmap:error:notRequest" }, PROBLEM_TYPE);
     }
     const { using, methodCalls } = request.data;
-    const known = new Set([CORE_CAPABILITY, MAIL_CAPABILITY, HULIHO_CAPABILITY]);
-    if (this.quota) {
-      known.add(QUOTA_CAPABILITY);
-    }
+    const known = knownCapabilities(this);
     if (using.some((name) => !known.has(name))) {
       return json(400, { type: "urn:ietf:params:jmap:error:unknownCapability" }, PROBLEM_TYPE);
     }
@@ -394,10 +404,11 @@ export class FakeJmap {
     const methods = new FakeMethods(this, {
       vendor: using.includes(HULIHO_CAPABILITY),
       quota: using.includes(QUOTA_CAPABILITY),
+      submission: using.includes(SUBMISSION_CAPABILITY),
     });
     const responses: Invocation[] = [];
     for (const call of methodCalls) {
-      responses.push(run(methods, responses, call));
+      responses.push(...run(methods, responses, call));
     }
     return json(200, { methodResponses: responses, sessionState: this.sessionState });
   }
@@ -407,12 +418,14 @@ function run(
   methods: FakeMethods,
   responses: readonly Invocation[],
   [name, args, id]: Invocation,
-): Invocation {
+): Invocation[] {
   try {
-    return [name, methods.dispatch(name, resolve(args, responses)), id];
+    return methods
+      .responses(name, resolve(args, responses))
+      .map(([answered, value]): Invocation => [answered, value, id]);
   } catch (error) {
     if (error instanceof MethodError) {
-      return ["error", { type: error.type }, id];
+      return [["error", { type: error.type }, id]];
     }
     throw error;
   }

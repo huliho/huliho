@@ -5,12 +5,14 @@
 import type { EmailHeader } from "../jmap/schemas";
 import { z } from "../schema";
 import type { FakeJmap } from "./fake-jmap";
+import { emailSetWithCreates } from "./fake-drafts";
 import { quotaAccount, quotaGet } from "./fake-quota";
 import { isSearch, matcherOf } from "./fake-search";
+import { identityGet, submissionSet } from "./fake-sends";
 import { mailboxSet } from "./fake-folders";
 import { MethodError, UPSTREAM } from "./fake-wire";
 import type { Args } from "./fake-wire";
-import { bodyOf, emailSet } from "./fake-writes";
+import { bodyOf } from "./fake-writes";
 
 export type Kind = "created" | "updated" | "destroyed";
 export type Type = "Mailbox" | "Email" | "Thread" | "Quota";
@@ -62,26 +64,41 @@ function parse<Value extends { accountId: string }>(
 interface Using {
   vendor: boolean;
   quota: boolean;
+  submission: boolean;
 }
 
-// The methods the cache calls, answered from the fake's maps. A quota
-// method outside a request that opts into quota is unknown (RFC 8620
-// section 3.6.2).
+// The methods the cache calls, answered from the fake's maps. A quota or
+// a submission method outside a request that opts into its capability is
+// unknown (RFC 8620 section 3.6.2).
 export class FakeMethods {
   private readonly server: FakeJmap;
   private readonly using: Using;
+  // The ids the request's creates made, by creation id.
+  private readonly made = new Map<string, string>();
 
   constructor(server: FakeJmap, using: Using) {
     this.server = server;
     this.using = using;
   }
 
-  dispatch(name: string, args: Args): Args {
+  // The responses of one call: one, or a submission's with the implicit
+  // Email/set behind it (RFC 8621 section 7.5).
+  responses(name: string, args: Args): [string, Args][] {
+    if (name === "EmailSubmission/set" && this.using.submission) {
+      return submissionSet(this.server, args, this.made);
+    }
+    return [[name, this.dispatch(name, args)]];
+  }
+
+  private dispatch(name: string, args: Args): Args {
     const quota: [string, (raw: Args) => Args][] = this.using.quota
       ? [
           ["Quota/get", (raw) => quotaGet(this.server, raw)],
           ["Quota/changes", (raw) => this.quotaChanges(raw)],
         ]
+      : [];
+    const submission: [string, (raw: Args) => Args][] = this.using.submission
+      ? [["Identity/get", (raw) => identityGet(this.server, raw)]]
       : [];
     const methods = new Map<string, (raw: Args) => Args>([
       ["Mailbox/get", (raw) => this.mailboxGet(raw)],
@@ -90,10 +107,11 @@ export class FakeMethods {
       ["Email/get", (raw) => this.emailGet(raw)],
       ["Email/query", (raw) => this.emailQuery(raw)],
       ["Email/changes", (raw) => this.changes("Email", raw)],
-      ["Email/set", (raw) => emailSet(this.server, raw)],
+      ["Email/set", (raw) => emailSetWithCreates(this.server, raw, this.made)],
       ["Thread/get", (raw) => this.threadGet(raw)],
       ["Thread/changes", (raw) => this.changes("Thread", raw)],
       ...quota,
+      ...submission,
     ]);
     const method = methods.get(name);
     if (method === undefined) {
@@ -147,7 +165,11 @@ export class FakeMethods {
       if (row === undefined) {
         return [];
       }
-      return [pick({ ...row, ...bodyOf(this.server, row, raw) }, properties)];
+      const nested =
+        Array.isArray(raw["bodyProperties"]) && raw["bodyProperties"].includes("subParts");
+      const tree = nested ? this.server.structures.get(id) : undefined;
+      const structure = tree === undefined ? {} : { bodyStructure: tree };
+      return [pick({ ...row, ...bodyOf(this.server, row, raw), ...structure }, properties)];
     });
     return {
       accountId: UPSTREAM,

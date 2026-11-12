@@ -9,6 +9,7 @@ import { sendersOf } from "./senders";
 import type {
   Batch,
   BodySize,
+  DraftRow,
   EmailBody,
   MailStore,
   PendingRow,
@@ -33,6 +34,7 @@ interface Rows {
   searches: Map<string, SearchRow>;
   bodies: Map<string, EmailBody>;
   pending: Map<number, PendingRow>;
+  drafts: Map<string, DraftRow>;
   states: Map<ObjectType, string>;
   quota: HeldQuota | null;
 }
@@ -46,6 +48,7 @@ function emptyRows(): Rows {
     searches: new Map(),
     bodies: new Map(),
     pending: new Map(),
+    drafts: new Map(),
     states: new Map(),
     quota: null,
   };
@@ -76,6 +79,8 @@ function areaOf(rows: Rows, area: StoreArea): Map<string, unknown> | Map<number,
       return rows.searches;
     case "bodies":
       return rows.bodies;
+    case "drafts":
+      return rows.drafts;
     default:
       return rows.pending;
   }
@@ -192,6 +197,17 @@ export class MemoryMailStore implements MailStore {
     return Promise.resolve(rows.toSorted((a, b) => a.seq - b.seq));
   }
 
+  draft(accountId: string, id: string): Promise<DraftRow | null> {
+    const row = this.rows(accountId).drafts.get(id);
+    return Promise.resolve(row === undefined ? null : structuredClone(row));
+  }
+
+  drafts(accountId: string): Promise<DraftRow[]> {
+    return Promise.resolve(
+      [...this.rows(accountId).drafts.values()].map((row) => structuredClone(row)),
+    );
+  }
+
   quota(accountId: string): Promise<HeldQuota | null> {
     return Promise.resolve(structuredClone(this.rows(accountId).quota));
   }
@@ -208,6 +224,7 @@ export class MemoryMailStore implements MailStore {
     apply(rows.searches, batch.searches);
     apply(rows.bodies, batch.bodies);
     applyPending(rows.pending, batch.pending);
+    apply(rows.drafts, batch.drafts);
     applyStates(rows.states, batch.states);
     if (batch.quota !== undefined) {
       rows.quota = structuredClone(batch.quota);

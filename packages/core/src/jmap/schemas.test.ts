@@ -25,6 +25,7 @@ const SESSION = {
   primaryAccounts: { "urn:ietf:params:jmap:mail": "u1" },
   apiUrl: "/api/jmap/acc-1",
   downloadUrl: "/api/jmap/acc-1/download/{accountId}/{blobId}/{name}?type={type}",
+  uploadUrl: "/api/jmap/acc-1/upload/{accountId}",
   state: "s1",
 };
 
@@ -102,6 +103,21 @@ test("a download template stays on this origin and carries its four variables", 
   const { downloadUrl, ...lean } = SESSION;
   expect(sessionObjectSchema.safeParse(lean).success).toBe(false);
   expect(sessionObjectSchema.parse(SESSION).downloadUrl).toBe(downloadUrl);
+});
+
+test("an upload template stays on this origin and carries the account's variable (RFC 8620 section 6.1)", () => {
+  const refused = [
+    "https://mail.example.test/upload/{accountId}",
+    "//mail.example.test/upload/{accountId}",
+    "/api/jmap/acc-1/upload/u1",
+  ];
+  const outcomes = refused.map((uploadUrl) =>
+    sessionObjectSchema.safeParse({ ...SESSION, uploadUrl }),
+  );
+  expect(outcomes.map((outcome) => outcome.success)).toEqual([false, false, false]);
+  const { uploadUrl, ...lean } = SESSION;
+  expect(sessionObjectSchema.safeParse(lean).success).toBe(false);
+  expect(sessionObjectSchema.parse(SESSION).uploadUrl).toBe(uploadUrl);
 });
 
 test("a session object says of every account whether it takes a write", () => {

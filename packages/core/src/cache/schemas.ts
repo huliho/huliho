@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Additional terms apply, see NOTICE.
 
+import { documentSchema } from "../compose/document";
 import { emailBodyPartSchema, emailBodyValueSchema } from "../jmap/body";
-import { countSchema, idSchema, setSchema, threadSchema } from "../jmap/schemas";
+import { countSchema, identitySchema, idSchema, setSchema, threadSchema } from "../jmap/schemas";
 import { z } from "../schema";
-import type { EmailBody, PendingRow, QueryRow, ThreadRow } from "./store";
+import type { DraftRow, EmailBody, PendingRow, QueryRow, ThreadRow } from "./store";
 
 // The rows a store keeps beyond the JMAP objects, checked when they come
 // back from disk.
@@ -69,6 +70,54 @@ const patchSchema = z.record(
   z.string().check(z.regex(/^(?:keywords|mailboxIds)\/./u)),
   z.nullable(z.literal(true)),
 );
+
+const recipientSchema = z.union([
+  z.object({ name: z.nullable(z.string()), email: z.string() }),
+  z.object({ text: z.string() }),
+]);
+
+const draftAttachmentSchema = z.object({
+  blobId: idSchema,
+  name: z.nullable(z.string()),
+  type: z.string(),
+  size: countSchema,
+  cid: z.nullable(z.string()),
+  disposition: z.enum(["attachment", "inline"]),
+});
+
+export const draftRowSchema: z.ZodMiniType<DraftRow> = z.object({
+  id: idSchema,
+  kind: z.enum(["new", "reply", "forward"]),
+  parentId: z.nullable(idSchema),
+  serverId: z.nullable(idSchema),
+  threadId: z.nullable(idSchema),
+  parts: z.record(idSchema, idSchema),
+  state: z.enum(["draft", "queued", "sending"]),
+  sendAfter: z.nullable(z.number()),
+  changedAt: z.number(),
+  revision: countSchema,
+  savedRevision: z.nullable(countSchema),
+  savedAt: z.nullable(z.number()),
+  mode: z.enum(["rich", "plain"]),
+  document: documentSchema,
+  html: z.string(),
+  text: z.string(),
+  to: z.array(recipientSchema),
+  cc: z.array(recipientSchema),
+  bcc: z.array(recipientSchema),
+  subject: z.string(),
+  identity: identitySchema,
+  inReplyTo: z.array(z.string()),
+  references: z.array(z.string()),
+  attachments: z.array(draftAttachmentSchema),
+  failure: z.nullable(
+    z.object({
+      stage: z.enum(["save", "send"]),
+      type: z.string(),
+      recipients: z.array(z.string()),
+    }),
+  ),
+});
 
 export const pendingRowSchema: z.ZodMiniType<PendingRow> = z.object({
   seq: z.int().check(z.positive()),

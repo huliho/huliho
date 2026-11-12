@@ -4,8 +4,8 @@
 
 // @vitest-environment node
 
-import type { EmailBody, PendingRow, SearchRow } from "@huliho/core";
-import { ACCOUNT, at, email, mailbox, quota } from "@huliho/core/testing";
+import type { DraftRow, EmailBody, PendingRow, SearchRow } from "@huliho/core";
+import { ACCOUNT, at, draftContent, email, mailbox, quota } from "@huliho/core/testing";
 import { Dexie } from "dexie";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { afterEach, expect, test, vi } from "vitest";
@@ -246,6 +246,67 @@ test("a database of the first version keeps its rows and gains the two tables", 
   await reopened.commit(ACCOUNT, { bodies: { put: [body("e1", 1, 5)] } });
   expect(await reopened.body(ACCOUNT, "e1")).toEqual(body("e1", 1, 5));
   upgraded.close();
+});
+
+const DRAFT: DraftRow = {
+  ...draftContent(),
+  id: "r1",
+  serverId: "draft-1",
+  threadId: "t-draft-1",
+  parts: { "upload-1": "draft-1-3" },
+  state: "queued",
+  sendAfter: 2,
+  changedAt: 1,
+  revision: 3,
+  savedRevision: 2,
+  savedAt: 1,
+  failure: null,
+};
+
+test("a database of the second version keeps its rows and gains the drafts", async () => {
+  const options = { indexedDB: new IDBFactory(), IDBKeyRange };
+  const second = new Dexie("huliho-third", options);
+  const keys = "[accountId+id], accountId";
+  second.version(2).stores({
+    mailboxes: keys,
+    emailHeaders: keys,
+    threads: keys,
+    queryCache: keys,
+    meta: keys,
+    emailBodies: `${keys}, [fetchedAt+bytes]`,
+    pendingChanges: "[accountId+seq], accountId",
+  });
+  await second.table("meta").put({ accountId: ACCOUNT, id: "Email", row: "7" });
+  await second.table("pendingChanges").put({ accountId: ACCOUNT, seq: CHANGE.seq, row: CHANGE });
+  second.close();
+  const upgraded = new MailDatabase("huliho-third", options);
+  const reopened = new DexieMailStore(upgraded);
+  expect(await reopened.state(ACCOUNT, "Email")).toBe("7");
+  expect(await reopened.pending(ACCOUNT)).toEqual([CHANGE]);
+  await reopened.commit(ACCOUNT, { drafts: { put: [DRAFT] } });
+  expect(await reopened.draft(ACCOUNT, DRAFT.id)).toEqual(DRAFT);
+  upgraded.close();
+});
+
+test("a draft lands on disk under its account, comes back checked and leaves by a batch or a reset", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  await store.commit(ACCOUNT, { drafts: { put: [DRAFT] } });
+  expect(await new DexieMailStore(database).drafts(ACCOUNT)).toEqual([DRAFT]);
+  expect(await store.draft(OTHER, DRAFT.id)).toBeNull();
+  expect(await store.accounts()).toEqual([ACCOUNT]);
+  await store.commit(ACCOUNT, { reset: ["drafts"], pending: { put: [CHANGE] } });
+  expect(await store.drafts(ACCOUNT)).toEqual([]);
+  expect(await store.pending(ACCOUNT)).toEqual([CHANGE]);
+  await store.commit(ACCOUNT, { drafts: { put: [DRAFT] } });
+  await store.commit(ACCOUNT, { drafts: { remove: [DRAFT.id] } });
+  expect(await store.draft(ACCOUNT, DRAFT.id)).toBeNull();
+  await database
+    .table("drafts")
+    .put({ accountId: ACCOUNT, id: "bad", row: { ...DRAFT, state: "lost" } });
+  expect(await store.drafts(ACCOUNT)).toEqual([]);
+  expect(console.error).toHaveBeenCalledWith(
+    "cache: a row in drafts failed its schema and was dropped",
+  );
 });
 
 const SEARCH: SearchRow = {

@@ -4,9 +4,9 @@
 
 import { expect, test } from "vitest";
 
-import { at, email, mailbox, quota } from "./fake-jmap";
+import { at, draftContent, email, mailbox, quota } from "./fake-jmap";
 import { MemoryMailStore } from "./memory";
-import type { EmailBody, PendingRow, QueryRow, SearchRow } from "./store";
+import type { DraftRow, EmailBody, PendingRow, QueryRow, SearchRow } from "./store";
 
 const ROW: QueryRow = {
   id: "inbox",
@@ -180,4 +180,37 @@ test("a search belongs to one account, comes back as a copy and leaves by a batc
   await store.commit("acc-1", { searches: { put: [SEARCH] } });
   await store.commit("acc-1", { searches: { remove: [SEARCH.id] } });
   expect(await store.search("acc-1", SEARCH.id)).toBeNull();
+});
+
+const DRAFT: DraftRow = {
+  ...draftContent(),
+  id: "r1",
+  serverId: null,
+  threadId: null,
+  parts: {},
+  state: "draft",
+  sendAfter: null,
+  changedAt: 1,
+  revision: 1,
+  savedRevision: null,
+  savedAt: null,
+  failure: null,
+};
+
+test("a draft belongs to one account, comes back as a copy and leaves by a batch, a reset or destroy", async () => {
+  const store = new MemoryMailStore();
+  await store.commit("acc-1", { drafts: { put: [DRAFT] } });
+  expect(await store.draft("acc-2", DRAFT.id)).toBeNull();
+  const read = await store.draft("acc-1", DRAFT.id);
+  read?.to.push({ text: "bob" });
+  expect(await store.drafts("acc-1")).toEqual([DRAFT]);
+  expect(await store.accounts()).toEqual(["acc-1"]);
+  await store.commit("acc-1", { reset: ["drafts"] });
+  expect(await store.drafts("acc-1")).toEqual([]);
+  await store.commit("acc-1", { drafts: { put: [DRAFT] } });
+  await store.commit("acc-1", { drafts: { remove: [DRAFT.id] } });
+  expect(await store.draft("acc-1", DRAFT.id)).toBeNull();
+  await store.commit("acc-1", { drafts: { put: [DRAFT] } });
+  await store.destroy();
+  expect(await store.drafts("acc-1")).toEqual([]);
 });

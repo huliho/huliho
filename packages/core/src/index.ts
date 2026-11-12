@@ -43,10 +43,17 @@ export {
   verbOf,
 } from "./actions";
 export type { ActionTarget, ChangeVerb, MailAction, Offered } from "./actions";
-export { fitsAddress, fitsHostName } from "./address";
+export { asciiAddress, fitsAddress, fitsHostName } from "./address";
 export type { Authentication, AuthenticationResults, AuthVerdict } from "./auth-results";
 export type { BodyDetail, MailCache, SearchCall, ThreadDetail, Undo } from "./cache/api";
 export { readBody } from "./cache/bodies";
+export { drainDrafts } from "./cache/draft-send";
+export type { Drained, SendOutcome } from "./cache/draft-send";
+export { discardDraft, writeDraft } from "./cache/draft-write";
+export type { DiscardOutcome, DraftAsk, RoleNames, SaveOutcome } from "./cache/draft-write";
+export { SEND_UNDO_MS, needsWrite, queueDraft, saveDraft, undoSend } from "./cache/drafts";
+export type { DraftSave, OpenedDraft } from "./cache/drafts";
+export { readIdentity } from "./cache/identity";
 export { flushPending } from "./cache/flush";
 export type { Flushed } from "./cache/flush";
 export { jobRound, jobStarted, runJob } from "./cache/jobs";
@@ -95,6 +102,7 @@ export type { SearchAsk } from "./cache/search-window";
 export { foldText, pickSenders, readSenders, sendersOf, startsAWord } from "./cache/senders";
 export { treeOrder } from "./cache/tree-order";
 export {
+  draftRowSchema,
   emailBodySchema,
   pendingRowSchema,
   queryRowSchema,
@@ -103,6 +111,11 @@ export {
 export type {
   Batch,
   BodySize,
+  DraftAttachment,
+  DraftContent,
+  DraftFailure,
+  DraftRow,
+  DraftState,
   EmailBody,
   EmailPatch,
   FreshPage,
@@ -117,6 +130,27 @@ export type {
   ThreadRow,
 } from "./cache/store";
 export { readThread } from "./cache/thread";
+export { isAddress, tokenize, withTokens } from "./compose/addresses";
+export type { Recipient } from "./compose/addresses";
+export { documentLines, documentSchema } from "./compose/document";
+export type { DocumentMark, DocumentNode } from "./compose/document";
+export { writeFlowed } from "./compose/flowed-write";
+export { LARGE_RECIPIENT_LIST, guardrailOf, refusalOf } from "./compose/guards";
+export type { Guardrail, Refusal } from "./compose/guards";
+export { answerSubject, replyHeaders, replyRecipients } from "./compose/headers";
+export type { Answer, MailAddress } from "./compose/headers";
+export { MAILTO_MAX_CHARS, readMailto } from "./compose/mailto";
+export type { MailtoDraft } from "./compose/mailto";
+export {
+  attributionOf,
+  forwardHtml,
+  forwardLines,
+  forwardedParts,
+  quotedParts,
+  replyHtml,
+  replyLines,
+} from "./compose/quote";
+export type { ForwardFacts, ForwardWords } from "./compose/quote";
 export { branchOf, hideWrite, visibleMailboxes } from "./cache/visible";
 export { queryWindow } from "./cache/window";
 export type { WindowPage } from "./cache/window";
@@ -128,9 +162,18 @@ export { BODY_VALUE_BYTES, BODY_VALUE_BYTES_LARGE } from "./jmap/body";
 export type { EmailBodyPart, EmailBodyValue } from "./jmap/body";
 export type { EmailFilter, ObjectType } from "./jmap/calls";
 export { JmapClient, JmapError, MethodFailure, SERVER_UNAVAILABLE } from "./jmap/client";
-export type { JmapFailureCode, JmapSession, MailboxLimits } from "./jmap/client";
+export type { JmapFailureCode, JmapSession, MailboxLimits, UploadLimits } from "./jmap/client";
 export { HULIHO_CAPABILITY, emailHeaderSchema, mailboxSchema } from "./jmap/schemas";
-export type { EmailHeader, EmailState, Mailbox, Thread } from "./jmap/schemas";
+export type {
+  EmailHeader,
+  EmailState,
+  Identity,
+  Mailbox,
+  Thread,
+  UploadAnswer,
+} from "./jmap/schemas";
+export { UploadError, uploadFile } from "./jmap/upload";
+export type { UploadFailureCode, UploadOptions } from "./jmap/upload";
 export { linkRisk, linkText } from "./links";
 export type { LinkRisk } from "./links";
 export {
