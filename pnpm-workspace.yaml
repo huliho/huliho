@@ -4,9 +4,6 @@ packages:
 # Known advisories in transitive development tooling; the affected parents are
 # forced to the fixed lines, scoped so nothing else gets clamped.
 overrides:
-  "@lhci/cli>tmp": ^0.2.6
-  "@lhci/cli>uuid": ^14.0.0
-  "external-editor>tmp": ^0.2.6
   "express>qs": ^6.16.0
   "body-parser>qs": ^6.16.0
   "get-uri>basic-ftp": ^6.2.4
