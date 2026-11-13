@@ -4,44 +4,33 @@
 
 import type { Page, Route } from "@playwright/test";
 
+import { MAX_OBJECTS_IN_SET, jmapSessionBody } from "./api-bodies";
 import { mockBlobs } from "./blob-mocks";
 import type { Blobs } from "./blob-mocks";
-import { answerCalls, asksBody, asksSet, noteArrival, serverFor } from "./mail-answers";
+import {
+  answerCalls,
+  asksBody,
+  asksSet,
+  methodCallsOf,
+  noteArrival,
+  serverFor,
+} from "./mail-answers";
 import type { Invocation, MailServer } from "./mail-answers";
-import { ACCOUNT_ADDRESS, UPSTREAM, arrive, corpusFor } from "./mail-corpus";
+import { arrive, corpusFor } from "./mail-corpus";
 import type { Corpus, CorpusEmail } from "./mail-corpus";
-import { MAX_NAME_BYTES } from "./mail-folder-rules";
 import { asksSearch } from "./mail-search";
-import { MAX_CONCURRENT_UPLOADS, MAX_UPLOAD_BYTES, asksSend, mockUploads } from "./mail-sends";
+import { asksSend, mockUploads } from "./mail-sends";
 import { mockPolicies } from "./policy-mocks";
 import type { PolicyStore } from "./policy-mocks";
 
 const SESSION_ROUTE = "**/api/jmap/*/session";
 const API_ROUTE = "**/api/jmap/*";
-const CORE_CAPABILITY = "urn:ietf:params:jmap:core";
-const MAIL_CAPABILITY = "urn:ietf:params:jmap:mail";
-// The vendor capability a bridge account advertises, which brings syncedEmails.
-const HULIHO_CAPABILITY = "https://huliho.com/jmap";
-const QUOTA_CAPABILITY = "urn:ietf:params:jmap:quota";
-const SUBMISSION_CAPABILITY = "urn:ietf:params:jmap:submission";
-// The account's submission limits as the bridge gives them: no delayed
-// send and no extension (RFC 8621 section 1.3.2).
-const SUBMISSION_LIMITS = { maxDelayedSend: 0, submissionExtensions: {} };
-
-interface SessionShape {
-  vendor: boolean;
-  quota: boolean;
-  maxObjectsInSet: number;
-  topLevel: boolean;
-}
 // The problem a request past the server's concurrency gets (RFC 8620 section 3.6.1).
 const LIMIT_PROBLEM = {
   type: "urn:ietf:params:jmap:error:limit",
   limit: "maxConcurrentRequests",
   status: 429,
 };
-// How many objects one Email/set takes.
-const MAX_OBJECTS_IN_SET = 500;
 
 export interface MailboxBody {
   id: string;
@@ -144,69 +133,19 @@ function managed(row: MailboxBody): MailboxBody {
 // The tree of WRITABLE_MAILBOXES with the folders managed.
 export const FOLDER_MAILBOXES: MailboxBody[] = WRITABLE_MAILBOXES.map(managed);
 
-function isInvocation(value: unknown): value is Invocation {
-  return Array.isArray(value) && value.length === 3 && typeof value[0] === "string";
-}
-
 function calls(route: Route): Invocation[] {
-  const body: unknown = route.request().postDataJSON();
-  const listed: unknown =
-    typeof body === "object" && body !== null ? Reflect.get(body, "methodCalls") : null;
-  return Array.isArray(listed) ? listed.filter((call) => isInvocation(call)) : [];
+  return methodCallsOf(route.request().postDataJSON());
 }
 
-// The session object of an account on the proxy, as the worker reads
-// it, with the account's mail limits the folder dialogs and the composer
-// read (RFC 8621 section 1.3.1) and the submission capability; a bridge
-// account carries the vendor capability as well, an account with
-// quotas the quota capability.
-function sessionBody(accountId: string, shape: SessionShape): object {
-  const { vendor, quota, maxObjectsInSet, topLevel } = shape;
-  const extra = {
-    ...(vendor ? { [HULIHO_CAPABILITY]: {} } : {}),
-    ...(quota ? { [QUOTA_CAPABILITY]: {} } : {}),
-  };
-  const limits = {
-    maxSizeMailboxName: MAX_NAME_BYTES,
-    mayCreateTopLevelMailbox: topLevel,
-    maxSizeAttachmentsPerEmail: MAX_UPLOAD_BYTES,
-  };
-  return {
-    capabilities: {
-      [CORE_CAPABILITY]: {
-        maxSizeUpload: MAX_UPLOAD_BYTES,
-        maxConcurrentUpload: MAX_CONCURRENT_UPLOADS,
-        maxSizeRequest: 1_048_576,
-        maxConcurrentRequests: 4,
-        maxCallsInRequest: 16,
-        maxObjectsInGet: 500,
-        maxObjectsInSet,
-        collationAlgorithms: ["i;unicode-casemap"],
-      },
-      [MAIL_CAPABILITY]: {},
-      [SUBMISSION_CAPABILITY]: {},
-      ...extra,
-    },
-    accounts: {
-      [UPSTREAM]: {
-        name: ACCOUNT_ADDRESS,
-        isPersonal: true,
-        isReadOnly: false,
-        accountCapabilities: {
-          [MAIL_CAPABILITY]: limits,
-          [SUBMISSION_CAPABILITY]: SUBMISSION_LIMITS,
-          ...extra,
-        },
-      },
-    },
-    primaryAccounts: { [MAIL_CAPABILITY]: UPSTREAM, [SUBMISSION_CAPABILITY]: UPSTREAM },
-    username: ACCOUNT_ADDRESS,
-    apiUrl: `/api/jmap/${accountId}`,
-    downloadUrl: `/api/jmap/${accountId}/download/{accountId}/{blobId}/{name}?type={type}`,
-    uploadUrl: `/api/jmap/${accountId}/upload/{accountId}`,
-    eventSourceUrl: `/api/jmap/${accountId}/events?types={types}&closeafter={closeafter}&ping={ping}`,
-    state: "s1",
-  };
+// The mailboxes as the server lists them; a native account's carry no
+// synced count.
+export function listedMailboxes(
+  mailboxes: readonly MailboxBody[],
+  vendor: boolean,
+): Record<string, unknown>[] {
+  return mailboxes.map((row) =>
+    Object.fromEntries(Object.entries(row).filter(([key]) => vendor || key !== "syncedEmails")),
+  );
 }
 
 function accountIdOf(route: Route): string {
@@ -294,12 +233,7 @@ export async function mockMail(
   options: MailOptions = {},
 ): Promise<MockedMail> {
   const corpus = options.corpus ?? corpusFor(mailboxes);
-  // A native account's mailboxes carry no synced count.
-  const listed = mailboxes.map((row) =>
-    Object.fromEntries(
-      Object.entries(row).filter(([key]) => options.vendor === true || key !== "syncedEmails"),
-    ),
-  );
+  const listed = listedMailboxes(mailboxes, options.vendor === true);
   const server = serverFor(corpus, listed, options.quotas ?? null);
   server.topLevel = options.mayCreateTopLevelMailbox ?? true;
   const policies = options.policies ?? new Map();
@@ -314,7 +248,7 @@ export async function mockMail(
     topLevel: server.topLevel,
   };
   await context.route(SESSION_ROUTE, (route) =>
-    route.fulfill({ json: sessionBody(accountIdOf(route), shape) }),
+    route.fulfill({ json: jmapSessionBody(accountIdOf(route), shape) }),
   );
   await context.route(API_ROUTE, (route) =>
     route.request().method() === "POST" ? answered(server, route) : route.fallback(),

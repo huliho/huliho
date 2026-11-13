@@ -16,6 +16,11 @@ overrides:
   "@typescript-eslint/typescript-estree>minimatch": ^11.0.1
   "eslint>minimatch": ^11.0.1
   "eslint-plugin-sonarjs>minimatch": ^11.0.1
+# Lighthouse CI loads Puppeteer for its puppeteerScript and leaves supplying it to the project.
+packageExtensions:
+  "@lhci/cli":
+    peerDependencies:
+      puppeteer-core: "*"
 allowBuilds:
   # The platform binary arrives as an optional dependency; the install script only re-downloads it.
   esbuild: false
