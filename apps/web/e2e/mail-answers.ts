@@ -455,6 +455,16 @@ function dispatch(server: MailServer, call: Invocation, context: Context): Respo
   return Array.isArray(answered) ? answered : [[name, answered]];
 }
 
+function isInvocation(value: unknown): value is Invocation {
+  return Array.isArray(value) && value.length === 3 && typeof value[0] === "string";
+}
+
+// The method calls a request body carries; none where it carries no list.
+export function methodCallsOf(body: unknown): Invocation[] {
+  const listed: unknown = isRecord(body) ? body["methodCalls"] : null;
+  return Array.isArray(listed) ? listed.filter((call) => isInvocation(call)) : [];
+}
+
 // The method responses of one request, in order, each under its call's
 // id; a call that fails answers the error type the failure names.
 export function answerCalls(server: MailServer, calls: readonly Invocation[]): Invocation[] {

@@ -8,6 +8,8 @@ import { join } from "node:path";
 import { paraglideVitePlugin } from "@inlang/paraglide-js";
 import babel from "@rolldown/plugin-babel";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
+import { runnerImport } from "vite";
+import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
 
 // The locale follows the system until the user picks one, which sticks.
@@ -27,8 +29,22 @@ const CONTENT_SECURITY_POLICY = readFileSync(
   "utf8",
 ).trim();
 
+// The Lighthouse gate's preview answers the API from the e2e answers; the
+// e2e suite's preview leaves it to each test's routes. Vite's module runner
+// loads them for that run alone, so no other run bundles them with this file.
+const PREVIEW_API =
+  process.env.HULIHO_PREVIEW_API === undefined
+    ? []
+    : [
+        (
+          await runnerImport<{ previewApi: () => Plugin }>(
+            join(import.meta.dirname, "e2e/preview-api.ts"),
+          )
+        ).module.previewApi(),
+      ];
+
 export default defineConfig({
-  plugins: [react(), babel({ presets: [reactCompilerPreset()] }), paraglide],
+  plugins: [react(), babel({ presets: [reactCompilerPreset()] }), paraglide, ...PREVIEW_API],
   server: {
     proxy: {
       "/api": API_PROXY_TARGET,

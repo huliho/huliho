@@ -116,10 +116,14 @@
     ]
   },
   "knip": {
-    "ignore": [
-      "apps/web/lighthouserc.cjs"
-    ],
     "workspaces": {
+      "apps/web": {
+        "entry": [
+          "e2e/preview-api.ts",
+          "lighthouse-session.cjs",
+          "lighthouserc.js"
+        ]
+      },
       "packages/i18n": {
         "ignoreDependencies": [
           "@inlang/plugin-icu1"

@@ -475,14 +475,20 @@ paints the focus it moved. `timing/body.spec.ts` opens a newsletter of
 prints the time to the still lines and the longest task of the main
 thread while the message builds.
 
-`pnpm lighthouse` audits the built app once against the accessibility,
-layout shift and cold-load budgets in `lighthouserc.cjs`. With
-`HULIHO_TIMING_GATES` set it runs five times and also holds the
-performance score, LCP and TBT to their budgets over the median.
+`pnpm lighthouse` serves the built app with `vite preview` and audits
+two pages once each in Playwright's Chromium: the sign-in screen without
+a session and the inbox with one. While `HULIHO_PREVIEW_API` is set the
+preview answers the API from the e2e answers (`e2e/preview-api.ts`) and
+reads the session from a cookie, which `lighthouse-session.cjs` sets
+before the inbox and takes away before the sign-in screen. Each page
+has its own ceilings for requests and bytes in `lighthouserc.js`, beside
+the accessibility and layout shift budgets. With `HULIHO_TIMING_GATES`
+set it runs five times per page and also holds the performance score,
+LCP and TBT to their budgets over the median.
 
 The app preview sends the same Content Security Policy as the server,
 read from `crates/server/src/csp.txt`, so every e2e test against the
-app runs under it.
+app and both Lighthouse pages run under it.
 The Storybook preview goes without, since its bootstrap uses inline
 scripts.
 

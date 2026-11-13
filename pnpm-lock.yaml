@@ -176,6 +176,8 @@ overrides:
   eslint>minimatch: ^11.0.1
   eslint-plugin-sonarjs>minimatch: ^11.0.1
 
+packageExtensionsChecksum: sha256-j8nCXpV+Ct2SWCDK3drnE8m9bO7wQRfJ4z0eP7eB2TA=
+
 importers:
 
   .:
@@ -291,7 +293,7 @@ importers:
         version: 2.29.3(eslint@10.14.0(jiti@2.7.0)(supports-color@10.2.2))(typescript@7.0.2)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       '@lhci/cli':
         specifier: 0.15.1
-        version: 0.15.1(supports-color@10.2.2)
+        version: 0.15.1(puppeteer-core@25.16.0(yauzl@2.10.0))(supports-color@10.2.2)
       '@playwright/test':
         specifier: ^1.64.1
         version: 1.64.1
@@ -337,6 +339,9 @@ importers:
       lighthouse:
         specifier: 13.6.0
         version: 13.6.0(supports-color@10.2.2)(yauzl@2.10.0)
+      puppeteer-core:
+        specifier: 25.16.0
+        version: 25.16.0(yauzl@2.10.0)
       storybook:
         specifier: 10.6.5
         version: 10.6.5(@types/react@19.3.0)(prettier@3.9.10)(react@19.3.1)
@@ -1054,6 +1059,8 @@ packages:
   '@lhci/cli@0.15.1':
     resolution: {integrity: sha512-yhC0oXnXqGHYy1xl4D8YqaydMZ/khFAnXGY/o2m/J3PqPa/D0nj3V6TLoH02oVMFeEF2AQim7UbmdXMiXx2tOw==}
     hasBin: true
+    peerDependencies:
+      puppeteer-core: '*'
 
   '@lhci/utils@0.15.1':
     resolution: {integrity: sha512-WclJnUQJeOMY271JSuaOjCv/aA0pgvuHZS29NFNdIeI14id8eiFsjith85EGKYhljgoQhJ2SiW4PsVfFiakNNw==}
@@ -5983,7 +5990,7 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@lhci/cli@0.15.1(supports-color@10.2.2)':
+  '@lhci/cli@0.15.1(puppeteer-core@25.16.0(yauzl@2.10.0))(supports-color@10.2.2)':
     dependencies:
       '@lhci/utils': 0.15.1(supports-color@10.2.2)
       chrome-launcher: 0.13.4(supports-color@10.2.2)
@@ -5996,6 +6003,7 @@ snapshots:
       lighthouse-logger: 1.2.0(supports-color@10.2.2)
       open: 7.4.2
       proxy-agent: 6.5.0(supports-color@10.2.2)
+      puppeteer-core: 25.16.0(yauzl@2.10.0)
       tmp: 0.2.7
       uuid: 14.0.3
       yargs: 15.4.1

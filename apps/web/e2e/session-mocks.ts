@@ -4,6 +4,7 @@
 
 import type { Page, Route } from "@playwright/test";
 
+import { ACCOUNT_LIST_BODY, SESSION_BODY, SIGNED_OUT_BODY } from "./api-bodies";
 import { mockMail } from "./mail-mocks";
 import { mockPreferences, refusePreferencesWhile } from "./preference-mocks";
 
@@ -14,36 +15,7 @@ const PASSWORD_ROUTE = "**/api/password";
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
 
-const SESSION_BODY = {
-  user: { id: "user-1", login: "mira@example.com", name: "Mira", role: "owner" },
-  organization: { id: "org-1", name: "mira@example.com" },
-  signInProviders: [],
-  passwordChangeRequired: false,
-  privacyStrict: false,
-};
-
-const SIGNED_OUT_BODY = { error: "unauthenticated" };
-
 const ACCOUNTS_ROUTE = "**/api/accounts";
-
-// One connected account, so the shell has something to show and keeps
-// the session instead of sending it to the card.
-const ACCOUNT_LIST_BODY = {
-  accounts: [
-    {
-      id: "acc-0",
-      address: "mira@example.com",
-      name: "example.com",
-      provider: "generic",
-      kind: "imap",
-      authMethod: "password",
-      stoppedCause: null,
-      stoppedAt: null,
-      createdAt: 1_778_750_400_000,
-    },
-  ],
-  probeIntervalMinutes: 15,
-};
 
 // The account has mailboxes and no mail, so the shell has a tree and the
 // cache worker an answer to its poll; the preferences answer empty, so
