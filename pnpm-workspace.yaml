@@ -9,7 +9,7 @@ overrides:
   "external-editor>tmp": ^0.2.6
   "express>qs": ^6.16.0
   "body-parser>qs": ^6.16.0
-  "get-uri>basic-ftp": ^6.2.1
+  "get-uri>basic-ftp": ^6.2.4
   "@joshwooding/vite-plugin-react-docgen-typescript>glob": ^14.0.3
   "@sentry/bundler-plugins>glob": ^14.0.3
   "@eslint/config-array>minimatch": ^11.0.1

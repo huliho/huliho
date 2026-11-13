@@ -45,6 +45,16 @@
     "keeps": ["<p>after</p>"]
   },
   {
+    "title": "a style in an svg inside a math text integration point breaks out of nothing",
+    "payload": "<math><mi><svg><style><a title=\"</style><img src=x onerror=top.__x=1>\"></a></style></svg></mi></math><p>after</p>",
+    "keeps": ["<p>after</p>"]
+  },
+  {
+    "title": "a style in a math inside an svg foreignObject breaks out of nothing",
+    "payload": "<svg><foreignObject><math><style><a title=\"</style><img src=x onerror=top.__x=1>\"></a></style></math></foreignObject></svg><p>after</p>",
+    "keeps": ["<p>after</p>"]
+  },
+  {
     "title": "srcset is dropped and src stays",
     "payload": "<img src=\"https://cdn.example/a.png\" srcset=\"https://evil.example/t.png 1x\" onerror=\"top.__x=1\">",
     "keeps": ["src=\"https://cdn.example/a.png\""]
