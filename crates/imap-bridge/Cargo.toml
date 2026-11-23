@@ -18,7 +18,7 @@ async-imap = { version = "0.11.3", default-features = false, features = ["runtim
 base64 = "0.23.1"
 gethostname = "1.1.0"
 mail-builder = { version = "2.0.1", default-features = false }
-mail-parser = { version = "0.11.9", default-features = false, features = ["full_encoding"] }
+mail-parser = { version = "1.0.0", default-features = false, features = ["full_encoding"] }
 mail-send = { version = "0.6.2", default-features = false, features = ["ring", "tls12"] }
 rcgen = { version = "0.14.10", optional = true }
 rusqlite = { version = "0.41.1", features = ["bundled", "fallible_uint"] }
